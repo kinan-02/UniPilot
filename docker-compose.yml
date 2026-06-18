@@ -1,0 +1,138 @@
+services:
+  api:
+    build:
+      context: ./services/api
+    container_name: unipilot-api
+    env_file:
+      - .env
+    environment:
+      API_PORT: 3000
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB}?authSource=admin
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai:${AI_SERVICE_PORT}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const port=process.env.API_PORT||3000; fetch('http://localhost:'+port+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  mongo:
+    image: mongo:7.0.15
+    container_name: unipilot-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  redis:
+    image: redis:7.4.0-alpine
+    container_name: unipilot-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  worker:
+    build:
+      context: ./services/worker
+    container_name: unipilot-worker
+    env_file:
+      - .env
+    environment:
+      WORKER_PORT: ${WORKER_PORT}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME}
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB}?authSource=admin
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai:${AI_SERVICE_PORT}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const port=process.env.WORKER_PORT||3002; fetch('http://localhost:'+port+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  ai:
+    build:
+      context: ./services/ai
+    container_name: unipilot-ai
+    env_file:
+      - .env
+    environment:
+      AI_SERVICE_PORT: ${AI_SERVICE_PORT}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const port=process.env.AI_SERVICE_PORT||3001; fetch('http://localhost:'+port+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+networks:
+  unipilot-internal:
+    driver: bridge
+
+volumes:
+  mongo_data:
