@@ -38,6 +38,10 @@ docker compose up --build
 
 API health URL:
 
+- `http://localhost:<API_PORT>/health`
+
+Example with defaults from `.env.example`:
+
 - [http://localhost:3000/health](http://localhost:3000/health)
 
 ## Stop and Clean

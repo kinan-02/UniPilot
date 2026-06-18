@@ -28,6 +28,13 @@ UniPilot AI is an AI-powered academic decision support platform. The project is 
 - Work **feature by feature**. Do not implement the whole project at once.
 - After each feature: add tests, update the README, and commit.
 
+## Required Pre-Work Context
+- Before any **major implementation work** (new feature, architecture change, refactor across services), read:
+  1. `docs/PROJECT_CONTEXT.md` (primary source of truth)
+  2. `docs/planning/IMPLEMENTATION_PHASES.md` (phase guardrails)
+  3. `docs/planning/FEATURE_BACKLOG.md` (feature order/priorities)
+- If implementation reality changes, update `docs/PROJECT_CONTEXT.md` in the same work cycle.
+
 ## Workflow System
 Reusable prompts (run in order per feature) live in `.cursor/prompts/`:
 1. `01-explore-repo.md` — understand current state
@@ -41,6 +48,7 @@ Reusable prompts (run in order per feature) live in `.cursor/prompts/`:
 9. `09-final-demo-prep.md` — submission checklist
 
 ## Key Documents
+- Primary context: `docs/PROJECT_CONTEXT.md`
 - Architecture: `docs/architecture/ARCHITECTURE.md`
 - Phases: `docs/planning/IMPLEMENTATION_PHASES.md`
 - Backlog: `docs/planning/FEATURE_BACKLOG.md`
