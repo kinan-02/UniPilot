@@ -1,0 +1,39 @@
+---
+description: "UniPilot database: MongoDB persistence, internal-only access, schema validation, and safe data handling"
+globs: ["**/models/**", "**/schemas/**", "**/repositories/**", "**/db/**", "**/migrations/**"]
+alwaysApply: false
+---
+
+# UniPilot Database (MongoDB)
+
+All persistent data MUST be stored in MongoDB.
+
+## Persistence
+- Store all persistent application data (users, jobs, AI results, student records) in MongoDB.
+- Persist MongoDB data on a named Docker volume so it survives container restarts.
+- Do not use in-memory or file storage as the source of truth for persistent data.
+
+## Network Exposure (strict)
+- MongoDB is internal only — never publish its port to the host.
+- Only backend containers (API, worker, AI) on the private Docker network may connect.
+- Load the Mongo connection URI from an environment variable; never hardcode credentials.
+
+## Data Modeling & Validation
+- Define explicit schemas/models for every collection.
+- Validate documents at the application boundary before writing (see security rule).
+- Enforce uniqueness where needed (e.g. unique index on user email).
+- Add indexes for frequently queried fields (user id, job status) for performance.
+
+## Safe Data Handling
+- NEVER store passwords in plain text. Persist only bcrypt hashes.
+- Never store secrets or raw provider keys in the database.
+- Use the repository pattern: business logic depends on a repository interface, not the driver directly.
+- Follow immutable update patterns — build new documents/updates rather than mutating shared state.
+
+## Ownership & Access
+- Every student-owned document records its owner (user id).
+- Repository queries for student data must scope by the authenticated user id to prevent cross-account access.
+
+## Reliability
+- The app must wait for / retry the MongoDB connection on startup (works with Docker healthchecks).
+- Handle DB errors explicitly; never silently swallow write/read failures.

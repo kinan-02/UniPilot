@@ -1,0 +1,40 @@
+---
+description: "UniPilot Docker: first-run reliability, multi-container architecture, internal-only services, and single exposed API"
+globs: ["**/Dockerfile*", "**/docker-compose*.y*ml", "**/.dockerignore", "**/.env.example"]
+alwaysApply: true
+---
+
+# UniPilot Docker
+
+The app MUST run on the first try with Docker. This is a hard grading requirement.
+
+## First-Run Reliability
+- A grader must be able to clone the repo and run a single documented command (e.g. `docker compose up --build`) with no manual setup.
+- Provide a committed `.env.example` with every required variable. The app must start from copied defaults.
+- Use `depends_on` plus healthchecks so the API waits for MongoDB, Redis, and the AI service to be ready.
+- Services must retry/reconnect to dependencies instead of crash-looping on startup ordering.
+- Persist MongoDB data with a named volume so restarts keep data.
+- Pin base image versions; avoid `latest` for reproducibility.
+
+## Multi-Container Architecture (minimum)
+- At least **two backend containers** are required. Typical layout:
+  - `api` (the only client-facing container)
+  - `worker` (async/background AI processing)
+  - `ai` service (internal model/inference service)
+  - `mongo` (persistence)
+  - `redis` (queue + rate-limit store)
+
+## Network Exposure (strict)
+- ONLY the API/web container may publish ports to the host.
+- MongoDB, Redis, the worker, and the AI service MUST stay internal — no host port mappings.
+- Keep internal services on a private Docker network; communicate by service name.
+
+## Image Hygiene
+- Use a `.dockerignore` to keep images small (exclude node_modules, .git, tests artifacts, env files).
+- Prefer multi-stage builds for compiled/bundled apps.
+- Run as a non-root user where possible.
+- Never bake secrets into images; pass them via environment at runtime.
+
+## Verification
+- Before committing Docker changes, do a clean run: `docker compose down -v && docker compose up --build`.
+- Confirm only the API port is reachable from the host.

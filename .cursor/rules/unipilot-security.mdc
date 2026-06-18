@@ -1,0 +1,49 @@
+---
+description: "UniPilot security: JWT auth, bcrypt password hashing, protected endpoints, validation, and rate limiting"
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# UniPilot Security
+
+Security correctness is part of the backend grade. Treat every item below as mandatory.
+
+## Authentication (JWT)
+- Use JWT for all authentication. Issue tokens on login/register only.
+- Sign tokens with a strong secret loaded from an environment variable (e.g. `JWT_SECRET`). Never hardcode it.
+- Set a sensible expiry (e.g. access token 15m–1h). Reject expired or malformed tokens.
+- Verify the token signature and claims on every protected request via middleware.
+- Return `401 Unauthorized` for missing/invalid tokens, `403 Forbidden` for valid tokens lacking permission.
+
+## Passwords (bcrypt)
+- NEVER store passwords in plain text anywhere (DB, logs, responses, error messages).
+- Hash all passwords with bcrypt (cost factor >= 10) before persisting.
+- Compare passwords using bcrypt's constant-time compare. Never compare hashes manually.
+- Never return password hashes in any API response.
+
+## Protected Endpoints
+- All student-specific endpoints MUST require a valid JWT.
+- Enforce ownership/authorization: a student may only read/modify their own data. Check the user id from the token against the requested resource.
+- Apply auth middleware at the router level so no protected route is accidentally left open.
+
+## Input Validation
+- Validate ALL request bodies, params, and query strings at the boundary before processing.
+- Use schema-based validation (e.g. Zod / Joi / Pydantic depending on stack). Reject unknown fields.
+- Fail fast with `400 Bad Request` and a clear, non-leaky message.
+- Never trust external data, including AI service responses.
+
+## Rate Limiting
+- Apply rate limiting to all authentication endpoints (login, register, token refresh).
+- Apply rate limiting to all AI endpoints to prevent abuse and cost overrun.
+- Prefer a shared store (Redis) so limits hold across replicas.
+- Return `429 Too Many Requests` when limits are exceeded.
+
+## Secrets & Error Handling
+- Load all secrets (JWT secret, DB URI, AI keys) from environment variables. Provide a `.env.example`.
+- Validate that required secrets are present at startup; fail fast if missing.
+- Error messages must not leak stack traces, secrets, or internal details to clients.
+- Before any commit, verify no secrets are committed.
+
+## Network Exposure
+- Only the API/web container may be exposed to clients.
+- MongoDB, Redis, the worker, and the AI service must stay on the internal Docker network only.

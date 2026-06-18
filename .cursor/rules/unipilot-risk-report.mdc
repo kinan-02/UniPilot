@@ -1,0 +1,32 @@
+---
+description: "UniPilot final risk assessment: required risk report content, structure, and grading expectations"
+globs: ["**/RISK*.md", "**/risk*.md", "**/docs/**"]
+alwaysApply: false
+---
+
+# UniPilot Risk Assessment
+
+The project requires a final risk assessment as a deliverable. Maintain it as a committed document (e.g. `RISK.md` or a section of the README).
+
+## Purpose
+- Honestly document the system's risks, limitations, and mitigations.
+- Show the grader you understand the security, reliability, and operational trade-offs of the implementation.
+
+## Required Contents
+1. **Security risks** — auth/JWT handling, password storage, secret management, input validation gaps, rate-limiting coverage, and what an attacker could attempt.
+2. **Data risks** — MongoDB persistence, backups, data loss on volume removal, PII handling for student data.
+3. **AI risks** — provider failures, timeouts, cost/abuse, hallucinated or unsafe AI output, and how async processing + validation mitigate them.
+4. **Availability/operational risks** — container startup ordering, dependency failures (Mongo/Redis/AI down), queue backlog, scaling limits.
+5. **Known limitations** — what is out of scope or not fully hardened.
+
+## Structure (per risk)
+- Risk description
+- Likelihood (Low / Medium / High)
+- Impact (Low / Medium / High)
+- Mitigation implemented (or planned)
+- Residual risk after mitigation
+
+## Quality Expectations
+- Be specific and tied to the actual code/architecture, not generic boilerplate.
+- Cross-reference the security, docker, ai, and database rules where relevant.
+- Keep it updated as features land; finalize before submission.
