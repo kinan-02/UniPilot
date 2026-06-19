@@ -19,7 +19,12 @@ from app.sources.sample_data import (
     SAMPLE_SOURCE_NAME,
     SAMPLE_SOURCE_TYPE,
 )
-from app.curation.dds_catalog_curator import run_curation
+from app.curation.dds_catalog_blocker_cleanup import run_blocker_cleanup
+from app.quality.dds_staging_quality import (
+    default_json_report_path,
+    default_md_report_path,
+    run_dds_staging_quality_review,
+)
 from app.curation.dds_catalog_signoff import run_signoff
 from app.parsers.dds_catalog_markdown_parser import write_curated_catalog_draft
 from app.sources.technion_dds_catalog_pdf import extract_dds_catalog, inspect_dds_catalog
@@ -41,6 +46,7 @@ def run_health() -> int:
             "degreeRequirements": settings.staging_degree_requirements_collection,
             "degreePrograms": settings.staging_degree_programs_collection,
             "catalogRules": settings.staging_catalog_rules_collection,
+            "dataQualityReports": settings.staging_data_quality_reports_collection,
             "ingestionRuns": settings.staging_ingestion_runs_collection,
         },
         "note": "Real Technion DDS ingestion is not implemented in Phase 4.",
@@ -400,6 +406,75 @@ def run_import_technion_courses_staging(
     return 0
 
 
+def run_cleanup_dds_staging_blockers(
+    catalog_path: str | None,
+    readiness_path: str | None,
+    cleanup_report_path: str | None,
+    dry_run: bool,
+) -> int:
+    try:
+        summary = run_blocker_cleanup(
+            catalog_path=Path(catalog_path) if catalog_path else None,
+            readiness_path=Path(readiness_path) if readiness_path else None,
+            cleanup_report_path=Path(cleanup_report_path) if cleanup_report_path else None,
+            dry_run=dry_run,
+        )
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
+
+def run_validate_dds_staging_quality(
+    output_json: str | None,
+    output_md: str | None,
+    write_staging_audit: bool,
+) -> int:
+    if check_mongo_connectivity() != "connected":
+        print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+        return 1
+
+    settings = get_settings()
+    database = get_database()
+    json_path = Path(output_json) if output_json else default_json_report_path()
+    md_path = Path(output_md) if output_md else default_md_report_path()
+
+    try:
+        report = run_dds_staging_quality_review(
+            database,
+            settings=settings,
+            json_path=json_path,
+            md_path=md_path,
+            write_staging_audit=write_staging_audit,
+        )
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": report.status,
+                "recommendation": report.recommendation,
+                "summary": report.summary,
+                "counts": report.counts,
+                "blockersForProduction": report.blockersForProduction[:15],
+                "blockersForApiMigration": report.blockersForApiMigration[:15],
+                "warningsCount": len(report.warnings),
+                "jsonReportPath": str(json_path),
+                "mdReportPath": str(md_path),
+                "stagingAuditWritten": write_staging_audit,
+                "note": "Quality review only — no production writes; staged records not modified.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0 if report.status != "needs-fixes" else 1
+
+
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
     settings = get_settings()
     env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
@@ -431,6 +506,8 @@ def build_parser() -> argparse.ArgumentParser:
             "signoff-dds-catalog",
             "import-dds-catalog-staging",
             "import-technion-courses-staging",
+            "validate-dds-staging-quality",
+            "cleanup-dds-staging-blockers",
         ],
         help="Task to execute",
     )
@@ -476,6 +553,30 @@ def build_parser() -> argparse.ArgumentParser:
         dest="dds_only",
         action="store_true",
         help="Import only DDS faculty courses (הפקולטה למדעי הנתונים וההחלטות)",
+    )
+    parser.add_argument(
+        "--output-json",
+        dest="output_json",
+        default=None,
+        help="Output path for staging quality JSON report",
+    )
+    parser.add_argument(
+        "--output-md",
+        dest="output_md",
+        default=None,
+        help="Output path for staging quality markdown report",
+    )
+    parser.add_argument(
+        "--write-staging-audit",
+        dest="write_staging_audit",
+        action="store_true",
+        help="Write report snapshot to staging_data_quality_reports (staging only)",
+    )
+    parser.add_argument(
+        "--cleanup-report-path",
+        dest="cleanup_report_path",
+        default=None,
+        help="Output path for Phase 10.5 blocker cleanup markdown report",
     )
     parser.add_argument(
         "--catalog-path",
@@ -554,6 +655,19 @@ def main(argv: list[str] | None = None) -> int:
                 args.course_json_paths,
                 args.dry_run,
                 args.dds_only,
+            )
+        if args.command == "validate-dds-staging-quality":
+            return run_validate_dds_staging_quality(
+                args.output_json,
+                args.output_md,
+                args.write_staging_audit,
+            )
+        if args.command == "cleanup-dds-staging-blockers":
+            return run_cleanup_dds_staging_blockers(
+                args.catalog_path,
+                args.readiness_path,
+                args.cleanup_report_path,
+                args.dry_run,
             )
     finally:
         close_mongo_client()

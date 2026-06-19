@@ -14,12 +14,16 @@ INLINE_COURSE_TITLE_PATTERN = re.compile(
 )
 
 
-def _score_candidate(value: str) -> int:
+def _score_candidate(value: str, *, raw_digits: str = "") -> int:
     score = 0
     if value.startswith("00"):
-        score += 3
-    if value[:4] in {"0094", "0096", "0104", "0098", "0090"}:
+        score += 1
+    if value[:4] in {"0094", "0096", "0104", "0098", "0090", "0234", "0114", "0324", "0044"}:
+        score += 4
+    if raw_digits and value == raw_digits.zfill(8)[-8:]:
         score += 2
+    if value.startswith("0010") or value.startswith("0009"):
+        score -= 2
     return score
 
 
@@ -34,7 +38,8 @@ def _candidate_normalized_values(digits: str) -> list[str]:
     if len(raw) == 7:
         candidates.append(raw.zfill(8)[-8:])
 
-    if len(raw) == 8 and raw.endswith("0"):
+    # Trailing-zero truncation applies only when the value is not already a valid 8-digit course id.
+    if len(raw) == 8 and raw.endswith("0") and not re.fullmatch(r"0\d{7}", raw):
         candidates.append(raw[:-1].zfill(8)[-8:])
 
     if len(raw) == 8 and raw.startswith("0") and raw.endswith("0"):
@@ -67,7 +72,7 @@ def normalize_course_number(raw: str) -> str | None:
         return None
     if len(valid) == 1:
         return valid[0]
-    return max(valid, key=_score_candidate)
+    return max(valid, key=lambda candidate: _score_candidate(candidate, raw_digits=digits))
 
 
 def clean_cell_text(text: str) -> str:

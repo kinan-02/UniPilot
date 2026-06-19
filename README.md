@@ -188,6 +188,25 @@ docker compose run --rm data-engineering python -m app.main import-technion-cour
 
 Semester codes: `200` winter, `201` spring, `202` summer. Staging: `staging_courses`, `staging_course_offerings`. Course JSON is **not** used for degree requirement inference.
 
+Staging quality review (Phase 10 — validates staged data, no writes):
+
+```bash
+docker compose run --rm data-engineering python -m app.main validate-dds-staging-quality \
+  --output-json data/reports/technion/dds_staging_quality_report.json \
+  --output-md data/reports/technion/dds_staging_quality_report.md
+```
+
+Reports classify staging vs production vs API-migration blockers. Staged records are not modified automatically.
+
+Phase 10.5 blocker cleanup (curated JSON fixes, then re-import + revalidate):
+
+```bash
+docker compose run --rm data-engineering python -m app.main cleanup-dds-staging-blockers
+docker compose run --rm data-engineering python -m app.main import-dds-catalog-staging \
+  --catalog-path data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json \
+  --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json
+```
+
 See `services/data-engineering/README.md` for service-specific details.
 
 Raw Technion source layout:

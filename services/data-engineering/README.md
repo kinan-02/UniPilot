@@ -178,6 +178,47 @@ python -m app.main import-technion-courses-staging \
 
 Docker mounts `services/data-engineering/data/raw` read-only into the container.
 
+## Staging quality review (Phase 10)
+
+Validates staged DDS catalog data against staged Technion course data. **Report-only** — no automatic corrections.
+
+```bash
+python -m app.main validate-dds-staging-quality \
+  --output-json data/reports/technion/dds_staging_quality_report.json \
+  --output-md data/reports/technion/dds_staging_quality_report.md
+```
+
+Optional staging audit snapshot:
+
+```bash
+python -m app.main validate-dds-staging-quality --write-staging-audit
+```
+
+**Reads:** `staging_degree_programs`, `staging_degree_requirements`, `staging_catalog_rules`, `staging_courses`, `staging_course_offerings`, `staging_ingestion_runs`
+
+**Writes:** local report files; optional `staging_data_quality_reports` only
+
+**Finding severities:** `info`, `warning`, `staging-blocker`, `production-blocker`, `api-migration-blocker`
+
+Production promotion remains blocked until human signoff.
+
+## Staging blocker cleanup (Phase 10.5)
+
+Investigates Phase 10 blockers, applies **source-backed** fixes to curated JSON, then re-imports staging catalog and re-runs quality validation.
+
+```bash
+python -m app.main cleanup-dds-staging-blockers --dry-run
+python -m app.main cleanup-dds-staging-blockers
+python -m app.main import-dds-catalog-staging \
+  --catalog-path data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json \
+  --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json
+python -m app.main validate-dds-staging-quality
+```
+
+Report: `data/reports/technion/dds_staging_blocker_cleanup_report.md`
+
+**No production writes.** Uncertain OCR corrections are **not** applied automatically.
+
 ## DDS catalog PDF extraction (Phase 6)
 
 Local extraction commands (require the gitignored raw PDF on disk):
@@ -206,6 +247,10 @@ python -m app.main validate-sample
 python -m app.main import-sample
 python -m app.main parse-dds-catalog-md --md-path data/raw/technion/technion_dds_catalog_from_docx_clean.md
 python -m app.main curate-dds-catalog
+python -m app.main signoff-dds-catalog
+python -m app.main import-dds-catalog-staging --dry-run
+python -m app.main import-technion-courses-staging --dry-run
+python -m app.main validate-dds-staging-quality
 ```
 
 ## Docker

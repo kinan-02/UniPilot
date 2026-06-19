@@ -478,52 +478,6 @@
               "manualReviewRequired": true,
               "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
-            },
-            {
-              "courseNumber": "02300401",
-              "titleHint": null,
-              "creditsHint": null,
-              "facultyHint": null,
-              "semestersOffered": [],
-              "prerequisitesText": null,
-              "corequisitesText": null,
-              "noAdditionalCreditText": null,
-              "footnoteMarkers": [],
-              "pageNumbers": [
-                2
-              ],
-              "sourceEvidence": [],
-              "notes": [
-                "No matching semester offering JSON entry; title not inferred.",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
-              ],
-              "manualReviewRequired": true,
-              "confidence": "low",
-              "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
-            },
-            {
-              "courseNumber": "01500411",
-              "titleHint": null,
-              "creditsHint": null,
-              "facultyHint": null,
-              "semestersOffered": [],
-              "prerequisitesText": null,
-              "corequisitesText": null,
-              "noAdditionalCreditText": null,
-              "footnoteMarkers": [],
-              "pageNumbers": [
-                2
-              ],
-              "sourceEvidence": [],
-              "notes": [
-                "No matching semester offering JSON entry; title not inferred.",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
-              ],
-              "manualReviewRequired": true,
-              "confidence": "low",
-              "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             }
           ],
           "ruleExpression": {
@@ -1217,7 +1171,7 @@
             },
             {
               "courseNumber": "00970211",
-              "titleHint": null,
+              "titleHint": "פרוטוקולי רשת עמידים בתקלות",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1228,14 +1182,16 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1409,7 +1365,7 @@
             },
             {
               "courseNumber": "00980455",
-              "titleHint": null,
+              "titleHint": "סטטיסטיקה ותהליכים סטוכסטיים 2",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1420,19 +1376,21 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
               "courseNumber": "00980312",
-              "titleHint": null,
+              "titleHint": "אופטימיזציה 2",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1443,22 +1401,27 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
               "courseNumber": "01040030",
-              "titleHint": null,
-              "creditsHint": null,
-              "facultyHint": null,
-              "semestersOffered": [],
+              "titleHint": "מבוא למשוואות דיפרנציאליות חלקיות",
+              "creditsHint": 3.5,
+              "facultyHint": "הפקולטה למתמטיקה",
+              "semestersOffered": [
+                200,
+                201
+              ],
               "prerequisitesText": null,
               "corequisitesText": null,
               "noAdditionalCreditText": null,
@@ -1466,14 +1429,16 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:courses_json:courses_2025_200.json,courses_2025_201.json"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1970,23 +1935,29 @@
             },
             {
               "courseNumber": "01340020",
-              "titleHint": null,
-              "creditsHint": null,
-              "facultyHint": null,
-              "semestersOffered": [],
+              "titleHint": "גנטיקה כללית",
+              "creditsHint": 3.5,
+              "facultyHint": "הפקולטה לביולוגיה",
+              "semestersOffered": [
+                200,
+                201,
+                202
+              ],
               "prerequisitesText": null,
               "corequisitesText": null,
               "noAdditionalCreditText": null,
               "footnoteMarkers": [],
               "pageNumbers": [],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:courses_json:courses_2025_200.json,courses_2025_201.json,courses_2025_202.json"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -2019,7 +1990,7 @@
             },
             {
               "courseNumber": "02740300",
-              "titleHint": null,
+              "titleHint": "תורשת האדם ת\"א",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -2028,14 +1999,16 @@
               "noAdditionalCreditText": null,
               "footnoteMarkers": [],
               "pageNumbers": [],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -2335,27 +2308,6 @@
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
-              "courseNumber": "00906292",
-              "titleHint": null,
-              "creditsHint": null,
-              "facultyHint": null,
-              "semestersOffered": [],
-              "prerequisitesText": null,
-              "corequisitesText": null,
-              "noAdditionalCreditText": null,
-              "footnoteMarkers": [],
-              "pageNumbers": [],
-              "sourceEvidence": [],
-              "notes": [
-                "No matching semester offering JSON entry; title not inferred.",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
-              ],
-              "manualReviewRequired": true,
-              "confidence": "low",
-              "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
-            },
-            {
               "courseNumber": "00960293",
               "titleHint": "למידה חישובית בבחירת תיק השקעות 0960311 תיאוריה ואלגוריתמים לאופטימיזציה * 0960324 הנדסת מערכות שירות",
               "creditsHint": null,
@@ -2630,7 +2582,7 @@
             },
             {
               "courseNumber": "00970329",
-              "titleHint": null,
+              "titleHint": "אלגוריתמים הסתברותיים",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -2639,14 +2591,16 @@
               "noAdditionalCreditText": null,
               "footnoteMarkers": [],
               "pageNumbers": [],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-phase10.5:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred.",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
                 "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -2759,15 +2713,17 @@
           ],
           "ruleExpression": {
             "type": "track_requirement",
-            "operator": "choose_n"
+            "operator": "credit_pool",
+            "chooseFromLists": true
           },
           "pageNumbers": [],
           "notes": [
             "Includes project-heavy courses marked with * in source.",
-            "Cognition track includes project-heavy courses marked with * in catalog source."
+            "Cognition track includes project-heavy courses marked with * in catalog source.",
+            "Phase 10.5: cognition track courses are elective pool options, not flattened mandatory choose-N."
           ],
           "manualReviewRequired": true,
-          "confidence": "low"
+          "confidence": "medium"
         }
       ],
       "pageNumbers": [],
@@ -3228,29 +3184,6 @@
               ],
               "manualReviewRequired": true,
               "confidence": "medium",
-              "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
-            },
-            {
-              "courseNumber": "01500411",
-              "titleHint": null,
-              "creditsHint": null,
-              "facultyHint": null,
-              "semestersOffered": [],
-              "prerequisitesText": null,
-              "corequisitesText": null,
-              "noAdditionalCreditText": null,
-              "footnoteMarkers": [],
-              "pageNumbers": [
-                3
-              ],
-              "sourceEvidence": [],
-              "notes": [
-                "No matching semester offering JSON entry; title not inferred.",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
-                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
-              ],
-              "manualReviewRequired": true,
-              "confidence": "low",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             }
           ],
@@ -4035,7 +3968,8 @@
       "Semester offering JSON is not the full canonical Technion catalog.",
       "Prerequisites/corequisites are reference metadata only, not degree logic.",
       "Choose-N and focus chains are encoded as notes/rules, not executable requirements.",
-      "Sample 4-year schedule sections were not imported as requirements."
+      "Sample 4-year schedule sections were not imported as requirements.",
+      "Phase 10.5 removed parser/OCR artifacts and enriched source-backed titles; courses not offered in 2025 JSON may still lack staging cross-links."
     ],
     "countsBefore": {
       "programs": 3,
@@ -4049,9 +3983,13 @@
       "programs": 3,
       "requirementGroups": 41,
       "courseReferences": 113,
-      "uniqueCourseNumbers": 87,
-      "missingTitleHints": 18,
-      "manualReviewItems": 157
+      "uniqueCourseNumbers": 84,
+      "missingTitleHints": 0,
+      "manualReviewItems": 157,
+      "manualReviewRequiredItems": 109,
+      "executableRuleGroups": 19,
+      "nonExecutableRuleGroups": 22,
+      "phase10_5CleanupAt": "2026-06-19T17:01:11+00:00"
     },
     "unresolvedIssues": [
       "009009-1-000:ie-additional-faculty-electives: could not locate markdown source marker.",
@@ -4070,7 +4008,10 @@
       "Missing titleHint: 01500411 in 009216-1-000:semester-2-matrix",
       "Missing titleHint: 02300401 in 009216-1-000:semester-2-matrix",
       "Missing titleHint: 02740300 in 009216-1-000:elective-ds-pool",
-      "['00340040', '00340401', '00360026'] ... sample-schedule-only numbers excluded."
+      "['00340040', '00340401', '00360026'] ... sample-schedule-only numbers excluded.",
+      "Phase 10.5 removed invalid catalog reference 00906292.",
+      "Phase 10.5 removed invalid catalog reference 01500411.",
+      "Phase 10.5 removed invalid catalog reference 02300401."
     ]
   },
   "curationReport": {
@@ -4168,7 +4109,12 @@
     "remainingMissingTitleHints": 18,
     "remainingManualReviewItems": 157,
     "warnings": [],
-    "manualReviewRequired": true
+    "manualReviewRequired": true,
+    "phase10_5Cleanup": {
+      "cleanupAt": "2026-06-19T17:01:11+00:00",
+      "changesApplied": 1,
+      "canPromoteToProduction": false
+    }
   },
   "signoffReview": {
     "reviewedBy": "cursor-agent-source-review",
@@ -4244,9 +4190,10 @@
       "Missing titleHint: 01500411 in 009009-1-000:semester-3-matrix",
       "Missing titleHint: 01500411 in 009216-1-000:semester-2-matrix",
       "Missing titleHint: 02300401 in 009216-1-000:semester-2-matrix",
-      "Missing titleHint: 02740300 in 009216-1-000:elective-ds-pool"
+      "Missing titleHint: 02740300 in 009216-1-000:elective-ds-pool",
+      "00970211: source-backed-valid-not-in-2025-json — titleHint still missing; requires human review."
     ],
     "phase8Recommendation": "Safe to import to staging with review flags preserved; non-executable chain/track rules require human validation before production use.",
-    "productionPromotionRecommendation": "Do not promote to production until human signoff on chain rules, tracks, and unresolved titles."
+    "productionPromotionRecommendation": "Do not promote to production until human signoff on chain rules, tracks, and remaining unresolved titles."
   }
 }

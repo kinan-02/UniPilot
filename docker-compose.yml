@@ -98,6 +98,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./services/data-engineering/data/raw:/app/data/raw:ro
+      - ./services/data-engineering/data/reports:/app/data/reports
     networks:
       - unipilot-internal
 

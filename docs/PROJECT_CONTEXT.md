@@ -86,7 +86,9 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 7.6. DDS catalog curated JSON signoff review — **implemented (Phase 7.6)**  
 8. Import validated DDS catalog into MongoDB staging — **implemented (Phase 8 staging import)**  
 9. Technion course JSON staging import — **implemented (Phase 9)**  
-10. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+10. Staging data quality review + cross-link validation — **implemented (Phase 10)**  
+10.5. Staging blocker cleanup + quality recheck — **implemented (Phase 10.5)**  
+11. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
 
 ### Python Phase 1 status (implemented)
 
@@ -254,6 +256,37 @@ Phase 8 imports the Phase 7.6 reviewed curated catalog into **staging only**. `c
 | Node / Python API changes | **None** |
 
 Semester JSON files are **offering snapshots** (200=winter, 201=spring, 202=summer), not the full canonical catalog. All staged documents keep `productionEligible: false`.
+
+### Python Phase 10 status (implemented — staging quality review, report-only)
+
+| Item | Status |
+|---|---|
+| CLI: `validate-dds-staging-quality` | Done |
+| Module `app/quality/dds_staging_quality.py` | Done |
+| Reports: `data/reports/technion/dds_staging_quality_report.{json,md}` | Done |
+| Optional audit: `staging_data_quality_reports` (`--write-staging-audit`) | Done |
+| Cross-link catalog course refs ↔ `staging_courses` | Done |
+| OCR-suspect / credit mismatch / manual-review summaries | Done |
+| Staged or production record mutation | **None** |
+| Production promotion | **Blocked** |
+| Node / Python API changes | **None** |
+
+Phase 10 answers whether staged DDS + course data is safe enough to **design** a promotion gate later. Findings classify as `info`, `warning`, `staging-blocker`, `production-blocker`, or `api-migration-blocker`.
+
+### Python Phase 10.5 status (implemented — blocker cleanup + revalidation)
+
+| Item | Status |
+|---|---|
+| CLI: `cleanup-dds-staging-blockers` (`--dry-run`) | Done |
+| Module `app/curation/dds_catalog_blocker_cleanup.py` | Done |
+| Curated JSON fixes (OCR artifact removal, title enrichment, cognition track rule) | Done |
+| Course number normalization fix (`01040030`) | Done |
+| Re-import staging catalog + re-run `validate-dds-staging-quality` | Done |
+| Report: `data/reports/technion/dds_staging_blocker_cleanup_report.md` | Done |
+| Production promotion | **Blocked** |
+| Node / Python API changes | **None** |
+
+Phase 10.5 applies **source-backed** curated JSON fixes only (no uncertain OCR auto-corrections). Remaining cross-link gaps for courses not in 2025 semester JSON are documented for human review before Phase 11 promotion-gate design.
 
 ### Target Python stack
 

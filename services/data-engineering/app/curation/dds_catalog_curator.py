@@ -477,8 +477,17 @@ def enhance_ds_track_groups(document: dict[str, Any]) -> None:
                 "chooseFromLists": True,
             }
         if group_id.endswith("cognition-track:requirements"):
+            group["requirementType"] = "elective"
+            group["ruleExpression"] = {
+                "type": "track_requirement",
+                "operator": "credit_pool",
+                "chooseFromLists": True,
+            }
             group.setdefault("notes", []).append(
                 "Cognition track includes project-heavy courses marked with * in catalog source.",
+            )
+            group.setdefault("notes", []).append(
+                "Track courses are elective pool options, not flattened mandatory requirements.",
             )
 
 

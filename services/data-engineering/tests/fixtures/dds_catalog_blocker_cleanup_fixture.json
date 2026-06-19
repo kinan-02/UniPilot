@@ -1,0 +1,78 @@
+{
+  "catalogVersion": "2025-2026",
+  "programs": [
+    {
+      "programCode": "009216-1-000",
+      "name": "הנדסת נתונים ומידע",
+      "totalCredits": 155.0,
+      "requirementGroups": [
+        {
+          "groupId": "009216-1-000:elective-ds-pool",
+          "title": "Data science elective pool",
+          "requirementType": "elective",
+          "minCredits": 24.5,
+          "courseReferences": [
+            {
+              "courseNumber": "00960291",
+              "titleHint": "מסחר אלגוריתמי בתדירות גבוהה",
+              "manualReviewRequired": true
+            },
+            {
+              "courseNumber": "00906292",
+              "titleHint": null,
+              "manualReviewRequired": true
+            }
+          ],
+          "ruleExpression": {
+            "type": "course_pool",
+            "operator": "credit_pool"
+          }
+        },
+        {
+          "groupId": "009216-1-000:semester-2-matrix",
+          "title": "Recommended mandatory semester 2",
+          "requirementType": "core",
+          "courseReferences": [
+            {
+              "courseNumber": "02300401",
+              "titleHint": null,
+              "manualReviewRequired": true
+            },
+            {
+              "courseNumber": "01500411",
+              "titleHint": null,
+              "manualReviewRequired": true
+            }
+          ],
+          "ruleExpression": {
+            "type": "semester_matrix",
+            "operator": "all_of",
+            "semester": 2
+          }
+        },
+        {
+          "groupId": "009216-1-000:cognition-track:requirements",
+          "title": "Cognition track requirements",
+          "requirementType": "elective",
+          "courseReferences": [
+            {
+              "courseNumber": "00970317",
+              "titleHint": "תורת המשחקים השיתופיים",
+              "manualReviewRequired": true
+            },
+            {
+              "courseNumber": "00970329",
+              "titleHint": null,
+              "manualReviewRequired": true
+            }
+          ],
+          "ruleExpression": {
+            "type": "track_requirement",
+            "operator": "choose_n"
+          }
+        }
+      ]
+    }
+  ],
+  "catalogRules": []
+}

@@ -15,3 +15,6 @@ services/data-engineering/data/raw/**/*.pdf
 # Generated data-engineering artifacts (local extraction outputs)
 services/data-engineering/data/generated/**
 !services/data-engineering/data/generated/**/README.md
+
+# Large generated quality reports (commit markdown summary or sample JSON only)
+services/data-engineering/data/reports/technion/dds_staging_quality_report.json

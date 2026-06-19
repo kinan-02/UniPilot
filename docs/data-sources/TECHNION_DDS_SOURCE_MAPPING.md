@@ -116,6 +116,31 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 - All documents: `isStaging: true`, `productionEligible: false`, `requiresHumanReview: true`.
 - Raw JSON under `data/raw/technion/` stays gitignored; Docker mounts it read-only.
 
+## Phase 10 update (staging quality review — report only)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main validate-dds-staging-quality` | Cross-validate staged DDS catalog vs staged courses |
+| `… --output-json data/reports/technion/dds_staging_quality_report.json` | Machine-readable report |
+| `… --output-md data/reports/technion/dds_staging_quality_report.md` | Human-readable report |
+| `… --write-staging-audit` | Optional snapshot in `staging_data_quality_reports` |
+
+**Checks:** program/requirement counts, signoff metadata, course-reference coverage, OCR-suspect gaps, title/credit mismatches, non-executable rules, `productionEligible: false`, production collection counts (read-only).
+
+**Severities:** `info`, `warning`, `staging-blocker`, `production-blocker`, `api-migration-blocker`
+
+**No automatic fixes.** Production promotion remains blocked.
+
+## Phase 10.5 update (blocker cleanup + revalidation)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main cleanup-dds-staging-blockers` | Source-backed curated JSON fixes + readiness refresh |
+| `… --dry-run` | Preview changes without writing files |
+| Re-run `import-dds-catalog-staging` + `validate-dds-staging-quality` | Refresh staging + reports after cleanup |
+
+Removes parser/OCR artifacts when evidence is strong, enriches `titleHint` from markdown/JSON, fixes cognition track non-mandatory modeling, and documents courses valid in catalog but absent from 2025 semester JSON.
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:

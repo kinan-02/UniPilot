@@ -24,4 +24,5 @@ def test_staging_collection_names_are_configured():
     assert settings.staging_degree_requirements_collection == "staging_degree_requirements"
     assert settings.staging_degree_programs_collection == "staging_degree_programs"
     assert settings.staging_catalog_rules_collection == "staging_catalog_rules"
+    assert settings.staging_data_quality_reports_collection == "staging_data_quality_reports"
     assert settings.staging_ingestion_runs_collection == "staging_ingestion_runs"

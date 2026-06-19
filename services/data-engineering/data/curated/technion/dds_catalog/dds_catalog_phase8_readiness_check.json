@@ -4,26 +4,29 @@
   "blockingIssuesForStaging": [],
   "blockingIssuesForProduction": [
     "Human signoff required on IE/IS chain rules and DS tracks.",
-    "Unresolved titleHint values may remain.",
+    "Courses not offered in 2025 semester JSON may lack staging cross-links.",
     "Semester matrices are recommended schedules, not hard logic.",
-    "Production promotion is out of scope for Phase 7.6."
+    "Production promotion remains blocked after Phase 10.5 cleanup."
   ],
   "warnings": [
-    "11 course references still lack titleHint.",
-    "22 requirement groups use non-executable rule expressions."
+    "0 course references still lack titleHint.",
+    "22 requirement groups use non-executable rule expressions.",
+    "Phase 10.5 removed OCR/parser artifacts only when source evidence was strong."
   ],
   "reviewStatus": "ready-for-staging-with-review-flags",
   "phase8Recommendation": "Safe to import to staging with review flags preserved; non-executable chain/track rules require human validation before production use.",
   "productionPromotionRecommendation": "Do not promote to production until human signoff on chain rules, tracks, and unresolved titles.",
+  "phase10_5CleanupAt": "2026-06-19T17:01:11+00:00",
   "counts": {
     "programs": 3,
     "requirementGroups": 41,
-    "courseReferences": 113,
-    "uniqueCourseNumbers": 87,
-    "missingTitleHints": 11,
-    "manualReviewRequiredItems": 138,
+    "courseReferences": 109,
+    "uniqueCourseNumbers": 84,
+    "missingTitleHints": 0,
+    "manualReviewRequiredItems": 109,
     "executableRuleGroups": 19,
     "nonExecutableRuleGroups": 22
   },
-  "titlesFilledDuringSignoff": 0
+  "titlesFilledDuringPhase10_5": 1,
+  "referencesRemovedDuringPhase10_5": 0
 }
