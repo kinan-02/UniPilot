@@ -11,6 +11,7 @@ from app.core.errors import (
 from app.db.mongo import close_mongo_client
 from app.routes.auth import router as auth_router
 from app.routes.catalog import router as catalog_router
+from app.routes.completed_courses import router as completed_courses_router
 from app.routes.health import router as health_router
 from app.routes.student_profile import router as student_profile_router
 from app.config import get_settings
@@ -28,7 +29,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="UniPilot API (Python)",
         description="FastAPI backend for UniPilot AI — migration target",
-        version="0.4.0",
+        version="0.5.0",
         lifespan=lifespan,
     )
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(student_profile_router)
     app.include_router(catalog_router)
+    app.include_router(completed_courses_router)
     return app
 
 

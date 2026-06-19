@@ -91,6 +91,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 11. Staging → production promotion gate (dry-run plan only) — **implemented (Phase 11)**  
 12. Guarded DDS staging → production promotion — **implemented (Phase 12)**  
 13. Python Course Catalog API (read-only, production collections) — **implemented (Phase 13)**  
+14. Python Completed Courses migration — **implemented (Phase 14)**  
 14. Python Completed Courses migration  
 
 ### Python Phase 1 status (implemented)
@@ -338,6 +339,25 @@ Phase 12 writes production data **only** when `--i-confirm-dangerous-production-
 | Node reference backend | Unchanged |
 
 Phase 13 reads **production** collections promoted in Phase 12 (`courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`). Hard requirements come only from `degree_requirements`; advisory/non-executable metadata comes only from `catalog_rules` with `enforceInGraduationProgress: false`. No write endpoints; no graduation progress or planner logic.
+
+### Python Phase 14 status (implemented — completed courses API)
+
+| Item | Status |
+|---|---|
+| `POST /completed-courses` (JWT, catalog FK validation) | Done |
+| `GET /completed-courses` (paginated, user-scoped) | Done |
+| `GET /completed-courses/{id}` | Done |
+| `PUT /completed-courses/{id}` (manual only) | Done |
+| `DELETE /completed-courses/{id}` (manual only) | Done |
+| Repository `app/repositories/completed_course_repository.py` | Done |
+| `courseId` validated against production `courses` collection | Done |
+| Unique `(userId, courseId, attempt)` index | Done |
+| `userId` server-assigned from JWT; client `userId`/`_id` rejected | Done |
+| pytest unit + integration + security tests | Done |
+| Node reference backend | Unchanged |
+| Graduation progress / planner / AI | Not implemented |
+
+Phase 14 stores user-owned transcript rows in `completed_courses`. Catalog collections are read-only for FK validation. Advisory `catalog_rules` and hard `degree_requirements` are not used in completed-course logic. No graduation progress calculation.
 
 ### Target Python stack
 

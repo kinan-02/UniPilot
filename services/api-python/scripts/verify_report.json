@@ -1,0 +1,147 @@
+{
+  "functional": {
+    "passed": 25,
+    "failed": 1,
+    "warnings": 0,
+    "failures": [
+      "auth login: expected (200,), got 429 — {\"success\":false,\"data\":null,\"error\":\"Too many authentication requests. Please try again later.\"}"
+    ],
+    "warnings_list": []
+  },
+  "mongo_counts": {
+    "courses": 2204,
+    "offerings": 2806,
+    "programs": 3,
+    "requirements": 19,
+    "rules": 44,
+    "completed": 0
+  },
+  "benchmarks": [
+    {
+      "name": "health",
+      "count": 100,
+      "ok": 100,
+      "errors": 0,
+      "status_codes": {
+        "200": 100
+      },
+      "min_ms": 5.3,
+      "mean_ms": 6.52,
+      "p50_ms": 6.02,
+      "p95_ms": 8.74,
+      "max_ms": 10.58
+    },
+    {
+      "name": "auth_login",
+      "count": 50,
+      "ok": 0,
+      "errors": 0,
+      "status_codes": {
+        "429": 50
+      },
+      "min_ms": 5.07,
+      "mean_ms": 6.33,
+      "p50_ms": 6.1,
+      "p95_ms": 7.95,
+      "max_ms": 8.7
+    },
+    {
+      "name": "catalog_list_50",
+      "count": 50,
+      "ok": 50,
+      "errors": 0,
+      "status_codes": {
+        "200": 50
+      },
+      "min_ms": 12.95,
+      "mean_ms": 14.62,
+      "p50_ms": 14.13,
+      "p95_ms": 17.81,
+      "max_ms": 18.65
+    },
+    {
+      "name": "catalog_list_200",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 21.33,
+      "mean_ms": 23.78,
+      "p50_ms": 22.31,
+      "p95_ms": 29.1,
+      "max_ms": 29.45
+    },
+    {
+      "name": "catalog_search_he",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 28.55,
+      "mean_ms": 32.54,
+      "p50_ms": 32.4,
+      "p95_ms": 36.46,
+      "max_ms": 37.48
+    },
+    {
+      "name": "catalog_summary",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 11.94,
+      "mean_ms": 20.02,
+      "p50_ms": 17.87,
+      "p95_ms": 25.78,
+      "max_ms": 67.29
+    },
+    {
+      "name": "catalog_requirements",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 5.42,
+      "mean_ms": 7.45,
+      "p50_ms": 6.44,
+      "p95_ms": 12.24,
+      "max_ms": 18.23
+    },
+    {
+      "name": "completed_list",
+      "count": 50,
+      "ok": 50,
+      "errors": 0,
+      "status_codes": {
+        "200": 50
+      },
+      "min_ms": 5.54,
+      "mean_ms": 8.18,
+      "p50_ms": 6.53,
+      "p95_ms": 9.99,
+      "max_ms": 53.29
+    },
+    {
+      "name": "catalog_list_50_concurrent_x20",
+      "count": 20,
+      "ok": 20,
+      "errors": 0,
+      "status_codes": {
+        "200": 20
+      },
+      "min_ms": 31.49,
+      "mean_ms": 110.73,
+      "p50_ms": 120.87,
+      "p95_ms": 136.17,
+      "max_ms": 138.43
+    }
+  ]
+}

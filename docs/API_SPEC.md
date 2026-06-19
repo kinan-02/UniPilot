@@ -295,7 +295,9 @@ Hard-delete the authenticated user's profile.
 
 ## 4.3 Completed Courses (MVP)
 
-**Status:** Implemented (Phase 5). User-owned transcript records backed by MongoDB `completed_courses`.
+**Status:** Implemented (Node Phase 5; Python Phase 14). User-owned transcript records backed by MongoDB `completed_courses`.
+
+**Python (`api-python`):** Same route contract as Node (`POST/GET/PUT/DELETE /completed-courses`, record id in path). `courseId` must reference a published document in the **production** `courses` collection (Phase 12 promotion). Does not calculate graduation progress; does not read advisory `catalog_rules`.
 
 All routes require `Authorization: Bearer <accessToken>`. Records are scoped to the authenticated user (`token.sub`). Clients must not send `userId`.
 

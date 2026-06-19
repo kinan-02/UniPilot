@@ -7,6 +7,7 @@ from app.db.mongo import close_mongo_client, set_test_database
 from app.middleware.auth_rate_limiter import reset_in_memory_rate_limit_store
 from app.main import create_app
 from app.routes.auth import reset_user_indexes_state
+from app.routes.completed_courses import reset_completed_course_indexes_state
 from app.routes.student_profile import reset_student_profile_indexes_state
 
 
@@ -19,6 +20,7 @@ def reset_runtime_state(monkeypatch):
     close_mongo_client()
     reset_user_indexes_state()
     reset_student_profile_indexes_state()
+    reset_completed_course_indexes_state()
     reset_in_memory_rate_limit_store()
     yield
     get_settings.cache_clear()
@@ -26,6 +28,7 @@ def reset_runtime_state(monkeypatch):
     close_mongo_client()
     reset_user_indexes_state()
     reset_student_profile_indexes_state()
+    reset_completed_course_indexes_state()
     reset_in_memory_rate_limit_store()
 
 

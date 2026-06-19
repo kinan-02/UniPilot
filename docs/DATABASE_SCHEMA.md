@@ -225,7 +225,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - grade enum (see `docs/API_SPEC.md` §4.3)
   - `creditsEarned` number >= 0, max 36, in **0.5 increments** (Technion-style half credits allowed)
   - `attempt` integer > 0 (API: 1–5)
-  - `courseId` must reference a published `courses` document
+  - `courseId` must reference a published `courses` document (production catalog after Phase 12 promotion on Python API)
   - unique `(userId, courseId, attempt)`
 - **Ownership rules:**
   - strict owner access by `userId`; cross-user reads return 404

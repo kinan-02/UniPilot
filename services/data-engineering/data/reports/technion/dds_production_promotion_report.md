@@ -1,8 +1,8 @@
 # DDS Production Promotion Report (Phase 12)
 
-Promotion run: `dds-promotion-ef774ddeea85`
-Started: 2026-06-19T17:56:04+00:00
-Finished: 2026-06-19T17:56:04+00:00
+Promotion run: `dds-promotion-651044964575`
+Started: 2026-06-19T18:45:22+00:00
+Finished: 2026-06-19T18:45:22+00:00
 Status: **failed**
 Gate status: **pass**
 Dry run: **False**
@@ -44,7 +44,7 @@ Production writes performed: **False**
 - Non-executable groups promoted to `catalog_rules` with `enforceInGraduationProgress: false`.
 
 ## Rollback notes
-- Delete production docs with promotionRunId=dds-promotion-ef774ddeea85 to roll back this run.
+- Delete production docs with promotionRunId=dds-promotion-651044964575 to roll back this run.
 - Do not delete staging data.
 - Advisory catalog rules remain non-enforced in graduation progress.
 

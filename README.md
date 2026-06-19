@@ -109,7 +109,7 @@ npm run test:security
 
 ### Python API (`api-python`)
 
-Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile + Phase 13 catalog — unit, integration, security):
+Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile + Phase 13 catalog + Phase 14 completed courses — unit, integration, security):
 
 ```bash
 cd services/api-python
@@ -302,6 +302,26 @@ curl -s "http://localhost:8000/catalog/courses/00940345" -H "Authorization: Bear
 curl -s "http://localhost:8000/catalog/degree-programs" -H "Authorization: Bearer $TOKEN"
 curl -s "http://localhost:8000/catalog/degree-programs/009216-1-000/requirements" -H "Authorization: Bearer $TOKEN"
 curl -s "http://localhost:8000/catalog/degree-programs/009216-1-000/advisory-rules" -H "Authorization: Bearer $TOKEN"
+```
+
+### Python Completed Courses API (`api-python` on `API_PYTHON_PORT`, Phase 14)
+
+User-owned transcript records. JWT required. `courseId` must be a MongoDB ObjectId of a published course in the **production** `courses` collection (use catalog list/detail to discover ids). Does not calculate graduation progress.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"completed-user@example.com","password":"StrongPass123!"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['accessToken'])")
+
+COURSE_ID=$(docker compose exec -T mongo mongosh -u unipilot -p unipilot_dev_password --authenticationDatabase admin unipilot_python --quiet --eval \
+  'const c=db.courses.findOne({courseNumber:"00104000",status:"published"}); if(c) print(c._id.toString())')
+
+curl -s -X POST http://localhost:8000/completed-courses \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"courseId\":\"$COURSE_ID\",\"semesterCode\":\"2024-1\",\"grade\":\"A\",\"creditsEarned\":2}"
+
+curl -s http://localhost:8000/completed-courses -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Auth API (Node reference on `API_PORT`)

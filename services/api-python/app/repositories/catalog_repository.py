@@ -141,6 +141,39 @@ async def get_course_by_number(
     return to_public_course(document)
 
 
+async def find_course_by_id(
+    database: AsyncIOMotorDatabase,
+    course_id: str,
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    """Return raw published course document for FK validation (includes _id)."""
+    from bson import ObjectId
+
+    settings = settings or get_settings()
+    try:
+        parsed_id = ObjectId(str(course_id))
+    except Exception:
+        return None
+
+    return await database[settings.courses_collection].find_one(
+        {"_id": parsed_id, **PUBLISHED_FILTER}
+    )
+
+
+def course_summary_from_document(course_document: dict[str, Any] | None) -> dict[str, str] | None:
+    if not course_document:
+        return None
+    number = course_document.get("courseNumber") or course_document.get("number")
+    title = course_document.get("title") or course_document.get("titleHebrew")
+    if number is None and title is None:
+        return None
+    return {
+        "number": str(number) if number is not None else None,
+        "title": str(title) if title is not None else None,
+    }
+
+
 async def list_offerings_for_course(
     database: AsyncIOMotorDatabase,
     course_number: str,
