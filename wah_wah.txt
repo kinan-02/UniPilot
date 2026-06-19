@@ -1,1 +1,20 @@
 Before we implement stage 9 I have some suggestions:
+
+So far we have built our entire infrastructure based on a generated seed dataset.
+
+This can be problematic, because we are essentially hoping that the format and the parameters
+that we would extract form the actual real data will match our structure that we built.
+
+This can cause problems for us, for example, after getting the real data we may discover 
+that the actual system of courses and degress in the Technion does not match our expected 
+format system which we have built.
+
+In order to avoid facing such problems in the future, I suggest we do the following:
+
+Instead of using a generated seed dataset, we use the real data, specifically, 
+we use a subset of the real dataset.
+
+For example, we can start with my own faculty in the Technion, which is the Faculty of Data and Decision
+Sciences.
+We get all the relevant information for this faculty (course catalogs and degree requirements and so on...)
+And then, based on the real dataset, we make the design decisions for our data infrastructure.

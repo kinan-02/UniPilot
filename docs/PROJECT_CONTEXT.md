@@ -75,7 +75,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 
 ### Python migration order (summary)
 
-1. FastAPI skeleton + Docker  
+1. FastAPI skeleton + Docker — **implemented (Phase 1)**  
 2. Auth  
 3. Student Profile (`degreeId` optional until real catalog import)  
 4. Data-engineering container  
@@ -83,6 +83,19 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 6. Validate against domain/schema  
 7. Import validated DDS data into MongoDB  
 8. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+
+### Python Phase 1 status (implemented)
+
+| Item | Status |
+|---|---|
+| `services/api-python/` FastAPI skeleton | Done |
+| `GET /health` with MongoDB + Redis connectivity checks | Done |
+| `api-python` Docker Compose service (host-exposed) | Done |
+| Separate MongoDB database (`unipilot_python`) | Done |
+| pytest health tests | Done |
+| Node reference backend | Unchanged |
+
+Phase 1 scope intentionally excludes auth, student profile, data engineering, and AI/RAG.
 
 ### Target Python stack
 
@@ -130,29 +143,31 @@ Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement docum
 - Testing (current): Jest + Supertest
 - Language: JavaScript (CommonJS)
 
-### 4.2 Target (Python — planned)
+### 4.2 Target (Python — Phase 1 in progress)
 
 - Runtime: Python 3.12+ (pinned in Dockerfile)
 - API framework: FastAPI
-- Database: MongoDB 7 (same deployment)
+- Database: MongoDB 7 (separate DB name `unipilot_python` during parallel dev)
 - Queue/cache: Redis 7
-- Validation: Pydantic v2
+- Validation: Pydantic v2 (settings in Phase 1)
 - Testing: pytest + httpx
-- Data engineering: Python container for DDS ingestion pipeline
+- **Phase 1 implemented:** `services/api-python/` skeleton, `GET /health`, Docker `api-python` service
+- **Not yet implemented:** auth, student profile, data engineering, AI/RAG
 - See `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
 
 ## 5) Docker Services
 
 | Service | Role | Host-exposed | Internal Port | Healthcheck | Notes |
 |---|---|---|---|---|---|
-| `api` | Client-facing backend API | Yes (host `API_PORT` -> container `3000`) | 3000 | Yes | Only service exposed to host |
+| `api` | Node reference backend API | Yes (host `API_PORT` -> container `3000`) | 3000 | Yes | Reference implementation |
+| `api-python` | FastAPI migration target | Yes (host `API_PYTHON_PORT` -> container `8000`) | 8000 | Yes | Parallel dev; uses `unipilot_python` DB |
 | `mongo` | Persistent database | No | 27017 | Yes | Uses `mongo_data` named volume |
 | `redis` | Queue/rate-limit foundation | No | 6379 | Yes | Internal-only |
 | `worker` | Background worker skeleton | No | 3002 | Yes | Internal-only |
 | `ai` | AI service skeleton | No | 3001 | Yes | Internal-only |
 
 Networking and exposure rules:
-- Only `api` may publish host ports.
+- `api` and `api-python` may publish host ports during parallel migration.
 - All services must stay on `unipilot-internal` network.
 - Do not expose `mongo`, `redis`, `worker`, or `ai`.
 

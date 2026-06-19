@@ -24,7 +24,8 @@ Simulation and AI recommendation features are intentionally not implemented yet.
 
 ## Services
 
-- `api` (Node.js/Express) — **only exposed service**
+- `api` (Node.js/Express) — **reference backend** (exposed on `API_PORT`)
+- `api-python` (FastAPI) — **Python migration target** (exposed on `API_PYTHON_PORT` for development)
 - `worker` (Node.js/Express health stub) — internal only
 - `ai` (Node.js/Express health/infer stub) — internal only
 - `mongo` (MongoDB) — internal only, persisted via volume
@@ -51,11 +52,13 @@ docker compose up --build
 
 API health URL:
 
-- `http://localhost:<API_PORT>/health`
+- Node (reference): `http://localhost:<API_PORT>/health`
+- Python (migration): `http://localhost:<API_PYTHON_PORT>/health`
 
 Example with defaults from `.env.example`:
 
-- [http://localhost:3000/health](http://localhost:3000/health)
+- [http://localhost:3000/health](http://localhost:3000/health) (Node)
+- [http://localhost:8000/health](http://localhost:8000/health) (Python)
 
 ## Seed Technion Catalog (Phase 4)
 
@@ -101,6 +104,20 @@ npm run test:unit
 npm run test:integration
 npm run test:security
 ```
+
+### Python API (`api-python`)
+
+Python backend tests (Phase 1 — health endpoint):
+
+```bash
+cd services/api-python
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+Note: the Python service uses a separate MongoDB database name (`MONGO_PYTHON_DB`, default `unipilot_python`) so it does not interfere with the Node reference backend during parallel development.
 
 ## Auth API
 

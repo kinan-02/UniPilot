@@ -38,6 +38,39 @@ services:
     networks:
       - unipilot-internal
 
+  api-python:
+    build:
+      context: ./services/api-python
+    env_file:
+      - .env
+    environment:
+      API_PYTHON_PORT: 8000
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_PYTHON_DB:-unipilot_python}?authSource=admin
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "${API_PYTHON_PORT:-8000}:8000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
   mongo:
     image: mongo:7.0.15
     environment:
