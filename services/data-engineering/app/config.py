@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     staging_courses_collection: str = "staging_courses"
     staging_degree_requirements_collection: str = "staging_degree_requirements"
     staging_ingestion_runs_collection: str = "staging_ingestion_runs"
+    dds_catalog_pdf_path: str | None = None
+    dds_catalog_md_path: str | None = None
+    dds_catalog_output_dir: str = "data/generated/technion/dds_catalog"
 
     model_config = SettingsConfigDict(
         env_file=".env",

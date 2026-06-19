@@ -139,6 +139,8 @@ Internal-only Python service for **staging** academic data ingestion. It shares 
 
 **Phase 5 (source intake):** local Technion files live under `services/data-engineering/data/raw/technion/` (gitignored). Field mapping and gaps are documented in `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`. No real data is written to MongoDB in this phase.
 
+**Phase 6 (PDF extraction):** extract and inspect the DDS catalog PDF locally. Generated artifacts go to `services/data-engineering/data/generated/technion/dds_catalog/` (gitignored). Hebrew RTL and tables remain imperfect — manual curation is required before any staging import.
+
 ```bash
 cd services/data-engineering
 python3 -m venv .venv
@@ -174,6 +176,16 @@ services/data-engineering/data/
 ```
 
 Mapping document: `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`
+
+DDS catalog PDF extraction (Phase 6 — local artifacts only):
+
+```bash
+cd services/data-engineering
+python -m app.main inspect-dds-catalog --pdf-path data/raw/technion/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf
+python -m app.main extract-dds-catalog --pdf-path data/raw/technion/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf
+```
+
+Outputs: `data/generated/technion/dds_catalog/` (`extracted_pages.json`, `extraction_report.json`, `candidate_sections.json`, etc.). No MongoDB writes.
 
 ### Python Auth API (`api-python` on `API_PYTHON_PORT`)
 

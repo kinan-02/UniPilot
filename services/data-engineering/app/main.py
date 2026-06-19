@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 
 from app.config import get_settings
@@ -15,6 +16,8 @@ from app.sources.sample_data import (
     SAMPLE_SOURCE_NAME,
     SAMPLE_SOURCE_TYPE,
 )
+from app.parsers.dds_catalog_markdown_parser import write_curated_catalog_draft
+from app.sources.technion_dds_catalog_pdf import extract_dds_catalog, inspect_dds_catalog
 from app.validators.course_validator import validate_normalized_course
 from app.validators.degree_requirement_validator import validate_normalized_degree_requirement
 
@@ -114,14 +117,131 @@ def run_import_sample() -> int:
     return 0 if finished_run.status in {"completed", "partial"} else 1
 
 
+def run_extract_dds_catalog(pdf_path: str | None, output_dir: str | None) -> int:
+    settings = get_settings()
+    env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
+
+    try:
+        artifacts = extract_dds_catalog(
+            pdf_path,
+            env_path=env_path,
+            output_directory=output_dir or settings.dds_catalog_output_dir,
+        )
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": "completed",
+                "outputDirectory": str(artifacts.output_directory),
+                "pageCount": artifacts.report.pageCount,
+                "totalCharacters": artifacts.report.totalCharacters,
+                "detectedProgramCodes": [
+                    item["programCode"] for item in artifacts.candidate_sections["programCodes"]
+                ],
+                "detectedCourseNumbersCount": len(
+                    artifacts.candidate_sections["courseNumberHits"]
+                ),
+                "candidateSectionsCount": len(artifacts.candidate_sections["sections"]),
+                "artifacts": [
+                    "extracted_pages.json",
+                    "extracted_pages.txt",
+                    "extraction_report.json",
+                    "candidate_sections.json",
+                ],
+                "note": "Local extraction only — no MongoDB or staging writes.",
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def run_parse_dds_catalog_md(md_path: str | None, output_path: str | None) -> int:
+    settings = get_settings()
+    env_path = os.environ.get("DDS_CATALOG_MD_PATH") or settings.dds_catalog_md_path
+
+    try:
+        document, target = write_curated_catalog_draft(
+            md_path,
+            env_path=env_path,
+            output_path=output_path,
+        )
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "outputPath": str(target),
+                "programs": [program.programCode for program in document.programs],
+                "parserReport": document.parserReport,
+                "note": "Draft curated JSON only — no MongoDB or staging writes.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def run_inspect_dds_catalog(pdf_path: str | None) -> int:
+    settings = get_settings()
+    env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
+
+    try:
+        summary = inspect_dds_catalog(pdf_path, env_path=env_path)
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="UniPilot data-engineering CLI (staging ingestion foundation)",
     )
     parser.add_argument(
         "command",
-        choices=["health", "validate-sample", "import-sample"],
+        choices=[
+            "health",
+            "validate-sample",
+            "import-sample",
+            "extract-dds-catalog",
+            "inspect-dds-catalog",
+            "parse-dds-catalog-md",
+        ],
         help="Task to execute",
+    )
+    parser.add_argument(
+        "--pdf-path",
+        dest="pdf_path",
+        default=None,
+        help="Path to local Technion DDS catalog PDF",
+    )
+    parser.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        default=None,
+        help="Output directory for generated DDS catalog extraction artifacts",
+    )
+    parser.add_argument(
+        "--md-path",
+        dest="md_path",
+        default=None,
+        help="Path to Technion DDS catalog markdown (docx export)",
+    )
+    parser.add_argument(
+        "--output",
+        dest="output",
+        default=None,
+        help="Output path for draft curated catalog JSON",
     )
     return parser
 
@@ -138,6 +258,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_validate_sample()
         if args.command == "import-sample":
             return run_import_sample()
+        if args.command == "extract-dds-catalog":
+            return run_extract_dds_catalog(args.pdf_path, args.output_dir)
+        if args.command == "inspect-dds-catalog":
+            return run_inspect_dds_catalog(args.pdf_path)
+        if args.command == "parse-dds-catalog-md":
+            return run_parse_dds_catalog_md(args.md_path, args.output)
     finally:
         close_mongo_client()
 

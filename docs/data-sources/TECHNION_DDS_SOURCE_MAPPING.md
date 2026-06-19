@@ -1,14 +1,58 @@
 # Technion DDS Source Mapping
 
 Last updated: 2026-06-19  
-Phase: **5 — source intake and mapping only** (no MongoDB import, no production promotion)  
+Phase: **6.5 — markdown parser → draft curated JSON** (no MongoDB import, no staging writes)  
 Related: `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`, `services/data-engineering/data/raw/technion/manifest.json`
+
+## Phase 6.5 update (markdown parser)
+
+When the docx-export markdown is available locally, prefer it over raw PDF extraction:
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main parse-dds-catalog-md --md-path <path>` | Parse markdown → draft `dds_catalog_curated_draft.json` |
+
+| File | Type | Notes |
+|------|------|-------|
+| `services/data-engineering/data/raw/technion/technion_dds_catalog_from_docx_clean.md` | Markdown | ~2,800 lines; three programs; semester tables; elective lists |
+
+**Parser fixes applied:**
+
+- Course numbers normalized to 8-digit `0xxxxxxx` (OCR trailing zeros, `3 0980413` junk prefix)
+- Hebrew RTL reversal on table cells (reuses `hebrew_rtl.py`)
+- Credit buckets extracted per program (108 / 24.5 / 10.5 / 12 for DS; 103 / 40 / 12 for IE; 107.5 / 35.5 / 12 for IS)
+- Choose-N / chain rules flagged `manualReviewRequired` in `parserReport`
+- Prerequisites and semester offerings still come from semester JSON (not this doc)
+
+**Limitations (unchanged):**
+
+- Draft JSON is not validated for staging import without manual review
+- No MongoDB, staging, or production writes in Phase 6.5
+
+## Phase 6 update (PDF extraction)
+
+Phase 6 adds a local PDF extraction pipeline:
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main inspect-dds-catalog --pdf-path <path>` | Summary only (pages, program codes, course numbers, warnings) |
+| `python -m app.main extract-dds-catalog --pdf-path <path>` | Write gitignored artifacts under `data/generated/technion/dds_catalog/` |
+
+Artifacts include per-page raw/processed text, `extraction_report.json`, and heuristic `candidate_sections.json`.
+
+**Limitations (unchanged):**
+
+- Hebrew RTL cleanup is best-effort; tables are not structured.
+- Candidate sections require **manual curation** (`data/samples/dds_catalog_curated_template.json`) before staging import.
+- No MongoDB, staging, or production writes in Phase 6.
+
+---
 
 ## 1) Purpose
 
 Document the structure of **local Technion DDS source files**, map fields to UniPilot normalized models, and list gaps/risks before any staging or production import.
 
-This phase does **not** implement parsers, PDF pipelines, or database writes.
+Phases 5–6 do **not** import into MongoDB. Phase 6 adds local PDF extraction artifacts only.
 
 ---
 
@@ -19,6 +63,7 @@ This phase does **not** implement parsers, PDF pipelines, or database writes.
 | `services/data-engineering/data/raw/technion/courses_2025_201.json` | JSON array | **1,289** courses | Spring semester (**201**) offerings — **university-wide** |
 | `services/data-engineering/data/raw/technion/courses_2025_202.json` | JSON array | **93** courses | Summer semester (**202**) offerings — **university-wide** |
 | `services/data-engineering/data/raw/technion/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf` | PDF | **13** pages, ~475 KB | DDS faculty catalog **2025/2026 (תשפ״ו)** — programs, tracks, requirements |
+| `services/data-engineering/data/raw/technion/technion_dds_catalog_from_docx_clean.md` | Markdown | ~2,800 lines | Same catalog content as PDF, docx export — **preferred for Phase 6.5 parser** |
 
 ### Semester code convention
 

@@ -80,9 +80,11 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 3. Student Profile — **implemented (Phase 3)** (`degreeId` optional; no catalog FK validation yet)  
 4. Data-engineering container — **implemented (Phase 4)**  
 5. Collect/process real DDS data — **source intake started (Phase 5)**  
-6. Validate against domain/schema  
-7. Import validated DDS data into MongoDB  
-8. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+6. DDS catalog PDF extraction + manual-curation foundation — **implemented (Phase 6)**  
+6.5. DDS catalog markdown parser → draft curated JSON — **implemented (Phase 6.5)**  
+7. Validate against domain/schema — **in progress (draft JSON from markdown)**  
+8. Import validated DDS data into MongoDB  
+9. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
 
 ### Python Phase 1 status (implemented)
 
@@ -153,6 +155,38 @@ Phase 4 scope intentionally excludes real Technion DDS scraping/import, catalog 
 | Node reference backend | Unchanged |
 
 Phase 5 scope intentionally excludes production import, staging import of real data, PDF parsing implementation, catalog API migration, and live website scraping.
+
+### Python Phase 6 status (implemented — PDF extraction & manual-curation foundation)
+
+| Item | Status |
+|---|---|
+| DDS catalog PDF extraction module (`technion_dds_catalog_pdf.py`) | Done |
+| CLI: `extract-dds-catalog`, `inspect-dds-catalog` | Done |
+| Local generated artifacts under `data/generated/technion/dds_catalog/` | Done (gitignored) |
+| Hebrew/RTL best-effort post-processing | Done |
+| Candidate section / program / course-number detection | Done |
+| Proposed catalog models (`NormalizedDegreeProgram`, etc.) | Done (stubs only) |
+| Manual curation template JSON | Done |
+| MongoDB / staging / production writes | **Not started** |
+| Node reference backend | Unchanged |
+
+Phase 6 scope intentionally excludes staging import of degree requirements, production promotion, catalog API migration, and fully automated table parsing without manual review.
+
+### Python Phase 6.5 status (implemented — markdown parser → draft curated JSON)
+
+| Item | Status |
+|---|---|
+| Markdown source `technion_dds_catalog_from_docx_clean.md` | Done (local) |
+| Course-number normalization (`09407000` → `00940700`, spaced OCR junk) | Done |
+| Hebrew RTL cleanup on table cells | Done |
+| Program split + credit buckets + semester matrices + elective pools + DS tracks | Done |
+| CLI: `parse-dds-catalog-md` | Done |
+| Output: `data/generated/technion/dds_catalog/dds_catalog_curated_draft.json` | Done (gitignored) |
+| `CuratedCatalogDocument` Pydantic model | Done |
+| MongoDB / staging / production writes | **Not started** |
+| Node reference backend | Unchanged |
+
+Phase 6.5 scope intentionally excludes staging import, semester JSON merge (prerequisites/offerings), and production promotion. Draft JSON requires manual review before any import.
 
 ### Target Python stack
 

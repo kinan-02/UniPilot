@@ -11,3 +11,7 @@ services/data-engineering/data/raw/**/*.json
 services/data-engineering/data/raw/**/*.pdf
 !services/data-engineering/data/raw/**/README.md
 !services/data-engineering/data/raw/**/manifest.json
+
+# Generated data-engineering artifacts (local extraction outputs)
+services/data-engineering/data/generated/**
+!services/data-engineering/data/generated/**/README.md
