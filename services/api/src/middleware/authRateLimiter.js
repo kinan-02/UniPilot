@@ -24,7 +24,8 @@ function createRedisStore() {
       prefix: "rl:auth:",
       sendCommand: (...argumentsList) => sharedRedisClient.call(argumentsList[0], ...argumentsList.slice(1))
     });
-  } catch (_error) {
+  } catch (error) {
+    console.error("[api] failed to initialize redis rate limit store; using in-memory fallback", error.message);
     return null;
   }
 }

@@ -1,7 +1,7 @@
-# UniPilot AI — Phase 2 Auth Backend Foundation
+# UniPilot AI — Phase 2 Student Profile Backend
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements backend foundation plus **Phase 2 authentication backend**:
+This repository currently implements backend foundation plus **authentication** and **student profile CRUD**:
 
 - Dockerized backend services
 - Health endpoint in the API
@@ -10,9 +10,10 @@ This repository currently implements backend foundation plus **Phase 2 authentic
 - JWT access tokens
 - Protected auth route middleware
 - Input validation and auth rate limiting
-- Unit, integration, and auth security tests
+- Protected student profile CRUD (`/student-profile`)
+- Unit, integration, and security tests
 
-Student profiles and business recommendation logic are intentionally not implemented yet.
+Completed courses, course catalog, and AI recommendation logic are intentionally not implemented yet.
 
 ## Services
 
@@ -57,7 +58,7 @@ docker compose down -v
 
 ## Run Tests
 
-API tests (health + auth unit/integration/security):
+API tests (health + auth + student profile unit/integration/security):
 
 ```bash
 cd services/api
@@ -74,7 +75,7 @@ npm run test:integration
 npm run test:security
 ```
 
-## Auth API (Phase 2)
+## Auth API
 
 ### Register
 
@@ -104,6 +105,48 @@ npm run test:security
 
 - `GET /auth/me`
 - Header: `Authorization: Bearer <accessToken>`
+
+## Student Profile API (Protected)
+
+All routes require `Authorization: Bearer <accessToken>`.
+
+### Create Profile
+
+- `POST /student-profile`
+- Request body:
+
+```json
+{
+  "institutionId": "uni-main",
+  "programType": "BSc",
+  "degreeId": "665f2b0f2a3f7b2a1a9a7f11",
+  "catalogYear": 2025,
+  "currentSemesterCode": "2025-1",
+  "preferences": {
+    "maxCreditsPerSemester": 18
+  }
+}
+```
+
+### Get Own Profile
+
+- `GET /student-profile`
+
+### Update Own Profile
+
+- `PUT /student-profile`
+- Request body (at least one field):
+
+```json
+{
+  "programType": "BSc-Honors",
+  "currentSemesterCode": "2025-2"
+}
+```
+
+### Delete Own Profile
+
+- `DELETE /student-profile`
 
 ## Notes
 

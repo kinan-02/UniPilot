@@ -3,7 +3,8 @@ const { z } = require("zod");
 const passwordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters long")
-  .max(128, "Password must be at most 128 characters long")
+  // bcrypt only processes the first 72 bytes; enforce this to avoid truncation ambiguity.
+  .max(72, "Password must be at most 72 characters long")
   .regex(/[A-Z]/, "Password must include at least one uppercase letter")
   .regex(/[a-z]/, "Password must include at least one lowercase letter")
   .regex(/[0-9]/, "Password must include at least one number")

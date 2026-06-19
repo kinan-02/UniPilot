@@ -22,6 +22,7 @@ function createAccessToken({ userId, email }) {
     },
     jwtSecret,
     {
+      algorithm: "HS256",
       expiresIn,
       subject: String(userId)
     }

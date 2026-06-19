@@ -41,16 +41,16 @@ Mandatory constraints:
 
 ## 3) Current Architecture (As Implemented)
 
-Current stage: **auth backend foundation implemented** (in roadmap terms: Phase 0 complete + core Phase 1 auth endpoints/middleware implemented).
+Current stage: **auth + student profile backend implemented** (in roadmap terms: Phase 0–1 complete + Phase 2 student profile CRUD implemented).
 
 Architecture pattern:
-- `api` receives client requests and exposes `/health`, `/auth/register`, `/auth/login`, and protected `/auth/me`.
+- `api` receives client requests and exposes `/health`, auth routes, and protected `/student-profile` CRUD.
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
 - Internal Docker network for inter-service communication by service name.
 
-Current behavior intentionally excludes student profile/business recommendation logic, but includes authentication foundation (bcrypt + JWT + protected middleware).
+Current behavior intentionally excludes completed courses, course catalog, and AI recommendation logic, but includes authentication and student profile CRUD with ownership enforcement.
 
 ## 4) Tech Stack
 
@@ -134,6 +134,9 @@ Current implemented tests:
 - Auth unit tests (password hashing, JWT utilities, auth payload validation).
 - Auth integration tests (register/login behavior against MongoDB in-memory instance).
 - Auth security tests (protected route JWT checks + auth rate limiting behavior).
+- Student profile unit tests (payload validation).
+- Student profile integration tests (create/read/update/delete for authenticated user).
+- Student profile security tests (auth required, ownership isolation).
 
 Near-term testing priorities:
 - Add integration tests for container/dependency wiring.
@@ -152,9 +155,11 @@ Required and currently implemented:
 - bcrypt password hashing in auth flow (no plaintext storage).
 - Schema-based validation on auth inputs.
 - Auth endpoint rate limiting.
+- Student profile model with unique `userId` index.
+- Protected student profile CRUD (`POST/GET/PUT/DELETE /student-profile`).
+- Ownership checks: users can only access/modify their own profile.
 
 Still pending for next phases:
-- Ownership checks for student resources.
 - AI endpoint rate limiting.
 
 ## 9) Development Roadmap
@@ -163,8 +168,8 @@ Canonical roadmap: `docs/planning/IMPLEMENTATION_PHASES.md` and `docs/planning/F
 
 Practical sequence:
 1. Foundation (done): Docker skeleton + health + internal networking.
-2. Auth foundation (in progress): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
-3. Student domain: protected student resources + ownership.
+2. Auth foundation (done): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
+3. Student domain (in progress): student profile CRUD done; completed courses/catalog pending.
 4. Async AI pipeline: enqueue, worker processing, status/result flow.
 5. AI decision features.
 6. Hardening, stress/security testing, documentation, risk/final report.
@@ -176,9 +181,11 @@ Practical sequence:
 - MongoDB named volume persistence (`mongo_data`).
 - Only API service host exposure (internal-only for other services).
 - API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
+- Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
 - bcrypt password hashing, JWT token issuance, and protected-route middleware.
 - Auth validation and auth rate limiting middleware.
-- Auth test suites (unit + integration + security) in addition to health test.
+- Student profile validation schemas and MongoDB model/indexes.
+- Auth and student profile test suites (unit + integration + security) in addition to health test.
 - Service Dockerfiles with deterministic install (`npm ci`) and non-root users.
 - Core project workflow/rules/prompts/playbooks/ADRs documentation scaffold.
 
