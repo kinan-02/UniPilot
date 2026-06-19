@@ -68,7 +68,7 @@ function buildSeedLikeContext({ completedCourseRecords = [] } = {}) {
       title: "Core courses",
       ruleExpression: { type: "course_set", operator: "all_of" },
       minCredits: 24,
-      courseSet: [FOUNDATIONS, DISCRETE_MATH, DATA_STRUCTURES].map((id) => new ObjectId(id)),
+      courseSet: [FOUNDATIONS, DISCRETE_MATH, DATA_STRUCTURES, ALGORITHMS].map((id) => new ObjectId(id)),
       priority: 1,
       isMandatory: true
     },
@@ -130,13 +130,14 @@ describe("semester planner", () => {
     const context = buildSeedLikeContext();
     const plan = generateDeterministicSemesterPlan({
       ...context,
-      semesterCode: "2025-2"
+      semesterCode: "2025-2",
+      maxCredits: 6
     });
 
     const recommendedIds = plan.semesters[0].plannedCourses.map((course) => course.courseId);
     expect(recommendedIds).toContain(FOUNDATIONS);
     expect(recommendedIds).toContain(DISCRETE_MATH);
-    expect(recommendedIds).not.toContain(DATA_STRUCTURES);
+    expect(recommendedIds).not.toContain(ALGORITHMS);
     expect(plan.explanation.emptyPlan).toBe(false);
   });
 
@@ -179,10 +180,62 @@ describe("semester planner", () => {
 
     const recommendedIds = plan.semesters[0].plannedCourses.map((course) => course.courseId);
     expect(recommendedIds).toEqual([FOUNDATIONS]);
-    expect(plan.explanation.blockedByPrerequisites.some((entry) => entry.courseId === DATA_STRUCTURES)).toBe(
-      true
+    const blockedEntry = plan.explanation.blockedByPrerequisites.find(
+      (entry) => entry.courseId === ALGORITHMS
     );
-    expect(plan.explanation.skippedDueToWorkload.length).toBeGreaterThan(0);
+    expect(blockedEntry).toBeTruthy();
+    expect(blockedEntry.missingPrerequisites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          courseId: DATA_STRUCTURES,
+          courseNumber: "02340201"
+        })
+      ])
+    );
+    expect(blockedEntry.reason).toMatch(/prerequisite/i);
+    expect(
+      plan.explanation.skippedDueToWorkload.some((entry) => entry.courseId === DATA_STRUCTURES)
+    ).toBe(true);
+  });
+
+  test("schedules prerequisite chains within the same semester in dependency order", () => {
+    const context = buildSeedLikeContext({
+      completedCourseRecords: [buildCompletedRecord(DISCRETE_MATH)]
+    });
+    const plan = generateDeterministicSemesterPlan({
+      ...context,
+      semesterCode: "2025-2",
+      maxCredits: 6
+    });
+
+    const recommendedIds = plan.semesters[0].plannedCourses.map((course) => course.courseId);
+    expect(recommendedIds).toEqual([FOUNDATIONS, DATA_STRUCTURES]);
+    expect(recommendedIds.indexOf(FOUNDATIONS)).toBeLessThan(recommendedIds.indexOf(DATA_STRUCTURES));
+  });
+
+  test("uses profile preferred workload when maxCredits is omitted", () => {
+    const context = buildSeedLikeContext();
+    context.profile.preferences.maxCreditsPerSemester = 6;
+
+    const plan = generateDeterministicSemesterPlan({
+      ...context,
+      semesterCode: "2025-2"
+    });
+
+    expect(plan.explanation.maxCredits).toBe(6);
+    expect(plan.explanation.totalRecommendedCredits).toBe(6);
+  });
+
+  test("marks partial plan when maxCredits cannot be fully utilized", () => {
+    const context = buildSeedLikeContext();
+    const plan = generateDeterministicSemesterPlan({
+      ...context,
+      semesterCode: "2025-2",
+      maxCredits: 18
+    });
+
+    expect(plan.explanation.partialPlan).toBe(true);
+    expect(plan.explanation.summary).toMatch(/maxCredits/i);
   });
 
   test("returns partial plan when minCredits cannot be reached within maxCredits", () => {
@@ -197,5 +250,19 @@ describe("semester planner", () => {
     expect(plan.explanation.partialPlan).toBe(true);
     expect(plan.explanation.meetsMinCredits).toBe(false);
     expect(plan.explanation.totalRecommendedCredits).toBe(3);
+  });
+
+  test("returns empty plan when workload capacity is zero", () => {
+    const context = buildSeedLikeContext();
+
+    const plan = generateDeterministicSemesterPlan({
+      ...context,
+      semesterCode: "2025-2",
+      maxCredits: 0
+    });
+
+    expect(plan.explanation.emptyPlan).toBe(true);
+    expect(plan.semesters[0].plannedCourses).toEqual([]);
+    expect(plan.explanation.summary).toMatch(/no eligible courses/i);
   });
 });

@@ -231,8 +231,9 @@ Example generate body:
 - Excludes completed passing courses; failed grades do not count as completed
 - Prioritizes remaining mandatory courses before electives
 - Respects prerequisites from the catalog
+- Schedules prerequisite chains within the same semester in dependency order
 - Uses profile `preferences.maxCreditsPerSemester` when `maxCredits` is omitted (default `18`)
-- Returns structured `explanation` with partial/empty plan reasons when limits apply
+- Returns structured `explanation` with `blockedByPrerequisites`, `missingPrerequisites`, and partial/empty plan reasons when limits apply
 
 **Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/semester-plans/generate`.
 

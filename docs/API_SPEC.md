@@ -663,6 +663,9 @@ Calculate graduation progress for the authenticated user.
 - Prioritizes remaining mandatory courses before electives.
 - Respects prerequisites from catalog `courses.prerequisites`.
 - Supports fractional credits (0.5 increments).
+- Treats courses scheduled earlier in the same plan as satisfying prerequisites for later recommendations.
+- `explanation.blockedByPrerequisites` includes `missingPrerequisites` (course id/number/title) and a human-readable `reason`.
+- `explanation.partialPlan` is `true` when `minCredits` or `maxCredits` targets cannot be fully met.
 - Returns partial/empty plans with structured `explanation` when workload or eligibility limits apply.
 
 ### Errors
