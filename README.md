@@ -109,7 +109,7 @@ npm run test:security
 
 ### Python API (`api-python`)
 
-Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile — unit, integration, security):
+Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile + Phase 13 catalog — unit, integration, security):
 
 ```bash
 cd services/api-python
@@ -285,6 +285,23 @@ curl -s -X POST http://localhost:8000/student-profile \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"institutionId":"technion","programType":"BSc","catalogYear":2025,"currentSemesterCode":"2025-1"}'
+```
+
+### Python Catalog API (`api-python` on `API_PYTHON_PORT`, Phase 13)
+
+Read-only DDS catalog from **production** MongoDB collections (Phase 12 promotion). JWT required. Hard requirements and advisory rules are **separate endpoints** — advisory `catalog_rules` are never returned as hard graduation requirements.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"catalog-user@example.com","password":"StrongPass123!"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['accessToken'])")
+
+curl -s "http://localhost:8000/catalog/courses?limit=5" -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:8000/catalog/courses/00940345" -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:8000/catalog/degree-programs" -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:8000/catalog/degree-programs/009216-1-000/requirements" -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:8000/catalog/degree-programs/009216-1-000/advisory-rules" -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Auth API (Node reference on `API_PORT`)

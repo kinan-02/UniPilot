@@ -364,6 +364,8 @@ Common promoted fields: `sourceName`, `catalogVersion`, `promotedAt`, `promotion
 
 Rollback: `rollback-dds-production-promotion` deletes production docs where `promotionRunId` matches; staging collections are untouched.
 
+**Phase 13 consumers:** `services/api-python` read-only `/catalog/*` endpoints query these collections; see `docs/API_SPEC.md` §4.4.1.
+
 ---
 
 ## 7) MVP Simplicity Constraints

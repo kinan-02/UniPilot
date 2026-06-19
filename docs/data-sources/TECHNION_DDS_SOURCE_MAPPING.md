@@ -178,6 +178,10 @@ Removes parser/OCR artifacts when evidence is strong, enriches `titleHint` from 
 
 Reports: `data/reports/technion/dds_production_promotion_report.json`, `.md`
 
+## Phase 13 update (Python read-only catalog API)
+
+The Python API (`services/api-python`) exposes read-only catalog routes under `/catalog/*`, reading production collections promoted in Phase 12. Hard requirements (`degree_requirements`) and advisory rules (`catalog_rules`) are separate endpoints; advisory rules always expose `enforceInGraduationProgress: false`.
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:

@@ -522,6 +522,59 @@ Each requirement includes: `id`, `degreeId`, `version`, `catalogYear`, `catalogV
 
 ---
 
+## 4.4.1 Python DDS Catalog API (Phase 13, read-only)
+
+**Status:** Implemented. Data source: **production** MongoDB collections promoted in Phase 12 (`courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`).
+
+**Auth:** JWT required (`Authorization: Bearer <accessToken>`), matching Node §4.4–4.5.
+
+**Prefix:** `/catalog` (Python migration path; Node legacy uses `/courses` and `/degrees` with ObjectId keys).
+
+### `GET /catalog/courses`
+
+| Param | Required | Rules |
+|---|---|---|
+| `q` | no | text search over course number, Hebrew title, faculty |
+| `faculty` | no | case-insensitive contains |
+| `courseNumber` | no | exact 8-digit Technion number |
+| `limit` | no | 1–200, default 50 |
+| `offset` | no | ≥ 0, default 0 |
+| `includeOfferings` | no | boolean, default false |
+
+**Success (`200`):** `{ success, data: { items, total, limit, offset }, error: null }`
+
+### `GET /catalog/courses/{course_number}`
+
+8-digit course number path param. Optional `includeOfferings=true`.
+
+### `GET /catalog/courses/{course_number}/offerings`
+
+Optional `academicYear`, `semesterCode` (`200|201|202`).
+
+### `GET /catalog/degree-programs`
+
+Lists DDS programs from `degree_programs` (e.g. 3 programs after Phase 12 promotion).
+
+### `GET /catalog/degree-programs/{program_code}`
+
+Program code format: `009216-1-000`.
+
+### `GET /catalog/degree-programs/{program_code}/requirements`
+
+Returns **hard executable** requirement groups from `degree_requirements` only. Each item includes `requirementEnforcement: "hard"`. Advisory `catalog_rules` are **excluded**.
+
+### `GET /catalog/degree-programs/{program_code}/advisory-rules`
+
+Returns advisory/manual-review metadata from `catalog_rules` only. Each item includes `advisoryOnly: true`, `enforceInGraduationProgress: false`, `notHardRequirement: true`. Not used for automatic graduation enforcement.
+
+### `GET /catalog/degree-programs/{program_code}/catalog-summary`
+
+Combined program + hard requirements + advisory rules + counts.
+
+**Errors:** `400` validation, `401` auth, `404` not found, `500` internal.
+
+---
+
 ## 4.6 Graduation Progress (MVP)
 
 **Status:** Implemented (Phase 6). Deterministic progress computed from the authenticated user's `StudentProfile`, `CompletedCourses`, selected `Degree`, `DegreeRequirements`, and course catalog. No LLM involvement.

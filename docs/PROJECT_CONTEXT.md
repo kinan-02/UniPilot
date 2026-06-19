@@ -90,7 +90,8 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 10.5. Staging blocker cleanup + quality recheck — **implemented (Phase 10.5)**  
 11. Staging → production promotion gate (dry-run plan only) — **implemented (Phase 11)**  
 12. Guarded DDS staging → production promotion — **implemented (Phase 12)**  
-13. Python Course Catalog API migration (read production collections)  
+13. Python Course Catalog API (read-only, production collections) — **implemented (Phase 13)**  
+14. Python Completed Courses migration  
 
 ### Python Phase 1 status (implemented)
 
@@ -318,6 +319,25 @@ Phase 11 answers: *If we later run production promotion, exactly what would be p
 | Node / Python API changes | **None** |
 
 Phase 12 writes production data **only** when `--i-confirm-dangerous-production-write` is passed, the Phase 11 gate passes, and production collections are empty or idempotently compatible. `--dry-run` re-runs the gate and builds documents without writing. Rollback deletes only documents matching a given `promotionRunId`.
+
+### Python Phase 13 status (implemented — read-only catalog API)
+
+| Item | Status |
+|---|---|
+| `GET /catalog/courses` (search, pagination, optional offerings) | Done |
+| `GET /catalog/courses/{course_number}` | Done |
+| `GET /catalog/courses/{course_number}/offerings` | Done |
+| `GET /catalog/degree-programs` | Done |
+| `GET /catalog/degree-programs/{program_code}` | Done |
+| `GET /catalog/degree-programs/{program_code}/requirements` (hard only) | Done |
+| `GET /catalog/degree-programs/{program_code}/advisory-rules` | Done |
+| `GET /catalog/degree-programs/{program_code}/catalog-summary` | Done |
+| Repository `app/repositories/catalog_repository.py` (read-only) | Done |
+| JWT required (matches Node catalog auth policy) | Done |
+| pytest catalog unit + integration tests | Done |
+| Node reference backend | Unchanged |
+
+Phase 13 reads **production** collections promoted in Phase 12 (`courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`). Hard requirements come only from `degree_requirements`; advisory/non-executable metadata comes only from `catalog_rules` with `enforceInGraduationProgress: false`. No write endpoints; no graduation progress or planner logic.
 
 ### Target Python stack
 

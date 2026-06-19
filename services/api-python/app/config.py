@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     bcrypt_salt_rounds: int = 12
     auth_rate_limit_window_ms: int = 60_000
     auth_rate_limit_max: int = 5
+    courses_collection: str = "courses"
+    course_offerings_collection: str = "course_offerings"
+    degree_programs_collection: str = "degree_programs"
+    degree_requirements_collection: str = "degree_requirements"
+    catalog_rules_collection: str = "catalog_rules"
+    catalog_default_limit: int = 50
+    catalog_max_limit: int = 200
 
     model_config = SettingsConfigDict(
         env_file=".env",
