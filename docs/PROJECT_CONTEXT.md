@@ -1,8 +1,6 @@
 # UniPilot AI — Project Context (Source of Truth)
 
 Last updated: 2026-06-19
-
-This document is the primary context document for UniPilot AI implementation work.
 Use it before starting major coding, architecture updates, or roadmap decisions.
 
 If this file and another doc conflict:
@@ -54,6 +52,44 @@ Architecture pattern:
 
 Current behavior intentionally excludes AI recommendation, simulation, and RAG logic, but includes authentication, student profile CRUD, completed courses CRUD, deterministic graduation progress, deterministic semester planning, deterministic academic risk analysis, and read-only Technion catalog APIs backed by a curated seed dataset.
 
+## 3.2) Python Backend Migration (Approved Plan)
+
+The team has decided to migrate the **main backend** from **Node.js / Express** to **Python / FastAPI**.
+
+| Policy | Detail |
+|---|---|
+| Node backend | **Reference implementation** — keep unchanged during migration |
+| Python backend | **New target** — built in parallel, feature by feature |
+| Behavioral contract | `docs/API_SPEC.md` + current Node behavior and tests |
+| Node removal | Only after Python feature parity + explicit team approval |
+
+**Canonical plan:** `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`  
+**Real DDS data plan:** `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`
+
+### Why migrate
+
+- Course material and assignments use Python; the team is more comfortable with Python.
+- Python is better suited for data engineering, PDF processing, AI, RAG, and academic data ingestion.
+- Auth and Student Profile can be ported first (minimal catalog dependency).
+- Catalog, requirements, progress, planner, and risk analyzer should wait for **real Technion DDS data** (not placeholder seed).
+
+### Python migration order (summary)
+
+1. FastAPI skeleton + Docker  
+2. Auth  
+3. Student Profile (`degreeId` optional until real catalog import)  
+4. Data-engineering container  
+5. Collect/process real DDS data  
+6. Validate against domain/schema  
+7. Import validated DDS data into MongoDB  
+8. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+
+### Target Python stack
+
+FastAPI, MongoDB, Redis, Python worker, data-engineering container, Pydantic, JWT, bcrypt, pytest, Docker Compose — see migration plan for full architecture.
+
+**Do not** delete or modify the Node backend as part of Python migration tasks. **Do not** mark Node as legacy until the migration definition of done is met.
+
 ## 3.1) Technion Academic Data Strategy
 
 UniPilot targets **Technion** as the initial institution (`institutionId: "technion"`). Academic reference data is split into two layers:
@@ -84,13 +120,26 @@ Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement docum
 
 ## 4) Tech Stack
 
+### 4.1 Current (Node reference — implemented)
+
 - Runtime: Node.js 20 (Alpine images)
 - API framework: Express
 - Database: MongoDB 7
 - Queue/cache/rate-limit foundation: Redis 7
 - Container orchestration: Docker Compose
-- Testing (current): Jest + Supertest (API health test)
+- Testing (current): Jest + Supertest
 - Language: JavaScript (CommonJS)
+
+### 4.2 Target (Python — planned)
+
+- Runtime: Python 3.12+ (pinned in Dockerfile)
+- API framework: FastAPI
+- Database: MongoDB 7 (same deployment)
+- Queue/cache: Redis 7
+- Validation: Pydantic v2
+- Testing: pytest + httpx
+- Data engineering: Python container for DDS ingestion pipeline
+- See `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
 
 ## 5) Docker Services
 
@@ -228,18 +277,30 @@ Still pending for next phases:
 
 ## 9) Development Roadmap
 
-Canonical roadmap: `docs/planning/IMPLEMENTATION_PHASES.md` and `docs/planning/FEATURE_BACKLOG.md`.
+Canonical roadmaps:
 
-Practical sequence:
-1. Foundation (done): Docker skeleton + health + internal networking.
-2. Auth foundation (done): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
-3. Student domain (done for MVP scope): student profile CRUD, completed courses CRUD, graduation progress.
-4. Catalog seed (done): Technion curated dataset + read-only catalog APIs + seed command.
-5. Async AI pipeline: enqueue, worker processing, status/result flow.
-6. AI decision features (grounded in MongoDB facts + RAG explanations).
-7. Full Technion data ingestion pipeline (PDF/HTML extract, normalize, validate, review, refresh) — will populate `official` / `imported` completed courses via internal import, not public API.
-8. Simulation features and plan versioning/editing APIs.
-9. Hardening, stress/security testing, documentation, risk/final report.
+- **Node (reference, implemented):** `docs/planning/IMPLEMENTATION_PHASES.md`, `docs/planning/FEATURE_BACKLOG.md`
+- **Python migration:** `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
+- **Real DDS data:** `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`
+
+### Node reference — completed through Phase 8
+
+Phases 1–8 on the Node stack are implemented (auth through academic risk analyzer) using curated placeholder catalog data.
+
+### Python migration — next work
+
+1. Python Phase 1–3: skeleton, auth, student profile (parallel to Node; no Node changes)
+2. Python Phase 4–7: data-engineering container, real DDS collection/validation/import
+3. Python Phase 8+: catalog and academic features on **real DDS data**
+4. AI / RAG / simulation (both stacks): after catalog facts are grounded in real data
+
+### Still pending (both stacks / later)
+
+- AI endpoint rate limiting (Python: implement with AI phase)
+- Full Technion ingestion automation beyond DDS subset
+- Simulation features and plan versioning/editing APIs
+- Hardening, stress/security testing, documentation, risk/final report
+- Node deprecation decision (only after Python parity + team approval)
 
 ## 10) What Has Already Been Implemented
 
@@ -279,7 +340,9 @@ Discuss with the team before changing any of these:
 
 Before major implementation work:
 1. Read this file (`docs/PROJECT_CONTEXT.md`).
-2. Read `docs/planning/IMPLEMENTATION_PHASES.md` for current phase.
-3. For catalog/ingestion work, read `docs/DATA_INGESTION_ARCHITECTURE.md`.
-4. Read relevant rule files in `.cursor/rules/unipilot-*.mdc`.
-5. Implement one feature at a time and update docs/tests with each feature.
+2. For **Python migration** work, read `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`.
+3. For **real DDS catalog data**, read `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`.
+4. Read `docs/planning/IMPLEMENTATION_PHASES.md` for Node reference phase history.
+5. For catalog/ingestion design, read `docs/DATA_INGESTION_ARCHITECTURE.md`.
+6. Read relevant rule files in `.cursor/rules/unipilot-*.mdc`.
+7. Implement one feature at a time and update docs/tests with each feature.
