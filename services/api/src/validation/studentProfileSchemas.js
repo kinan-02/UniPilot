@@ -32,8 +32,7 @@ const updateStudentProfileSchema = z
     degreeId: objectIdSchema.optional(),
     catalogYear: z.number().int().min(1990).max(2100).optional(),
     currentSemesterCode: semesterCodeSchema.optional(),
-    preferences: preferencesSchema.optional(),
-    _id: objectIdSchema.optional()
+    preferences: preferencesSchema.optional()
   })
   .strict()
   .refine((payload) => Object.keys(payload).length > 0, {

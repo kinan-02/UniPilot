@@ -112,8 +112,8 @@ All routes require `Authorization: Bearer <accessToken>`.
 
 ### Create Profile
 
-- `POST /student-profile`
-- Request body:
+- `POST /student-profile` → `201` created, `409` if profile already exists
+- Request body (`degreeId` optional):
 
 ```json
 {
@@ -134,8 +134,8 @@ All routes require `Authorization: Bearer <accessToken>`.
 
 ### Update Own Profile
 
-- `PUT /student-profile`
-- Request body (at least one field):
+- `PUT /student-profile` → `200` updated, `404` if no profile exists
+- Request body (at least one updatable field; `userId`, `_id`, and other unknown fields are rejected):
 
 ```json
 {
@@ -146,7 +146,7 @@ All routes require `Authorization: Bearer <accessToken>`.
 
 ### Delete Own Profile
 
-- `DELETE /student-profile`
+- `DELETE /student-profile` → `200` with `{ "deleted": true }`, `404` if no profile exists
 
 ## Notes
 

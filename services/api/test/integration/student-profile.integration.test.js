@@ -9,6 +9,7 @@ describe("student profile integration", () => {
   let mongoServer;
   let app;
   let accessToken;
+  let duplicateToken;
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
@@ -29,6 +30,12 @@ describe("student profile integration", () => {
     });
 
     accessToken = registerResponse.body.data.accessToken;
+
+    const duplicateRegisterResponse = await request(app).post("/auth/register").send({
+      email: "duplicate-profile@example.com",
+      password: "StrongPass123!"
+    });
+    duplicateToken = duplicateRegisterResponse.body.data.accessToken;
   });
 
   afterAll(async () => {
@@ -36,6 +43,14 @@ describe("student profile integration", () => {
     if (mongoServer) {
       await mongoServer.stop();
     }
+  });
+
+  test("GET /student-profile returns 404 when profile does not exist", async () => {
+    const response = await request(app)
+      .get("/student-profile")
+      .set("Authorization", `Bearer ${duplicateToken}`);
+
+    expect(response.status).toBe(404);
   });
 
   test("POST /student-profile creates profile for authenticated user", async () => {
@@ -55,6 +70,20 @@ describe("student profile integration", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data.profile.institutionId).toBe("uni-main");
+  });
+
+  test("POST /student-profile returns 409 for duplicate profile", async () => {
+    const response = await request(app)
+      .post("/student-profile")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        institutionId: "uni-main",
+        programType: "BSc",
+        catalogYear: 2025,
+        currentSemesterCode: "2025-1"
+      });
+
+    expect(response.status).toBe(409);
   });
 
   test("GET /student-profile returns profile of authenticated user", async () => {

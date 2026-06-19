@@ -73,6 +73,16 @@ describe("student profile security", () => {
     expect(response.status).toBe(401);
   });
 
+  test("POST /student-profile returns 401 when missing token", async () => {
+    const response = await request(app).post("/student-profile").send({
+      institutionId: "uni-main",
+      programType: "BSc",
+      catalogYear: 2024,
+      currentSemesterCode: "2024-1"
+    });
+    expect(response.status).toBe(401);
+  });
+
   test("user A only reads own profile", async () => {
     const response = await request(app)
       .get("/student-profile")
@@ -83,7 +93,7 @@ describe("student profile security", () => {
     expect(response.body.data.profile.id).not.toBe(profileIdB);
   });
 
-  test("user A cannot update user B profile by id", async () => {
+  test("update rejects profile id in request body", async () => {
     const response = await request(app)
       .put("/student-profile")
       .set("Authorization", `Bearer ${accessTokenA}`)
@@ -92,7 +102,7 @@ describe("student profile security", () => {
         programType: "BSc-Honors"
       });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
   });
 
   test("deleting user A profile does not remove user B profile", async () => {

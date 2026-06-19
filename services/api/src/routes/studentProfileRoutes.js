@@ -120,19 +120,10 @@ function createStudentProfileRouter() {
         });
       }
 
-      const { _id: requestedProfileId, ...updates } = validationResult.data;
-      if (requestedProfileId && requestedProfileId !== existingProfile._id.toString()) {
-        return response.status(403).json({
-          success: false,
-          data: null,
-          error: "You are not allowed to modify this student profile"
-        });
-      }
-
       const updatedProfile = await updateStudentProfileByUserId(
         database,
         request.auth.userId,
-        updates
+        validationResult.data
       );
 
       return response.status(200).json({

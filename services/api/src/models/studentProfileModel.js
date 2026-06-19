@@ -28,10 +28,15 @@ function parseObjectId(value) {
 }
 
 function buildProfileDocument(userId, profileData) {
+  const parsedUserId = parseObjectId(userId);
+  if (!parsedUserId) {
+    throw new Error("Invalid user id for student profile");
+  }
+
   const now = new Date();
 
   return {
-    userId: parseObjectId(userId),
+    userId: parsedUserId,
     institutionId: profileData.institutionId,
     programType: profileData.programType,
     degreeId: profileData.degreeId ? parseObjectId(profileData.degreeId) : null,
