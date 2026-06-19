@@ -1,7 +1,7 @@
-# UniPilot AI — Phase 5 Completed Courses Backend
+# UniPilot AI — Phase 6 Graduation Progress Backend
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, and **read-only Technion-style course catalog / degree requirements**:
+This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, **graduation progress**, and **read-only Technion-style course catalog / degree requirements**:
 
 - Dockerized backend services
 - Health endpoint in the API
@@ -12,12 +12,13 @@ This repository currently implements backend foundation plus **authentication**,
 - Input validation and auth rate limiting
 - Protected student profile CRUD (`/student-profile`)
 - Protected completed courses CRUD (`/completed-courses`)
+- Deterministic graduation progress (`GET /graduation-progress`)
 - Curated Technion CS/SE catalog seed data (2025)
 - Read-only catalog endpoints (`/courses`, `/degrees`)
 - Catalog seed command for MongoDB
 - Unit, integration, and security tests
 
-Graduation progress, semester planning, and AI features are intentionally not implemented yet.
+Semester planning, simulation, and AI features are intentionally not implemented yet.
 
 ## Services
 
@@ -82,7 +83,7 @@ docker compose down -v
 
 ## Run Tests
 
-API tests (health + auth + student profile + completed courses + catalog unit/integration/security):
+API tests (health + auth + student profile + completed courses + graduation progress + catalog unit/integration/security):
 
 ```bash
 cd services/api
@@ -194,6 +195,18 @@ Example create body:
 Duplicate `(courseId, attempt)` for the same user returns `409`. `creditsEarned` accepts half-credit values in 0.5 increments (for example `3.5`).
 
 `official` and `imported` records are **not** creatable via the public API (only `manual` on `POST`). Future transcript ingestion will insert those via internal trusted import logic. They cannot be edited or deleted via API (`403`).
+
+## Graduation Progress API (Protected)
+
+Deterministic degree progress for the authenticated user. Requires a student profile with a selected `degreeId`.
+
+- `GET /graduation-progress` — compute credits, mandatory course progress, elective progress, requirement breakdown, and status summary
+
+**Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/graduation-progress`.
+
+**Errors:** `404` if profile missing; `400` if `degreeId` not selected.
+
+Progress uses MongoDB catalog facts and degree requirements only (no LLM).
 
 ## Notes
 

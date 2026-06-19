@@ -524,19 +524,62 @@ Each requirement includes: `id`, `degreeId`, `version`, `catalogYear`, `catalogV
 
 ## 4.6 Graduation Progress (MVP)
 
-### Planned MVP endpoints
-- `GET /graduation-progress` (protected)
+**Status:** Implemented (Phase 6). Deterministic progress computed from the authenticated user's `StudentProfile`, `CompletedCourses`, selected `Degree`, `DegreeRequirements`, and course catalog. No LLM involvement.
 
-### Output shape (high-level)
-- `degreeId`, `catalogVersion`
-- `requirementProgress[]`
-- `creditsCompleted`, `creditsRemaining`
-- `estimatedSemestersRemaining`
-- `blockingRequirements[]`
+### `GET /graduation-progress`
+
+Calculate graduation progress for the authenticated user.
+
+**Auth:** `Authorization: Bearer <accessToken>` required.
+
+**Success (`200`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "graduationProgress": {
+      "degreeId": "665f2b0f2a3f7b2a1a9a7d01",
+      "degreeCode": "CS-BSC",
+      "degreeName": "BSc Computer Science / Software Engineering",
+      "catalogYear": 2025,
+      "catalogVersion": "2025.1",
+      "completedCredits": 6.5,
+      "totalRequiredCredits": 155,
+      "creditsRemaining": 148.5,
+      "completionPercentage": 4.19,
+      "completedMandatoryCourses": [],
+      "remainingMandatoryCourses": [],
+      "completedElectiveCredits": 3.5,
+      "remainingElectiveCredits": 2.5,
+      "requirementProgress": [],
+      "missingRequirements": [],
+      "statusSummary": "in_progress"
+    }
+  },
+  "error": null
+}
+```
+
+**`statusSummary` values:** `not_started`, `in_progress`, `mandatory_requirements_met`, `complete`
+
+**Errors:**
+
+| Code | When |
+|---|---|
+| `401` | Missing/invalid JWT |
+| `404` | Student profile not found |
+| `400` | Profile has no `degreeId` selected |
+| `400` | Profile `degreeId` not found in catalog |
 
 ### Rules
-- Computed from user transcript + degree requirements.
-- Must be deterministic and explainable.
+
+- Progress is computed only for `token.sub`.
+- Uses published degree requirements from MongoDB; does not invent rules.
+- Passing grades count toward progress (`A+` … `D`, `Pass`); `F` / `Fail` are ignored.
+- Multiple attempts on the same course use the best passing `creditsEarned`.
+- Credit math supports fractional values (0.5 increments).
+- `requirementProgress` evaluates seeded rule types: `course_set` (`all_of`), `credit_pool`, `total_credits`.
 
 ---
 

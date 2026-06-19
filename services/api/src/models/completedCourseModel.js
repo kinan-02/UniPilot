@@ -71,6 +71,19 @@ async function createCompletedCourse(database, userId, recordData) {
   };
 }
 
+async function findAllCompletedCoursesByUserId(database, userId) {
+  const parsedUserId = parseObjectId(userId);
+  if (!parsedUserId) {
+    return [];
+  }
+
+  return database
+    .collection(COMPLETED_COURSES_COLLECTION)
+    .find({ userId: parsedUserId })
+    .sort({ recordedAt: -1 })
+    .toArray();
+}
+
 async function findCompletedCoursesByUserId(
   database,
   userId,
@@ -209,6 +222,7 @@ module.exports = {
   createCompletedCourse,
   deleteCompletedCourseByIdAndUserId,
   ensureCompletedCourseIndexes,
+  findAllCompletedCoursesByUserId,
   findCompletedCourseByIdAndUserId,
   findCompletedCoursesByUserId,
   toPublicCompletedCourse,
