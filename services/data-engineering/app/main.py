@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 from app.config import get_settings
 from app.db import check_mongo_connectivity, close_mongo_client, get_database
@@ -16,6 +17,7 @@ from app.sources.sample_data import (
     SAMPLE_SOURCE_NAME,
     SAMPLE_SOURCE_TYPE,
 )
+from app.curation.dds_catalog_curator import run_curation
 from app.parsers.dds_catalog_markdown_parser import write_curated_catalog_draft
 from app.sources.technion_dds_catalog_pdf import extract_dds_catalog, inspect_dds_catalog
 from app.validators.course_validator import validate_normalized_course
@@ -189,6 +191,41 @@ def run_parse_dds_catalog_md(md_path: str | None, output_path: str | None) -> in
     return 0
 
 
+def run_curate_dds_catalog(
+    draft_path: str | None,
+    markdown_path: str | None,
+    output_path: str | None,
+    report_path: str | None,
+) -> int:
+    try:
+        document, reviewed_path, report_file = run_curation(
+            draft_path=Path(draft_path) if draft_path else None,
+            markdown_path=Path(markdown_path) if markdown_path else None,
+            output_path=Path(output_path) if output_path else None,
+            report_path=Path(report_path) if report_path else None,
+        )
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "reviewedPath": str(reviewed_path),
+                "reportPath": str(report_file),
+                "curationStatus": document.curationMetadata.curationStatus,
+                "countsAfter": document.curationMetadata.countsAfter,
+                "curationReport": document.curationReport,
+                "note": "Reviewed curated JSON only — no MongoDB or staging writes.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
     settings = get_settings()
     env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
@@ -216,6 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
             "extract-dds-catalog",
             "inspect-dds-catalog",
             "parse-dds-catalog-md",
+            "curate-dds-catalog",
         ],
         help="Task to execute",
     )
@@ -241,7 +279,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         dest="output",
         default=None,
-        help="Output path for draft curated catalog JSON",
+        help="Output path for draft/reviewed curated catalog JSON",
+    )
+    parser.add_argument(
+        "--draft-path",
+        dest="draft_path",
+        default=None,
+        help="Path to parser draft curated catalog JSON",
+    )
+    parser.add_argument(
+        "--report-path",
+        dest="report_path",
+        default=None,
+        help="Output path for curated review report markdown",
     )
     return parser
 
@@ -264,6 +314,13 @@ def main(argv: list[str] | None = None) -> int:
             return run_inspect_dds_catalog(args.pdf_path)
         if args.command == "parse-dds-catalog-md":
             return run_parse_dds_catalog_md(args.md_path, args.output)
+        if args.command == "curate-dds-catalog":
+            return run_curate_dds_catalog(
+                args.draft_path,
+                args.md_path,
+                args.output,
+                args.report_path,
+            )
     finally:
         close_mongo_client()
 

@@ -82,7 +82,8 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 5. Collect/process real DDS data — **source intake started (Phase 5)**  
 6. DDS catalog PDF extraction + manual-curation foundation — **implemented (Phase 6)**  
 6.5. DDS catalog markdown parser → draft curated JSON — **implemented (Phase 6.5)**  
-7. Validate against domain/schema — **in progress (draft JSON from markdown)**  
+7.5. DDS catalog assisted curation (course JSON metadata) — **implemented (Phase 7.5)**  
+8. Validate against domain/schema — **in progress (reviewed JSON)**    
 8. Import validated DDS data into MongoDB  
 9. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
 
@@ -187,6 +188,22 @@ Phase 6 scope intentionally excludes staging import of degree requirements, prod
 | Node reference backend | Unchanged |
 
 Phase 6.5 scope intentionally excludes staging import, semester JSON merge (prerequisites/offerings), and production promotion. Draft JSON requires manual review before any import.
+
+### Python Phase 7.5 status (implemented — assisted curation, course JSON metadata)
+
+| Item | Status |
+|---|---|
+| Course offering JSON index (`courses_2025_200/201/202.json`) | Done |
+| CLI: `curate-dds-catalog` | Done |
+| Reviewed output `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json` | Done |
+| Review report `dds_catalog_curated_review_report.md` | Done |
+| Title/credits/faculty enrichment from exact course number matches | Done |
+| IE/IS choose-N chain rule groups (not flattened mandatory lists) | Done |
+| DS semester-1 additions from markdown when supported | Done |
+| MongoDB / staging / production writes | **Not started** |
+| Node / Python API changes | **None** |
+
+Phase 7.5 scope intentionally excludes staging import, production promotion, and treating semester JSON as degree requirements. Reviewed JSON requires human signoff before Phase 8.
 
 ### Target Python stack
 

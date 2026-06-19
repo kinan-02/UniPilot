@@ -30,9 +30,20 @@ class CatalogCourseReference(BaseModel):
     courseNumber: str = Field(min_length=8, max_length=8, pattern=r"^0\d{7}$")
     titleHint: str | None = None
     creditsHint: float | None = Field(default=None, ge=0)
+    facultyHint: str | None = None
+    semestersOffered: list[int] = Field(default_factory=list)
+    prerequisitesText: str | None = None
+    corequisitesText: str | None = None
+    noAdditionalCreditText: str | None = None
+    footnoteMarkers: list[str] = Field(default_factory=list)
     pageNumbers: list[int] = Field(default_factory=list)
+    sourceEvidence: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
     manualReviewRequired: bool = True
     confidence: ConfidenceLevel = "low"
+    offeringMetadataNote: str | None = (
+        "Semester offering JSON reference only; not the full canonical catalog."
+    )
 
 
 class CatalogRequirementGroup(BaseModel):
@@ -86,3 +97,28 @@ class CuratedCatalogDocument(BaseModel):
     source: CuratedCatalogSource
     programs: list[NormalizedDegreeProgram] = Field(default_factory=list)
     parserReport: dict[str, Any] = Field(default_factory=dict)
+
+
+class CurationMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    curatedBy: str = Field(min_length=1, max_length=100)
+    curatedAt: str = Field(min_length=1, max_length=50)
+    sourceDraftPath: str = Field(min_length=1, max_length=500)
+    sourceMarkdownPath: str = Field(min_length=1, max_length=500)
+    courseJsonSources: list[str] = Field(default_factory=list)
+    curationStatus: str = Field(min_length=1, max_length=100)
+    knownLimitations: list[str] = Field(default_factory=list)
+    countsBefore: dict[str, Any] = Field(default_factory=dict)
+    countsAfter: dict[str, Any] = Field(default_factory=dict)
+    unresolvedIssues: list[str] = Field(default_factory=list)
+
+
+class ReviewedCuratedCatalogDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: CuratedCatalogSource
+    programs: list[NormalizedDegreeProgram] = Field(default_factory=list)
+    parserReport: dict[str, Any] = Field(default_factory=dict)
+    curationMetadata: CurationMetadata
+    curationReport: dict[str, Any] = Field(default_factory=dict)

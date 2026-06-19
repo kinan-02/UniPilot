@@ -16,6 +16,7 @@ Real Technion inputs (when present on disk):
 
 | Path | Description |
 |------|-------------|
+| `data/raw/technion/courses_2025_200.json` | Winter semester offerings (200) |
 | `data/raw/technion/courses_2025_201.json` | Spring semester offerings (201) |
 | `data/raw/technion/courses_2025_202.json` | Summer semester offerings (202) |
 | `data/raw/technion/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf` | DDS catalog 2025/2026 |
@@ -47,6 +48,27 @@ The parser:
 
 Phase 6.5 / 7 does **not** write to MongoDB or staging collections. All output is flagged `manualReviewRequired`.
 
+## DDS catalog assisted curation (Phase 7.5)
+
+Enriches the parser draft using DDS markdown plus semester offering JSON (metadata reference only — **not** requirement inference).
+
+```bash
+python -m app.main curate-dds-catalog
+```
+
+Inputs (local):
+
+- `data/generated/technion/dds_catalog/dds_catalog_curated_draft.json` (parser draft — not overwritten)
+- `data/raw/technion/technion_dds_catalog_from_docx_clean.md`
+- `data/raw/technion/courses_2025_200.json` (winter), `courses_2025_201.json` (spring), `courses_2025_202.json` (summer)
+
+Outputs (committable):
+
+- `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json`
+- `data/curated/technion/dds_catalog/dds_catalog_curated_review_report.md`
+
+Phase 7.5 does **not** write to MongoDB, staging, or production. Reviewed JSON remains `draft-reviewed-needs-human-signoff` until a human approves it for Phase 8.
+
 ## DDS catalog PDF extraction (Phase 6)
 
 Local extraction commands (require the gitignored raw PDF on disk):
@@ -74,6 +96,7 @@ python -m app.main health
 python -m app.main validate-sample
 python -m app.main import-sample
 python -m app.main parse-dds-catalog-md --md-path data/raw/technion/technion_dds_catalog_from_docx_clean.md
+python -m app.main curate-dds-catalog
 ```
 
 ## Docker

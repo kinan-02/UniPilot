@@ -1,6 +1,3 @@
-"""Sample markdown fixture for DDS catalog parser tests."""
-
-FIXTURE_MD = """
 # תוכנית לימודים
 
 009216-1-000
@@ -52,4 +49,3 @@ FIXTURE_MD = """
 35.5 נק'
 155
 12.0 נק' קורסי בחירה כלל-טכניונית
-"""

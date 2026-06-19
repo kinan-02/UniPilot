@@ -29,6 +29,29 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 - Draft JSON is not validated for staging import without manual review
 - No MongoDB, staging, or production writes in Phase 6.5
 
+## Phase 7.5 update (assisted curation)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main curate-dds-catalog` | Enrich parser draft → reviewed JSON + markdown report |
+
+| File | Type | Notes |
+|------|------|-------|
+| `data/generated/technion/dds_catalog/dds_catalog_curated_draft.json` | JSON | Parser output (gitignored) — **not overwritten** |
+| `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json` | JSON | Cursor-assisted reviewed catalog |
+| `data/curated/technion/dds_catalog/dds_catalog_curated_review_report.md` | Markdown | Curation report |
+| `data/raw/technion/courses_2025_200.json` | JSON | Winter offerings (200) — metadata reference only |
+| `data/raw/technion/courses_2025_201.json` | JSON | Spring offerings (201) |
+| `data/raw/technion/courses_2025_202.json` | JSON | Summer offerings (202) |
+
+**Rules:**
+
+- Degree requirements come from DDS catalog markdown/draft only.
+- Course JSON enriches `titleHint`, `creditsHint`, faculty, prerequisites text, and `semestersOffered` when course numbers match exactly.
+- Courses appearing only in semester JSON are **not** added as requirements.
+- Choose-N / focus chains are encoded as rule groups and notes, not flattened mandatory course lists.
+- No MongoDB, staging, or production writes in Phase 7.5.
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:
