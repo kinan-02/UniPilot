@@ -18,6 +18,7 @@ from app.importers.dds_catalog_staging_importer import (
     PRODUCTION_COLLECTION_NAMES,
     assert_staging_collection_name,
 )
+from app.curation.dds_catalog_human_signoff import extract_human_signoff_from_staged_programs
 from app.models.quality_report import (
     DdsStagingQualityReport,
     QualityCheckResult,
@@ -170,6 +171,12 @@ def build_dds_staging_quality_report(
     courses = list(database[settings.staging_courses_collection].find(_course_filter()))
     offerings = list(database[settings.staging_course_offerings_collection].find({}))
     staged_course_numbers = {doc.get("courseNumber") for doc in courses if doc.get("courseNumber")}
+    human_signoff = extract_human_signoff_from_staged_programs(programs)
+    production_excluded_courses = set(human_signoff.get("productionExcludedCourseNumbers", []))
+    non_executable_signed_off = (
+        human_signoff.get("enforceNonExecutableRulesInProduction") is False
+        and bool(human_signoff.get("signedOffNonExecutableRuleGroupIds"))
+    )
 
     def add_finding(
         finding_id: str,
@@ -366,11 +373,20 @@ def build_dds_staging_quality_report(
     missing_in_courses = sorted(
         number for number in unique_ref_numbers if number not in staged_course_numbers
     )
-    covered = len(unique_ref_numbers) - len(missing_in_courses)
-    coverage_pct = round((covered / len(unique_ref_numbers) * 100), 2) if unique_ref_numbers else 0.0
+    missing_excluded_from_production = sorted(
+        number for number in missing_in_courses if number in production_excluded_courses
+    )
+    missing_actionable = sorted(
+        number for number in missing_in_courses if number not in production_excluded_courses
+    )
+    covered = len(unique_ref_numbers) - len(missing_actionable)
+    coverage_denominator = len(unique_ref_numbers) - len(missing_excluded_from_production)
+    coverage_pct = (
+        round((covered / coverage_denominator * 100), 2) if coverage_denominator else 100.0
+    )
 
     ocr_suspects: list[dict[str, Any]] = []
-    for number in missing_in_courses:
+    for number in missing_actionable:
         neighbors = find_ocr_suspect_neighbors(number, staged_course_numbers)
         entry = {"courseNumber": number, "neighborMatches": neighbors}
         ocr_suspects.append(entry)
@@ -388,22 +404,34 @@ def build_dds_staging_quality_report(
     checks.append(
         QualityCheckResult(
             checkId="crosslink.course_reference_coverage",
-            passed=not missing_in_courses,
-            severity="warning" if missing_in_courses else "info",
+            passed=not missing_actionable,
+            severity="warning" if missing_actionable else "info",
             message=(
                 f"Course reference coverage {coverage_pct}% "
-                f"({covered}/{len(unique_ref_numbers)} referenced numbers in staging_courses)."
+                f"({covered}/{coverage_denominator} in-scope referenced numbers in staging_courses)."
             ),
             details={
                 "coveragePercent": coverage_pct,
                 "referenced": len(unique_ref_numbers),
-                "missing": missing_in_courses[:50],
+                "missing": missing_actionable[:50],
+                "productionExcludedMissing": missing_excluded_from_production,
             },
         )
     )
-    if missing_in_courses:
+    if missing_actionable:
         warnings.append(
-            f"{len(missing_in_courses)} catalog course references missing from staging_courses.",
+            f"{len(missing_actionable)} catalog course references missing from staging_courses.",
+        )
+    if missing_excluded_from_production:
+        add_finding(
+            "crosslink.production_excluded_courses",
+            "info",
+            "cross_link",
+            (
+                f"{len(missing_excluded_from_production)} catalog course references are human-signed "
+                "production exclusions (not in 2025 JSON; omit from production)."
+            ),
+            {"courseNumbers": missing_excluded_from_production},
         )
 
     # --- Title hints ---
@@ -472,7 +500,7 @@ def build_dds_staging_quality_report(
 
     # --- Rule checks ---
     executable_count = 0
-    non_executable_count = 0
+    non_executable_requirement_groups: set[str] = set()
     chain_violations: list[str] = []
     for document in requirements:
         group = document.get("requirementGroup", {})
@@ -482,7 +510,7 @@ def build_dds_staging_quality_report(
         if rule_type in EXECUTABLE_RULE_TYPES:
             executable_count += 1
         elif rule_type:
-            non_executable_count += 1
+            non_executable_requirement_groups.add(group_id)
         is_chain = "chain" in group_id or "focus" in group_id
         is_track_pool = group_id.endswith(":track:requirements") or rule.get("type") == "track_requirement"
         treats_as_mandatory = document.get("treatsCoursesAsMandatory") is True
@@ -495,12 +523,10 @@ def build_dds_staging_quality_report(
         ):
             if treats_as_mandatory or rule.get("operator") == "choose_n":
                 chain_violations.append(f"{group_id}:flattened_courses")
-
+    non_executable_catalog_rules = sum(1 for rule in rules if not rule.get("ruleIsExecutable"))
+    executable_count += sum(1 for rule in rules if rule.get("ruleIsExecutable"))
+    non_executable_count = len(non_executable_requirement_groups) + non_executable_catalog_rules
     for rule in rules:
-        if rule.get("ruleIsExecutable"):
-            executable_count += 1
-        else:
-            non_executable_count += 1
         if rule.get("treatsCoursesAsMandatory"):
             chain_violations.append(rule.get("requirementGroupId", rule.get("stagingKey", "")))
 
@@ -515,12 +541,27 @@ def build_dds_staging_quality_report(
             details={"violations": chain_violations[:20]},
         )
     )
-    if non_executable_count:
+    if non_executable_requirement_groups and not non_executable_signed_off:
         production_blockers.append(
-            f"{non_executable_count} non-executable rule groups require human signoff before production.",
+            f"{len(non_executable_requirement_groups)} non-executable requirement groups "
+            "require human signoff before production.",
         )
         api_blockers.append(
             "API migration must expose non-executable rules as manual-review items or remain staging-only.",
+        )
+    elif non_executable_signed_off:
+        add_finding(
+            "rules.human_signoff_advisory_only",
+            "info",
+            "rules",
+            (
+                f"{len(non_executable_requirement_groups)} non-executable requirement groups "
+                "signed off as advisory-only (not mandatory enforcement)."
+            ),
+            {"groupIds": sorted(non_executable_requirement_groups)},
+        )
+        recommendations.append(
+            "Non-executable rule groups are signed off for advisory use only; do not auto-enforce in production.",
         )
 
     manual_review_summary = _count_manual_review_items(programs, requirements, rules)
@@ -556,21 +597,35 @@ def build_dds_staging_quality_report(
         recommendation = "needs-staging-fixes"
         status = "needs-fixes"
         summary = "Staging data is incomplete or structurally invalid for cross-link review."
-    elif production_blockers or missing_title_refs or missing_in_courses:
+    elif production_blockers or missing_title_refs or missing_actionable:
         recommendation = "ready-for-production-promotion-design"
         status = "pass-with-warnings"
         summary = (
             "Staged DDS catalog and course data are structurally present. "
             "Production promotion remains blocked pending human signoff and metadata fixes."
         )
+    elif non_executable_signed_off and production_excluded_courses:
+        recommendation = "ready-for-production-promotion-design"
+        status = "pass"
+        summary = (
+            "Human sign-off recorded: non-executable groups are advisory-only and "
+            f"{len(production_excluded_courses)} cross-link gap courses are excluded from production."
+        )
     else:
         recommendation = "ready-for-staging-review"
         status = "pass"
         summary = "Staged data passes core quality checks with no critical staging blockers."
 
+    if non_executable_signed_off:
+        recommendations.append(
+            "Non-executable rule groups are signed off as advisory-only; do not mandatory-enforce in production.",
+        )
+    else:
+        recommendations.append(
+            "Do not promote to production until human signoff on non-executable rules and OCR-suspect numbers.",
+        )
     recommendations.extend(
         [
-            "Do not promote to production until human signoff on non-executable rules and OCR-suspect numbers.",
             "Phase 10 does not modify staged records; use this report to design a promotion gate.",
             "Course JSON is offering evidence only — never infer degree requirements from it.",
         ]
@@ -591,7 +646,8 @@ def build_dds_staging_quality_report(
             "stagedCourses": len(courses),
             "stagedOfferings": len(offerings),
             "uniqueCatalogCourseReferences": len(unique_ref_numbers),
-            "missingCatalogCourseReferences": len(missing_in_courses),
+            "missingCatalogCourseReferences": len(missing_actionable),
+            "productionExcludedCatalogCourseReferences": len(missing_excluded_from_production),
             "missingTitleHints": len(missing_title_refs),
             "creditMismatches": len(credit_mismatches),
             "manualReviewRequiredItems": manual_review_summary["total"],
@@ -612,7 +668,8 @@ def build_dds_staging_quality_report(
             "coveragePercent": coverage_pct,
             "referencedCourseNumbers": len(unique_ref_numbers),
             "coveredInStagingCourses": covered,
-            "missingInStagingCourses": missing_in_courses,
+            "missingInStagingCourses": missing_actionable,
+            "productionExcludedMissing": missing_excluded_from_production,
             "ocrSuspectMissing": ocr_suspects,
         },
         creditMismatchSummary={

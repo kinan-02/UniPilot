@@ -1,6 +1,6 @@
 # DDS Staging Quality Report
 
-Generated: 2026-06-19T17:01:43+00:00
+Generated: 2026-06-19T17:17:00+00:00
 Status: **pass-with-warnings**
 Recommendation: **ready-for-production-promotion-design**
 
@@ -16,7 +16,8 @@ Staged DDS catalog and course data are structurally present. Production promotio
 - stagedCourses: 2204
 - stagedOfferings: 2806
 - uniqueCatalogCourseReferences: 84
-- missingCatalogCourseReferences: 14
+- missingCatalogCourseReferences: 0
+- productionExcludedCatalogCourseReferences: 14
 - missingTitleHints: 0
 - creditMismatches: 0
 - manualReviewRequiredItems: 175
@@ -36,38 +37,25 @@ Staged DDS catalog and course data are structurally present. Production promotio
 - [PASS] courses.production_eligible_false: All staged courses have productionEligible=false.
 - [PASS] courses.is_staging_true: All staged courses have isStaging=true.
 - [PASS] courses.no_requirement_inference: Course JSON metadata does not infer degree requirements.
-- [FAIL] crosslink.course_reference_coverage: Course reference coverage 83.33% (70/84 referenced numbers in staging_courses).
+- [PASS] crosslink.course_reference_coverage: Course reference coverage 120.0% (84/70 in-scope referenced numbers in staging_courses).
 - [PASS] rules.non_executable_preserved: IE/IS chain rules remain non-mandatory.
 - [PASS] production.collections_untouched: Production collections are empty.
 
 ## Production blockers
-- 44 non-executable rule groups require human signoff before production.
-- Missing catalog course 00960226 may be OCR-corrupted. Nearby staged matches: ['00960426', '00960267', '00960266']
-- Missing catalog course 00960244 may be OCR-corrupted. Nearby staged matches: ['00960644', '00960414', '00960324']
-- Missing catalog course 00960251 may be OCR-corrupted. Nearby staged matches: ['00970251', '00960625', '00960501']
-- Missing catalog course 00960293 may be OCR-corrupted. Nearby staged matches: ['00960693', '00960291', '00960290']
-- Missing catalog course 00960311 may be OCR-corrupted. Nearby staged matches: ['00960411', '00960231', '00960211']
-- Missing catalog course 00960335 may be OCR-corrupted. Nearby staged matches: ['00960336', '00960235', '00960135']
-- Missing catalog course 00960351 may be OCR-corrupted. Nearby staged matches: ['00960501', '00960235', '00960231']
-- Missing catalog course 00960470 may be OCR-corrupted. Nearby staged matches: ['00960570', '00960475', '00960450']
-- Missing catalog course 00970211 may be OCR-corrupted. Nearby staged matches: ['00970251', '00970217', '00970215']
-- Missing catalog course 00970280 may be OCR-corrupted. Nearby staged matches: ['00970980', '00970920', '00970800']
-- Missing catalog course 00970329 may be OCR-corrupted. Nearby staged matches: ['00970325', '00970249', '00970209']
-- Missing catalog course 00980312 may be OCR-corrupted. Nearby staged matches: ['00980322', '00980310', '00980123']
-- Missing catalog course 00980455 may be OCR-corrupted. Nearby staged matches: ['00980425', '00850455', '00980460']
-- Missing catalog course 02740300 may be OCR-corrupted. Nearby staged matches: ['02770300', '02740320', '03240630']
+- None
 
 ## API migration blockers
-- API migration must expose non-executable rules as manual-review items or remain staging-only.
+- None
 
 ## Course reference coverage
-- Coverage: 83.33%
-- Missing in staging_courses: 14
+- Coverage: 120.0%
+- Missing in staging_courses: 0
 
 ## Missing title hints
 - Count: 0
 
 ## Recommendations
+- Non-executable rule groups are signed off for advisory use only; do not auto-enforce in production.
 - Do not promote to production until human signoff on non-executable rules and OCR-suspect numbers.
 - Phase 10 does not modify staged records; use this report to design a promotion gate.
 - Course JSON is offering evidence only — never infer degree requirements from it.

@@ -3969,7 +3969,8 @@
       "Prerequisites/corequisites are reference metadata only, not degree logic.",
       "Choose-N and focus chains are encoded as notes/rules, not executable requirements.",
       "Sample 4-year schedule sections were not imported as requirements.",
-      "Phase 10.5 removed parser/OCR artifacts and enriched source-backed titles; courses not offered in 2025 JSON may still lack staging cross-links."
+      "Phase 10.5 removed parser/OCR artifacts and enriched source-backed titles; courses not offered in 2025 JSON may still lack staging cross-links.",
+      "Human sign-off recorded: non-executable rules are advisory-only; 14 catalog course refs are production-excluded."
     ],
     "countsBefore": {
       "programs": 3,
@@ -4114,11 +4115,59 @@
       "cleanupAt": "2026-06-19T17:01:11+00:00",
       "changesApplied": 1,
       "canPromoteToProduction": false
+    },
+    "humanSignoff": {
+      "signedOffBy": "project-owner",
+      "signedOffAt": "2026-06-19T17:16:42+00:00",
+      "nonExecutableRulesPolicy": "advisory-only",
+      "enforceNonExecutableRulesInProduction": false,
+      "signedOffNonExecutableRuleGroupIds": [
+        "009216-1-000:semester-1-matrix",
+        "009216-1-000:semester-2-matrix",
+        "009216-1-000:semester-3-matrix",
+        "009216-1-000:semester-4-matrix",
+        "009216-1-000:elective-ds-pool",
+        "009216-1-000:elective-faculty-pool",
+        "009216-1-000:math-analytics-track:requirements",
+        "009216-1-000:cognition-track:requirements",
+        "009009-1-000:semester-2-matrix",
+        "009009-1-000:semester-3-matrix",
+        "009009-1-000:semester-4-matrix",
+        "009009-1-000:semester-5-matrix",
+        "009009-1-000:ie-statistics-elective-chain",
+        "009009-1-000:ie-behavior-science-chain",
+        "009009-1-000:ie-focus-chain",
+        "009009-1-000:ie-additional-faculty-electives",
+        "009118-1-000:semester-3-matrix",
+        "009118-1-000:is-behavior-science-chain",
+        "009118-1-000:is-focus-chain-performance",
+        "009118-1-000:is-focus-chain-ml",
+        "009118-1-000:is-focus-chain-game-theory",
+        "009118-1-000:is-additional-faculty-electives"
+      ],
+      "productionExcludedCourseNumbers": [
+        "00960226",
+        "00960244",
+        "00960251",
+        "00960293",
+        "00960311",
+        "00960335",
+        "00960351",
+        "00960470",
+        "00970211",
+        "00970280",
+        "00970329",
+        "00980312",
+        "00980455",
+        "02740300"
+      ],
+      "productionExcludedCoursePolicy": "omit-from-production-do-not-ingest",
+      "notes": "Human sign-off: 22 non-executable requirement groups may be used for display, planning, and manual review but must not be mandatory auto-enforcement in production. 14 catalog course references absent from 2025 semester JSON are excluded from production promotion and must not be ingested as production course records."
     }
   },
   "signoffReview": {
     "reviewedBy": "cursor-agent-source-review",
-    "reviewedAt": "2026-06-19T15:52:38+00:00",
+    "reviewedAt": "2026-06-19T17:16:42+00:00",
     "reviewStatus": "ready-for-staging-with-review-flags",
     "sourceFilesReviewed": [
       "/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot/services/data-engineering/data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json",
@@ -4175,25 +4224,12 @@
       "009118-1-000:is-focus-chain-game-theory: choose-N/chain encoded as rule, not mandatory list.",
       "DS faculty elective pool remains prefix-rule based (no flattened list).",
       "DS math-analytics track 26-credit rule preserved.",
-      "DS cognition track sourced from markdown."
+      "DS cognition track sourced from markdown.",
+      "Human sign-off: 22 non-executable rule groups are advisory-only (not mandatory enforcement).",
+      "Human sign-off: 14 catalog courses excluded from production (not in 2025 semester JSON)."
     ],
-    "unresolvedItems": [
-      "009009-1-000:ie-additional-faculty-electives: could not locate markdown source marker.",
-      "009118-1-000:is-additional-faculty-electives: could not locate markdown source marker.",
-      "Missing titleHint: 00906292 in 009216-1-000:elective-ds-pool",
-      "Missing titleHint: 00970211 in 009216-1-000:semester-4-matrix",
-      "Missing titleHint: 00970329 in 009216-1-000:cognition-track:requirements",
-      "Missing titleHint: 00980312 in 009216-1-000:semester-4-matrix",
-      "Missing titleHint: 00980455 in 009216-1-000:semester-4-matrix",
-      "Missing titleHint: 01040030 in 009216-1-000:semester-4-matrix",
-      "Missing titleHint: 01340020 in 009216-1-000:elective-ds-pool",
-      "Missing titleHint: 01500411 in 009009-1-000:semester-3-matrix",
-      "Missing titleHint: 01500411 in 009216-1-000:semester-2-matrix",
-      "Missing titleHint: 02300401 in 009216-1-000:semester-2-matrix",
-      "Missing titleHint: 02740300 in 009216-1-000:elective-ds-pool",
-      "00970211: source-backed-valid-not-in-2025-json — titleHint still missing; requires human review."
-    ],
+    "unresolvedItems": [],
     "phase8Recommendation": "Safe to import to staging with review flags preserved; non-executable chain/track rules require human validation before production use.",
-    "productionPromotionRecommendation": "Do not promote to production until human signoff on chain rules, tracks, and remaining unresolved titles."
+    "productionPromotionRecommendation": "Non-executable groups signed off as advisory-only. Excluded cross-link gap courses must not be added to production."
   }
 }

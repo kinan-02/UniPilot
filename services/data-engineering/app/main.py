@@ -20,6 +20,7 @@ from app.sources.sample_data import (
     SAMPLE_SOURCE_TYPE,
 )
 from app.curation.dds_catalog_blocker_cleanup import run_blocker_cleanup
+from app.curation.dds_catalog_human_signoff import run_record_human_signoff
 from app.quality.dds_staging_quality import (
     default_json_report_path,
     default_md_report_path,
@@ -406,6 +407,27 @@ def run_import_technion_courses_staging(
     return 0
 
 
+def run_record_dds_human_signoff(
+    catalog_path: str | None,
+    readiness_path: str | None,
+    signed_off_by: str,
+    dry_run: bool,
+) -> int:
+    try:
+        summary = run_record_human_signoff(
+            catalog_path=Path(catalog_path) if catalog_path else None,
+            readiness_path=Path(readiness_path) if readiness_path else None,
+            signed_off_by=signed_off_by,
+            dry_run=dry_run,
+        )
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
+
 def run_cleanup_dds_staging_blockers(
     catalog_path: str | None,
     readiness_path: str | None,
@@ -508,6 +530,7 @@ def build_parser() -> argparse.ArgumentParser:
             "import-technion-courses-staging",
             "validate-dds-staging-quality",
             "cleanup-dds-staging-blockers",
+            "record-dds-human-signoff",
         ],
         help="Task to execute",
     )
@@ -571,6 +594,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="write_staging_audit",
         action="store_true",
         help="Write report snapshot to staging_data_quality_reports (staging only)",
+    )
+    parser.add_argument(
+        "--signed-off-by",
+        dest="signed_off_by",
+        default="project-owner",
+        help="Human sign-off identity for record-dds-human-signoff",
     )
     parser.add_argument(
         "--cleanup-report-path",
@@ -667,6 +696,13 @@ def main(argv: list[str] | None = None) -> int:
                 args.catalog_path,
                 args.readiness_path,
                 args.cleanup_report_path,
+                args.dry_run,
+            )
+        if args.command == "record-dds-human-signoff":
+            return run_record_dds_human_signoff(
+                args.catalog_path,
+                args.readiness_path,
+                args.signed_off_by,
                 args.dry_run,
             )
     finally:
