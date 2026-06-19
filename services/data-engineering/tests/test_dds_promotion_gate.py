@@ -284,10 +284,17 @@ def test_dry_run_writes_no_production_collections(mongo_database, tmp_path: Path
     assert report.gate.productionSafetySummary["productionWritesPerformed"] is False
 
 
-def test_promotion_command_stub_writes_nothing(mongo_database, monkeypatch) -> None:
+def test_promotion_command_refuses_without_dangerous_flag(mongo_database, monkeypatch) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
+    monkeypatch.setattr("app.main.check_mongo_connectivity", lambda: "connected")
     before = {name: mongo_database[name].count_documents({}) for name in PRODUCTION_COLLECTION_NAMES}
-    exit_code = run_promote_dds_to_production()
+    exit_code = run_promote_dds_to_production(
+        confirm_dangerous=False,
+        dry_run=False,
+        allow_warnings=True,
+        output_json=None,
+        output_md=None,
+    )
     after = {name: mongo_database[name].count_documents({}) for name in PRODUCTION_COLLECTION_NAMES}
     assert exit_code == 2
     assert before == after

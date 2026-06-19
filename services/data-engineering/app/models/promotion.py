@@ -95,3 +95,45 @@ class PromotionReport(BaseModel):
         min_length=1,
         max_length=500,
     )
+
+
+PromotionRunStatus = Literal["planned", "completed", "failed", "rolled_back"]
+
+
+class ProductionPromotionRun(BaseModel):
+    """Audit record for a guarded staging → production promotion."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    promotionRunId: str = Field(min_length=1, max_length=100)
+    sourceName: str = Field(min_length=1, max_length=200)
+    catalogYear: int | None = None
+    catalogVersion: str | None = None
+    startedAt: str = Field(min_length=1, max_length=50)
+    finishedAt: str | None = None
+    status: PromotionRunStatus
+    gateStatus: GateStatus
+    dryRun: bool = False
+    confirmationFlagProvided: bool = False
+    triggeredBy: str = Field(default="data-engineering-cli", min_length=1, max_length=100)
+    countsPlanned: dict[str, int] = Field(default_factory=dict)
+    countsWritten: dict[str, int] = Field(default_factory=dict)
+    skippedItems: list[SkippedPromotionItem] = Field(default_factory=list)
+    policiesApplied: PromotionPolicy | None = None
+    productionCollectionsTouched: list[str] = Field(default_factory=list)
+    productionCollectionCountsBefore: dict[str, int] = Field(default_factory=dict)
+    productionCollectionCountsAfter: dict[str, int] = Field(default_factory=dict)
+    plannedProductionKeys: dict[str, list[str]] = Field(default_factory=dict)
+    rollbackNotes: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class ProductionPromotionResult(BaseModel):
+    """Outcome of promote-dds-to-production."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    promotionRun: ProductionPromotionRun
+    gate: PromotionGateResult
+    productionWritesPerformed: bool
+    reportPaths: dict[str, str] = Field(default_factory=dict)

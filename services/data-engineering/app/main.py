@@ -26,6 +26,12 @@ from app.promotion.dds_promotion_gate import (
     default_promotion_md_path,
     run_promotion_gate_plan,
 )
+from app.promotion.dds_production_promoter import (
+    default_production_promotion_json_path,
+    default_production_promotion_md_path,
+    run_dds_production_promotion,
+    run_dds_production_rollback,
+)
 from app.importers.dds_catalog_staging_importer import PRODUCTION_COLLECTION_NAMES
 from app.quality.dds_staging_quality import (
     default_json_report_path,
@@ -564,30 +570,91 @@ def run_plan_dds_production_promotion(
     return 0
 
 
-def run_promote_dds_to_production() -> int:
-    """Phase 11 stub — real production promotion belongs in Phase 12."""
+def run_promote_dds_to_production(
+    confirm_dangerous: bool,
+    dry_run: bool,
+    allow_warnings: bool,
+    output_json: str | None,
+    output_md: str | None,
+) -> int:
+    if check_mongo_connectivity() != "connected":
+        print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+        return 1
+
+    settings = get_settings()
     database = get_database()
-    production_counts_before = {
+    json_path = Path(output_json) if output_json else default_production_promotion_json_path()
+    md_path = Path(output_md) if output_md else default_production_promotion_md_path()
+
+    counts_before = {
         name: database[name].count_documents({}) for name in sorted(PRODUCTION_COLLECTION_NAMES)
     }
 
-    message = (
-        "Production promotion is not implemented in Phase 11. "
-        "Run plan-dds-production-promotion first and implement Phase 12 only after explicit approval."
+    result = run_dds_production_promotion(
+        database,
+        settings=settings,
+        confirm_dangerous=confirm_dangerous,
+        dry_run=dry_run,
+        allow_warnings=allow_warnings,
+        json_path=json_path,
+        md_path=md_path,
     )
-    print(
-        json.dumps(
-            {
-                "error": message,
-                "phase": 11,
-                "productionWritesPerformed": False,
-                "productionCollectionCounts": production_counts_before,
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
+
+    counts_after = {
+        name: database[name].count_documents({}) for name in sorted(PRODUCTION_COLLECTION_NAMES)
+    }
+
+    run = result.promotionRun
+    gate = result.gate
+    payload = {
+        "promotionRunId": run.promotionRunId,
+        "status": run.status,
+        "gateStatus": gate.gateStatus,
+        "canPromote": gate.canPromote,
+        "dryRun": dry_run,
+        "confirmationFlagProvided": confirm_dangerous,
+        "productionWritesPerformed": result.productionWritesPerformed,
+        "countsPlanned": run.countsPlanned,
+        "countsWritten": run.countsWritten,
+        "productionCollectionCountsBefore": run.productionCollectionCountsBefore,
+        "productionCollectionCountsAfter": run.productionCollectionCountsAfter,
+        "errors": run.errors,
+        "jsonReportPath": str(json_path),
+        "mdReportPath": str(md_path),
+        "productionCollectionsUnchanged": counts_before == counts_after
+        if dry_run or not result.productionWritesPerformed
+        else None,
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+    if not confirm_dangerous and not dry_run:
+        return 2
+    if run.status == "failed" or gate.gateStatus == "fail":
+        return 1
+    return 0
+
+
+def run_rollback_dds_production_promotion(
+    promotion_run_id: str | None,
+    confirm_dangerous: bool,
+) -> int:
+    if not promotion_run_id:
+        print(json.dumps({"error": "--promotion-run-id is required"}, indent=2))
+        return 1
+    if check_mongo_connectivity() != "connected":
+        print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+        return 1
+
+    database = get_database()
+    summary = run_dds_production_rollback(
+        database,
+        promotion_run_id=promotion_run_id,
+        confirm_dangerous=confirm_dangerous,
     )
-    return 2
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    if summary.get("error"):
+        return 2 if not confirm_dangerous else 1
+    return 0
 
 
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
@@ -626,6 +693,7 @@ def build_parser() -> argparse.ArgumentParser:
             "record-dds-human-signoff",
             "plan-dds-production-promotion",
             "promote-dds-to-production",
+            "rollback-dds-production-promotion",
         ],
         help="Task to execute",
     )
@@ -751,6 +819,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Treat warnings as gate failure unless resolved",
     )
+    parser.add_argument(
+        "--i-confirm-dangerous-production-write",
+        dest="confirm_dangerous",
+        action="store_true",
+        help="Required for real production promotion or rollback (Phase 12)",
+    )
+    parser.add_argument(
+        "--promotion-run-id",
+        dest="promotion_run_id",
+        default=None,
+        help="Promotion run id for rollback-dds-production-promotion",
+    )
     return parser
 
 
@@ -827,7 +907,18 @@ def main(argv: list[str] | None = None) -> int:
                 args.allow_warnings,
             )
         if args.command == "promote-dds-to-production":
-            return run_promote_dds_to_production()
+            return run_promote_dds_to_production(
+                args.confirm_dangerous,
+                args.dry_run,
+                args.allow_warnings,
+                args.output_json,
+                args.output_md,
+            )
+        if args.command == "rollback-dds-production-promotion":
+            return run_rollback_dds_production_promotion(
+                args.promotion_run_id,
+                args.confirm_dangerous,
+            )
     finally:
         close_mongo_client()
 

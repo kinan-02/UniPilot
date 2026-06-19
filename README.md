@@ -216,7 +216,15 @@ docker compose run --rm data-engineering python -m app.main plan-dds-production-
   --allow-warnings
 ```
 
-The `promote-dds-to-production` command is a Phase 11 stub that refuses and performs no writes. Real promotion belongs in Phase 12 after explicit approval.
+Phase 12 guarded production promotion:
+
+```bash
+# Refuses without dangerous flag (exit 2)
+docker compose run --rm data-engineering python -m app.main promote-dds-to-production
+docker compose run --rm data-engineering python -m app.main promote-dds-to-production --dry-run
+docker compose run --rm data-engineering python -m app.main promote-dds-to-production \
+  --i-confirm-dangerous-production-write
+```
 
 See `services/data-engineering/README.md` for service-specific details.
 

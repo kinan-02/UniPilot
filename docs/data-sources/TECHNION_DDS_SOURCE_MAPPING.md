@@ -161,6 +161,23 @@ Removes parser/OCR artifacts when evidence is strong, enriches `titleHint` from 
 
 **Gate checks:** staging structure (3 programs, 41 requirement groups, courses/offerings present), latest quality metrics (no production blockers, zero title/credit/chain/OCR issues), human signoff metadata, staging safety flags (`isStaging: true`, `productionEligible: false`), production collection counts unchanged.
 
+## Phase 12 update (guarded production promotion)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main promote-dds-to-production` | **Refuses** without dangerous confirmation flag |
+| `… --dry-run` | Re-run gate + build production docs; no writes |
+| `… --i-confirm-dangerous-production-write` | Promote staging → production after gate passes |
+| `python -m app.main rollback-dds-production-promotion --promotion-run-id <id> --i-confirm-dangerous-production-write` | Delete only docs from that promotion run |
+
+**Production collections written:** `degree_programs`, `degree_requirements`, `catalog_rules`, `courses`, `course_offerings`, plus audit `promotion_runs`.
+
+**Stable keys (idempotent upsert):** `technion-dds:program:…`, `technion-dds:requirement:…`, `technion-dds:advisory-rule:…`, `technion:course:…`, `technion:course-offering:…`.
+
+**Safety:** empty production collections required on first promotion; re-promotion allowed when all existing docs match planned keys. Foreign/conflicting production data aborts before writes. Excluded courses and advisory-only rules enforced as in Phase 11.
+
+Reports: `data/reports/technion/dds_production_promotion_report.json`, `.md`
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:

@@ -1,0 +1,1397 @@
+{
+  "promotionRun": {
+    "promotionRunId": "dds-promotion-ef774ddeea85",
+    "sourceName": "technion-dds-catalog",
+    "catalogYear": 2025,
+    "catalogVersion": "2025-2026",
+    "startedAt": "2026-06-19T17:56:04+00:00",
+    "finishedAt": "2026-06-19T17:56:04+00:00",
+    "status": "failed",
+    "gateStatus": "pass",
+    "dryRun": false,
+    "confirmationFlagProvided": false,
+    "triggeredBy": "data-engineering-cli",
+    "countsPlanned": {
+      "degreePrograms": 3,
+      "hardDegreeRequirements": 19,
+      "advisoryCatalogRules": 44,
+      "courses": 3,
+      "courseOfferings": 3,
+      "skippedItems": 24,
+      "skippedExcludedCourses": 2
+    },
+    "countsWritten": {},
+    "skippedItems": [
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:semester-1-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:semester-2-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:semester-3-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:semester-4-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:elective-ds-pool",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:elective-faculty-pool",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:math-analytics-track:requirements",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009216-1-000:cognition-track:requirements",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:semester-2-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:semester-3-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:semester-4-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:semester-5-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:ie-statistics-elective-chain",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:ie-behavior-science-chain",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:ie-focus-chain",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:ie-additional-faculty-electives",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009118-1-000:semester-3-matrix",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009118-1-000:is-behavior-science-chain",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009118-1-000:is-focus-chain-performance",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009118-1-000:is-focus-chain-ml",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009118-1-000:is-focus-chain-game-theory",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009118-1-000:is-additional-faculty-electives",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "course",
+        "identifier": "00960226",
+        "reason": "production-excluded-by-human-signoff",
+        "details": {
+          "policy": "omit-from-production-do-not-ingest"
+        }
+      },
+      {
+        "itemType": "course",
+        "identifier": "00960244",
+        "reason": "production-excluded-by-human-signoff",
+        "details": {
+          "policy": "omit-from-production-do-not-ingest"
+        }
+      }
+    ],
+    "policiesApplied": {
+      "nonExecutableRulesPolicy": "advisory-only",
+      "enforceNonExecutableRulesInProduction": false,
+      "productionExcludedCoursePolicy": "omit-from-production-do-not-ingest",
+      "productionExcludedCourseNumbers": [
+        "00960226",
+        "00960244",
+        "00960251",
+        "00960293",
+        "00960311",
+        "00960335",
+        "00960351",
+        "00960470",
+        "00970211",
+        "00970280",
+        "00970329",
+        "00980312",
+        "00980455",
+        "02740300"
+      ],
+      "signedOffBy": "test-reviewer",
+      "signedOffAt": "2026-06-19T17:56:04+00:00"
+    },
+    "productionCollectionsTouched": [],
+    "productionCollectionCountsBefore": {
+      "catalog_rules": 0,
+      "course_offerings": 0,
+      "courses": 0,
+      "degree_programs": 0,
+      "degree_requirements": 0,
+      "promotion_runs": 0
+    },
+    "productionCollectionCountsAfter": {},
+    "plannedProductionKeys": {},
+    "rollbackNotes": [
+      "Delete production docs with promotionRunId=dds-promotion-ef774ddeea85 to roll back this run.",
+      "Do not delete staging data.",
+      "Advisory catalog rules remain non-enforced in graduation progress."
+    ],
+    "errors": [
+      "Refusing production promotion without --i-confirm-dangerous-production-write."
+    ]
+  },
+  "gate": {
+    "generatedAt": "2026-06-19T17:56:04+00:00",
+    "sourceName": "technion-dds-catalog",
+    "catalogYear": 2025,
+    "catalogVersion": "2025-2026",
+    "gateStatus": "pass",
+    "canPromote": true,
+    "dryRun": false,
+    "checks": [
+      {
+        "checkId": "staging.program_count",
+        "passed": true,
+        "severity": "blocker",
+        "message": "Found 3 staged DDS programs (expected 3).",
+        "details": {}
+      },
+      {
+        "checkId": "staging.program_codes",
+        "passed": true,
+        "severity": "blocker",
+        "message": "All expected program codes present.",
+        "details": {
+          "missing": []
+        }
+      },
+      {
+        "checkId": "staging.total_credits",
+        "passed": true,
+        "severity": "blocker",
+        "message": "All programs have totalCredits=155.0.",
+        "details": {}
+      },
+      {
+        "checkId": "staging.requirement_groups",
+        "passed": true,
+        "severity": "info",
+        "message": "Found 41 staged requirement groups.",
+        "details": {}
+      },
+      {
+        "checkId": "staging.courses",
+        "passed": true,
+        "severity": "blocker",
+        "message": "Found 5 staged courses.",
+        "details": {}
+      },
+      {
+        "checkId": "staging.offerings",
+        "passed": true,
+        "severity": "blocker",
+        "message": "Found 3 staged course offerings.",
+        "details": {}
+      },
+      {
+        "checkId": "staging.safety_flags",
+        "passed": true,
+        "severity": "blocker",
+        "message": "All staging documents have isStaging=true and productionEligible=false.",
+        "details": {}
+      },
+      {
+        "checkId": "policy.human_signoff_present",
+        "passed": true,
+        "severity": "blocker",
+        "message": "humanSignoff metadata present on staged programs.",
+        "details": {}
+      },
+      {
+        "checkId": "policy.non_executable_advisory",
+        "passed": true,
+        "severity": "blocker",
+        "message": "nonExecutableRulesPolicy is advisory-only.",
+        "details": {}
+      },
+      {
+        "checkId": "policy.no_mandatory_non_executable",
+        "passed": true,
+        "severity": "blocker",
+        "message": "enforceNonExecutableRulesInProduction is false.",
+        "details": {}
+      },
+      {
+        "checkId": "policy.excluded_courses_policy",
+        "passed": true,
+        "severity": "blocker",
+        "message": "productionExcludedCoursePolicy is omit-from-production-do-not-ingest.",
+        "details": {}
+      },
+      {
+        "checkId": "policy.excluded_courses_list",
+        "passed": true,
+        "severity": "blocker",
+        "message": "Production-excluded course list matches expected 14 numbers.",
+        "details": {
+          "expected": [
+            "00960226",
+            "00960244",
+            "00960251",
+            "00960293",
+            "00960311",
+            "00960335",
+            "00960351",
+            "00960470",
+            "00970211",
+            "00970280",
+            "00970329",
+            "00980312",
+            "00980455",
+            "02740300"
+          ],
+          "actual": [
+            "00960226",
+            "00960244",
+            "00960251",
+            "00960293",
+            "00960311",
+            "00960335",
+            "00960351",
+            "00960470",
+            "00970211",
+            "00970280",
+            "00970329",
+            "00980312",
+            "00980455",
+            "02740300"
+          ]
+        }
+      },
+      {
+        "checkId": "quality.no_production_blockers",
+        "passed": true,
+        "severity": "blocker",
+        "message": "No production blockers in live quality review.",
+        "details": {}
+      },
+      {
+        "checkId": "quality.missing_title_hints",
+        "passed": true,
+        "severity": "blocker",
+        "message": "missingTitleHints is 0.",
+        "details": {}
+      },
+      {
+        "checkId": "quality.credit_mismatches",
+        "passed": true,
+        "severity": "blocker",
+        "message": "creditMismatches is 0.",
+        "details": {}
+      },
+      {
+        "checkId": "quality.chain_rules_preserved",
+        "passed": true,
+        "severity": "blocker",
+        "message": "No chain/focus rule violations.",
+        "details": {}
+      },
+      {
+        "checkId": "quality.ocr_suspects",
+        "passed": true,
+        "severity": "blocker",
+        "message": "No known OCR suspect gaps.",
+        "details": {}
+      },
+      {
+        "checkId": "production.collections_read_only",
+        "passed": true,
+        "severity": "info",
+        "message": "Dry-run performed without production writes.",
+        "details": {}
+      },
+      {
+        "checkId": "plan.no_excluded_courses_in_writes",
+        "passed": true,
+        "severity": "blocker",
+        "message": "Excluded courses are not in planned course writes.",
+        "details": {}
+      },
+      {
+        "checkId": "plan.advisory_rules_not_mandatory",
+        "passed": true,
+        "severity": "blocker",
+        "message": "All advisory catalog rules have enforceInGraduationProgress=false.",
+        "details": {}
+      }
+    ],
+    "policiesApplied": {
+      "nonExecutableRulesPolicy": "advisory-only",
+      "enforceNonExecutableRulesInProduction": false,
+      "productionExcludedCoursePolicy": "omit-from-production-do-not-ingest",
+      "productionExcludedCourseNumbers": [
+        "00960226",
+        "00960244",
+        "00960251",
+        "00960293",
+        "00960311",
+        "00960335",
+        "00960351",
+        "00960470",
+        "00970211",
+        "00970280",
+        "00970329",
+        "00980312",
+        "00980455",
+        "02740300"
+      ],
+      "signedOffBy": "test-reviewer",
+      "signedOffAt": "2026-06-19T17:56:04+00:00"
+    },
+    "plannedWrites": {
+      "degreePrograms": [
+        {
+          "itemType": "degree_program",
+          "stagingKey": "technion-dds:catalog:2025-2026:program:009216-1-000",
+          "productionCollection": "degree_programs",
+          "action": "upsert",
+          "identifier": "009216-1-000",
+          "enforceInGraduationProgress": true,
+          "notes": "Promote program shell with catalog metadata."
+        },
+        {
+          "itemType": "degree_program",
+          "stagingKey": "technion-dds:catalog:2025-2026:program:009009-1-000",
+          "productionCollection": "degree_programs",
+          "action": "upsert",
+          "identifier": "009009-1-000",
+          "enforceInGraduationProgress": true,
+          "notes": "Promote program shell with catalog metadata."
+        },
+        {
+          "itemType": "degree_program",
+          "stagingKey": "technion-dds:catalog:2025-2026:program:009118-1-000",
+          "productionCollection": "degree_programs",
+          "action": "upsert",
+          "identifier": "009118-1-000",
+          "enforceInGraduationProgress": true,
+          "notes": "Promote program shell with catalog metadata."
+        }
+      ],
+      "hardDegreeRequirements": [
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:core-mandatory",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:core-mandatory",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:math-electives",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:math-electives",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:faculty-electives",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:faculty-electives",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:core-mandatory",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:core-mandatory",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-electives",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:ie-electives",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:statistics-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:statistics-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:core-mandatory",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009118-1-000:core-mandatory",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:is-electives",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009118-1-000:is-electives",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:systems-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009118-1-000:systems-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:ds-project-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:ds-project-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:seminar-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:seminar-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:project-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:project-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:seminar-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:seminar-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:project-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009118-1-000:project-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:seminar-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009118-1-000:seminar-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:english-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:english-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:english-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:english-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:english-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009118-1-000:english-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:ethics-bucket",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:ethics-bucket",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        }
+      ],
+      "advisoryCatalogRules": [
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-1-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-1-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-2-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-2-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-3-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-4-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-4-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:elective-ds-pool",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:elective-ds-pool",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:elective-faculty-pool",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:elective-faculty-pool",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:math-analytics-track:requirements",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:math-analytics-track:requirements",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:cognition-track:requirements",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:cognition-track:requirements",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-2-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-2-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-3-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-4-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-4-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-5-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-5-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-statistics-elective-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-statistics-elective-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-behavior-science-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-behavior-science-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-focus-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-additional-faculty-electives",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-additional-faculty-electives",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-3-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:is-behavior-science-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-behavior-science-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:is-focus-chain-performance",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-focus-chain-performance",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:is-focus-chain-ml",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-focus-chain-ml",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:is-focus-chain-game-theory",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-focus-chain-game-theory",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:is-additional-faculty-electives",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-additional-faculty-electives",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:semester-1-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-1-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:semester-2-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-2-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:semester-3-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:semester-4-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-4-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:elective-ds-pool",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:elective-ds-pool",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:elective-faculty-pool",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:elective-faculty-pool",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:math-analytics-track:requirements",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:math-analytics-track:requirements",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009216-1-000:cognition-track:requirements",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:cognition-track:requirements",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:semester-2-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-2-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:semester-3-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:semester-4-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-4-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:semester-5-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-5-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:ie-statistics-elective-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-statistics-elective-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:ie-behavior-science-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-behavior-science-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:ie-focus-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-focus-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009009-1-000:ie-additional-faculty-electives",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-additional-faculty-electives",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009118-1-000:semester-3-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009118-1-000:is-behavior-science-chain",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-behavior-science-chain",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009118-1-000:is-focus-chain-performance",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-focus-chain-performance",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009118-1-000:is-focus-chain-ml",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-focus-chain-ml",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009118-1-000:is-focus-chain-game-theory",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-focus-chain-game-theory",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        },
+        {
+          "itemType": "catalog_rule",
+          "stagingKey": "technion-dds:catalog:2025-2026:rule:009118-1-000:is-additional-faculty-electives",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:is-additional-faculty-electives",
+          "enforceInGraduationProgress": false,
+          "notes": "Staged catalog rule mirrored as advisory-only metadata."
+        }
+      ],
+      "courses": [
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00940345",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00940345",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:01040031",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "01040031",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:02340117",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "02340117",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        }
+      ],
+      "courseOfferings": [
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00940345:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00940345:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:01040031:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:01040031:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:02340117:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:02340117:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        }
+      ],
+      "skippedItems": [
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-1-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-2-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-3-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-4-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:elective-ds-pool",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:elective-faculty-pool",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:math-analytics-track:requirements",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:cognition-track:requirements",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-2-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-3-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-4-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-5-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:ie-statistics-elective-chain",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:ie-behavior-science-chain",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:ie-focus-chain",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:ie-additional-faculty-electives",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-3-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:is-behavior-science-chain",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:is-focus-chain-performance",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:is-focus-chain-ml",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:is-focus-chain-game-theory",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:is-additional-faculty-electives",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "course",
+          "identifier": "00960226",
+          "reason": "production-excluded-by-human-signoff",
+          "details": {
+            "policy": "omit-from-production-do-not-ingest"
+          }
+        },
+        {
+          "itemType": "course",
+          "identifier": "00960244",
+          "reason": "production-excluded-by-human-signoff",
+          "details": {
+            "policy": "omit-from-production-do-not-ingest"
+          }
+        }
+      ],
+      "counts": {
+        "degreePrograms": 3,
+        "hardDegreeRequirements": 19,
+        "advisoryCatalogRules": 44,
+        "courses": 3,
+        "courseOfferings": 3,
+        "skippedItems": 24,
+        "skippedExcludedCourses": 2
+      }
+    },
+    "advisoryRules": [
+      "009009-1-000:ie-additional-faculty-electives",
+      "009009-1-000:ie-behavior-science-chain",
+      "009009-1-000:ie-focus-chain",
+      "009009-1-000:ie-statistics-elective-chain",
+      "009009-1-000:semester-2-matrix",
+      "009009-1-000:semester-3-matrix",
+      "009009-1-000:semester-4-matrix",
+      "009009-1-000:semester-5-matrix",
+      "009118-1-000:is-additional-faculty-electives",
+      "009118-1-000:is-behavior-science-chain",
+      "009118-1-000:is-focus-chain-game-theory",
+      "009118-1-000:is-focus-chain-ml",
+      "009118-1-000:is-focus-chain-performance",
+      "009118-1-000:semester-3-matrix",
+      "009216-1-000:cognition-track:requirements",
+      "009216-1-000:elective-ds-pool",
+      "009216-1-000:elective-faculty-pool",
+      "009216-1-000:math-analytics-track:requirements",
+      "009216-1-000:semester-1-matrix",
+      "009216-1-000:semester-2-matrix",
+      "009216-1-000:semester-3-matrix",
+      "009216-1-000:semester-4-matrix"
+    ],
+    "blockers": [],
+    "warnings": [],
+    "productionSafetySummary": {
+      "dryRun": false,
+      "productionWritesPerformed": false,
+      "productionCollectionCountsBefore": {
+        "catalog": 0,
+        "catalog_rules": 0,
+        "completed_courses": 0,
+        "course_offerings": 0,
+        "courses": 0,
+        "degree_programs": 0,
+        "degree_requirements": 0,
+        "degrees": 0,
+        "promotion_runs": 0,
+        "semester_plans": 0
+      },
+      "productionCollectionCountsAfter": {
+        "catalog": 0,
+        "catalog_rules": 0,
+        "completed_courses": 0,
+        "course_offerings": 0,
+        "courses": 0,
+        "degree_programs": 0,
+        "degree_requirements": 0,
+        "degrees": 0,
+        "promotion_runs": 0,
+        "semester_plans": 0
+      },
+      "productionCollectionsUnchanged": true
+    },
+    "rollbackNotes": [
+      "Phase 11 dry-run only — no production documents were written.",
+      "Phase 12 should support promotion run id + snapshot for rollback.",
+      "Do not delete staging data during promotion.",
+      "Advisory catalog rules must remain non-enforced in graduation progress."
+    ],
+    "recommendedNextAction": "Gate passed. Phase 12 may implement promote-dds-to-production after explicit approval."
+  },
+  "productionWritesPerformed": false,
+  "reportPaths": {}
+}

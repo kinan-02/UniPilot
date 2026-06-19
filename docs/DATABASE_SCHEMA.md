@@ -347,6 +347,25 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 - Referential checks at service layer for key foreign references.
 - Security checks (auth + ownership) before data mutation.
 
+## 6.5) DDS production collections (Phase 12 — data-engineering promoted)
+
+Written only via `promote-dds-to-production --i-confirm-dangerous-production-write` after Phase 11 gate passes.
+
+| Collection | Purpose | Stable key |
+|---|---|---|
+| `degree_programs` | DDS program shells (3 programs) | `productionKey` e.g. `technion-dds:program:{code}:{catalogVersion}` |
+| `degree_requirements` | Executable `credit_bucket` groups only (19) | `technion-dds:requirement:{groupId}:{catalogVersion}` |
+| `catalog_rules` | Advisory/non-executable rules (44) | `technion-dds:advisory-rule:…` |
+| `courses` | Technion course metadata from staging JSON | `technion:course:{courseNumber}` |
+| `course_offerings` | Semester offerings for promoted courses | `technion:course-offering:{courseNumber}:{year}:{semesterCode}` |
+| `promotion_runs` | Audit/rollback manifest | `promotionRunId` |
+
+Common promoted fields: `sourceName`, `catalogVersion`, `promotedAt`, `promotionRunId`, `status: published`. Advisory rules always have `enforceInGraduationProgress: false`. Staging flags (`isStaging`, `productionEligible`) are **not** copied.
+
+Rollback: `rollback-dds-production-promotion` deletes production docs where `promotionRunId` matches; staging collections are untouched.
+
+---
+
 ## 7) MVP Simplicity Constraints
 
 - Do not implement full requirement DSL engine in MVP.

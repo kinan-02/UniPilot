@@ -89,7 +89,8 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 10. Staging data quality review + cross-link validation — **implemented (Phase 10)**  
 10.5. Staging blocker cleanup + quality recheck — **implemented (Phase 10.5)**  
 11. Staging → production promotion gate (dry-run plan only) — **implemented (Phase 11)**  
-12. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+12. Guarded DDS staging → production promotion — **implemented (Phase 12)**  
+13. Python Course Catalog API migration (read production collections)  
 
 ### Python Phase 1 status (implemented)
 
@@ -303,6 +304,20 @@ Phase 10.5 applies **source-backed** curated JSON fixes only (no uncertain OCR a
 | Node / Python API changes | **None** |
 
 Phase 11 answers: *If we later run production promotion, exactly what would be promoted, skipped, and which safety checks must pass?* Default behavior is **dry-run/read-only** with respect to production collections (`degree_programs`, `degree_requirements`, `catalog_rules`, `courses`, `course_offerings`). Gate statuses: `pass`, `pass-with-warnings`, or `fail`. `canPromote: true` means Phase 12 may implement real promotion after explicit approval and a dangerous confirmation flag — **not** in Phase 11.
+
+### Python Phase 12 status (implemented — guarded production promotion)
+
+| Item | Status |
+|---|---|
+| CLI: `promote-dds-to-production` (`--i-confirm-dangerous-production-write`, `--dry-run`) | Done |
+| CLI: `rollback-dds-production-promotion` (`--promotion-run-id`, dangerous flag) | Done |
+| Module `app/promotion/dds_production_promoter.py` | Done |
+| Audit collection: `promotion_runs` | Done |
+| Reports: `data/reports/technion/dds_production_promotion_report.json` / `.md` | Done |
+| Idempotent upsert by stable `productionKey` | Done |
+| Node / Python API changes | **None** |
+
+Phase 12 writes production data **only** when `--i-confirm-dangerous-production-write` is passed, the Phase 11 gate passes, and production collections are empty or idempotently compatible. `--dry-run` re-runs the gate and builds documents without writing. Rollback deletes only documents matching a given `promotionRunId`.
 
 ### Target Python stack
 

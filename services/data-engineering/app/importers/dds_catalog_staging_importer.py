@@ -57,6 +57,17 @@ PRODUCTION_COLLECTION_NAMES = frozenset(
         "course_offerings",
         "completed_courses",
         "semester_plans",
+        "promotion_runs",
+    }
+)
+
+PROMOTION_WRITE_COLLECTIONS = frozenset(
+    {
+        "degree_programs",
+        "degree_requirements",
+        "catalog_rules",
+        "courses",
+        "course_offerings",
     }
 )
 

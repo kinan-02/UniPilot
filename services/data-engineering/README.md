@@ -256,6 +256,31 @@ python -m app.main promote-dds-to-production   # exits with refusal message; no 
 
 Reports: `data/reports/technion/dds_promotion_plan.json`, `dds_promotion_plan.md`
 
+## Actual production promotion (Phase 12 — guarded)
+
+```bash
+# Refuses (exit 2) — no writes
+python -m app.main promote-dds-to-production
+
+# Dry-run through promote command (no writes)
+python -m app.main promote-dds-to-production --dry-run
+
+# Real promotion — requires dangerous confirmation flag
+python -m app.main promote-dds-to-production --i-confirm-dangerous-production-write
+```
+
+Rollback (deletes only documents with matching `promotionRunId`):
+
+```bash
+python -m app.main rollback-dds-production-promotion \
+  --promotion-run-id dds-promotion-xxxxxxxxxxxx \
+  --i-confirm-dangerous-production-write
+```
+
+Reports: `data/reports/technion/dds_production_promotion_report.json`, `.md`
+
+**Catalog API migration is still a later phase** — production data is written here; Python catalog APIs read it in a future phase.
+
 ## DDS catalog PDF extraction (Phase 6)
 
 Local extraction commands (require the gitignored raw PDF on disk):
