@@ -1,13 +1,18 @@
-# UniPilot AI — Phase 1 Dockerized Backend Skeleton
+# UniPilot AI — Phase 2 Auth Backend Foundation
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements **Phase 1 skeleton infrastructure only**:
+This repository currently implements backend foundation plus **Phase 2 authentication backend**:
 
 - Dockerized backend services
 - Health endpoint in the API
-- Basic API health test
+- Register/login endpoints
+- bcrypt password hashing
+- JWT access tokens
+- Protected auth route middleware
+- Input validation and auth rate limiting
+- Unit, integration, and auth security tests
 
-Authentication, authorization, and business features are intentionally not implemented yet.
+Student profiles and business recommendation logic are intentionally not implemented yet.
 
 ## Services
 
@@ -52,7 +57,7 @@ docker compose down -v
 
 ## Run Tests
 
-Basic API health test:
+API tests (health + auth unit/integration/security):
 
 ```bash
 cd services/api
@@ -60,8 +65,49 @@ npm install
 npm test
 ```
 
+Run only auth-focused suites:
+
+```bash
+cd services/api
+npm run test:unit
+npm run test:integration
+npm run test:security
+```
+
+## Auth API (Phase 2)
+
+### Register
+
+- `POST /auth/register`
+- Request body:
+
+```json
+{
+  "email": "user@example.com",
+  "password": "StrongPass123!"
+}
+```
+
+### Login
+
+- `POST /auth/login`
+- Request body:
+
+```json
+{
+  "email": "user@example.com",
+  "password": "StrongPass123!"
+}
+```
+
+### Get Current User (Protected)
+
+- `GET /auth/me`
+- Header: `Authorization: Bearer <accessToken>`
+
 ## Notes
 
 - Only the API service exposes a host port (`3000` by default).
 - MongoDB data is persisted in the `mongo_data` named volume.
-- Worker and AI service are skeleton stubs prepared for async queue flow in later phases.
+- Worker and AI services remain internal skeletons prepared for async queue flow in later phases.
+- Passwords are stored as bcrypt hashes; plaintext passwords are never stored.

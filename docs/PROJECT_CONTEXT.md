@@ -41,16 +41,16 @@ Mandatory constraints:
 
 ## 3) Current Architecture (As Implemented)
 
-Current stage: **backend foundation skeleton implemented** (in roadmap terms: Phase 0 complete; auth phase not started).
+Current stage: **auth backend foundation implemented** (in roadmap terms: Phase 0 complete + core Phase 1 auth endpoints/middleware implemented).
 
 Architecture pattern:
-- `api` receives client requests and exposes `/health`.
+- `api` receives client requests and exposes `/health`, `/auth/register`, `/auth/login`, and protected `/auth/me`.
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
 - Internal Docker network for inter-service communication by service name.
 
-Current behavior is intentionally minimal: no authentication/business logic yet.
+Current behavior intentionally excludes student profile/business recommendation logic, but includes authentication foundation (bcrypt + JWT + protected middleware).
 
 ## 4) Tech Stack
 
@@ -85,8 +85,17 @@ services/
     src/
       app.js
       server.js
+      db/
+      middleware/
+      models/
+      routes/
+      security/
+      validation/
     test/
       health.test.js
+      unit/
+      integration/
+      security/
     Dockerfile
     package.json
   worker/
@@ -121,7 +130,10 @@ Target strategy (required by assignment):
 Coverage target: **>= 80%**.
 
 Current implemented tests:
-- Basic API health unit test in `services/api/test/health.test.js`.
+- API health test.
+- Auth unit tests (password hashing, JWT utilities, auth payload validation).
+- Auth integration tests (register/login behavior against MongoDB in-memory instance).
+- Auth security tests (protected route JWT checks + auth rate limiting behavior).
 
 Near-term testing priorities:
 - Add integration tests for container/dependency wiring.
@@ -135,12 +147,15 @@ Current enforced foundation:
 - Non-root runtime users in service containers.
 - `.env` ignored by git.
 
-Required but not yet implemented (next phases):
-- JWT auth middleware and protected endpoints.
-- bcrypt password hashing in auth flow.
-- Request schema validation on all inputs.
-- Rate limiting on auth and AI endpoints.
+Required and currently implemented:
+- JWT auth middleware and protected auth route.
+- bcrypt password hashing in auth flow (no plaintext storage).
+- Schema-based validation on auth inputs.
+- Auth endpoint rate limiting.
+
+Still pending for next phases:
 - Ownership checks for student resources.
+- AI endpoint rate limiting.
 
 ## 9) Development Roadmap
 
@@ -148,7 +163,7 @@ Canonical roadmap: `docs/planning/IMPLEMENTATION_PHASES.md` and `docs/planning/F
 
 Practical sequence:
 1. Foundation (done): Docker skeleton + health + internal networking.
-2. Auth foundation: user model, register/login, JWT, bcrypt, validation, auth rate limiting.
+2. Auth foundation (in progress): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
 3. Student domain: protected student resources + ownership.
 4. Async AI pipeline: enqueue, worker processing, status/result flow.
 5. AI decision features.
@@ -160,7 +175,10 @@ Practical sequence:
 - Healthchecks and startup ordering for core dependencies.
 - MongoDB named volume persistence (`mongo_data`).
 - Only API service host exposure (internal-only for other services).
-- API `/health` endpoint and Jest/Supertest health test.
+- API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
+- bcrypt password hashing, JWT token issuance, and protected-route middleware.
+- Auth validation and auth rate limiting middleware.
+- Auth test suites (unit + integration + security) in addition to health test.
 - Service Dockerfiles with deterministic install (`npm ci`) and non-root users.
 - Core project workflow/rules/prompts/playbooks/ADRs documentation scaffold.
 

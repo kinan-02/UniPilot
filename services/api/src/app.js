@@ -1,4 +1,5 @@
 const express = require("express");
+const { createAuthRouter } = require("./routes/authRoutes");
 
 function createApp() {
   const app = express();
@@ -15,6 +16,26 @@ function createApp() {
         redis: process.env.REDIS_URL ? "configured" : "missing",
         ai: process.env.AI_SERVICE_URL ? "configured" : "missing"
       }
+    });
+  });
+
+  app.use("/auth", createAuthRouter());
+
+  app.use((_request, response) => {
+    response.status(404).json({
+      success: false,
+      data: null,
+      error: "Route not found"
+    });
+  });
+
+  app.use((error, _request, response, _next) => {
+    console.error("[api] unhandled error", error);
+
+    response.status(500).json({
+      success: false,
+      data: null,
+      error: "Internal server error"
     });
   });
 
