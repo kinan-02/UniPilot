@@ -43,16 +43,16 @@ Mandatory constraints:
 
 ## 3) Current Architecture (As Implemented)
 
-Current stage: **auth + student profile + catalog + completed courses + graduation progress + deterministic semester planner backend implemented** (Phase 7 semester planner complete).
+Current stage: **auth + student profile + catalog + completed courses + graduation progress + deterministic semester planner + deterministic academic risk analyzer backend implemented** (Phase 8 academic risk analyzer complete).
 
 Architecture pattern:
-- `api` receives client requests and exposes `/health`, auth routes, protected `/student-profile` CRUD, protected `/completed-courses` CRUD, protected `/graduation-progress`, protected `/semester-plans` generate/history routes, and read-only catalog routes (`/courses`, `/degrees`).
+- `api` receives client requests and exposes `/health`, auth routes, protected `/student-profile` CRUD, protected `/completed-courses` CRUD, protected `/graduation-progress`, protected `/semester-plans` generate/history routes, protected `/academic-risks` analyze/history routes, and read-only catalog routes (`/courses`, `/degrees`).
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
 - Internal Docker network for inter-service communication by service name.
 
-Current behavior intentionally excludes AI recommendation, simulation, and RAG logic, but includes authentication, student profile CRUD, completed courses CRUD, deterministic graduation progress, deterministic semester planning, and read-only Technion catalog APIs backed by a curated seed dataset.
+Current behavior intentionally excludes AI recommendation, simulation, and RAG logic, but includes authentication, student profile CRUD, completed courses CRUD, deterministic graduation progress, deterministic semester planning, deterministic academic risk analysis, and read-only Technion catalog APIs backed by a curated seed dataset.
 
 ## 3.1) Technion Academic Data Strategy
 
@@ -77,6 +77,7 @@ UniPilot targets **Technion** as the initial institution (`institutionId: "techn
 - **Phase 5 (completed courses):** implemented — user-owned transcript records in `completed_courses` with manual CRUD, catalog `courseId` validation, duplicate attempt handling, `creditsEarned` in 0.5 increments (0–36), and edit/delete restricted to `source=manual`.
 - **Phase 6 (graduation progress):** implemented — deterministic `GET /graduation-progress` using student profile, completed courses, degree requirements, and catalog facts (no LLM).
 - **Phase 7 (semester planner):** implemented — deterministic `POST /semester-plans/generate` plus planning history (`GET /semester-plans`, `GET /semester-plans/:id`) using profile, completed courses, catalog, degree requirements, and graduation progress (no LLM).
+- **Phase 8 (academic risk analyzer):** implemented — deterministic `POST /academic-risks/analyze` plus analysis history (`GET /academic-risks`, `GET /academic-risks/:id`) using profile, completed courses, catalog, degree requirements, graduation progress, and semester plans (no LLM).
 - **Later phase:** full offline pipeline (PDF/HTML extraction, normalization, validation, review, RAG generation, automated refresh).
 
 Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement documents, policies) flow through the pipeline defined in the ingestion architecture doc; only validated artifacts are imported into MongoDB.
@@ -183,6 +184,9 @@ Current implemented tests:
 - Semester planner unit tests (mandatory priority, prerequisites, failed grades, partial plans).
 - Semester plans integration tests (generate/list/get, profile/degree edge cases).
 - Semester plans security tests (JWT required, cross-user isolation, userId rejection).
+- Academic risk analyzer unit tests (overload, prerequisites, completed/failed courses, mandatory progress).
+- Academic risks integration tests (plan/ad-hoc analyze, history, edge cases).
+- Academic risks security tests (JWT required, cross-user isolation, userId rejection).
 
 Near-term testing priorities:
 - Add integration tests for container/dependency wiring.
@@ -216,6 +220,7 @@ Required and currently implemented:
 - Graduation progress endpoint (`GET /graduation-progress`) with deterministic requirement evaluation.
 - Semester plans model (`semester_plans`) with user ownership indexes.
 - Deterministic semester planner (`POST /semester-plans/generate`) and planning history (`GET /semester-plans`, `GET /semester-plans/:id`).
+- Deterministic academic risk analyzer (`POST /academic-risks/analyze`) and analysis history (`GET /academic-risks`, `GET /academic-risks/:id`).
 
 Still pending for next phases:
 - AI endpoint rate limiting.
@@ -247,6 +252,8 @@ Practical sequence:
 - Completed courses endpoints (`POST/GET/PUT/DELETE /completed-courses`) with JWT protection, ownership checks, catalog FK validation, and manual-only mutations.
 - Graduation progress endpoint (`GET /graduation-progress`) with JWT protection and deterministic requirement evaluation.
 - Semester plans endpoints (`POST /semester-plans/generate`, `GET /semester-plans`, `GET /semester-plans/:id`) with JWT protection, ownership checks, and deterministic rule-based explanations.
+- Academic risks model (`academic_risks`) with user ownership indexes and embedded rule-based findings.
+- Academic risks endpoints (`POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id`) with JWT protection, ownership checks, and deterministic analysis (no LLM).
 - Catalog read endpoints with JWT protection (shared academic data, not user-owned).
 - bcrypt password hashing, JWT token issuance, and protected-route middleware.
 - Auth validation and auth rate limiting middleware.

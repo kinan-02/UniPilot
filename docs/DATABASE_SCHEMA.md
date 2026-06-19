@@ -291,10 +291,32 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 - immutable results linked to scenarios.
 - indexes: `{ scenarioId: 1, generatedAt: -1 }`, `{ userId: 1, generatedAt: -1 }`.
 
-## 3.12 academic_risks (Later)
+## 3.12 academic_risks (Phase 8, user-owned analysis reports)
 
-- user-owned risk signal records.
-- indexes: `{ userId: 1, status: 1, severity: 1 }`, `{ userId: 1, createdAt: -1 }`.
+- **Purpose:** persisted deterministic academic risk analyses for semester plans or ad-hoc proposals
+- **Fields:**
+  - `_id`
+  - `userId` (ObjectId -> users._id)
+  - `planId` (ObjectId -> semester_plans._id, optional for ad-hoc analysis)
+  - `semesterCode`
+  - `analyzerType` (`deterministic`)
+  - `analysisSource` (`semester_plan` | `adhoc_courses`)
+  - `status` (`open|mitigated|accepted`)
+  - `summary` (object)
+    - `totalRisks`, `highestSeverity`, `counts: { low, medium, high }`
+  - `risks` (embedded array)
+    - `riskType`, `severity`, `title`, `explanation`, `evidence`, `suggestedFixes`, `source`, `relatedCourseIds`
+  - `contextSnapshot` (object; degree/plan workload snapshot)
+  - `createdAt`, `updatedAt`
+- **Validation rules:**
+  - `userId`, `semesterCode`, `analyzerType`, `status`, `summary`, `risks` required
+  - each risk requires `riskType`, `severity`, `title`, `explanation`, `source`
+- **Ownership rules:**
+  - strict owner access by `userId`
+- **Indexes:**
+  - `{ userId: 1, createdAt: -1 }`
+  - `{ userId: 1, status: 1, "summary.highestSeverity": 1 }`
+  - `{ userId: 1, planId: 1, createdAt: -1 }`
 
 ## 3.13 career_goals (Later)
 

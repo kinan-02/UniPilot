@@ -53,7 +53,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 | AIRecommendation | Read-only to user | Later |
 | SimulationScenario | User-owned CRUD | Later |
 | SimulationResult | User-owned read | Later |
-| AcademicRisk | User-owned read/ack | Later |
+| AcademicRisk | User-owned analyze + history | Phase 8 |
 | CareerGoal | User-owned CRUD | Later (optional MVP extension) |
 
 ## 4) Endpoints
@@ -674,7 +674,93 @@ Calculate graduation progress for the authenticated user.
 
 ---
 
-## 4.8 AI Advisor (Later)
+## 4.8 Academic Risks (Phase 8 — deterministic analyze + history)
+
+### Implemented endpoints
+- `POST /academic-risks/analyze` (protected) — analyze a persisted semester plan or ad-hoc proposed courses and persist results
+- `GET /academic-risks` (protected) — list own analysis history (`?page=1&limit=50`)
+- `GET /academic-risks/:id` (protected) — get one owned analysis by id
+
+### POST /academic-risks/analyze
+
+**Analyze persisted plan (strict):**
+```json
+{
+  "planId": "665f2b0f2a3f7b2a1a9a7fff"
+}
+```
+
+**Analyze ad-hoc proposed courses (strict):**
+```json
+{
+  "semesterCode": "2025-2",
+  "courseIds": ["665f2b0f2a3f7b2a1a9a7c01", "665f2b0f2a3f7b2a1a9a7c07"],
+  "maxCredits": 12,
+  "minCredits": 9
+}
+```
+
+- Provide either `planId` **or** (`semesterCode` + `courseIds`).
+- `userId` and other unknown fields rejected.
+- Analyzer is deterministic and rule-based (no LLM).
+
+**Response `201`:**
+```json
+{
+  "success": true,
+  "data": {
+    "academicRiskAnalysis": {
+      "id": "...",
+      "planId": "...",
+      "semesterCode": "2025-2",
+      "analyzerType": "deterministic",
+      "analysisSource": "semester_plan",
+      "status": "open",
+      "summary": {
+        "totalRisks": 2,
+        "highestSeverity": "high",
+        "counts": { "low": 0, "medium": 1, "high": 1 }
+      },
+      "risks": [
+        {
+          "riskType": "unmet_prerequisites",
+          "severity": "high",
+          "title": "Unmet prerequisites",
+          "explanation": "...",
+          "evidence": {},
+          "suggestedFixes": ["..."],
+          "source": "rule",
+          "relatedCourseIds": ["..."]
+        }
+      ],
+      "contextSnapshot": {}
+    }
+  },
+  "error": null
+}
+```
+
+### Detected risk types (rule-based)
+- `empty_plan`, `partial_plan`
+- `credit_overload`, `too_few_credits`
+- `unmet_prerequisites`, `course_already_completed`, `failed_course_retake`
+- `no_mandatory_progress`, `insufficient_graduation_progress`
+- `too_many_advanced_courses` (only when course `level`/tags metadata supports it)
+- `unknown_catalog_course`, `duplicate_planned_course`
+
+### Rules
+- Plans/analyses are user-owned; `userId` is set server-side from JWT (`token.sub`).
+- Cross-user access returns `404` on `GET /academic-risks/:id` and foreign `planId` analysis.
+- Uses student profile, completed courses, catalog, degree requirements, graduation progress, and semester plan data only.
+- Does not invent academic rules beyond stored catalog/requirement facts.
+
+### Errors
+- `404` — student profile not found, semester plan not found, or analysis not found.
+- `400` — profile has no `degreeId`, invalid payload, or referenced degree missing from catalog.
+
+---
+
+## 4.9 AI Advisor (Later)
 
 ### Not in MVP
 - `POST /ai/recommendations`
@@ -688,7 +774,7 @@ Calculate graduation progress for the authenticated user.
 
 ---
 
-## 4.9 Simulation (Later)
+## 4.10 Simulation (Later)
 
 ### Not in MVP
 - `POST /simulations/scenarios`

@@ -1,7 +1,7 @@
-# UniPilot AI — Phase 7 Deterministic Semester Planner Backend
+# UniPilot AI — Phase 8 Academic Risk Analyzer Backend
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, **graduation progress**, **deterministic semester planning**, and **read-only Technion-style course catalog / degree requirements**:
+This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, **graduation progress**, **deterministic semester planning**, **deterministic academic risk analysis**, and **read-only Technion-style course catalog / degree requirements**:
 
 - Dockerized backend services
 - Health endpoint in the API
@@ -14,6 +14,7 @@ This repository currently implements backend foundation plus **authentication**,
 - Protected completed courses CRUD (`/completed-courses`)
 - Deterministic graduation progress (`GET /graduation-progress`)
 - Deterministic semester planner (`POST /semester-plans/generate`) and planning history
+- Deterministic academic risk analyzer (`POST /academic-risks/analyze`) and analysis history
 - Curated Technion CS/SE catalog seed data (2025)
 - Read-only catalog endpoints (`/courses`, `/degrees`)
 - Catalog seed command for MongoDB
@@ -84,7 +85,7 @@ docker compose down -v
 
 ## Run Tests
 
-API tests (health + auth + student profile + completed courses + graduation progress + semester plans + catalog unit/integration/security):
+API tests (health + auth + student profile + completed courses + graduation progress + semester plans + academic risks + catalog unit/integration/security):
 
 ```bash
 cd services/api
@@ -238,6 +239,41 @@ Example generate body:
 **Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/semester-plans/generate`.
 
 **Errors:** `404` if profile missing; `400` if `degreeId` not selected; `404` if another user's plan id is requested.
+
+## Academic Risks API (Protected)
+
+Deterministic academic risk analysis for a persisted semester plan or ad-hoc proposed courses. Requires a student profile with a selected `degreeId`.
+
+- `POST /academic-risks/analyze` — analyze and persist rule-based risks
+- `GET /academic-risks` — list own analysis history (`?page=1&limit=50`)
+- `GET /academic-risks/:id` — get one owned analysis
+
+Example analyze persisted plan:
+
+```json
+{
+  "planId": "665f2b0f2a3f7b2a1a9a7fff"
+}
+```
+
+Example ad-hoc analyze:
+
+```json
+{
+  "semesterCode": "2025-2",
+  "courseIds": ["665f2b0f2a3f7b2a1a9a7c01", "665f2b0f2a3f7b2a1a9a7c07"],
+  "maxCredits": 12
+}
+```
+
+**Analyzer behavior (deterministic, no AI):**
+- Uses profile, completed courses, catalog, degree requirements, graduation progress, and plan data only
+- Detects overload, too few credits, unmet prerequisites, completed courses in plan, failed retakes, mandatory-progress gaps, partial/empty plans, and related rule-based risks
+- Returns `summary.totalRisks`, `summary.highestSeverity`, and structured per-risk `evidence` / `suggestedFixes` with `source: "rule"`
+
+**Prerequisites:** register → create `/student-profile` with `degreeId` → generate or propose courses → call `/academic-risks/analyze`.
+
+**Errors:** `404` if profile/plan/analysis missing; `400` if `degreeId` not selected; cross-user access returns `404`.
 
 ## Notes
 
