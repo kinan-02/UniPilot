@@ -186,12 +186,14 @@ Example create body:
   "semesterCode": "2024-1",
   "grade": "B+",
   "gradePoints": 82,
-  "creditsEarned": 3,
+  "creditsEarned": 3.5,
   "attempt": 1
 }
 ```
 
-Duplicate `(courseId, attempt)` for the same user returns `409`. `official` / `imported` records (future ingestion) cannot be edited or deleted via API.
+Duplicate `(courseId, attempt)` for the same user returns `409`. `creditsEarned` accepts half-credit values in 0.5 increments (for example `3.5`).
+
+`official` and `imported` records are **not** creatable via the public API (only `manual` on `POST`). Future transcript ingestion will insert those via internal trusted import logic. They cannot be edited or deleted via API (`403`).
 
 ## Notes
 

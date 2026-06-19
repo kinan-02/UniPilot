@@ -152,6 +152,10 @@ async function updateCompletedCourseByIdAndUserId(database, recordId, userId, up
       { returnDocument: "after" }
     );
 
+  if (!updateResult) {
+    return { status: "not_found" };
+  }
+
   return { status: "updated", record: updateResult };
 }
 

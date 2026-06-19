@@ -8,6 +8,7 @@ const {
 } = require("../helpers/catalogTestHelpers");
 const {
   buildCompletedCoursePayload,
+  insertImportedCompletedCourseForTests,
   insertOfficialCompletedCourseForTests
 } = require("../helpers/completedCourseTestHelpers");
 
@@ -169,6 +170,24 @@ describe("completed courses security", () => {
     const response = await request(app)
       .delete(`/completed-courses/${officialRecordIdA}`)
       .set("Authorization", `Bearer ${accessTokenA}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  test("PUT imported record returns 403 for owning user", async () => {
+    const database = await getDatabase();
+    const importedRecord = await insertImportedCompletedCourseForTests(database, userIdA, {
+      courseId: TECHNION_SEED.courseIds.machineLearning,
+      semesterCode: "2022-2",
+      grade: "B+",
+      creditsEarned: 3,
+      attempt: 3
+    });
+
+    const response = await request(app)
+      .put(`/completed-courses/${importedRecord._id.toString()}`)
+      .set("Authorization", `Bearer ${accessTokenA}`)
+      .send({ grade: "A" });
 
     expect(response.status).toBe(403);
   });

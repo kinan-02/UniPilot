@@ -201,29 +201,43 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 3.7 completed_courses (MVP, user-owned)
 
+**Status:** Implemented (Phase 5).
+
 - **Purpose:** transcript records per student
 - **Fields:**
   - `_id`
   - `userId` (ObjectId -> users._id)
   - `courseId` (ObjectId -> courses._id)
-  - `courseOfferingId` (ObjectId -> course_offerings._id, nullable)
+  - `courseOfferingId` (ObjectId -> course_offerings._id, nullable; not set via public API in Phase 5)
   - `semesterCode`
   - `grade`
-  - `gradePoints`
+  - `gradePoints` (nullable)
   - `creditsEarned`
   - `attempt`
   - `source` (`official|imported|manual`)
-  - `supersedesRecordId` (ObjectId, optional for correction model)
+  - `metadata` (object, e.g. `{ notes }` for manual records)
+  - `supersedesRecordId` (ObjectId, optional; reserved for future correction model)
   - `recordedAt`
+  - `createdAt`
+  - `updatedAt`
 - **Validation rules:**
-  - required: `userId`, `courseId`, `semesterCode`, `attempt`, `recordedAt`
-  - grade enum + credits >= 0 + attempt > 0
+  - required: `userId`, `courseId`, `semesterCode`, `grade`, `creditsEarned`, `attempt`, `source`, `recordedAt`
+  - grade enum (see `docs/API_SPEC.md` §4.3)
+  - `creditsEarned` number >= 0, max 36, in **0.5 increments** (Technion-style half credits allowed)
+  - `attempt` integer > 0 (API: 1–5)
+  - `courseId` must reference a published `courses` document
+  - unique `(userId, courseId, attempt)`
 - **Ownership rules:**
-  - strict owner access by `userId`
+  - strict owner access by `userId`; cross-user reads return 404
+  - public API never accepts `userId` from clients
+- **Source policy:**
+  - Public `POST /completed-courses` always creates `source: manual`
+  - `official` and `imported` records are created only by future **internal trusted import** logic (ingestion/worker), not by client API
+  - `PUT` / `DELETE` via public API allowed only when `source === manual`
 - **Indexes:**
+  - unique compound: `{ userId: 1, courseId: 1, attempt: 1 }`
   - `{ userId: 1, semesterCode: 1 }`
-  - `{ userId: 1, courseId: 1 }`
-  - optional unique: `{ userId: 1, courseId: 1, attempt: 1 }`
+  - `{ userId: 1, recordedAt: -1 }`
 
 ---
 

@@ -19,13 +19,25 @@ const metadataSchema = z
   })
   .strict();
 
+function isHalfCreditIncrement(value) {
+  return Math.abs(value * 2 - Math.round(value * 2)) < 1e-9;
+}
+
+const creditsEarnedSchema = z
+  .number()
+  .min(0, "creditsEarned must be at least 0")
+  .max(36, "creditsEarned must be at most 36")
+  .refine(isHalfCreditIncrement, {
+    message: "creditsEarned must be in 0.5 increments (for example 0, 1, 1.5, 2, 2.5, 3)"
+  });
+
 const createCompletedCourseSchema = z
   .object({
     courseId: objectIdSchema,
     semesterCode: semesterCodeSchema,
     grade: gradeSchema,
     gradePoints: z.number().min(0).max(100).optional(),
-    creditsEarned: z.number().min(0).max(36),
+    creditsEarned: creditsEarnedSchema,
     attempt: z.number().int().min(1).max(5).optional(),
     source: z.literal("manual").optional(),
     metadata: metadataSchema.optional()
@@ -37,7 +49,7 @@ const updateCompletedCourseSchema = z
     semesterCode: semesterCodeSchema.optional(),
     grade: gradeSchema.optional(),
     gradePoints: z.number().min(0).max(100).optional(),
-    creditsEarned: z.number().min(0).max(36).optional(),
+    creditsEarned: creditsEarnedSchema.optional(),
     metadata: metadataSchema.optional()
   })
   .strict()

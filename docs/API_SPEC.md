@@ -337,7 +337,7 @@ Create a manual transcript record for the authenticated user.
 | `semesterCode` | yes | `YYYY-1` or `YYYY-2` |
 | `grade` | yes | `A+`, `A`, `A-`, `B+`, `B`, `B-`, `C+`, `C`, `C-`, `D`, `F`, `Pass`, `Fail` |
 | `gradePoints` | no | number 0–100 |
-| `creditsEarned` | yes | number 0–36 |
+| `creditsEarned` | yes | number 0–36 in **0.5 increments** (e.g. `0`, `1`, `1.5`, `2`, `3.5`) |
 | `attempt` | no | integer 1–5, default `1` |
 | `metadata` | no | `{ notes?: string (max 500) }` |
 
@@ -383,6 +383,12 @@ Delete a **manual** record only. `official` and `imported` records return `403`.
 - Duplicate `(userId, courseId, attempt)` conflicts with `409`.
 - Grade and credits validation enforced at boundary.
 - Course reference validated against seeded catalog (`findCourseById`).
+
+### Official / imported records (not public API)
+
+`source: official` and `source: imported` records **cannot** be created via `POST /completed-courses`. The public API always stores `manual` on create and rejects `official` / `imported` in the request body.
+
+Future transcript ingestion or registrar sync will insert `official` / `imported` rows through **internal trusted import logic** (worker/admin pipeline writing directly to MongoDB), not through client-facing endpoints. Those records remain readable by the owning user but are not editable or deletable via `PUT` / `DELETE` (returns `403`).
 
 ---
 

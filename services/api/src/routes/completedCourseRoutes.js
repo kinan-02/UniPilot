@@ -200,7 +200,7 @@ function createCompletedCourseRouter() {
         bodyValidation.data
       );
 
-      if (updateResult.status === "not_found") {
+      if (updateResult.status === "not_found" || !updateResult.record) {
         return response.status(404).json({
           success: false,
           data: null,

@@ -74,7 +74,7 @@ UniPilot targets **Technion** as the initial institution (`institutionId: "techn
 **Phase boundary:**
 
 - **Phase 4 (catalog seed):** implemented — curated Technion CS dataset in `data/validated/technion/2025/` + `seedCatalog.js` / `seedCatalogCli.js`.
-- **Phase 5 (completed courses):** implemented — user-owned transcript records in `completed_courses` with manual CRUD, catalog `courseId` validation, duplicate attempt handling, and edit/delete restricted to `source=manual`.
+- **Phase 5 (completed courses):** implemented — user-owned transcript records in `completed_courses` with manual CRUD, catalog `courseId` validation, duplicate attempt handling, `creditsEarned` in 0.5 increments (0–36), and edit/delete restricted to `source=manual`.
 - **Later phase:** full offline pipeline (PDF/HTML extraction, normalization, validation, review, RAG generation, automated refresh).
 
 Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement documents, policies) flow through the pipeline defined in the ingestion architecture doc; only validated artifacts are imported into MongoDB.
@@ -201,6 +201,10 @@ Required and currently implemented:
 - Catalog models (`courses`, `degrees`, `degree_requirements`) with indexes and provenance fields.
 - Read-only catalog APIs: `GET /courses`, `GET /courses/:id`, `GET /degrees`, `GET /degrees/:id`, `GET /degrees/:id/requirements` (JWT required).
 - Catalog seed CLI (`services/api/src/scripts/seedCatalogCli.js`, `scripts/data/seedCatalog.js`).
+- Completed courses model (`completed_courses`) with unique `(userId, courseId, attempt)` index.
+- Protected completed courses CRUD (`POST/GET/PUT/DELETE /completed-courses`) with ownership checks.
+- Completed course `courseId` FK validation against published `courses` catalog.
+- Manual-only edit/delete policy: `PUT` / `DELETE` blocked for `official` and `imported` sources.
 
 Still pending for next phases:
 - AI endpoint rate limiting.
@@ -213,11 +217,11 @@ Canonical roadmap: `docs/planning/IMPLEMENTATION_PHASES.md` and `docs/planning/F
 Practical sequence:
 1. Foundation (done): Docker skeleton + health + internal networking.
 2. Auth foundation (done): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
-3. Student domain (in progress): student profile CRUD done; completed courses pending.
+3. Student domain (done for MVP scope): student profile CRUD and completed courses CRUD.
 4. Catalog seed (done): Technion curated dataset + read-only catalog APIs + seed command.
 5. Async AI pipeline: enqueue, worker processing, status/result flow.
 6. AI decision features (grounded in MongoDB facts + RAG explanations).
-7. Full Technion data ingestion pipeline (PDF/HTML extract, normalize, validate, review, refresh).
+7. Full Technion data ingestion pipeline (PDF/HTML extract, normalize, validate, review, refresh) — will populate `official` / `imported` completed courses via internal import, not public API.
 8. Hardening, stress/security testing, documentation, risk/final report.
 
 ## 10) What Has Already Been Implemented
@@ -228,10 +232,12 @@ Practical sequence:
 - Only API service host exposure (internal-only for other services).
 - API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
 - Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
+- Completed courses endpoints (`POST/GET/PUT/DELETE /completed-courses`) with JWT protection, ownership checks, catalog FK validation, and manual-only mutations.
 - Catalog read endpoints with JWT protection (shared academic data, not user-owned).
 - bcrypt password hashing, JWT token issuance, and protected-route middleware.
 - Auth validation and auth rate limiting middleware.
 - Student profile validation schemas and MongoDB model/indexes.
+- Completed courses validation schemas, MongoDB model/indexes, and test suites.
 - Auth and student profile test suites (unit + integration + security) in addition to health test.
 - Service Dockerfiles with deterministic install (`npm ci`) and non-root users.
 - Core project workflow/rules/prompts/playbooks/ADRs documentation scaffold.

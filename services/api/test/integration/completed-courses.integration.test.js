@@ -55,14 +55,31 @@ describe("completed courses integration", () => {
           courseId: TECHNION_SEED.courseIds.foundations,
           semesterCode: "2023-1",
           grade: "A",
-          creditsEarned: 4
+          creditsEarned: 3.5
         })
       );
 
     expect(response.status).toBe(201);
     expect(response.body.data.completedCourse.courseId).toBe(TECHNION_SEED.courseIds.foundations);
     expect(response.body.data.completedCourse.source).toBe("manual");
+    expect(response.body.data.completedCourse.creditsEarned).toBe(3.5);
     expect(response.body.data.completedCourse.courseTitle).toBeTruthy();
+  });
+
+  test("POST /completed-courses rejects invalid credit increments", async () => {
+    const response = await request(app)
+      .post("/completed-courses")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send(
+        buildCompletedCoursePayload({
+          courseId: TECHNION_SEED.courseIds.foundations,
+          semesterCode: "2021-2",
+          attempt: 3,
+          creditsEarned: 2.25
+        })
+      );
+
+    expect(response.status).toBe(400);
   });
 
   test("POST /completed-courses rejects unknown courseId", async () => {

@@ -45,6 +45,41 @@ describe("completed course validation", () => {
     expect(result.success).toBe(false);
   });
 
+  test("validateCreateCompletedCoursePayload accepts half-credit increments", () => {
+    for (const creditsEarned of [0, 1, 1.5, 2, 2.5, 3, 3.5, 4]) {
+      const result = validateCreateCompletedCoursePayload({
+        courseId: VALID_COURSE_ID,
+        semesterCode: "2024-1",
+        grade: "A",
+        creditsEarned
+      });
+
+      expect(result.success).toBe(true);
+    }
+  });
+
+  test("validateCreateCompletedCoursePayload rejects non-half-credit increments", () => {
+    const result = validateCreateCompletedCoursePayload({
+      courseId: VALID_COURSE_ID,
+      semesterCode: "2024-1",
+      grade: "A",
+      creditsEarned: 3.25
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  test("validateCreateCompletedCoursePayload rejects creditsEarned above 36", () => {
+    const result = validateCreateCompletedCoursePayload({
+      courseId: VALID_COURSE_ID,
+      semesterCode: "2024-1",
+      grade: "A",
+      creditsEarned: 36.5
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   test("validateCreateCompletedCoursePayload rejects invalid semester code", () => {
     const result = validateCreateCompletedCoursePayload({
       courseId: VALID_COURSE_ID,

@@ -11,6 +11,13 @@ async function insertOfficialCompletedCourseForTests(database, userId, recordDat
   });
 }
 
+async function insertImportedCompletedCourseForTests(database, userId, recordData) {
+  return createCompletedCourse(database, userId, {
+    ...recordData,
+    source: "imported"
+  });
+}
+
 function buildCompletedCoursePayload(overrides = {}) {
   return {
     courseId: "665f2b0f2a3f7b2a1a9a7c01",
@@ -26,5 +33,6 @@ function buildCompletedCoursePayload(overrides = {}) {
 module.exports = {
   buildCompletedCoursePayload,
   insertCompletedCourseForTests,
+  insertImportedCompletedCourseForTests,
   insertOfficialCompletedCourseForTests
 };
