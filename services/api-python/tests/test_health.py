@@ -1,15 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.config import get_settings
 from app.main import create_app
-
-
-@pytest.fixture(autouse=True)
-def clear_settings_cache():
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -49,7 +41,7 @@ async def test_health_reports_degraded_when_mongo_is_configured_but_unreachable(
     ) as client:
         response = await client.get("/health")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     body = response.json()
     assert body["dependencies"]["mongo"] == "disconnected"
     assert body["status"] == "degraded"

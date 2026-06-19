@@ -143,7 +143,7 @@ Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement docum
 - Testing (current): Jest + Supertest
 - Language: JavaScript (CommonJS)
 
-### 4.2 Target (Python — Phase 1 in progress)
+### 4.2 Target (Python — Phase 1 complete)
 
 - Runtime: Python 3.12+ (pinned in Dockerfile)
 - API framework: FastAPI
@@ -304,7 +304,7 @@ Phases 1–8 on the Node stack are implemented (auth through academic risk analy
 
 ### Python migration — next work
 
-1. Python Phase 1–3: skeleton, auth, student profile (parallel to Node; no Node changes)
+1. Python Phase 2–3: auth, student profile (parallel to Node; no Node changes)
 2. Python Phase 4–7: data-engineering container, real DDS collection/validation/import
 3. Python Phase 8+: catalog and academic features on **real DDS data**
 4. AI / RAG / simulation (both stacks): after catalog facts are grounded in real data
@@ -319,10 +319,10 @@ Phases 1–8 on the Node stack are implemented (auth through academic risk analy
 
 ## 10) What Has Already Been Implemented
 
-- Multi-service Docker Compose stack (`api`, `mongo`, `redis`, `worker`, `ai`).
+- Multi-service Docker Compose stack (`api`, `api-python`, `mongo`, `redis`, `worker`, `ai`).
 - Healthchecks and startup ordering for core dependencies.
 - MongoDB named volume persistence (`mongo_data`).
-- Only API service host exposure (internal-only for other services).
+- Host exposure for `api` (Node reference) and `api-python` (Python migration) during parallel development; all other services internal-only.
 - API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
 - Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
 - Completed courses endpoints (`POST/GET/PUT/DELETE /completed-courses`) with JWT protection, ownership checks, catalog FK validation, and manual-only mutations.

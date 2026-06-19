@@ -34,7 +34,8 @@ Simulation and AI recommendation features are intentionally not implemented yet.
 ## Prerequisites
 
 - Docker + Docker Compose
-- Node.js 20+ (for local tests and host-side seed command)
+- Node.js 20+ (for Node API tests and host-side seed command)
+- Python 3.12+ (for local `api-python` pytest only; Docker does not require a host Python install)
 
 ## Setup
 

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.db.mongo import check_mongo_connectivity
@@ -26,14 +27,15 @@ def resolve_service_status(mongo_status: str, redis_status: str) -> str:
 
 
 @router.get("/health")
-async def get_health() -> dict:
+async def get_health() -> JSONResponse:
     settings = get_settings()
     mongo_status = await check_mongo_connectivity()
     redis_status = await check_redis_connectivity()
+    service_status = resolve_service_status(mongo_status, redis_status)
 
-    return {
+    payload = {
         "service": settings.service_name,
-        "status": resolve_service_status(mongo_status, redis_status),
+        "status": service_status,
         "environment": settings.environment,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dependencies": {
@@ -41,3 +43,7 @@ async def get_health() -> dict:
             "redis": redis_status,
         },
     }
+
+    status_code = 200 if service_status == "ok" else 503
+
+    return JSONResponse(status_code=status_code, content=payload)

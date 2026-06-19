@@ -37,7 +37,7 @@ async def check_mongo_connectivity() -> str:
         return "disconnected"
 
 
-async def close_mongo_client() -> None:
+def close_mongo_client() -> None:
     global _mongo_client
 
     if _mongo_client is not None:
