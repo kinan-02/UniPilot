@@ -18,6 +18,7 @@ from app.sources.sample_data import (
     SAMPLE_SOURCE_TYPE,
 )
 from app.curation.dds_catalog_curator import run_curation
+from app.curation.dds_catalog_signoff import run_signoff
 from app.parsers.dds_catalog_markdown_parser import write_curated_catalog_draft
 from app.sources.technion_dds_catalog_pdf import extract_dds_catalog, inspect_dds_catalog
 from app.validators.course_validator import validate_normalized_course
@@ -226,6 +227,43 @@ def run_curate_dds_catalog(
     return 0
 
 
+def run_signoff_dds_catalog(
+    reviewed_path: str | None,
+    md_path: str | None,
+    output_path: str | None,
+    report_path: str | None,
+    readiness_path: str | None,
+) -> int:
+    try:
+        document, readiness, reviewed_out, signoff_report, readiness_out = run_signoff(
+            reviewed_path=Path(reviewed_path) if reviewed_path else None,
+            markdown_path=Path(md_path) if md_path else None,
+            reviewed_output_path=Path(output_path) if output_path else None,
+            signoff_report_path=Path(report_path) if report_path else None,
+            readiness_path=Path(readiness_path) if readiness_path else None,
+        )
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "reviewStatus": document.signoffReview.reviewStatus if document.signoffReview else None,
+                "reviewedPath": str(reviewed_out),
+                "signoffReportPath": str(signoff_report),
+                "phase8ReadinessPath": str(readiness_out),
+                "phase8Readiness": readiness,
+                "note": "Signoff review only — no MongoDB or staging writes.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
     settings = get_settings()
     env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
@@ -254,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
             "inspect-dds-catalog",
             "parse-dds-catalog-md",
             "curate-dds-catalog",
+            "signoff-dds-catalog",
         ],
         help="Task to execute",
     )
@@ -288,10 +327,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to parser draft curated catalog JSON",
     )
     parser.add_argument(
+        "--reviewed-path",
+        dest="reviewed_path",
+        default=None,
+        help="Path to Phase 7.5 reviewed curated catalog JSON",
+    )
+    parser.add_argument(
+        "--readiness-path",
+        dest="readiness_path",
+        default=None,
+        help="Output path for Phase 8 readiness check JSON",
+    )
+    parser.add_argument(
         "--report-path",
         dest="report_path",
         default=None,
-        help="Output path for curated review report markdown",
+        help="Output path for signoff or curation review report markdown",
     )
     return parser
 
@@ -320,6 +371,14 @@ def main(argv: list[str] | None = None) -> int:
                 args.md_path,
                 args.output,
                 args.report_path,
+            )
+        if args.command == "signoff-dds-catalog":
+            return run_signoff_dds_catalog(
+                args.reviewed_path,
+                args.md_path,
+                args.output,
+                args.report_path,
+                args.readiness_path,
             )
     finally:
         close_mongo_client()

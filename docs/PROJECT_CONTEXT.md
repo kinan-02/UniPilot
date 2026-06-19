@@ -83,6 +83,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 6. DDS catalog PDF extraction + manual-curation foundation — **implemented (Phase 6)**  
 6.5. DDS catalog markdown parser → draft curated JSON — **implemented (Phase 6.5)**  
 7.5. DDS catalog assisted curation (course JSON metadata) — **implemented (Phase 7.5)**  
+7.6. DDS catalog curated JSON signoff review — **implemented (Phase 7.6)**  
 8. Validate against domain/schema — **in progress (reviewed JSON)**    
 8. Import validated DDS data into MongoDB  
 9. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
@@ -204,6 +205,23 @@ Phase 6.5 scope intentionally excludes staging import, semester JSON merge (prer
 | Node / Python API changes | **None** |
 
 Phase 7.5 scope intentionally excludes staging import, production promotion, and treating semester JSON as degree requirements. Reviewed JSON requires human signoff before Phase 8.
+
+### Python Phase 7.6 status (implemented — agent-assisted source signoff review)
+
+| Item | Status |
+|---|---|
+| CLI: `signoff-dds-catalog` | Done |
+| Signoff module `app/curation/dds_catalog_signoff.py` | Done |
+| Updated `dds_catalog_curated_reviewed.json` with `signoffReview` metadata | Done |
+| Signoff report `dds_catalog_signoff_review_report.md` | Done |
+| Phase 8 readiness `dds_catalog_phase8_readiness_check.json` | Done |
+| Credit bucket verification against markdown | Done |
+| Title hint resolution (JSON + non-reversed markdown only) | Done |
+| IE/IS chain rules remain non-mandatory choose-N groups | Done |
+| MongoDB / staging / production writes | **Not started** |
+| Node / Python API changes | **None** |
+
+Phase 7.6 is **agent-assisted source verification**, not true human approval. The reviewed catalog may be suitable for **Phase 8 staging import with review flags preserved**; production promotion still requires human signoff. No MongoDB writes occur in this phase.
 
 ### Target Python stack
 

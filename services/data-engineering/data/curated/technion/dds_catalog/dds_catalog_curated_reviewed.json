@@ -10,8 +10,8 @@
     "confidence": "medium",
     "notes": [
       "Phase 7.5 cursor-assisted curation over parser draft.",
-      "Course JSON used for offering metadata only — not requirement inference.",
-      "Requires human signoff before Phase 8 staging import."
+      "Phase 7.6 agent-assisted source verification (not true human approval).",
+      "Course JSON used for offering metadata only — not requirement inference."
     ]
   },
   "programs": [
@@ -60,10 +60,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:free-elective",
@@ -77,10 +79,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:physical-education",
@@ -94,10 +98,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:core-mandatory",
@@ -111,10 +117,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:elective-ds",
@@ -128,10 +136,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:elective-faculty",
@@ -145,10 +155,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:elective-general",
@@ -162,10 +174,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009216-1-000:semester-1-matrix",
@@ -480,7 +494,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -501,7 +517,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -968,7 +986,7 @@
             },
             {
               "courseNumber": "00960226",
-              "titleHint": null,
+              "titleHint": "חישוב, תורת המשחקים וכלכלה",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -979,12 +997,14 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1018,7 +1038,7 @@
             },
             {
               "courseNumber": "00960311",
-              "titleHint": null,
+              "titleHint": "תוריש תוכרעמ תסדנה 0960324 * היצזימיטפואל םימתירוגלאו הירואית",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1029,17 +1049,19 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
               "courseNumber": "00960335",
-              "titleHint": null,
+              "titleHint": "אופטימיזציה בתנאי אי ודאות 0960336 שיטות אופטימיזציה בלמידת מכונה",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1050,12 +1072,14 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1089,7 +1113,7 @@
             },
             {
               "courseNumber": "00960351",
-              "titleHint": null,
+              "titleHint": "שיטות פוליהדרליות לתכנות בשלמים",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1100,12 +1124,14 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1139,7 +1165,7 @@
             },
             {
               "courseNumber": "00960470",
-              "titleHint": null,
+              "titleHint": "םיזרכמה תרות 0960573 םחותינו םייוסינ ןכת 0960475 םיירטמרפ-ימס םילדומ",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1150,12 +1176,14 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1202,7 +1230,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -1239,7 +1269,7 @@
             },
             {
               "courseNumber": "00970280",
-              "titleHint": null,
+              "titleHint": "אלגוריתמים בתרחישי אי-ודאות 0970325 תיאוריה ושיטות באופטימיזציה דלילה 0970334 שיטות אלגבריות לתכנות ב",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -1250,12 +1280,14 @@
               "pageNumbers": [
                 4
               ],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -1390,7 +1422,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -1411,7 +1445,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -1432,7 +1468,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -1943,7 +1981,9 @@
               "pageNumbers": [],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -1990,7 +2030,9 @@
               "pageNumbers": [],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -2305,7 +2347,9 @@
               "pageNumbers": [],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -2313,7 +2357,7 @@
             },
             {
               "courseNumber": "00960293",
-              "titleHint": null,
+              "titleHint": "למידה חישובית בבחירת תיק השקעות 0960311 תיאוריה ואלגוריתמים לאופטימיזציה * 0960324 הנדסת מערכות שירות",
               "creditsHint": null,
               "facultyHint": null,
               "semestersOffered": [],
@@ -2322,12 +2366,14 @@
               "noAdditionalCreditText": null,
               "footnoteMarkers": [],
               "pageNumbers": [],
-              "sourceEvidence": [],
+              "sourceEvidence": [
+                "titleHint-signoff:dds_catalog_markdown"
+              ],
               "notes": [
                 "No matching semester offering JSON entry; title not inferred."
               ],
               "manualReviewRequired": true,
-              "confidence": "low",
+              "confidence": "medium",
               "offeringMetadataNote": "Semester offering JSON reference only; not the full canonical catalog."
             },
             {
@@ -2595,7 +2641,9 @@
               "pageNumbers": [],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -2756,10 +2804,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009009-1-000:free-elective",
@@ -2773,10 +2823,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009009-1-000:physical-education",
@@ -2790,10 +2842,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009009-1-000:core-mandatory",
@@ -2807,10 +2861,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009009-1-000:elective-faculty",
@@ -2824,10 +2880,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009009-1-000:elective-general",
@@ -2841,10 +2899,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009009-1-000:semester-2-matrix",
@@ -3185,7 +3245,9 @@
               ],
               "sourceEvidence": [],
               "notes": [
-                "No matching semester offering JSON entry; title not inferred."
+                "No matching semester offering JSON entry; title not inferred.",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title).",
+                "titleHint unresolved after Phase 7.6 signoff (not in semester JSON; no clear markdown title)."
               ],
               "manualReviewRequired": true,
               "confidence": "low",
@@ -3438,7 +3500,9 @@
           "pageNumbers": [],
           "notes": [
             "At least one course from the dedicated statistics elective list (40 faculty credits total).",
-            "Encoded from IE faculty elective markdown; requires human verification."
+            "Encoded from IE faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'רשימת הבחירה של סטטיסטיקה' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'רשימת הבחירה של סטטיסטיקה' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3458,7 +3522,9 @@
           "pageNumbers": [],
           "notes": [
             "At least one course from the behavior-science elective list.",
-            "Encoded from IE faculty elective markdown; requires human verification."
+            "Encoded from IE faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'רשימת הבחירה של מדעי ההתנהגות' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'רשימת הבחירה של מדעי ההתנהגות' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3477,7 +3543,9 @@
           "pageNumbers": [],
           "notes": [
             "Complete at least one three-course focus chain per catalog markdown.",
-            "Encoded from IE faculty elective markdown; requires human verification."
+            "Encoded from IE faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'רשימת שרשראות מיקוד' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'רשימת שרשראות מיקוד' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3541,10 +3609,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009118-1-000:free-elective",
@@ -3558,10 +3628,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009118-1-000:physical-education",
@@ -3575,10 +3647,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009118-1-000:core-mandatory",
@@ -3592,10 +3666,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009118-1-000:elective-faculty",
@@ -3609,10 +3685,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009118-1-000:elective-general",
@@ -3626,10 +3704,12 @@
           },
           "pageNumbers": [],
           "notes": [
-            "Parsed from markdown credit summary; review before staging import."
+            "Parsed from markdown credit summary; review before staging import.",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff).",
+            "Credit bucket verified against DDS catalog markdown (Phase 7.6 signoff)."
           ],
-          "manualReviewRequired": true,
-          "confidence": "medium"
+          "manualReviewRequired": false,
+          "confidence": "high"
         },
         {
           "groupId": "009118-1-000:semester-3-matrix",
@@ -3818,7 +3898,9 @@
           "pageNumbers": [],
           "notes": [
             "At least one course from the behavior-science list.",
-            "Encoded from IS faculty elective markdown; requires human verification."
+            "Encoded from IS faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'רשימת הבחירה של מדעי ההתנהגות' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'רשימת הבחירה של מדעי ההתנהגות' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3838,7 +3920,9 @@
           "pageNumbers": [],
           "notes": [
             "Three-course focus chain per catalog markdown (performance research).",
-            "Encoded from IS faculty elective markdown; requires human verification."
+            "Encoded from IS faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'שרשרת חקר ביצועים' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'שרשרת חקר ביצועים' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3858,7 +3942,9 @@
           "pageNumbers": [],
           "notes": [
             "Three-course focus chain per catalog markdown (computational learning).",
-            "Encoded from IS faculty elective markdown; requires human verification."
+            "Encoded from IS faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'שרשרת למידה חישובית' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'שרשרת למידה חישובית' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3878,7 +3964,9 @@
           "pageNumbers": [],
           "notes": [
             "Three-course focus chain per catalog markdown (game theory and economic behavior).",
-            "Encoded from IS faculty elective markdown; requires human verification."
+            "Encoded from IS faculty elective markdown; requires human verification.",
+            "Source-backed chain rule from markdown section 'שרשרת תורת המשחקים' (Phase 7.6).",
+            "Source-backed chain rule from markdown section 'שרשרת תורת המשחקים' (Phase 7.6)."
           ],
           "manualReviewRequired": true,
           "confidence": "low"
@@ -3942,7 +4030,7 @@
       "courses_2025_201.json",
       "courses_2025_202.json"
     ],
-    "curationStatus": "draft-reviewed-needs-human-signoff",
+    "curationStatus": "ready-for-staging-with-review-flags",
     "knownLimitations": [
       "Semester offering JSON is not the full canonical Technion catalog.",
       "Prerequisites/corequisites are reference metadata only, not degree logic.",
@@ -3966,10 +4054,23 @@
       "manualReviewItems": 157
     },
     "unresolvedIssues": [
+      "009009-1-000:ie-additional-faculty-electives: could not locate markdown source marker.",
+      "009118-1-000:is-additional-faculty-electives: could not locate markdown source marker.",
       "135 markdown course numbers remain unclassified.",
-      "['00340040', '00340401', '00360026'] ... sample-schedule-only numbers excluded.",
       "18 course references still lack titleHint after JSON enrichment.",
-      "IE/IS choose-N chains encoded as rule groups without flattened mandatory courses."
+      "IE/IS choose-N chains encoded as rule groups without flattened mandatory courses.",
+      "Missing titleHint: 00906292 in 009216-1-000:elective-ds-pool",
+      "Missing titleHint: 00970211 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 00970329 in 009216-1-000:cognition-track:requirements",
+      "Missing titleHint: 00980312 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 00980455 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 01040030 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 01340020 in 009216-1-000:elective-ds-pool",
+      "Missing titleHint: 01500411 in 009009-1-000:semester-3-matrix",
+      "Missing titleHint: 01500411 in 009216-1-000:semester-2-matrix",
+      "Missing titleHint: 02300401 in 009216-1-000:semester-2-matrix",
+      "Missing titleHint: 02740300 in 009216-1-000:elective-ds-pool",
+      "['00340040', '00340401', '00360026'] ... sample-schedule-only numbers excluded."
     ]
   },
   "curationReport": {
@@ -4068,5 +4169,84 @@
     "remainingManualReviewItems": 157,
     "warnings": [],
     "manualReviewRequired": true
+  },
+  "signoffReview": {
+    "reviewedBy": "cursor-agent-source-review",
+    "reviewedAt": "2026-06-19T15:52:38+00:00",
+    "reviewStatus": "ready-for-staging-with-review-flags",
+    "sourceFilesReviewed": [
+      "/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot/services/data-engineering/data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json",
+      "/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot/services/data-engineering/data/raw/technion/technion_dds_catalog_from_docx_clean.md",
+      "courses_2025_200.json",
+      "courses_2025_201.json",
+      "courses_2025_202.json"
+    ],
+    "checksPerformed": [
+      "structure_validation",
+      "credit_bucket_verification",
+      "title_hint_resolution",
+      "ds_semester_one_verification",
+      "ie_is_chain_rule_review",
+      "ds_track_review",
+      "course_number_validation",
+      "footnote_propagation"
+    ],
+    "verifiedItems": [
+      "Top-level structure: 3 expected program codes present.",
+      "009216-1-000: totalCredits=155.0 verified.",
+      "009009-1-000: totalCredits=155.0 verified.",
+      "009118-1-000: totalCredits=155.0 verified.",
+      "009216-1-000:enrichment=6.0 credit bucket verified.",
+      "009216-1-000:free-elective=4.0 credit bucket verified.",
+      "009216-1-000:physical-education=2.0 credit bucket verified.",
+      "009216-1-000:core-mandatory=108.0 credit bucket verified.",
+      "009216-1-000:elective-ds=24.5 credit bucket verified.",
+      "009216-1-000:elective-faculty=10.5 credit bucket verified.",
+      "009216-1-000:elective-general=12.0 credit bucket verified.",
+      "009009-1-000:enrichment=6.0 credit bucket verified.",
+      "009009-1-000:free-elective=4.0 credit bucket verified.",
+      "009009-1-000:physical-education=2.0 credit bucket verified.",
+      "009009-1-000:core-mandatory=103.0 credit bucket verified.",
+      "009009-1-000:elective-faculty=40.0 credit bucket verified.",
+      "009009-1-000:elective-general=12.0 credit bucket verified.",
+      "009118-1-000:enrichment=6.0 credit bucket verified.",
+      "009118-1-000:free-elective=4.0 credit bucket verified.",
+      "009118-1-000:physical-education=2.0 credit bucket verified.",
+      "009118-1-000:core-mandatory=107.5 credit bucket verified.",
+      "009118-1-000:elective-faculty=35.5 credit bucket verified.",
+      "009118-1-000:elective-general=12.0 credit bucket verified.",
+      "DS semester-1 includes 02340117 (markdown-supported).",
+      "DS semester-1 includes 03240033 (markdown-supported).",
+      "DS semester-1 includes 00940345 (markdown-supported).",
+      "DS semester-1 includes 01040031 (markdown-supported).",
+      "DS semester-1 includes 01040166 (markdown-supported).",
+      "009009-1-000:ie-statistics-elective-chain: choose-N/chain encoded as rule, not mandatory list.",
+      "009009-1-000:ie-behavior-science-chain: choose-N/chain encoded as rule, not mandatory list.",
+      "009009-1-000:ie-focus-chain: choose-N/chain encoded as rule, not mandatory list.",
+      "009118-1-000:is-behavior-science-chain: choose-N/chain encoded as rule, not mandatory list.",
+      "009118-1-000:is-focus-chain-performance: choose-N/chain encoded as rule, not mandatory list.",
+      "009118-1-000:is-focus-chain-ml: choose-N/chain encoded as rule, not mandatory list.",
+      "009118-1-000:is-focus-chain-game-theory: choose-N/chain encoded as rule, not mandatory list.",
+      "DS faculty elective pool remains prefix-rule based (no flattened list).",
+      "DS math-analytics track 26-credit rule preserved.",
+      "DS cognition track sourced from markdown."
+    ],
+    "unresolvedItems": [
+      "009009-1-000:ie-additional-faculty-electives: could not locate markdown source marker.",
+      "009118-1-000:is-additional-faculty-electives: could not locate markdown source marker.",
+      "Missing titleHint: 00906292 in 009216-1-000:elective-ds-pool",
+      "Missing titleHint: 00970211 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 00970329 in 009216-1-000:cognition-track:requirements",
+      "Missing titleHint: 00980312 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 00980455 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 01040030 in 009216-1-000:semester-4-matrix",
+      "Missing titleHint: 01340020 in 009216-1-000:elective-ds-pool",
+      "Missing titleHint: 01500411 in 009009-1-000:semester-3-matrix",
+      "Missing titleHint: 01500411 in 009216-1-000:semester-2-matrix",
+      "Missing titleHint: 02300401 in 009216-1-000:semester-2-matrix",
+      "Missing titleHint: 02740300 in 009216-1-000:elective-ds-pool"
+    ],
+    "phase8Recommendation": "Safe to import to staging with review flags preserved; non-executable chain/track rules require human validation before production use.",
+    "productionPromotionRecommendation": "Do not promote to production until human signoff on chain rules, tracks, and unresolved titles."
   }
 }

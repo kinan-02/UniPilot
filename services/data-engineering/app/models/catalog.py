@@ -114,6 +114,20 @@ class CurationMetadata(BaseModel):
     unresolvedIssues: list[str] = Field(default_factory=list)
 
 
+class SignoffReviewMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewedBy: str = Field(min_length=1, max_length=100)
+    reviewedAt: str = Field(min_length=1, max_length=50)
+    reviewStatus: str = Field(min_length=1, max_length=100)
+    sourceFilesReviewed: list[str] = Field(default_factory=list)
+    checksPerformed: list[str] = Field(default_factory=list)
+    verifiedItems: list[str] = Field(default_factory=list)
+    unresolvedItems: list[str] = Field(default_factory=list)
+    phase8Recommendation: str = Field(min_length=1, max_length=200)
+    productionPromotionRecommendation: str = Field(min_length=1, max_length=200)
+
+
 class ReviewedCuratedCatalogDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -122,3 +136,4 @@ class ReviewedCuratedCatalogDocument(BaseModel):
     parserReport: dict[str, Any] = Field(default_factory=dict)
     curationMetadata: CurationMetadata
     curationReport: dict[str, Any] = Field(default_factory=dict)
+    signoffReview: SignoffReviewMetadata | None = None

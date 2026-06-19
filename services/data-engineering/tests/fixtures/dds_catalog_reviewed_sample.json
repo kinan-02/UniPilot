@@ -1,0 +1,126 @@
+{
+  "source": {
+    "institutionId": "technion",
+    "sourceType": "dds_catalog_curated_reviewed",
+    "catalogYear": 2025,
+    "catalogVersion": "2025-2026",
+    "sourceFile": "tests/fixtures/dds_catalog_sample.md",
+    "manualReviewRequired": true,
+    "confidence": "medium",
+    "notes": []
+  },
+  "programs": [
+    {
+      "institutionId": "technion",
+      "programCode": "009216-1-000",
+      "name": "הנדסת נתונים ומידע",
+      "nameEn": "Data Science and Engineering",
+      "catalogYear": 2025,
+      "catalogVersion": "2025-2026",
+      "totalCredits": 155.0,
+      "paths": [],
+      "requirementGroups": [
+        {
+          "groupId": "009216-1-000:core-mandatory",
+          "title": "core mandatory",
+          "requirementType": "core",
+          "minCredits": 108.0,
+          "courseReferences": [],
+          "ruleExpression": { "type": "credit_bucket", "operator": "min_credits" },
+          "notes": [],
+          "manualReviewRequired": true,
+          "confidence": "medium"
+        },
+        {
+          "groupId": "009216-1-000:semester-1-matrix",
+          "title": "semester 1",
+          "requirementType": "core",
+          "courseReferences": [
+            {
+              "courseNumber": "00940345",
+              "titleHint": null,
+              "manualReviewRequired": true,
+              "confidence": "low"
+            },
+            {
+              "courseNumber": "01040031",
+              "titleHint": null,
+              "manualReviewRequired": true,
+              "confidence": "low"
+            }
+          ],
+          "ruleExpression": { "type": "semester_matrix", "operator": "all_of", "semester": 1 },
+          "notes": [],
+          "manualReviewRequired": true,
+          "confidence": "medium"
+        },
+        {
+          "groupId": "009216-1-000:ie-statistics-elective-chain",
+          "title": "should not be here",
+          "requirementType": "elective",
+          "courseReferences": [],
+          "ruleExpression": { "type": "course_pool", "operator": "choose_n", "chooseCount": 1 },
+          "notes": [],
+          "manualReviewRequired": true,
+          "confidence": "low"
+        }
+      ],
+      "metadata": {},
+      "manualReviewRequired": true,
+      "confidence": "medium"
+    },
+    {
+      "institutionId": "technion",
+      "programCode": "009009-1-000",
+      "name": "הנדסת תעשייה וניהול",
+      "nameEn": "IE",
+      "catalogYear": 2025,
+      "catalogVersion": "2025-2026",
+      "totalCredits": 155.0,
+      "paths": [],
+      "requirementGroups": [
+        {
+          "groupId": "009009-1-000:ie-statistics-elective-chain",
+          "title": "IE statistics chain",
+          "requirementType": "elective",
+          "courseReferences": [],
+          "ruleExpression": { "type": "course_pool", "operator": "choose_n", "chooseCount": 1 },
+          "notes": [],
+          "manualReviewRequired": true,
+          "confidence": "low"
+        }
+      ],
+      "metadata": {},
+      "manualReviewRequired": true,
+      "confidence": "medium"
+    },
+    {
+      "institutionId": "technion",
+      "programCode": "009118-1-000",
+      "name": "הנדסת מערכות מידע",
+      "nameEn": "IS",
+      "catalogYear": 2025,
+      "catalogVersion": "2025-2026",
+      "totalCredits": 155.0,
+      "paths": [],
+      "requirementGroups": [],
+      "metadata": {},
+      "manualReviewRequired": true,
+      "confidence": "medium"
+    }
+  ],
+  "parserReport": {},
+  "curationMetadata": {
+    "curatedBy": "test",
+    "curatedAt": "2026-01-01T00:00:00+00:00",
+    "sourceDraftPath": "tests/fixtures/dds_catalog_draft_sample.json",
+    "sourceMarkdownPath": "tests/fixtures/dds_catalog_sample.md",
+    "courseJsonSources": ["courses_sample_201.json"],
+    "curationStatus": "draft-reviewed-needs-human-signoff",
+    "knownLimitations": [],
+    "countsBefore": {},
+    "countsAfter": {},
+    "unresolvedIssues": []
+  },
+  "curationReport": {}
+}

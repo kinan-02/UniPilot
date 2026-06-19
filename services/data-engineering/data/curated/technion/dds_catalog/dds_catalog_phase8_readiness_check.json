@@ -1,0 +1,29 @@
+{
+  "canImportToStaging": true,
+  "canPromoteToProduction": false,
+  "blockingIssuesForStaging": [],
+  "blockingIssuesForProduction": [
+    "Human signoff required on IE/IS chain rules and DS tracks.",
+    "Unresolved titleHint values may remain.",
+    "Semester matrices are recommended schedules, not hard logic.",
+    "Production promotion is out of scope for Phase 7.6."
+  ],
+  "warnings": [
+    "11 course references still lack titleHint.",
+    "22 requirement groups use non-executable rule expressions."
+  ],
+  "reviewStatus": "ready-for-staging-with-review-flags",
+  "phase8Recommendation": "Safe to import to staging with review flags preserved; non-executable chain/track rules require human validation before production use.",
+  "productionPromotionRecommendation": "Do not promote to production until human signoff on chain rules, tracks, and unresolved titles.",
+  "counts": {
+    "programs": 3,
+    "requirementGroups": 41,
+    "courseReferences": 113,
+    "uniqueCourseNumbers": 87,
+    "missingTitleHints": 11,
+    "manualReviewRequiredItems": 138,
+    "executableRuleGroups": 19,
+    "nonExecutableRuleGroups": 22
+  },
+  "titlesFilledDuringSignoff": 0
+}

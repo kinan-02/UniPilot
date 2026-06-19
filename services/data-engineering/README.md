@@ -67,7 +67,29 @@ Outputs (committable):
 - `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json`
 - `data/curated/technion/dds_catalog/dds_catalog_curated_review_report.md`
 
-Phase 7.5 does **not** write to MongoDB, staging, or production. Reviewed JSON remains `draft-reviewed-needs-human-signoff` until a human approves it for Phase 8.
+Phase 7.5 does **not** write to MongoDB, staging, or production. Reviewed JSON remains `draft-reviewed-needs-human-signoff` until Phase 7.6 signoff.
+
+## DDS catalog signoff review (Phase 7.6)
+
+Agent-assisted source verification of the Phase 7.5 reviewed catalog against DDS markdown and semester course JSON (metadata only).
+
+```bash
+python -m app.main signoff-dds-catalog
+```
+
+Inputs:
+
+- `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json`
+- `data/raw/technion/technion_dds_catalog_from_docx_clean.md`
+- `data/raw/technion/courses_2025_200.json`, `courses_2025_201.json`, `courses_2025_202.json`
+
+Outputs (committable):
+
+- Updated `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json` (adds `signoffReview`, updates `curationStatus`)
+- `data/curated/technion/dds_catalog/dds_catalog_signoff_review_report.md`
+- `data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json`
+
+Phase 7.6 does **not** write to MongoDB, staging, or production. This is not true human approval — staging import may proceed with review flags; production promotion requires human signoff.
 
 ## DDS catalog PDF extraction (Phase 6)
 

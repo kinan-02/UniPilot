@@ -52,6 +52,26 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 - Choose-N / focus chains are encoded as rule groups and notes, not flattened mandatory course lists.
 - No MongoDB, staging, or production writes in Phase 7.5.
 
+## Phase 7.6 update (agent-assisted signoff review)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main signoff-dds-catalog` | Source-verify reviewed JSON → updated JSON + signoff report + Phase 8 readiness check |
+
+| File | Type | Notes |
+|------|------|-------|
+| `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json` | JSON | Updated with `signoffReview` metadata and verified credit buckets |
+| `data/curated/technion/dds_catalog/dds_catalog_signoff_review_report.md` | Markdown | Agent-assisted signoff report (not human approval) |
+| `data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json` | JSON | `canImportToStaging` / `canPromoteToProduction` gate for Phase 8 |
+
+**Rules:**
+
+- Same requirement boundaries as Phase 7.5 — markdown is source of truth for degree requirements.
+- Course JSON may only enrich metadata fields (`titleHint`, `creditsHint`, faculty, prerequisites text, offerings).
+- Uncertainty keeps `manualReviewRequired: true`; warnings are not removed unless resolved.
+- `curationStatus` may become `ready-for-staging-with-review-flags` but never `production-ready` in this phase.
+- No MongoDB, staging, or production writes in Phase 7.6.
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:
