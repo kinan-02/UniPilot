@@ -108,7 +108,7 @@ npm run test:security
 
 ### Python API (`api-python`)
 
-Python backend tests (Phase 1 health + Phase 2 auth — unit, integration, security):
+Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile — unit, integration, security):
 
 ```bash
 cd services/api-python
@@ -144,6 +144,29 @@ Example against default Python port:
 curl -s -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"python-user@example.com","password":"StrongPass123!"}'
+```
+
+### Python Student Profile API (`api-python` on `API_PYTHON_PORT`)
+
+Self-scoped singleton CRUD — same contract as the Node reference API. All routes require JWT. `userId` is server-assigned; clients must not send `userId` or `_id`. `degreeId` is optional and is **not** validated against the catalog until real DDS data is imported.
+
+- `POST /student-profile` — create profile (`409` if one already exists)
+- `GET /student-profile` — read own profile (`404` before creation)
+- `PUT /student-profile` — update own profile
+- `DELETE /student-profile` — delete own profile
+
+Example flow:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"profile-user@example.com","password":"StrongPass123!"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['accessToken'])")
+
+curl -s -X POST http://localhost:8000/student-profile \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"institutionId":"technion","programType":"BSc","catalogYear":2025,"currentSemesterCode":"2025-1"}'
 ```
 
 ## Auth API (Node reference on `API_PORT`)

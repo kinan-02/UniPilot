@@ -77,7 +77,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 
 1. FastAPI skeleton + Docker — **implemented (Phase 1)**  
 2. Auth — **implemented (Phase 2)**  
-3. Student Profile (`degreeId` optional until real catalog import)  
+3. Student Profile — **implemented (Phase 3)** (`degreeId` optional; no catalog FK validation yet)  
 4. Data-engineering container  
 5. Collect/process real DDS data  
 6. Validate against domain/schema  
@@ -109,6 +109,20 @@ Phase 1 scope intentionally excludes student profile, data engineering, and AI/R
 | Node reference backend | Unchanged |
 
 Phase 2 scope intentionally excludes student profile, data engineering, and AI/RAG.
+
+### Python Phase 3 status (implemented)
+
+| Item | Status |
+|---|---|
+| `POST/GET/PUT/DELETE /student-profile` | Done |
+| JWT-protected singleton profile per user | Done |
+| Server-side `userId` assignment; rejects `userId` / `_id` in body | Done |
+| Pydantic strict validation (institution, program, semester, preferences) | Done |
+| `degreeId` optional; **no catalog validation** until real DDS import | Done |
+| pytest unit / integration / security student profile tests | Done |
+| Node reference backend | Unchanged |
+
+Phase 3 scope intentionally excludes catalog, data engineering, and AI/RAG.
 
 ### Target Python stack
 
@@ -156,7 +170,7 @@ Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement docum
 - Testing (current): Jest + Supertest
 - Language: JavaScript (CommonJS)
 
-### 4.2 Target (Python — Phase 2 complete)
+### 4.2 Target (Python — Phase 3 complete)
 
 - Runtime: Python 3.12+ (pinned in Dockerfile)
 - API framework: FastAPI
@@ -167,7 +181,8 @@ Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement docum
 - Testing: pytest + httpx + mongomock-motor
 - **Phase 1 implemented:** skeleton, `GET /health`, Docker `api-python` service
 - **Phase 2 implemented:** auth routes, rate limiting, auth test suites
-- **Not yet implemented:** student profile, data engineering, AI/RAG
+- **Phase 3 implemented:** student profile CRUD, ownership enforcement, profile test suites
+- **Not yet implemented:** catalog, data engineering, AI/RAG
 - See `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
 
 ## 5) Docker Services
@@ -319,7 +334,7 @@ Phases 1–8 on the Node stack are implemented (auth through academic risk analy
 
 ### Python migration — next work
 
-1. Python Phase 3: student profile (parallel to Node; no Node changes)
+1. Python Phase 4: data-engineering container (parallel to Node; no Node changes)
 2. Python Phase 4–7: data-engineering container, real DDS collection/validation/import
 3. Python Phase 8+: catalog and academic features on **real DDS data**
 4. AI / RAG / simulation (both stacks): after catalog facts are grounded in real data
