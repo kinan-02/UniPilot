@@ -108,7 +108,7 @@ npm run test:security
 
 ### Python API (`api-python`)
 
-Python backend tests (Phase 1 — health endpoint):
+Python backend tests (Phase 1 health + Phase 2 auth — unit, integration, security):
 
 ```bash
 cd services/api-python
@@ -118,9 +118,35 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+Run focused suites:
+
+```bash
+cd services/api-python
+source .venv/bin/activate
+pytest tests/unit
+pytest tests/integration
+pytest tests/security
+```
+
 Note: the Python service uses a separate MongoDB database name (`MONGO_PYTHON_DB`, default `unipilot_python`) so it does not interfere with the Node reference backend during parallel development.
 
-## Auth API
+### Python Auth API (`api-python` on `API_PYTHON_PORT`)
+
+The Python backend implements the same auth contract as the Node reference API:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /auth/me` (requires `Authorization: Bearer <accessToken>`)
+
+Example against default Python port:
+
+```bash
+curl -s -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"python-user@example.com","password":"StrongPass123!"}'
+```
+
+## Auth API (Node reference on `API_PORT`)
 
 ### Register
 
