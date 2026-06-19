@@ -584,20 +584,90 @@ Calculate graduation progress for the authenticated user.
 
 ---
 
-## 4.7 Semester Plans (MVP)
+## 4.7 Semester Plans (Phase 7 — deterministic generate + history)
 
-### Planned MVP endpoints
-- `GET /semester-plans` (protected)
-- `POST /semester-plans` (protected)
-- `GET /semester-plans/:planId` (protected)
-- `PUT /semester-plans/:planId` (protected)
-- `POST /semester-plans/:planId/versions` (protected, creates new plan version)
-- `DELETE /semester-plans/:planId` (protected, archive/soft delete)
+### Implemented endpoints
+- `POST /semester-plans/generate` (protected) — generate and persist a deterministic next-semester plan
+- `GET /semester-plans` (protected) — list own planning history (`?page=1&limit=50`)
+- `GET /semester-plans/:id` (protected) — get one owned plan by id
+
+### Not implemented yet (later)
+- `POST /semester-plans` (manual create)
+- `PUT /semester-plans/:planId` (update)
+- `POST /semester-plans/:planId/versions` (new plan version)
+- `DELETE /semester-plans/:planId` (archive/soft delete)
+
+### POST /semester-plans/generate
+
+**Body (strict):**
+```json
+{
+  "semesterCode": "2025-2",
+  "maxCredits": 12,
+  "minCredits": 9,
+  "name": "Optional plan label"
+}
+```
+
+- `semesterCode` required (`YYYY-S` format).
+- `maxCredits` / `minCredits` optional; 0.5 increments; 0–36.
+- `userId` and other unknown fields rejected.
+- `maxCredits` defaults to `studentProfile.preferences.maxCreditsPerSemester`, then `18`.
+
+**Response `201`:**
+```json
+{
+  "success": true,
+  "data": {
+    "semesterPlan": {
+      "id": "...",
+      "name": "...",
+      "status": "draft",
+      "version": 1,
+      "plannerType": "deterministic",
+      "assumptions": { },
+      "explanation": {
+        "summary": "...",
+        "rulesApplied": ["..."],
+        "partialPlan": false,
+        "emptyPlan": false
+      },
+      "semesters": [
+        {
+          "semesterCode": "2025-2",
+          "goalCredits": 12,
+          "plannedCourses": [
+            {
+              "courseId": "...",
+              "courseNumber": "02340101",
+              "courseTitle": "...",
+              "credits": 3,
+              "category": "mandatory",
+              "reason": "Remaining mandatory degree requirement"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "error": null
+}
+```
 
 ### Rules
-- Plans are user-owned and versioned.
-- `Semester` objects are embedded.
-- One active plan per user (policy-level constraint).
+- Plans are user-owned; `userId` is set server-side from JWT (`token.sub`).
+- Cross-user access returns `404` (not `403`) on `GET /semester-plans/:id`.
+- `Semester` objects are embedded in the stored plan.
+- Planner is deterministic and rule-based (no LLM / AI explanations).
+- Excludes completed passing courses; failed attempts (`F`) do not count as completed.
+- Prioritizes remaining mandatory courses before electives.
+- Respects prerequisites from catalog `courses.prerequisites`.
+- Supports fractional credits (0.5 increments).
+- Returns partial/empty plans with structured `explanation` when workload or eligibility limits apply.
+
+### Errors
+- `404` — student profile not found.
+- `400` — profile has no `degreeId`, invalid payload, or referenced degree missing from catalog.
 
 ---
 

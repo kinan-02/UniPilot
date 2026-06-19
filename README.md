@@ -1,7 +1,7 @@
-# UniPilot AI — Phase 6 Graduation Progress Backend
+# UniPilot AI — Phase 7 Deterministic Semester Planner Backend
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, **graduation progress**, and **read-only Technion-style course catalog / degree requirements**:
+This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, **graduation progress**, **deterministic semester planning**, and **read-only Technion-style course catalog / degree requirements**:
 
 - Dockerized backend services
 - Health endpoint in the API
@@ -13,12 +13,13 @@ This repository currently implements backend foundation plus **authentication**,
 - Protected student profile CRUD (`/student-profile`)
 - Protected completed courses CRUD (`/completed-courses`)
 - Deterministic graduation progress (`GET /graduation-progress`)
+- Deterministic semester planner (`POST /semester-plans/generate`) and planning history
 - Curated Technion CS/SE catalog seed data (2025)
 - Read-only catalog endpoints (`/courses`, `/degrees`)
 - Catalog seed command for MongoDB
 - Unit, integration, and security tests
 
-Semester planning, simulation, and AI features are intentionally not implemented yet.
+Simulation and AI recommendation features are intentionally not implemented yet.
 
 ## Services
 
@@ -83,7 +84,7 @@ docker compose down -v
 
 ## Run Tests
 
-API tests (health + auth + student profile + completed courses + graduation progress + catalog unit/integration/security):
+API tests (health + auth + student profile + completed courses + graduation progress + semester plans + catalog unit/integration/security):
 
 ```bash
 cd services/api
@@ -207,6 +208,35 @@ Deterministic degree progress for the authenticated user. Requires a student pro
 **Errors:** `404` if profile missing; `400` if `degreeId` not selected.
 
 Progress uses MongoDB catalog facts and degree requirements only (no LLM).
+
+## Semester Plans API (Protected)
+
+Deterministic next-semester recommendations for the authenticated user. Requires a student profile with a selected `degreeId`.
+
+- `POST /semester-plans/generate` — generate and persist a rule-based plan
+- `GET /semester-plans` — list own planning history (`?page=1&limit=50`)
+- `GET /semester-plans/:id` — get one owned plan
+
+Example generate body:
+
+```json
+{
+  "semesterCode": "2025-2",
+  "maxCredits": 12,
+  "minCredits": 9
+}
+```
+
+**Planner behavior (deterministic, no AI):**
+- Excludes completed passing courses; failed grades do not count as completed
+- Prioritizes remaining mandatory courses before electives
+- Respects prerequisites from the catalog
+- Uses profile `preferences.maxCreditsPerSemester` when `maxCredits` is omitted (default `18`)
+- Returns structured `explanation` with partial/empty plan reasons when limits apply
+
+**Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/semester-plans/generate`.
+
+**Errors:** `404` if profile missing; `400` if `degreeId` not selected; `404` if another user's plan id is requested.
 
 ## Notes
 

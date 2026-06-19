@@ -1,6 +1,7 @@
 const express = require("express");
 const { createAuthRouter } = require("./routes/authRoutes");
 const { createCatalogRouter } = require("./routes/catalogRoutes");
+const { createSemesterPlanRouter } = require("./routes/semesterPlanRoutes");
 const { createGraduationProgressRouter } = require("./routes/graduationProgressRoutes");
 const { createCompletedCourseRouter } = require("./routes/completedCourseRoutes");
 const { createStudentProfileRouter } = require("./routes/studentProfileRoutes");
@@ -27,6 +28,7 @@ function createApp() {
   app.use("/student-profile", createStudentProfileRouter());
   app.use("/completed-courses", createCompletedCourseRouter());
   app.use("/graduation-progress", createGraduationProgressRouter());
+  app.use("/semester-plans", createSemesterPlanRouter());
   app.use("/", createCatalogRouter());
 
   app.use((_request, response) => {

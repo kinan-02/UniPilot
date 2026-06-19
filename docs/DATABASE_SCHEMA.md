@@ -243,7 +243,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 3.8 semester_plans (MVP, user-owned, versioned)
 
-- **Purpose:** versioned academic plans
+- **Purpose:** versioned academic plans (deterministic generation in Phase 7)
 - **Fields:**
   - `_id`
   - `userId` (ObjectId -> users._id)
@@ -251,12 +251,15 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - `status` (`draft|active|archived`)
   - `version` (int)
   - `basePlanId` (ObjectId, optional)
-  - `assumptions` (object)
+  - `plannerType` (`deterministic` for Phase 7; future: `ai-assisted`)
+  - `assumptions` (object; generation inputs snapshot)
+  - `explanation` (object; rule-based planner output, not LLM)
   - `semesters` (embedded array)
     - each semester:
       - `semesterCode`
       - `goalCredits`
-      - `plannedCourses` (array of refs/snapshots)
+      - `plannedCourses` (array of course snapshots)
+        - `courseId`, `courseNumber`, `courseTitle`, `credits`, `category`, `reason`
       - `notes`
       - `constraintsSnapshot`
       - `order`
