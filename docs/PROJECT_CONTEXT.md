@@ -103,7 +103,7 @@ Phase 1 scope intentionally excludes student profile, data engineering, and AI/R
 |---|---|
 | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` | Done |
 | bcrypt password hashing + JWT access tokens | Done |
-| Pydantic strict validation (email normalize, password policy, unknown fields) | Done |
+| Pydantic strict validation (email normalize, password policy incl. 72-byte bcrypt limit) | Done |
 | Redis-backed auth rate limiting (in-memory fallback in `test` env) | Done |
 | pytest unit / integration / security auth tests | Done |
 | Node reference backend | Unchanged |

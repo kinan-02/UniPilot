@@ -43,6 +43,28 @@ async def test_register_rejects_duplicate_email(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_register_rejects_duplicate_email_with_different_casing(auth_client):
+    await auth_client.post(
+        "/auth/register",
+        json={
+            "email": "Duplicate@example.com",
+            "password": VALID_PASSWORD,
+        },
+    )
+
+    response = await auth_client.post(
+        "/auth/register",
+        json={
+            "email": "duplicate@example.com",
+            "password": VALID_PASSWORD,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "A user with this email already exists"
+
+
+@pytest.mark.asyncio
 async def test_login_returns_token_for_valid_credentials(auth_client):
     await auth_client.post(
         "/auth/register",

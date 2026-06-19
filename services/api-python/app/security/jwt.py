@@ -2,7 +2,6 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from jwt import ExpiredSignatureError, InvalidTokenError
 
 from app.config import get_settings
 

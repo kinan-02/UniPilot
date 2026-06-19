@@ -1,11 +1,10 @@
 import re
-from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.security.password import BCRYPT_MAX_PASSWORD_BYTES, password_utf8_byte_length
+
 PASSWORD_MIN_LENGTH = 8
-PASSWORD_MAX_LENGTH = 72
 
 _UPPERCASE_PATTERN = re.compile(r"[A-Z]")
 _LOWERCASE_PATTERN = re.compile(r"[a-z]")
@@ -20,8 +19,8 @@ def normalize_email_value(value: str) -> str:
 def validate_password_strength(password: str) -> str:
     if len(password) < PASSWORD_MIN_LENGTH:
         raise ValueError("Password must be at least 8 characters long")
-    if len(password) > PASSWORD_MAX_LENGTH:
-        raise ValueError("Password must be at most 72 characters long")
+    if password_utf8_byte_length(password) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError("Password must be at most 72 bytes long")
     if not _UPPERCASE_PATTERN.search(password):
         raise ValueError("Password must include at least one uppercase letter")
     if not _LOWERCASE_PATTERN.search(password):
@@ -60,18 +59,3 @@ class LoginRequest(BaseModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         return normalize_email_value(value)
-
-
-class PublicUser(BaseModel):
-    id: str
-    email: EmailStr
-    createdAt: datetime
-
-
-class AuthTokenResponse(BaseModel):
-    accessToken: str
-    user: PublicUser
-
-
-class MeResponse(BaseModel):
-    user: PublicUser

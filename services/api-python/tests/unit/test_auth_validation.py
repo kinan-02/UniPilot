@@ -30,6 +30,18 @@ def test_register_request_rejects_passwords_longer_than_bcrypt_safe_length():
         )
 
 
+def test_register_request_rejects_passwords_exceeding_bcrypt_byte_limit():
+    password = "Aa1!" + ("é" * 35)
+    assert len(password) < 72
+    assert len(password.encode("utf-8")) > 72
+
+    with pytest.raises(ValidationError):
+        RegisterRequest(
+            email="student@example.com",
+            password=password,
+        )
+
+
 def test_login_request_rejects_invalid_email_format():
     with pytest.raises(ValidationError):
         LoginRequest(
