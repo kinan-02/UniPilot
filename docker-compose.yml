@@ -76,6 +76,29 @@ services:
     networks:
       - unipilot-internal
 
+  data-engineering:
+    build:
+      context: ./services/data-engineering
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_PYTHON_DB:-unipilot_python}?authSource=admin
+      MONGO_DB_NAME: ${MONGO_PYTHON_DB:-unipilot_python}
+      LOG_LEVEL: ${DATA_ENGINEERING_LOG_LEVEL:-INFO}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.main", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
   mongo:
     image: mongo:7.0.15
     environment:

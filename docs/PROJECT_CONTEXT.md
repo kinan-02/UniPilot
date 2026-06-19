@@ -78,7 +78,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 1. FastAPI skeleton + Docker — **implemented (Phase 1)**  
 2. Auth — **implemented (Phase 2)**  
 3. Student Profile — **implemented (Phase 3)** (`degreeId` optional; no catalog FK validation yet)  
-4. Data-engineering container  
+4. Data-engineering container — **implemented (Phase 4)**  
 5. Collect/process real DDS data  
 6. Validate against domain/schema  
 7. Import validated DDS data into MongoDB  
@@ -123,6 +123,21 @@ Phase 2 scope intentionally excludes student profile, data engineering, and AI/R
 | Node reference backend | Unchanged |
 
 Phase 3 scope intentionally excludes catalog, data engineering, and AI/RAG.
+
+### Python Phase 4 status (implemented)
+
+| Item | Status |
+|---|---|
+| `services/data-engineering/` standalone internal container | Done |
+| Staging collections only (`staging_courses`, `staging_degree_requirements`, `staging_ingestion_runs`) | Done |
+| CLI: `health`, `validate-sample`, `import-sample` | Done |
+| Pydantic models: `NormalizedCourse`, `NormalizedDegreeRequirement`, `IngestionRun` | Done |
+| Validators + Technion DDS normalizer/importer stubs | Done |
+| Synthetic sample import to staging (not production catalog) | Done |
+| pytest foundation tests (config, validation, staging importer) | Done |
+| Node reference backend | Unchanged |
+
+Phase 4 scope intentionally excludes real Technion DDS scraping/import, catalog API migration, and promotion from staging to production collections.
 
 ### Target Python stack
 

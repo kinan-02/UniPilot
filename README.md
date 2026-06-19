@@ -26,6 +26,7 @@ Simulation and AI recommendation features are intentionally not implemented yet.
 
 - `api` (Node.js/Express) — **reference backend** (exposed on `API_PORT`)
 - `api-python` (FastAPI) — **Python migration target** (exposed on `API_PYTHON_PORT` for development)
+- `data-engineering` (Python CLI) — **internal staging ingestion foundation** (no host port)
 - `worker` (Node.js/Express health stub) — internal only
 - `ai` (Node.js/Express health/infer stub) — internal only
 - `mongo` (MongoDB) — internal only, persisted via volume
@@ -129,6 +130,38 @@ pytest tests/security
 ```
 
 Note: the Python service uses a separate MongoDB database name (`MONGO_PYTHON_DB`, default `unipilot_python`) so it does not interfere with the Node reference backend during parallel development.
+
+### Data Engineering (`data-engineering`)
+
+Internal-only Python service for **staging** academic data ingestion. It shares the same MongoDB instance as `api-python` (`MONGO_PYTHON_DB`) but writes only to staging collections — not production `courses` / `degree_requirements`.
+
+**Phase 4 foundation only:** real Technion Faculty of Data and Decision Sciences (DDS) import is not implemented yet. Use synthetic sample commands for pipeline testing.
+
+```bash
+cd services/data-engineering
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+CLI commands (local or via Docker):
+
+```bash
+# Local (requires reachable MongoDB)
+python -m app.main health
+python -m app.main validate-sample
+python -m app.main import-sample
+
+# Docker one-off jobs (recommended)
+docker compose run --rm data-engineering python -m app.main health
+docker compose run --rm data-engineering python -m app.main validate-sample
+docker compose run --rm data-engineering python -m app.main import-sample
+```
+
+Staging collections: `staging_courses`, `staging_degree_requirements`, `staging_ingestion_runs`.
+
+See `services/data-engineering/README.md` for service-specific details.
 
 ### Python Auth API (`api-python` on `API_PYTHON_PORT`)
 
