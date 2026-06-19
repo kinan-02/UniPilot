@@ -9,6 +9,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.db import check_mongo_connectivity, close_mongo_client, get_database
 from app.importers.dds_catalog_staging_importer import import_dds_catalog_to_staging
+from app.importers.technion_course_staging_importer import import_technion_courses_to_staging
 from app.importers.staging_importer import import_records_to_staging
 from app.logging_config import configure_logging
 from app.sources.sample_data import (
@@ -36,6 +37,7 @@ def run_health() -> int:
         "mongo": mongo_status,
         "stagingCollections": {
             "courses": settings.staging_courses_collection,
+            "courseOfferings": settings.staging_course_offerings_collection,
             "degreeRequirements": settings.staging_degree_requirements_collection,
             "degreePrograms": settings.staging_degree_programs_collection,
             "catalogRules": settings.staging_catalog_rules_collection,
@@ -331,6 +333,73 @@ def run_import_dds_catalog_staging(
     return 0
 
 
+def run_import_technion_courses_staging(
+    course_json_paths: list[str] | None,
+    dry_run: bool,
+    dds_only: bool,
+) -> int:
+    settings = get_settings()
+    paths = [Path(path) for path in course_json_paths] if course_json_paths else None
+
+    try:
+        if dry_run:
+            summary = import_technion_courses_to_staging(
+                None,
+                course_json_paths=paths,
+                settings=settings,
+                dry_run=True,
+                dds_only=dds_only,
+            )
+        else:
+            if check_mongo_connectivity() != "connected":
+                print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+                return 1
+            database = get_database()
+            summary = import_technion_courses_to_staging(
+                database,
+                course_json_paths=paths,
+                settings=settings,
+                dry_run=False,
+                dds_only=dds_only,
+            )
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "dryRun": summary.dryRun,
+                "ddsOnly": summary.ddsOnly,
+                "filesRead": summary.filesRead,
+                "rawRecordsRead": summary.rawRecordsRead,
+                "validCourses": summary.validCourses,
+                "invalidRecords": summary.invalidRecords,
+                "uniqueCourses": summary.uniqueCourses,
+                "ddsFacultyCourses": summary.ddsFacultyCourses,
+                "offeringsObserved": summary.offeringsObserved,
+                "warnings": summary.warnings[:25],
+                "warningsCount": len(summary.warnings),
+                "stagingCollections": summary.stagingCollections,
+                "ingestionRunId": summary.ingestionRunId,
+                "ingestionStatus": summary.ingestionStatus,
+                "note": (
+                    "Dry run only — no MongoDB writes."
+                    if summary.dryRun
+                    else "Technion course JSON staging import only — no production collections written."
+                ),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
     settings = get_settings()
     env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
@@ -361,6 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
             "curate-dds-catalog",
             "signoff-dds-catalog",
             "import-dds-catalog-staging",
+            "import-technion-courses-staging",
         ],
         help="Task to execute",
     )
@@ -393,6 +463,19 @@ def build_parser() -> argparse.ArgumentParser:
         dest="draft_path",
         default=None,
         help="Path to parser draft curated catalog JSON",
+    )
+    parser.add_argument(
+        "--course-json",
+        dest="course_json_paths",
+        action="append",
+        default=None,
+        help="Path to Technion semester course JSON (repeatable)",
+    )
+    parser.add_argument(
+        "--dds-only",
+        dest="dds_only",
+        action="store_true",
+        help="Import only DDS faculty courses (הפקולטה למדעי הנתונים וההחלטות)",
     )
     parser.add_argument(
         "--catalog-path",
@@ -465,6 +548,12 @@ def main(argv: list[str] | None = None) -> int:
                 args.catalog_path,
                 args.readiness_path,
                 args.dry_run,
+            )
+        if args.command == "import-technion-courses-staging":
+            return run_import_technion_courses_staging(
+                args.course_json_paths,
+                args.dry_run,
+                args.dds_only,
             )
     finally:
         close_mongo_client()

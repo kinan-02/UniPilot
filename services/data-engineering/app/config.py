@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     mongo_db_name: str = "unipilot_python"
     log_level: str = "INFO"
     staging_courses_collection: str = "staging_courses"
+    staging_course_offerings_collection: str = "staging_course_offerings"
     staging_degree_requirements_collection: str = "staging_degree_requirements"
     staging_degree_programs_collection: str = "staging_degree_programs"
     staging_catalog_rules_collection: str = "staging_catalog_rules"

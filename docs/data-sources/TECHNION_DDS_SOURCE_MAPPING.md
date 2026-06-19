@@ -94,6 +94,28 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 - Idempotent re-import via stable `stagingKey` values.
 - **No production collection writes.** Main API still does not expose catalog data.
 
+## Phase 9 update (Technion course JSON staging import)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main import-technion-courses-staging --course-json …` | Upsert semester JSON courses/offerings into staging |
+| `… --dry-run` | Validate and count without MongoDB writes |
+| `… --dds-only` | Import only DDS faculty courses |
+
+| Staging collection | Content |
+|---|---|
+| `staging_courses` | Merged Technion course metadata per `courseNumber` |
+| `staging_course_offerings` | Per-semester schedule/exam snapshots |
+| `staging_ingestion_runs` | Audit record per import |
+
+**Rules:**
+
+- Semester codes: `200` winter, `201` spring, `202` summer (from filename).
+- Course JSON is offering evidence only — never used to infer degree requirements.
+- Duplicate `courseNumber` values merge across files; title/credit conflicts produce warnings.
+- All documents: `isStaging: true`, `productionEligible: false`, `requiresHumanReview: true`.
+- Raw JSON under `data/raw/technion/` stays gitignored; Docker mounts it read-only.
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:

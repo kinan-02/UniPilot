@@ -96,6 +96,8 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
+    volumes:
+      - ./services/data-engineering/data/raw:/app/data/raw:ro
     networks:
       - unipilot-internal
 

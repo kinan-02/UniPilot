@@ -85,7 +85,8 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 7.5. DDS catalog assisted curation (course JSON metadata) — **implemented (Phase 7.5)**  
 7.6. DDS catalog curated JSON signoff review — **implemented (Phase 7.6)**  
 8. Import validated DDS catalog into MongoDB staging — **implemented (Phase 8 staging import)**  
-9. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+9. Technion course JSON staging import — **implemented (Phase 9)**  
+10. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
 
 ### Python Phase 1 status (implemented)
 
@@ -237,6 +238,22 @@ Phase 7.6 is **agent-assisted source verification**, not true human approval. Th
 | Main API catalog exposure | **None** |
 
 Phase 8 imports the Phase 7.6 reviewed curated catalog into **staging only**. `canPromoteToProduction` must remain `false`; all staging documents set `productionEligible: false` and `requiresHumanSignoff: true`.
+
+### Python Phase 9 status (implemented — Technion course JSON staging import)
+
+| Item | Status |
+|---|---|
+| CLI: `import-technion-courses-staging` (`--dry-run`, `--dds-only`) | Done |
+| Source reader `app/sources/technion_course_json.py` | Done |
+| Importer `app/importers/technion_course_staging_importer.py` | Done |
+| Staging collections: `staging_courses`, `staging_course_offerings`, `staging_ingestion_runs` | Done |
+| Merge duplicate courses across semester files | Done |
+| Separate offering documents per semester snapshot | Done |
+| Production collections | **Not written** |
+| Degree requirement inference from course JSON | **None** |
+| Node / Python API changes | **None** |
+
+Semester JSON files are **offering snapshots** (200=winter, 201=spring, 202=summer), not the full canonical catalog. All staged documents keep `productionEligible: false`.
 
 ### Target Python stack
 

@@ -140,6 +140,44 @@ db.staging_catalog_rules.find({ ruleIsExecutable: false }).limit(3)
 
 Phase 8 does **not** expose catalog data via the main API and does **not** implement production promotion.
 
+## Technion course JSON staging import (Phase 9)
+
+Imports local semester offering JSON into MongoDB **staging only**. Course JSON is metadata/offering evidence — **not** used for degree requirement inference.
+
+```bash
+# Dry run
+python -m app.main import-technion-courses-staging \
+  --course-json data/raw/technion/courses_2025_200.json \
+  --course-json data/raw/technion/courses_2025_201.json \
+  --course-json data/raw/technion/courses_2025_202.json \
+  --dry-run
+
+# All courses
+python -m app.main import-technion-courses-staging \
+  --course-json data/raw/technion/courses_2025_200.json \
+  --course-json data/raw/technion/courses_2025_201.json \
+  --course-json data/raw/technion/courses_2025_202.json
+
+# DDS faculty only (פקולטה למדעי הנתונים וההחלטות)
+python -m app.main import-technion-courses-staging \
+  --course-json data/raw/technion/courses_2025_200.json \
+  --course-json data/raw/technion/courses_2025_201.json \
+  --course-json data/raw/technion/courses_2025_202.json \
+  --dds-only
+```
+
+**Semester codes:** `200` = winter, `201` = spring, `202` = summer (from filename `courses_2025_<semester>.json`).
+
+**Staging collections:**
+
+| Collection | Content |
+|---|---|
+| `staging_courses` | Merged course metadata (`technion:course:<courseNumber>`) |
+| `staging_course_offerings` | Per-semester schedule/exam evidence |
+| `staging_ingestion_runs` | Audit record per import |
+
+Docker mounts `services/data-engineering/data/raw` read-only into the container.
+
 ## DDS catalog PDF extraction (Phase 6)
 
 Local extraction commands (require the gitignored raw PDF on disk):

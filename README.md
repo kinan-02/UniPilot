@@ -176,6 +176,18 @@ docker compose run --rm data-engineering python -m app.main import-dds-catalog-s
 
 Production collections (`degrees`, `degree_requirements`, `courses`, `catalog`) are **not** written. The main API does not expose staging catalog data yet.
 
+Technion course JSON staging import (Phase 9 — offering snapshots, staging only):
+
+```bash
+docker compose run --rm data-engineering python -m app.main import-technion-courses-staging \
+  --course-json data/raw/technion/courses_2025_200.json \
+  --course-json data/raw/technion/courses_2025_201.json \
+  --course-json data/raw/technion/courses_2025_202.json \
+  --dry-run
+```
+
+Semester codes: `200` winter, `201` spring, `202` summer. Staging: `staging_courses`, `staging_course_offerings`. Course JSON is **not** used for degree requirement inference.
+
 See `services/data-engineering/README.md` for service-specific details.
 
 Raw Technion source layout:
