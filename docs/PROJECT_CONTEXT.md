@@ -79,7 +79,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 2. Auth — **implemented (Phase 2)**  
 3. Student Profile — **implemented (Phase 3)** (`degreeId` optional; no catalog FK validation yet)  
 4. Data-engineering container — **implemented (Phase 4)**  
-5. Collect/process real DDS data  
+5. Collect/process real DDS data — **source intake started (Phase 5)**  
 6. Validate against domain/schema  
 7. Import validated DDS data into MongoDB  
 8. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
@@ -138,6 +138,21 @@ Phase 3 scope intentionally excludes catalog, data engineering, and AI/RAG.
 | Node reference backend | Unchanged |
 
 Phase 4 scope intentionally excludes real Technion DDS scraping/import, catalog API migration, and promotion from staging to production collections.
+
+### Python Phase 5 status (implemented — source intake & mapping only)
+
+| Item | Status |
+|---|---|
+| Local raw sources under `services/data-engineering/data/raw/technion/` | Done (local; gitignored) |
+| Source inspection: spring/summer course JSON + DDS catalog PDF | Done |
+| Mapping doc `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md` | Done |
+| Synthetic shape sample `data/samples/technion_course_list_synthetic.json` | Done |
+| `.gitignore` rules for large raw JSON/PDF | Done |
+| MongoDB / staging import of real data | **Not started** |
+| PDF parsing pipeline | **Not started** |
+| Node reference backend | Unchanged |
+
+Phase 5 scope intentionally excludes production import, staging import of real data, PDF parsing implementation, catalog API migration, and live website scraping.
 
 ### Target Python stack
 

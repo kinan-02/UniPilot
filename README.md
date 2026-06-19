@@ -137,6 +137,8 @@ Internal-only Python service for **staging** academic data ingestion. It shares 
 
 **Phase 4 foundation only:** real Technion Faculty of Data and Decision Sciences (DDS) import is not implemented yet. Use synthetic sample commands for pipeline testing.
 
+**Phase 5 (source intake):** local Technion files live under `services/data-engineering/data/raw/technion/` (gitignored). Field mapping and gaps are documented in `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`. No real data is written to MongoDB in this phase.
+
 ```bash
 cd services/data-engineering
 python3 -m venv .venv
@@ -162,6 +164,16 @@ docker compose run --rm data-engineering python -m app.main import-sample
 Staging collections: `staging_courses`, `staging_degree_requirements`, `staging_ingestion_runs`.
 
 See `services/data-engineering/README.md` for service-specific details.
+
+Raw Technion source layout:
+
+```text
+services/data-engineering/data/
+  raw/technion/          # real JSON + PDF (local only, gitignored)
+  samples/               # small synthetic shape references (committed)
+```
+
+Mapping document: `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`
 
 ### Python Auth API (`api-python` on `API_PYTHON_PORT`)
 

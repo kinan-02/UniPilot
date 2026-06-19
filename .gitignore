@@ -5,3 +5,9 @@ node_modules/
 coverage/
 npm-debug.log
 *.log
+
+# Technion raw source files (local only — large, licensing-sensitive)
+services/data-engineering/data/raw/**/*.json
+services/data-engineering/data/raw/**/*.pdf
+!services/data-engineering/data/raw/**/README.md
+!services/data-engineering/data/raw/**/manifest.json

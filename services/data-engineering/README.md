@@ -10,6 +10,20 @@ Internal-only Python service for academic data ingestion into **staging** MongoD
 
 **Not in scope yet:** real Technion Faculty of Data and Decision Sciences (DDS) scraping, PDF/HTML parsing, or promotion into production `courses` / `degree_requirements` collections.
 
+## Local source files (Phase 5)
+
+Real Technion inputs (when present on disk):
+
+| Path | Description |
+|------|-------------|
+| `data/raw/technion/courses_2025_201.json` | Spring semester offerings (201) |
+| `data/raw/technion/courses_2025_202.json` | Summer semester offerings (202) |
+| `data/raw/technion/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf` | DDS catalog 2025/2026 |
+
+Large raw JSON/PDF files are **gitignored**. See `data/raw/technion/manifest.json` and `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`.
+
+Committed synthetic sample: `data/samples/technion_course_list_synthetic.json`
+
 ## CLI Commands
 
 ```bash
