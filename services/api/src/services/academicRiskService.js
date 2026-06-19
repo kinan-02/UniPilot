@@ -40,6 +40,7 @@ async function buildPlanViewFromAdhoc(database, degree, options) {
         courseTitle: null,
         credits: 0,
         category: "adhoc",
+        catalogScopeValid: true,
         reason: "Ad-hoc proposed course"
       });
       continue;
@@ -55,6 +56,7 @@ async function buildPlanViewFromAdhoc(database, degree, options) {
         courseTitle: catalogCourse.title,
         credits: roundCredits(catalogCourse.credits ?? 0),
         category: "adhoc",
+        catalogScopeValid: false,
         reason: "Ad-hoc proposed course outside active degree catalog scope"
       });
       continue;
@@ -66,6 +68,7 @@ async function buildPlanViewFromAdhoc(database, degree, options) {
       courseTitle: catalogCourse.title,
       credits: roundCredits(catalogCourse.credits ?? 0),
       category: "adhoc",
+      catalogScopeValid: true,
       reason: "Ad-hoc proposed course"
     });
   }
@@ -105,6 +108,7 @@ async function analyzeAndStoreAcademicRisks(database, userId, options) {
     profile: context.profile,
     degree: context.degree,
     catalogCourses: context.catalogCourses,
+    requirements: context.requirements,
     graduationProgress: context.graduationProgress,
     completedCourseRecords: context.completedCourseRecords,
     planView

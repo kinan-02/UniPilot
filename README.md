@@ -268,7 +268,7 @@ Example ad-hoc analyze:
 
 **Analyzer behavior (deterministic, no AI):**
 - Uses profile, completed courses, catalog, degree requirements, graduation progress, and plan data only
-- Detects overload, too few credits, unmet prerequisites, completed courses in plan, failed retakes, mandatory-progress gaps, partial/empty plans, and related rule-based risks
+- Detects overload, too few credits, unmet prerequisites, completed courses in plan, failed retakes, mandatory-progress gaps, partial/empty plans, deferred planner warnings, and related rule-based risks
 - Returns `summary.totalRisks`, `summary.highestSeverity`, and structured per-risk `evidence` / `suggestedFixes` with `source: "rule"`
 
 **Prerequisites:** register → create `/student-profile` with `degreeId` → generate or propose courses → call `/academic-risks/analyze`.

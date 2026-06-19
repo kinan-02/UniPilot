@@ -745,8 +745,9 @@ Calculate graduation progress for the authenticated user.
 - `credit_overload`, `too_few_credits`
 - `unmet_prerequisites`, `course_already_completed`, `failed_course_retake`
 - `no_mandatory_progress`, `insufficient_graduation_progress`
+- `deferred_prerequisite_blocked_courses`, `deferred_workload_limited_courses` (from persisted planner explanation)
 - `too_many_advanced_courses` (only when course `level`/tags metadata supports it)
-- `unknown_catalog_course`, `duplicate_planned_course`
+- `unknown_catalog_course`, `catalog_course_out_of_scope`, `duplicate_planned_course`
 
 ### Rules
 - Plans/analyses are user-owned; `userId` is set server-side from JWT (`token.sub`).

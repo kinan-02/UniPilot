@@ -115,6 +115,7 @@ function analyzeAcademicRisks({
   profile,
   degree,
   catalogCourses,
+  requirements,
   graduationProgress,
   completedCourseRecords,
   planView
@@ -140,6 +141,11 @@ function analyzeAcademicRisks({
 
   const remainingMandatoryIds = new Set(
     (graduationProgress.remainingMandatoryCourses ?? []).map((course) => normalizeCourseId(course.courseId))
+  );
+  const electivePoolIds = new Set(
+    (requirements ?? [])
+      .find((requirement) => requirement.requirementType === "elective")
+      ?.courseSet?.map((courseId) => normalizeCourseId(courseId)) ?? []
   );
 
   if (plannedCourses.length === 0) {
@@ -180,6 +186,53 @@ function analyzeAcademicRisks({
           "Review blocked prerequisites and complete or schedule prerequisite courses first",
           "Adjust maxCredits or spread courses across future semesters"
         ]
+      })
+    );
+  }
+
+  const blockedByPrerequisites = planView.explanation?.blockedByPrerequisites ?? [];
+  const skippedDueToWorkload = planView.explanation?.skippedDueToWorkload ?? [];
+
+  if (!planView.explanation?.partialPlan && blockedByPrerequisites.length > 0) {
+    risks.push(
+      buildRisk({
+        riskType: "deferred_prerequisite_blocked_courses",
+        severity: "low",
+        title: "Eligible courses deferred by prerequisites",
+        explanation:
+          "The planner left one or more courses out of this semester because prerequisites are not yet satisfied.",
+        evidence: {
+          deferredCourseCount: blockedByPrerequisites.length,
+          deferredCourses: blockedByPrerequisites.slice(0, 10)
+        },
+        suggestedFixes: [
+          "Complete or schedule prerequisite courses in an earlier semester",
+          "Regenerate the plan after updating completed courses"
+        ],
+        relatedCourseIds: blockedByPrerequisites.map((entry) => entry.courseId).filter(Boolean)
+      })
+    );
+  }
+
+  if (!planView.explanation?.partialPlan && skippedDueToWorkload.length > 0) {
+    risks.push(
+      buildRisk({
+        riskType: "deferred_workload_limited_courses",
+        severity: "low",
+        title: "Eligible courses deferred by workload limits",
+        explanation:
+          "The planner excluded one or more eligible courses because they would exceed the semester workload limit.",
+        evidence: {
+          deferredCourseCount: skippedDueToWorkload.length,
+          deferredCourses: skippedDueToWorkload.slice(0, 10),
+          maxCredits: maxCreditsLimit,
+          totalPlannedCredits
+        },
+        suggestedFixes: [
+          "Increase maxCredits if policy allows a heavier semester",
+          "Move deferred courses to a future semester"
+        ],
+        relatedCourseIds: skippedDueToWorkload.map((entry) => entry.courseId).filter(Boolean)
       })
     );
   }
@@ -273,9 +326,16 @@ function analyzeAcademicRisks({
 
   const satisfiedPrerequisiteIds = new Set(completedCourseIds);
   const unknownCourseIds = [];
+  const outOfScopeCourseIds = [];
 
   for (const plannedCourse of plannedCourses) {
     const courseId = normalizeCourseId(plannedCourse.courseId);
+
+    if (plannedCourse.catalogScopeValid === false) {
+      outOfScopeCourseIds.push(courseId);
+      continue;
+    }
+
     const catalogCourse = coursesById.get(courseId);
 
     if (!catalogCourse) {
@@ -377,17 +437,41 @@ function analyzeAcademicRisks({
     );
   }
 
+  if (outOfScopeCourseIds.length > 0) {
+    risks.push(
+      buildRisk({
+        riskType: "catalog_course_out_of_scope",
+        severity: "high",
+        title: "Courses outside active degree catalog scope",
+        explanation:
+          "One or more proposed courses are not part of the student's active institution and catalog year.",
+        evidence: {
+          outOfScopeCourseIds,
+          degreeInstitutionId: degree.institutionId,
+          degreeCatalogYear: degree.catalogYear
+        },
+        suggestedFixes: [
+          "Select courses from the catalog that matches your profile institution and catalog year",
+          "Update the student profile if you intentionally changed catalog scope"
+        ],
+        relatedCourseIds: outOfScopeCourseIds
+      })
+    );
+  }
+
   const plannedMandatoryCount = plannedCourses.filter((course) => {
     const courseId = normalizeCourseId(course.courseId);
     return remainingMandatoryIds.has(courseId);
   }).length;
 
-  const plannedElectiveOnly =
+  const allPlannedAreElectives =
     plannedCourses.length > 0 &&
-    plannedMandatoryCount === 0 &&
-    (graduationProgress.remainingMandatoryCourses ?? []).length > 0;
+    plannedCourses.every((course) => {
+      const courseId = normalizeCourseId(course.courseId);
+      return course.category === "elective" || electivePoolIds.has(courseId);
+    });
 
-  if (plannedElectiveOnly) {
+  if (allPlannedAreElectives && (graduationProgress.remainingMandatoryCourses ?? []).length > 0) {
     risks.push(
       buildRisk({
         riskType: "no_mandatory_progress",
@@ -412,7 +496,7 @@ function analyzeAcademicRisks({
     plannedCourses.length > 0 &&
     plannedMandatoryCount === 0 &&
     (graduationProgress.remainingMandatoryCourses ?? []).length > 0 &&
-    !plannedElectiveOnly
+    !allPlannedAreElectives
   ) {
     risks.push(
       buildRisk({
@@ -477,9 +561,22 @@ function analyzeAcademicRisks({
       degreeCode: degree.code,
       catalogYear: degree.catalogYear,
       planPlannerType: planView.plannerType ?? null,
+      analysisSource: planView.analysisSource ?? "semester_plan",
+      semesterCode: planView.semesterCode,
       totalPlannedCredits,
+      plannedCourseCount: plannedCourses.length,
+      plannedCourseIds,
+      plannedCourses: plannedCourses.map((course) => ({
+        courseId: normalizeCourseId(course.courseId),
+        courseNumber: course.courseNumber ?? null,
+        courseTitle: course.courseTitle ?? null,
+        credits: roundCredits(course.credits ?? 0),
+        category: course.category ?? null
+      })),
       maxCredits: maxCreditsLimit,
       minCredits: minCreditsTarget,
+      profileMaxCreditsPerSemester: profile.preferences?.maxCreditsPerSemester ?? null,
+      completedCourseCount: completedCourseIds.size,
       remainingMandatoryCourseCount: graduationProgress.remainingMandatoryCourses?.length ?? 0,
       graduationStatusSummary: graduationProgress.statusSummary
     }

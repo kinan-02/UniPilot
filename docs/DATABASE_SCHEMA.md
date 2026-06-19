@@ -306,7 +306,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
     - `totalRisks`, `highestSeverity`, `counts: { low, medium, high }`
   - `risks` (embedded array)
     - `riskType`, `severity`, `title`, `explanation`, `evidence`, `suggestedFixes`, `source`, `relatedCourseIds`
-  - `contextSnapshot` (object; degree/plan workload snapshot)
+  - `contextSnapshot` (object; degree/plan workload snapshot, planned course ids/snapshots, completed course count)
   - `createdAt`, `updatedAt`
 - **Validation rules:**
   - `userId`, `semesterCode`, `analyzerType`, `status`, `summary`, `risks` required

@@ -107,6 +107,7 @@ function buildAnalysisContext({ completedCourseRecords = [] } = {}) {
     },
     degree,
     catalogCourses,
+    requirements,
     graduationProgress,
     completedCourseRecords
   };
@@ -254,5 +255,86 @@ describe("academic risk analyzer", () => {
     });
 
     expect(analysis.risks.some((risk) => risk.riskType === "partial_plan")).toBe(true);
+  });
+
+  test("detects insufficient graduation progress when plan avoids remaining mandatory courses", () => {
+    const context = buildAnalysisContext({
+      completedCourseRecords: [buildCompletedRecord(FOUNDATIONS)]
+    });
+
+    const analysis = analyzeAcademicRisks({
+      ...context,
+      planView: {
+        semesterCode: "2025-2",
+        plannedCourses: [
+          buildPlannedCourse(FOUNDATIONS, { number: "02340101", title: "Foundations", category: "mandatory" })
+        ],
+        maxCredits: 12,
+        minCredits: 0,
+        explanation: {}
+      }
+    });
+
+    expect(analysis.risks.some((risk) => risk.riskType === "insufficient_graduation_progress")).toBe(true);
+    expect(analysis.risks.some((risk) => risk.riskType === "no_mandatory_progress")).toBe(false);
+  });
+
+  test("detects deferred planner warnings from explanation evidence", () => {
+    const context = buildAnalysisContext();
+    const analysis = analyzeAcademicRisks({
+      ...context,
+      planView: {
+        semesterCode: "2025-2",
+        plannedCourses: [
+          buildPlannedCourse(FOUNDATIONS, { number: "02340101", title: "Foundations" })
+        ],
+        maxCredits: 12,
+        minCredits: 0,
+        explanation: {
+          partialPlan: false,
+          blockedByPrerequisites: [
+            {
+              courseId: DATA_STRUCTURES,
+              courseNumber: "02340201",
+              courseTitle: "Data Structures"
+            }
+          ],
+          skippedDueToWorkload: [
+            {
+              courseId: DISCRETE_MATH,
+              courseNumber: "02340102",
+              courseTitle: "Discrete Math"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(analysis.risks.some((risk) => risk.riskType === "deferred_prerequisite_blocked_courses")).toBe(
+      true
+    );
+    expect(analysis.risks.some((risk) => risk.riskType === "deferred_workload_limited_courses")).toBe(
+      true
+    );
+    expect(analysis.contextSnapshot.plannedCourseIds).toEqual([FOUNDATIONS]);
+  });
+
+  test("detects duplicate planned courses", () => {
+    const context = buildAnalysisContext();
+    const analysis = analyzeAcademicRisks({
+      ...context,
+      planView: {
+        semesterCode: "2025-2",
+        plannedCourses: [
+          buildPlannedCourse(FOUNDATIONS, { number: "02340101", title: "Foundations" }),
+          buildPlannedCourse(FOUNDATIONS, { number: "02340101", title: "Foundations" })
+        ],
+        maxCredits: 12,
+        minCredits: 0,
+        explanation: {}
+      }
+    });
+
+    expect(analysis.risks.some((risk) => risk.riskType === "duplicate_planned_course")).toBe(true);
   });
 });
