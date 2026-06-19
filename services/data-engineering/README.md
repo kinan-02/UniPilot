@@ -219,6 +219,43 @@ Report: `data/reports/technion/dds_staging_blocker_cleanup_report.md`
 
 **No production writes.** Uncertain OCR corrections are **not** applied automatically.
 
+## Human sign-off policy (pre-promotion gate)
+
+Records advisory-only non-executable rules and production-excluded course numbers on curated JSON + staged programs:
+
+```bash
+python -m app.main record-dds-human-signoff --signed-off-by "your-name"
+python -m app.main import-dds-catalog-staging
+python -m app.main validate-dds-staging-quality
+```
+
+## Production promotion gate (Phase 11 — dry-run only)
+
+Builds a promotion plan from staging data + quality report + human signoff. **Does not write production collections.**
+
+```bash
+python -m app.main plan-dds-production-promotion \
+  --output-json data/reports/technion/dds_promotion_plan.json \
+  --output-md data/reports/technion/dds_promotion_plan.md \
+  --allow-warnings
+```
+
+| Gate status | Meaning |
+|-------------|---------|
+| `pass` | All checks passed; `canPromote: true` for future Phase 12 |
+| `pass-with-warnings` | Plan generated; review warnings (e.g. existing production data) |
+| `fail` | Blockers present; fix staging/quality/signoff before Phase 12 |
+
+The real promotion command is a **stub** in Phase 11:
+
+```bash
+python -m app.main promote-dds-to-production   # exits with refusal message; no writes
+```
+
+**Policies:** 22 non-executable rule groups → advisory-only (`catalog_rules`, not mandatory `degree_requirements`). 14 excluded course numbers → skipped from production `courses` with reason `production-excluded-by-human-signoff`.
+
+Reports: `data/reports/technion/dds_promotion_plan.json`, `dds_promotion_plan.md`
+
 ## DDS catalog PDF extraction (Phase 6)
 
 Local extraction commands (require the gitignored raw PDF on disk):
@@ -251,6 +288,7 @@ python -m app.main signoff-dds-catalog
 python -m app.main import-dds-catalog-staging --dry-run
 python -m app.main import-technion-courses-staging --dry-run
 python -m app.main validate-dds-staging-quality
+python -m app.main plan-dds-production-promotion --allow-warnings
 ```
 
 ## Docker
@@ -261,6 +299,12 @@ docker compose run --rm data-engineering python -m app.main import-sample
 
 # Health check
 docker compose run --rm data-engineering python -m app.main health
+
+# Phase 11 promotion gate dry-run (requires staging data in MongoDB)
+docker compose run --rm data-engineering python -m app.main plan-dds-production-promotion \
+  --output-json data/reports/technion/dds_promotion_plan.json \
+  --output-md data/reports/technion/dds_promotion_plan.md \
+  --allow-warnings
 ```
 
 The `data-engineering` service is internal-only (no host port). The API containers remain the only public backend endpoints.

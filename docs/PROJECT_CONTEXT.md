@@ -88,7 +88,8 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 9. Technion course JSON staging import — **implemented (Phase 9)**  
 10. Staging data quality review + cross-link validation — **implemented (Phase 10)**  
 10.5. Staging blocker cleanup + quality recheck — **implemented (Phase 10.5)**  
-11. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
+11. Staging → production promotion gate (dry-run plan only) — **implemented (Phase 11)**  
+12. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
 
 ### Python Phase 1 status (implemented)
 
@@ -287,6 +288,21 @@ Phase 10 answers whether staged DDS + course data is safe enough to **design** a
 | Node / Python API changes | **None** |
 
 Phase 10.5 applies **source-backed** curated JSON fixes only (no uncertain OCR auto-corrections). Remaining cross-link gaps for courses not in 2025 semester JSON are documented for human review before Phase 11 promotion-gate design.
+
+### Python Phase 11 status (implemented — promotion gate dry-run only)
+
+| Item | Status |
+|---|---|
+| CLI: `plan-dds-production-promotion` (`--output-json`, `--output-md`, `--strict`, `--allow-warnings`) | Done |
+| CLI stub: `promote-dds-to-production` (refuses; no production writes) | Done |
+| Module `app/promotion/dds_promotion_gate.py` | Done |
+| Models `app/models/promotion.py` | Done |
+| Reports: `data/reports/technion/dds_promotion_plan.json` / `.md` | Done |
+| Human signoff policies enforced (advisory-only rules, 14 excluded courses) | Done |
+| Production collection writes | **None** |
+| Node / Python API changes | **None** |
+
+Phase 11 answers: *If we later run production promotion, exactly what would be promoted, skipped, and which safety checks must pass?* Default behavior is **dry-run/read-only** with respect to production collections (`degree_programs`, `degree_requirements`, `catalog_rules`, `courses`, `course_offerings`). Gate statuses: `pass`, `pass-with-warnings`, or `fail`. `canPromote: true` means Phase 12 may implement real promotion after explicit approval and a dangerous confirmation flag — **not** in Phase 11.
 
 ### Target Python stack
 

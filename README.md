@@ -207,6 +207,17 @@ docker compose run --rm data-engineering python -m app.main import-dds-catalog-s
   --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json
 ```
 
+Phase 11 promotion gate (dry-run plan only — **no production writes**):
+
+```bash
+docker compose run --rm data-engineering python -m app.main plan-dds-production-promotion \
+  --output-json data/reports/technion/dds_promotion_plan.json \
+  --output-md data/reports/technion/dds_promotion_plan.md \
+  --allow-warnings
+```
+
+The `promote-dds-to-production` command is a Phase 11 stub that refuses and performs no writes. Real promotion belongs in Phase 12 after explicit approval.
+
 See `services/data-engineering/README.md` for service-specific details.
 
 Raw Technion source layout:

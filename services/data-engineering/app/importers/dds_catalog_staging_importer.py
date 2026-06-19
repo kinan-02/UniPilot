@@ -53,6 +53,7 @@ PRODUCTION_COLLECTION_NAMES = frozenset(
         "degree_programs",
         "degrees",
         "catalog",
+        "catalog_rules",
         "course_offerings",
         "completed_courses",
         "semester_plans",

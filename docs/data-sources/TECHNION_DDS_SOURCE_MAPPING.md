@@ -129,7 +129,7 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 
 **Severities:** `info`, `warning`, `staging-blocker`, `production-blocker`, `api-migration-blocker`
 
-**No automatic fixes.** Production promotion remains blocked.
+**No automatic fixes.** Production promotion remains blocked until Phase 12 after explicit approval.
 
 ## Phase 10.5 update (blocker cleanup + revalidation)
 
@@ -140,6 +140,26 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 | Re-run `import-dds-catalog-staging` + `validate-dds-staging-quality` | Refresh staging + reports after cleanup |
 
 Removes parser/OCR artifacts when evidence is strong, enriches `titleHint` from markdown/JSON, fixes cognition track non-mandatory modeling, and documents courses valid in catalog but absent from 2025 semester JSON.
+
+## Phase 11 update (promotion gate — dry-run plan only)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main plan-dds-production-promotion` | Build promotion gate verdict + dry-run plan (no production writes) |
+| `… --output-json data/reports/technion/dds_promotion_plan.json` | Machine-readable plan |
+| `… --output-md data/reports/technion/dds_promotion_plan.md` | Human-readable plan |
+| `… --strict` | Fail gate when warnings are present |
+| `… --allow-warnings` | Allow `pass-with-warnings` (default) |
+| `python -m app.main promote-dds-to-production` | **Stub** — refuses; Phase 12 only |
+
+**Policies enforced:**
+
+- `nonExecutableRulesPolicy: advisory-only` — semester matrices, elective pools, DS tracks, IE/IS chains promoted as advisory metadata only (`enforceInGraduationProgress: false`).
+- `productionExcludedCoursePolicy: omit-from-production-do-not-ingest` — 14 cross-link gap course numbers must not appear in planned production `courses` writes.
+
+**Target production collections (defined, not populated in Phase 11):** `degree_programs`, `degree_requirements`, `catalog_rules`, `courses`, `course_offerings`.
+
+**Gate checks:** staging structure (3 programs, 41 requirement groups, courses/offerings present), latest quality metrics (no production blockers, zero title/credit/chain/OCR issues), human signoff metadata, staging safety flags (`isStaging: true`, `productionEligible: false`), production collection counts unchanged.
 
 ## Phase 6 update (PDF extraction)
 

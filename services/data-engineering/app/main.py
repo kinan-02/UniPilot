@@ -21,6 +21,12 @@ from app.sources.sample_data import (
 )
 from app.curation.dds_catalog_blocker_cleanup import run_blocker_cleanup
 from app.curation.dds_catalog_human_signoff import run_record_human_signoff
+from app.promotion.dds_promotion_gate import (
+    default_promotion_json_path,
+    default_promotion_md_path,
+    run_promotion_gate_plan,
+)
+from app.importers.dds_catalog_staging_importer import PRODUCTION_COLLECTION_NAMES
 from app.quality.dds_staging_quality import (
     default_json_report_path,
     default_md_report_path,
@@ -497,6 +503,93 @@ def run_validate_dds_staging_quality(
     return 0 if report.status != "needs-fixes" else 1
 
 
+def run_plan_dds_production_promotion(
+    output_json: str | None,
+    output_md: str | None,
+    strict: bool,
+    allow_warnings: bool,
+) -> int:
+    if check_mongo_connectivity() != "connected":
+        print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+        return 1
+
+    settings = get_settings()
+    database = get_database()
+    json_path = Path(output_json) if output_json else default_promotion_json_path()
+    md_path = Path(output_md) if output_md else default_promotion_md_path()
+
+    production_counts_before = {
+        name: database[name].count_documents({}) for name in sorted(PRODUCTION_COLLECTION_NAMES)
+    }
+
+    try:
+        report = run_promotion_gate_plan(
+            database,
+            settings=settings,
+            json_path=json_path,
+            md_path=md_path,
+            strict=strict,
+            allow_warnings=allow_warnings,
+        )
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    production_counts_after = {
+        name: database[name].count_documents({}) for name in sorted(PRODUCTION_COLLECTION_NAMES)
+    }
+    production_unchanged = production_counts_before == production_counts_after
+
+    gate = report.gate
+    print(
+        json.dumps(
+            {
+                "gateStatus": gate.gateStatus,
+                "canPromote": gate.canPromote,
+                "dryRun": gate.dryRun,
+                "plannedCounts": gate.plannedWrites.counts,
+                "blockers": gate.blockers[:10],
+                "warnings": gate.warnings[:10],
+                "jsonReportPath": str(json_path),
+                "mdReportPath": str(md_path),
+                "productionCollectionsUnchanged": production_unchanged,
+                "note": "Phase 11 dry-run only — no production collections were written.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    if gate.gateStatus == "fail":
+        return 1
+    return 0
+
+
+def run_promote_dds_to_production() -> int:
+    """Phase 11 stub — real production promotion belongs in Phase 12."""
+    database = get_database()
+    production_counts_before = {
+        name: database[name].count_documents({}) for name in sorted(PRODUCTION_COLLECTION_NAMES)
+    }
+
+    message = (
+        "Production promotion is not implemented in Phase 11. "
+        "Run plan-dds-production-promotion first and implement Phase 12 only after explicit approval."
+    )
+    print(
+        json.dumps(
+            {
+                "error": message,
+                "phase": 11,
+                "productionWritesPerformed": False,
+                "productionCollectionCounts": production_counts_before,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 2
+
+
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
     settings = get_settings()
     env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
@@ -531,6 +624,8 @@ def build_parser() -> argparse.ArgumentParser:
             "validate-dds-staging-quality",
             "cleanup-dds-staging-blockers",
             "record-dds-human-signoff",
+            "plan-dds-production-promotion",
+            "promote-dds-to-production",
         ],
         help="Task to execute",
     )
@@ -637,6 +732,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output path for signoff or curation review report markdown",
     )
+    parser.add_argument(
+        "--strict",
+        dest="strict",
+        action="store_true",
+        help="Fail promotion gate when warnings are present",
+    )
+    parser.add_argument(
+        "--allow-warnings",
+        dest="allow_warnings",
+        action="store_true",
+        default=True,
+        help="Allow pass-with-warnings gate status (default: true)",
+    )
+    parser.add_argument(
+        "--no-allow-warnings",
+        dest="allow_warnings",
+        action="store_false",
+        help="Treat warnings as gate failure unless resolved",
+    )
     return parser
 
 
@@ -705,6 +819,15 @@ def main(argv: list[str] | None = None) -> int:
                 args.signed_off_by,
                 args.dry_run,
             )
+        if args.command == "plan-dds-production-promotion":
+            return run_plan_dds_production_promotion(
+                args.output_json,
+                args.output_md,
+                args.strict,
+                args.allow_warnings,
+            )
+        if args.command == "promote-dds-to-production":
+            return run_promote_dds_to_production()
     finally:
         close_mongo_client()
 

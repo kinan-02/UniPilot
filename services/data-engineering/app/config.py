@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     staging_catalog_rules_collection: str = "staging_catalog_rules"
     staging_data_quality_reports_collection: str = "staging_data_quality_reports"
     staging_ingestion_runs_collection: str = "staging_ingestion_runs"
+    production_degree_programs_collection: str = "degree_programs"
+    production_degree_requirements_collection: str = "degree_requirements"
+    production_catalog_rules_collection: str = "catalog_rules"
+    production_courses_collection: str = "courses"
+    production_course_offerings_collection: str = "course_offerings"
     dds_catalog_pdf_path: str | None = None
     dds_catalog_md_path: str | None = None
     dds_catalog_output_dir: str = "data/generated/technion/dds_catalog"
