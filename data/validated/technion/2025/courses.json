@@ -298,5 +298,105 @@
         "retrievedAt": "2026-06-19T00:00:00.000Z"
       }
     ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c13",
+    "institutionId": "technion",
+    "subject": "0236",
+    "number": "02360364",
+    "title": "Deep Learning",
+    "credits": 3,
+    "description": "Neural networks, representation learning, and modern deep learning architectures.",
+    "level": "undergraduate",
+    "tags": ["elective", "ai"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c07"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02360364",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c14",
+    "institutionId": "technion",
+    "subject": "0236",
+    "number": "02360813",
+    "title": "Computer Security",
+    "credits": 3,
+    "description": "Security principles, cryptography basics, and secure systems design.",
+    "level": "undergraduate",
+    "tags": ["elective", "security", "software-engineering"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c06"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02360813",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c15",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340601",
+    "title": "Database Systems",
+    "credits": 3,
+    "description": "Relational data modeling, SQL, indexing, transactions, and query processing.",
+    "level": "undergraduate",
+    "tags": ["elective", "systems", "software-engineering"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c03"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340601",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c16",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340701",
+    "title": "Compiler Design",
+    "credits": 3,
+    "description": "Lexical analysis, parsing, semantic analysis, and code generation.",
+    "level": "undergraduate",
+    "tags": ["elective", "systems", "software-engineering"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c05"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340701",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
   }
 ]

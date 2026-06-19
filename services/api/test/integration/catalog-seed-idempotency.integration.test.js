@@ -42,7 +42,9 @@ describe("catalog seed idempotency", () => {
     });
 
     expect(firstRun.counts.degrees).toBe(1);
+    expect(firstRun.counts.courses).toBe(16);
     expect(secondRun.counts.degrees).toBe(1);
+    expect(secondRun.counts.courses).toBe(16);
     expect(degreeAfterSecond.createdAt.getTime()).toBe(degreeAfterFirst.createdAt.getTime());
     expect(degreeAfterSecond.metadata.isCuratedPlaceholder).toBe(true);
   });

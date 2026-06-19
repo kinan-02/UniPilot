@@ -55,8 +55,8 @@ describe("catalog integration", () => {
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
-    expect(response.body.data.courses.length).toBeGreaterThanOrEqual(10);
-    expect(response.body.data.pagination.total).toBeGreaterThanOrEqual(10);
+    expect(response.body.data.courses.length).toBeGreaterThanOrEqual(16);
+    expect(response.body.data.pagination.total).toBe(16);
   });
 
   test("GET /courses/:courseId returns a seeded course", async () => {
@@ -89,6 +89,10 @@ describe("catalog integration", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.requirements.length).toBe(4);
+    const electiveRequirement = response.body.data.requirements.find(
+      (requirement) => requirement.requirementType === "elective"
+    );
+    expect(electiveRequirement.courseIds.length).toBe(5);
     expect(response.body.data.catalogVersion).toBe("2025.1");
   });
 });

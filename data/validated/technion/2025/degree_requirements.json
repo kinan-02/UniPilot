@@ -78,7 +78,11 @@
     },
     "minCredits": 6,
     "courseIds": [
-      "665f2b0f2a3f7b2a1a9a7c07"
+      "665f2b0f2a3f7b2a1a9a7c07",
+      "665f2b0f2a3f7b2a1a9a7c13",
+      "665f2b0f2a3f7b2a1a9a7c14",
+      "665f2b0f2a3f7b2a1a9a7c15",
+      "665f2b0f2a3f7b2a1a9a7c16"
     ],
     "priority": 3,
     "isMandatory": false,

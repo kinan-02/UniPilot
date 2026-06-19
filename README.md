@@ -71,7 +71,7 @@ npm install
 MONGO_URI="mongodb://unipilot:unipilot_dev_password@localhost:27017/unipilot?authSource=admin" npm run seed:catalog
 ```
 
-Seed data lives in `data/validated/technion/2025/` (1 degree, 12 courses, 4 requirements).
+Seed data lives in `data/validated/technion/2025/` (1 degree, 16 courses, 4 requirements).
 
 **Important:** This is **curated placeholder data** for development and demos (`metadata.isCuratedPlaceholder: true`). It is not scraped from official Technion sources.
 
