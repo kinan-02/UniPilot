@@ -91,9 +91,20 @@ async function upsertCatalogCollection(database, collectionName, documents) {
   let upsertedCount = 0;
 
   for (const document of documents) {
-    const replaceResult = await collection.replaceOne({ _id: document._id }, document, {
-      upsert: true
-    });
+    const existingDocument = await collection.findOne(
+      { _id: document._id },
+      { projection: { createdAt: 1 } }
+    );
+
+    const documentToWrite = existingDocument?.createdAt
+      ? { ...document, createdAt: existingDocument.createdAt }
+      : document;
+
+    const replaceResult = await collection.replaceOne(
+      { _id: document._id },
+      documentToWrite,
+      { upsert: true }
+    );
 
     if (replaceResult.upsertedCount > 0 || replaceResult.modifiedCount > 0) {
       upsertedCount += 1;
@@ -103,6 +114,22 @@ async function upsertCatalogCollection(database, collectionName, documents) {
   return upsertedCount;
 }
 
+function enrichDocumentWithCatalogMeta(document, catalogMeta) {
+  if (!catalogMeta?.isCuratedPlaceholder) {
+    return document;
+  }
+
+  return {
+    ...document,
+    metadata: {
+      ...(document.metadata ?? {}),
+      dataQuality: catalogMeta.dataQuality ?? "curated-placeholder",
+      isCuratedPlaceholder: true,
+      disclaimer: catalogMeta.disclaimer
+    }
+  };
+}
+
 async function seedCatalogIntoDatabase(database, { institutionId, catalogYear }) {
   const catalog = await loadValidatedCatalog({ institutionId, catalogYear });
 
@@ -110,9 +137,15 @@ async function seedCatalogIntoDatabase(database, { institutionId, catalogYear })
   await ensureCourseIndexes(database);
   await ensureDegreeRequirementIndexes(database);
 
-  const degreeDocuments = catalog.degrees.map(mapDegreeRecord);
-  const courseDocuments = catalog.courses.map(mapCourseRecord);
-  const requirementDocuments = catalog.degreeRequirements.map(mapDegreeRequirementRecord);
+  const degreeDocuments = catalog.degrees
+    .map(mapDegreeRecord)
+    .map((document) => enrichDocumentWithCatalogMeta(document, catalog.meta));
+  const courseDocuments = catalog.courses
+    .map(mapCourseRecord)
+    .map((document) => enrichDocumentWithCatalogMeta(document, catalog.meta));
+  const requirementDocuments = catalog.degreeRequirements
+    .map(mapDegreeRequirementRecord)
+    .map((document) => enrichDocumentWithCatalogMeta(document, catalog.meta));
 
   const degreesSeeded = await upsertCatalogCollection(database, "degrees", degreeDocuments);
   const coursesSeeded = await upsertCatalogCollection(database, "courses", courseDocuments);

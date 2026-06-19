@@ -3,5 +3,8 @@
   "catalogYear": 2025,
   "catalogVersion": "2025.1",
   "title": "Technion CS / Software Engineering curated seed catalog",
-  "status": "published"
+  "status": "published",
+  "dataQuality": "curated-placeholder",
+  "isCuratedPlaceholder": true,
+  "disclaimer": "Phase 4 development seed only. Not scraped from official Technion sources. Course numbers, credits, and requirements are illustrative placeholders for demos and tests."
 }

@@ -43,9 +43,9 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 |---|---|---|
 | User | Auth + self info only | MVP (partially implemented) |
 | StudentProfile | Full self CRUD (singleton `/student-profile`) | MVP (implemented) |
-| Degree | Read-only | MVP |
-| DegreeRequirement | Read-only | MVP |
-| Course | Read-only | MVP |
+| Degree | Read-only (`GET /degrees`, `GET /degrees/:id`) | MVP (implemented) |
+| DegreeRequirement | Read-only (`GET /degrees/:id/requirements`) | MVP (implemented) |
+| Course | Read-only (`GET /courses`, `GET /courses/:id`) | MVP (implemented) |
 | CourseOffering | Read-only | MVP |
 | CompletedCourse | User-owned CRUD | MVP |
 | SemesterPlan | User-owned CRUD/versioned | MVP |
@@ -117,7 +117,7 @@ Notes:
 |---|---|---|---|
 | `institutionId` | required | optional | string, trimmed, 1–100 chars |
 | `programType` | required | optional | string, trimmed, 1–100 chars |
-| `degreeId` | optional | optional | 24-char hex ObjectId string; **FK validation deferred** until Degree/Course Catalog is implemented |
+| `degreeId` | optional | optional | 24-char hex ObjectId string; must reference an existing **published** degree in MongoDB when provided |
 | `catalogYear` | required | optional | integer, 1990–2100 |
 | `currentSemesterCode` | required | optional | string matching `YYYY-1` or `YYYY-2` (e.g. `2025-1`) |
 | `preferences` | optional | optional | object; only `maxCreditsPerSemester` (integer, 1–36) allowed; nested unknown fields rejected |
@@ -315,28 +315,131 @@ Hard-delete the authenticated user's profile.
 
 ## 4.4 Course Catalog (MVP, read-only)
 
-### Planned MVP endpoints
-- `GET /courses` (filter/sort/pagination)
-- `GET /courses/:courseId`
-- `GET /course-offerings` (optional query by `semesterCode`, `courseId`)
-- `GET /course-offerings/:offeringId`
+**Status:** Implemented (Phase 4). Data source: curated Technion-style **placeholder** seed in `data/validated/technion/2025/` (not official Technion extracts).
 
-### Rules
-- Read-only for students.
-- Response can include denormalized metadata for planning UI.
+Shared academic catalog data — **not student-owned**. All routes require `Authorization: Bearer <accessToken>`.
+
+### `GET /courses`
+
+List published courses for an institution and catalog year.
+
+**Query parameters (required unless noted):**
+
+| Param | Required | Rules |
+|---|---|---|
+| `institutionId` | yes | string, 1–100 chars (e.g. `technion`) |
+| `catalogYear` | yes | integer, 1990–2100 |
+| `page` | no | integer ≥ 1, default `1` |
+| `limit` | no | integer 1–100, default `50` |
+
+Unknown query fields are rejected (`400`).
+
+**Success (`200`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "courses": [ ],
+    "pagination": { "total": 12, "page": 1, "limit": 50 }
+  },
+  "error": null
+}
+```
+
+Each course includes: `id`, `institutionId`, `subject`, `number`, `title`, `credits`, `description`, `level`, `tags`, `prerequisiteIds`, `corequisiteIds`, `catalogYear`, `catalogVersion`, `version`, `status`, `metadata`, `sourceRefs`, timestamps.
+
+**Errors:** `400` validation, `401` missing/invalid JWT, `500` internal.
+
+---
+
+### `GET /courses/:courseId`
+
+Get a single published course by MongoDB id.
+
+**Success (`200`):** `{ "success": true, "data": { "course": { } }, "error": null }`  
+**Errors:** `400` invalid id, `401` auth, `404` not found, `500` internal.
+
+---
+
+### Not implemented yet
+
+- `GET /course-offerings`
+- `GET /course-offerings/:offeringId`
 
 ---
 
 ## 4.5 Degree Requirements (MVP, read-only)
 
-### Planned MVP endpoints
-- `GET /degrees`
-- `GET /degrees/:degreeId`
-- `GET /degrees/:degreeId/requirements`
+**Status:** Implemented (Phase 4). Uses same curated placeholder seed as §4.4.
 
-### Rules
-- Degree catalog version is explicit in responses.
-- Requirements remain immutable per published catalog version.
+Shared academic catalog data — **not student-owned**. All routes require JWT.
+
+### `GET /degrees`
+
+List published degrees for an institution and catalog year.
+
+**Query parameters:**
+
+| Param | Required | Rules |
+|---|---|---|
+| `institutionId` | yes | string, 1–100 chars |
+| `catalogYear` | yes | integer, 1990–2100 |
+
+**Success (`200`):**
+
+```json
+{
+  "success": true,
+  "data": { "degrees": [ ] },
+  "error": null
+}
+```
+
+Each degree includes: `id`, `institutionId`, `code`, `name`, `version`, `catalogYear`, `catalogVersion`, `effectiveFrom`, `effectiveTo`, `status`, `metadata`, `sourceRefs`, timestamps.
+
+**Errors:** `400`, `401`, `500`.
+
+---
+
+### `GET /degrees/:degreeId`
+
+Get a single published degree.
+
+**Success (`200`):** `{ "success": true, "data": { "degree": { } }, "error": null }`  
+**Errors:** `400` invalid id, `401`, `404`, `500`.
+
+---
+
+### `GET /degrees/:degreeId/requirements`
+
+List published requirements for a degree, filtered to the degree's `version`.
+
+**Success (`200`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "degreeId": "...",
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "requirements": [ ]
+  },
+  "error": null
+}
+```
+
+Each requirement includes: `id`, `degreeId`, `version`, `catalogYear`, `catalogVersion`, `requirementType`, `title`, `ruleExpression`, `minCredits`, `courseIds`, `priority`, `isMandatory`, `status`, `metadata`, `sourceRefs`, timestamps.
+
+**Errors:** `400`, `401`, `404` degree not found, `500`.
+
+### Catalog access rules
+
+- Read-only for authenticated students; no write endpoints.
+- Only `status: "published"` records are returned.
+- `catalogYear` + `catalogVersion` are explicit on all catalog entities.
+- Seeded records include `metadata.isCuratedPlaceholder: true` until real Technion ingestion replaces them.
 
 ---
 

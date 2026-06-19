@@ -25,7 +25,7 @@
     "priority": 1,
     "isMandatory": true,
     "status": "published",
-    "metadata": { "category": "cs-core" },
+    "metadata": { "category": "cs-core", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-degree-2025",
@@ -55,7 +55,7 @@
     "priority": 2,
     "isMandatory": true,
     "status": "published",
-    "metadata": { "category": "math-foundation" },
+    "metadata": { "category": "math-foundation", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-degree-2025",
@@ -83,7 +83,7 @@
     "priority": 3,
     "isMandatory": false,
     "status": "published",
-    "metadata": { "category": "cs-electives" },
+    "metadata": { "category": "cs-electives", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-degree-2025",
@@ -109,7 +109,7 @@
     "priority": 4,
     "isMandatory": true,
     "status": "published",
-    "metadata": { "category": "total-degree" },
+    "metadata": { "category": "total-degree", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-degree-2025",

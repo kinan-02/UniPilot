@@ -83,7 +83,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ---
 
-## 3.3 degrees (MVP, read-only catalog)
+## 3.3 degrees (MVP, read-only catalog — implemented Phase 4)
 
 - **Purpose:** degree definitions by institution/catalog version
 - **Fields:**
@@ -92,9 +92,13 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - `code`
   - `name`
   - `version`
+  - `catalogYear` (int)
+  - `catalogVersion` (string, e.g. `2025.1`)
   - `effectiveFrom`, `effectiveTo`
-  - `status`
-  - `metadata` (object)
+  - `status` (`published` for active seed/API reads)
+  - `metadata` (object; includes `isCuratedPlaceholder` on Phase 4 seed)
+  - `sourceRefs` (array)
+  - `createdAt`, `updatedAt`
 - **Validation rules:**
   - unique tuple `(institutionId, code, version)`
   - valid date interval
@@ -102,34 +106,42 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - system/admin-managed; student read-only
 - **Indexes:**
   - unique compound: `{ institutionId: 1, code: 1, version: 1 }`
+  - `{ institutionId: 1, catalogYear: 1, status: 1 }`
 
 ---
 
-## 3.4 degree_requirements (MVP, read-only catalog)
+## 3.4 degree_requirements (MVP, read-only catalog — implemented Phase 4)
 
 - **Purpose:** normalized graduation rules
 - **Fields:**
   - `_id`
   - `degreeId` (ObjectId -> degrees._id)
   - `version`
+  - `catalogYear` (int)
+  - `catalogVersion` (string)
   - `requirementType`
-  - `ruleExpression` (structured object/string)
+  - `title` (string)
+  - `ruleExpression` (structured object)
   - `minCredits` (number, optional)
-  - `courseSet` (array<ObjectId>, optional)
+  - `courseSet` (array<ObjectId>, optional; exposed as `courseIds` in API)
   - `priority` (int)
   - `isMandatory` (bool)
+  - `status`
+  - `metadata` (object)
+  - `sourceRefs` (array)
+  - `createdAt`, `updatedAt`
 - **Validation rules:**
   - `degreeId`, `version`, `requirementType`, `priority` required
   - `ruleExpression` must conform to approved schema
 - **Ownership rules:**
   - system/admin-managed; student read-only
 - **Indexes:**
-  - `{ degreeId: 1, version: 1 }`
+  - `{ degreeId: 1, version: 1, priority: 1 }`
   - `{ degreeId: 1, requirementType: 1 }`
 
 ---
 
-## 3.5 courses (MVP, read-only catalog)
+## 3.5 courses (MVP, read-only catalog — implemented Phase 4)
 
 - **Purpose:** canonical course data
 - **Fields:**
@@ -142,10 +154,15 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - `description`
   - `level`
   - `tags` (array<string>)
-  - `prerequisites` (array<ObjectId>)
-  - `corequisites` (array<ObjectId>)
+  - `prerequisites` (array<ObjectId>; exposed as `prerequisiteIds` in API)
+  - `corequisites` (array<ObjectId>; exposed as `corequisiteIds` in API)
+  - `catalogYear` (int)
+  - `catalogVersion` (string)
   - `status`
   - `version`
+  - `metadata` (object)
+  - `sourceRefs` (array)
+  - `createdAt`, `updatedAt`
 - **Validation rules:**
   - unique tuple `(institutionId, subject, number, version)`
   - credits in valid range (institution policy)
@@ -153,6 +170,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - system/admin-managed; student read-only
 - **Indexes:**
   - unique compound: `{ institutionId: 1, subject: 1, number: 1, version: 1 }`
+  - `{ institutionId: 1, catalogYear: 1, status: 1 }`
 
 ---
 

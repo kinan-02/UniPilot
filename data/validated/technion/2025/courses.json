@@ -15,7 +15,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -40,7 +40,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -65,7 +65,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -90,7 +90,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -115,7 +115,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -140,7 +140,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -165,7 +165,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -190,7 +190,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",
@@ -215,7 +215,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Mathematics" },
+    "metadata": { "faculty": "Mathematics", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-math-catalog-2025",
@@ -240,7 +240,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Mathematics" },
+    "metadata": { "faculty": "Mathematics", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-math-catalog-2025",
@@ -265,7 +265,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Mathematics" },
+    "metadata": { "faculty": "Mathematics", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-math-catalog-2025",
@@ -290,7 +290,7 @@
     "catalogVersion": "2025.1",
     "version": "2025.1",
     "status": "published",
-    "metadata": { "faculty": "Computer Science" },
+    "metadata": { "faculty": "Computer Science", "dataQuality": "curated-placeholder", "isCuratedPlaceholder": true },
     "sourceRefs": [
       {
         "sourceId": "seed-technion-cs-catalog-2025",

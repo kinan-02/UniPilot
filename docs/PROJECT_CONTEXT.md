@@ -193,7 +193,7 @@ Required and currently implemented:
 - Protected student profile CRUD (`POST/GET/PUT/DELETE /student-profile`).
 - Ownership checks: users can only access/modify their own profile.
 - Student profile `degreeId` FK validation against seeded `degrees` collection.
-- Curated Technion catalog seed (`data/validated/technion/2025/`).
+- Curated Technion catalog seed (`data/validated/technion/2025/`) marked as **placeholder data** (`isCuratedPlaceholder`, not official Technion extracts).
 - Catalog models (`courses`, `degrees`, `degree_requirements`) with indexes and provenance fields.
 - Read-only catalog APIs: `GET /courses`, `GET /courses/:id`, `GET /degrees`, `GET /degrees/:id`, `GET /degrees/:id/requirements` (JWT required).
 - Catalog seed CLI (`services/api/src/scripts/seedCatalogCli.js`, `scripts/data/seedCatalog.js`).

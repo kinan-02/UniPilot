@@ -14,7 +14,9 @@
       "faculty": "Computer Science",
       "track": "software-engineering",
       "totalCredits": 155,
-      "language": "he-en"
+      "language": "he-en",
+      "dataQuality": "curated-placeholder",
+      "isCuratedPlaceholder": true
     },
     "sourceRefs": [
       {
