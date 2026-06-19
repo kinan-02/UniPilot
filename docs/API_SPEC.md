@@ -578,6 +578,7 @@ Calculate graduation progress for the authenticated user.
 - Uses published degree requirements from MongoDB; does not invent rules.
 - Passing grades count toward progress (`A+` … `D`, `Pass`); `F` / `Fail` are ignored.
 - Multiple attempts on the same course use the best passing `creditsEarned`.
+- Top-level `completedCredits` counts each completed course once; the same credits may also appear inside individual requirement buckets without inflating the global total.
 - Credit math supports fractional values (0.5 increments).
 - `requirementProgress` evaluates seeded rule types: `course_set` (`all_of`), `credit_pool`, `total_credits`.
 

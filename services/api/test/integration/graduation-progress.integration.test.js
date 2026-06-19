@@ -149,4 +149,27 @@ describe("graduation progress integration", () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toMatch(/degree must be selected/i);
   });
+
+  test("GET /graduation-progress returns 400 when profile degreeId is not in catalog", async () => {
+    const database = await getDatabase();
+    const invalidDegreeRegister = await request(app).post("/auth/register").send({
+      email: "graduation-invalid-degree@example.com",
+      password: "StrongPass123!"
+    });
+
+    await createStudentProfile(database, invalidDegreeRegister.body.data.user.id, {
+      institutionId: TECHNION_SEED.institutionId,
+      programType: "BSc",
+      degreeId: "665f2b0f2a3f7b2a1a9a7fff",
+      catalogYear: TECHNION_SEED.catalogYear,
+      currentSemesterCode: "2025-1"
+    });
+
+    const response = await request(app)
+      .get("/graduation-progress")
+      .set("Authorization", `Bearer ${invalidDegreeRegister.body.data.accessToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/degree was not found in the catalog/i);
+  });
 });

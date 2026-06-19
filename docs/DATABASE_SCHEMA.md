@@ -328,3 +328,21 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 - Do not implement scenario/result/risk collections yet.
 - Keep correction/version behavior explicit but minimal (append-only where practical).
 - Prefer deterministic, explainable progress calculations before advanced AI augmentation.
+
+## 8) Graduation progress computation (Phase 6)
+
+Graduation progress is **computed at read time** — not stored in a separate collection.
+
+**Inputs (MongoDB):**
+- `student_profiles` for the authenticated `userId` (`degreeId` required)
+- `completed_courses` for the authenticated `userId`
+- `degrees`, `degree_requirements`, `courses` for the profile's degree/catalog context
+
+**Rules:**
+- Passing grades only (`A+` … `D`, `Pass`); `F` / `Fail` excluded
+- One effective completion per `courseId` (best passing `creditsEarned`, latest on tie)
+- Top-level `completedCredits` sums each course **once** (no double-count across requirements)
+- Requirement buckets (`course_set`, `credit_pool`, `total_credits`) evaluate published `degree_requirements` only
+- `statusSummary: complete` only when **every** requirement is satisfied (including electives and `total_credits`)
+
+**API:** `GET /graduation-progress` (JWT, self-scoped). See `docs/API_SPEC.md` §4.6.

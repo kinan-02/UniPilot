@@ -37,14 +37,17 @@ function buildCatalogCourse(courseId, credits, title) {
   };
 }
 
-function buildCompletedRecord(courseId, { grade = "B+", creditsEarned = 3, attempt = 1 } = {}) {
+function buildCompletedRecord(
+  courseId,
+  { grade = "B+", creditsEarned = 3, attempt = 1, recordedAt = new Date("2024-06-01T00:00:00.000Z") } = {}
+) {
   return {
     courseId: new ObjectId(courseId),
     grade,
     creditsEarned,
     semesterCode: "2024-1",
     attempt,
-    recordedAt: new Date("2024-06-01T00:00:00.000Z")
+    recordedAt
   };
 }
 
@@ -90,7 +93,26 @@ describe("graduation progress calculator", () => {
     expect(progress.remainingCourses).toHaveLength(1);
   });
 
-  test("calculateGraduationProgress aggregates mandatory, elective, and total credit progress", () => {
+  test("buildEffectiveCompletions keeps the passing attempt with the highest creditsEarned", () => {
+    const completions = buildEffectiveCompletions([
+      buildCompletedRecord(CORE_COURSE_A, {
+        grade: "B",
+        creditsEarned: 3,
+        attempt: 1,
+        recordedAt: new Date("2024-01-01T00:00:00.000Z")
+      }),
+      buildCompletedRecord(CORE_COURSE_A, {
+        grade: "A",
+        creditsEarned: 3.5,
+        attempt: 2,
+        recordedAt: new Date("2024-06-01T00:00:00.000Z")
+      })
+    ]);
+
+    expect(completions.get(CORE_COURSE_A).creditsEarned).toBe(3.5);
+  });
+
+  test("calculateGraduationProgress counts each course once in completedCredits across overlapping requirements", () => {
     const degree = {
       _id: new ObjectId(DEGREE_ID),
       code: "CS-BSC",
@@ -153,5 +175,97 @@ describe("graduation progress calculator", () => {
     expect(progress.remainingElectiveCredits).toBe(2.5);
     expect(progress.missingRequirements.length).toBeGreaterThan(0);
     expect(progress.statusSummary).toBe("in_progress");
+  });
+
+  test("statusSummary is not complete while total_credits requirement remains unsatisfied", () => {
+    const degree = {
+      _id: new ObjectId(DEGREE_ID),
+      code: "CS-BSC",
+      name: "BSc CS",
+      catalogYear: 2025,
+      catalogVersion: "2025.1",
+      metadata: { totalCredits: 10 }
+    };
+
+    const requirements = [
+      buildRequirement({
+        _id: new ObjectId("665f2b0f2a3f7b2a1a9a7e01"),
+        title: "Core courses",
+        courseSet: [new ObjectId(CORE_COURSE_A)],
+        minCredits: 3,
+        priority: 1
+      }),
+      buildRequirement({
+        _id: new ObjectId("665f2b0f2a3f7b2a1a9a7e04"),
+        title: "Total degree credits",
+        requirementType: "credit",
+        ruleExpression: { type: "total_credits", operator: "gte" },
+        courseSet: [],
+        minCredits: 10,
+        priority: 2
+      })
+    ];
+
+    const progress = calculateGraduationProgress({
+      degree,
+      requirements,
+      catalogCourses: [buildCatalogCourse(CORE_COURSE_A, 3, "Core A")],
+      completedCourseRecords: [buildCompletedRecord(CORE_COURSE_A, { creditsEarned: 3 })]
+    });
+
+    expect(progress.requirementProgress.find((entry) => entry.title === "Core courses").status).toBe(
+      "satisfied"
+    );
+    expect(progress.requirementProgress.find((entry) => entry.title === "Total degree credits").status).toBe(
+      "in_progress"
+    );
+    expect(progress.statusSummary).not.toBe("complete");
+    expect(progress.statusSummary).toBe("in_progress");
+  });
+
+  test("statusSummary is complete only when every requirement is satisfied", () => {
+    const degree = {
+      _id: new ObjectId(DEGREE_ID),
+      code: "CS-BSC",
+      name: "BSc CS",
+      catalogYear: 2025,
+      catalogVersion: "2025.1",
+      metadata: { totalCredits: 6 }
+    };
+
+    const requirements = [
+      buildRequirement({
+        _id: new ObjectId("665f2b0f2a3f7b2a1a9a7e01"),
+        title: "Core courses",
+        courseSet: [new ObjectId(CORE_COURSE_A), new ObjectId(CORE_COURSE_B)],
+        minCredits: 6,
+        priority: 1
+      }),
+      buildRequirement({
+        _id: new ObjectId("665f2b0f2a3f7b2a1a9a7e04"),
+        title: "Total degree credits",
+        requirementType: "credit",
+        ruleExpression: { type: "total_credits", operator: "gte" },
+        courseSet: [],
+        minCredits: 6,
+        priority: 2
+      })
+    ];
+
+    const progress = calculateGraduationProgress({
+      degree,
+      requirements,
+      catalogCourses: [
+        buildCatalogCourse(CORE_COURSE_A, 3, "Core A"),
+        buildCatalogCourse(CORE_COURSE_B, 3, "Core B")
+      ],
+      completedCourseRecords: [
+        buildCompletedRecord(CORE_COURSE_A, { creditsEarned: 3 }),
+        buildCompletedRecord(CORE_COURSE_B, { creditsEarned: 3 })
+      ]
+    });
+
+    expect(progress.missingRequirements).toHaveLength(0);
+    expect(progress.statusSummary).toBe("complete");
   });
 });
