@@ -10,6 +10,8 @@ If this file and another doc conflict:
 2. Follow accepted ADRs in `docs/decisions/`.
 3. Update this file so it stays current.
 
+For Technion catalog ingestion design, see `docs/DATA_INGESTION_ARCHITECTURE.md`.
+
 ## 1) Project Vision
 
 UniPilot AI is an AI-powered academic decision support platform that helps students make better academic planning decisions (course/path planning, what-if analysis, and recommendations) through a reliable backend-first architecture.
@@ -50,7 +52,31 @@ Architecture pattern:
 - `mongo` is persistent data store (named volume).
 - Internal Docker network for inter-service communication by service name.
 
-Current behavior intentionally excludes completed courses, course catalog, and AI recommendation logic, but includes authentication and student profile CRUD with ownership enforcement.
+Current behavior intentionally excludes completed courses, course catalog API, and AI recommendation logic, but includes authentication and student profile CRUD with ownership enforcement.
+
+## 3.1) Technion Academic Data Strategy
+
+UniPilot targets **Technion** as the initial institution (`institutionId: "technion"`). Academic reference data is split into two layers:
+
+| Layer | Source of truth | Purpose |
+|---|---|---|
+| Structured catalog facts | **MongoDB** (`degrees`, `courses`, `degree_requirements`, `course_offerings`) | API responses, planning, eligibility, graduation progress |
+| Document-grounded text | **RAG index** (derived from validated sources) | Policy explanations and narrative answers with citations |
+
+**Rules:**
+
+- MongoDB is the system of record for structured academic data.
+- RAG supports explanations and policies; it does not replace catalog facts.
+- The LLM must not invent courses, prerequisites, credits, or degree requirements.
+- All structured catalog records must include `sourceRefs`, `catalogYear`, and `catalogVersion`.
+- Ingestion pipeline design: `docs/DATA_INGESTION_ARCHITECTURE.md`.
+
+**Phase boundary:**
+
+- **Phase 4 (catalog seed):** implement a **small curated seed dataset** and `scripts/data/seedCatalog.js` only.
+- **Later phase:** full offline pipeline (PDF/HTML extraction, normalization, validation, review, RAG generation, automated refresh).
+
+Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement documents, policies) flow through the pipeline defined in the ingestion architecture doc; only validated artifacts are imported into MongoDB.
 
 ## 4) Tech Stack
 
@@ -116,6 +142,10 @@ docs/
   planning/
   reports/
   decisions/
+  DATA_INGESTION_ARCHITECTURE.md
+data/                          # offline catalog artifacts (see ingestion architecture)
+  validated/                   # Phase 4: small curated Technion seed committed here
+scripts/data/                  # offline ingestion scripts (Phase 4: seedCatalog.js only)
 ```
 
 ## 7) Testing Strategy
@@ -169,10 +199,12 @@ Canonical roadmap: `docs/planning/IMPLEMENTATION_PHASES.md` and `docs/planning/F
 Practical sequence:
 1. Foundation (done): Docker skeleton + health + internal networking.
 2. Auth foundation (done): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
-3. Student domain (in progress): student profile CRUD done; completed courses/catalog pending.
-4. Async AI pipeline: enqueue, worker processing, status/result flow.
-5. AI decision features.
-6. Hardening, stress/security testing, documentation, risk/final report.
+3. Student domain (in progress): student profile CRUD done; completed courses/catalog API pending.
+4. Catalog seed (next): small curated Technion dataset + `seedCatalog.js` (not full ingestion pipeline).
+5. Async AI pipeline: enqueue, worker processing, status/result flow.
+6. AI decision features (grounded in MongoDB facts + RAG explanations).
+7. Full Technion data ingestion pipeline (PDF/HTML extract, normalize, validate, review, refresh).
+8. Hardening, stress/security testing, documentation, risk/final report.
 
 ## 10) What Has Already Been Implemented
 
@@ -206,5 +238,6 @@ Discuss with the team before changing any of these:
 Before major implementation work:
 1. Read this file (`docs/PROJECT_CONTEXT.md`).
 2. Read `docs/planning/IMPLEMENTATION_PHASES.md` for current phase.
-3. Read relevant rule files in `.cursor/rules/unipilot-*.mdc`.
-4. Implement one feature at a time and update docs/tests with each feature.
+3. For catalog/ingestion work, read `docs/DATA_INGESTION_ARCHITECTURE.md`.
+4. Read relevant rule files in `.cursor/rules/unipilot-*.mdc`.
+5. Implement one feature at a time and update docs/tests with each feature.
