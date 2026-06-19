@@ -67,3 +67,9 @@ Legend — Priority: P0 (must), P1 (should), P2 (nice). Status: `todo` / `in-pro
 - Validation + (where needed) auth + rate limiting applied.
 - Unit + integration + (relevant) E2E/stress/security tests added.
 - README/docs updated; committed with a conventional message.
+
+## Future TODOs
+
+Deferred tasks that depend on later UX or multi-catalog work:
+
+- **STU-FUTURE-1:** Validate `StudentProfile.degreeId` against the profile's `institutionId` and `catalogYear` once catalog selection UX and multi-catalog support are implemented. (Current Phase 4 behavior only checks that the referenced degree exists and is published.)

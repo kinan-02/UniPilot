@@ -200,6 +200,7 @@ Required and currently implemented:
 
 Still pending for next phases:
 - AI endpoint rate limiting.
+- Validate `StudentProfile.degreeId` against profile `institutionId` and `catalogYear` once catalog selection UX and multi-catalog support exist (see `docs/planning/FEATURE_BACKLOG.md` → Future TODOs).
 
 ## 9) Development Roadmap
 
