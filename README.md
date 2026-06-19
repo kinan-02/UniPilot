@@ -1,7 +1,7 @@
-# UniPilot AI — Phase 2 Student Profile Backend
+# UniPilot AI — Phase 4 Catalog Backend
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements backend foundation plus **authentication** and **student profile CRUD**:
+This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, and **read-only Technion-style course catalog / degree requirements**:
 
 - Dockerized backend services
 - Health endpoint in the API
@@ -11,9 +11,12 @@ This repository currently implements backend foundation plus **authentication** 
 - Protected auth route middleware
 - Input validation and auth rate limiting
 - Protected student profile CRUD (`/student-profile`)
+- Curated Technion CS/SE catalog seed data (2025)
+- Read-only catalog endpoints (`/courses`, `/degrees`)
+- Catalog seed command for MongoDB
 - Unit, integration, and security tests
 
-Completed courses, course catalog, and AI recommendation logic are intentionally not implemented yet.
+Completed courses, graduation progress, semester planning, and AI features are intentionally not implemented yet.
 
 ## Services
 
@@ -26,7 +29,7 @@ Completed courses, course catalog, and AI recommendation logic are intentionally
 ## Prerequisites
 
 - Docker + Docker Compose
-- Node.js 20+ (only needed for local test execution)
+- Node.js 20+ (for local tests and host-side seed command)
 
 ## Setup
 
@@ -50,6 +53,24 @@ Example with defaults from `.env.example`:
 
 - [http://localhost:3000/health](http://localhost:3000/health)
 
+## Seed Technion Catalog (Phase 4)
+
+After Docker is running, load the curated Technion CS catalog into MongoDB:
+
+```bash
+docker compose exec api node src/scripts/seedCatalogCli.js --institution technion --catalogYear 2025
+```
+
+From the host (requires local `MONGO_URI`):
+
+```bash
+cd services/api
+npm install
+MONGO_URI="mongodb://unipilot:unipilot_dev_password@localhost:27017/unipilot?authSource=admin" npm run seed:catalog
+```
+
+Seed data lives in `data/validated/technion/2025/` (1 degree, 12 courses, 4 requirements).
+
 ## Stop and Clean
 
 ```bash
@@ -58,7 +79,7 @@ docker compose down -v
 
 ## Run Tests
 
-API tests (health + auth + student profile unit/integration/security):
+API tests (health + auth + student profile + catalog unit/integration/security):
 
 ```bash
 cd services/api
@@ -66,7 +87,7 @@ npm install
 npm test
 ```
 
-Run only auth-focused suites:
+Run focused suites:
 
 ```bash
 cd services/api
@@ -80,7 +101,6 @@ npm run test:security
 ### Register
 
 - `POST /auth/register`
-- Request body:
 
 ```json
 {
@@ -92,7 +112,6 @@ npm run test:security
 ### Login
 
 - `POST /auth/login`
-- Request body:
 
 ```json
 {
@@ -110,47 +129,46 @@ npm run test:security
 
 All routes require `Authorization: Bearer <accessToken>`.
 
-### Create Profile
+- `POST /student-profile` — create profile (`degreeId` must reference a seeded degree when provided)
+- `GET /student-profile` — read own profile
+- `PUT /student-profile` — update own profile
+- `DELETE /student-profile` — delete own profile
 
-- `POST /student-profile` → `201` created, `409` if profile already exists
-- Request body (`degreeId` optional):
+Example seeded degree id: `665f2b0f2a3f7b2a1a9a7d01` (Technion `CS-BSC`, catalog year 2025).
 
-```json
-{
-  "institutionId": "uni-main",
-  "programType": "BSc",
-  "degreeId": "665f2b0f2a3f7b2a1a9a7f11",
-  "catalogYear": 2025,
-  "currentSemesterCode": "2025-1",
-  "preferences": {
-    "maxCreditsPerSemester": 18
-  }
-}
-```
+## Catalog API (Protected, Read-Only)
 
-### Get Own Profile
+Shared academic data — readable by any authenticated user. Not student-owned.
 
-- `GET /student-profile`
+### List Courses
 
-### Update Own Profile
+- `GET /courses?institutionId=technion&catalogYear=2025&page=1&limit=50`
+- Header: `Authorization: Bearer <accessToken>`
 
-- `PUT /student-profile` → `200` updated, `404` if no profile exists
-- Request body (at least one updatable field; `userId`, `_id`, and other unknown fields are rejected):
+### Get Course
 
-```json
-{
-  "programType": "BSc-Honors",
-  "currentSemesterCode": "2025-2"
-}
-```
+- `GET /courses/:courseId`
+- Header: `Authorization: Bearer <accessToken>`
 
-### Delete Own Profile
+### List Degrees
 
-- `DELETE /student-profile` → `200` with `{ "deleted": true }`, `404` if no profile exists
+- `GET /degrees?institutionId=technion&catalogYear=2025`
+- Header: `Authorization: Bearer <accessToken>`
+
+### Get Degree
+
+- `GET /degrees/:degreeId`
+- Header: `Authorization: Bearer <accessToken>`
+
+### Get Degree Requirements
+
+- `GET /degrees/:degreeId/requirements`
+- Header: `Authorization: Bearer <accessToken>`
 
 ## Notes
 
 - Only the API service exposes a host port (`3000` by default).
 - MongoDB data is persisted in the `mongo_data` named volume.
-- Worker and AI services remain internal skeletons prepared for async queue flow in later phases.
+- Catalog records include `sourceRefs`, `catalogYear`, `catalogVersion`, `status`, and `metadata`.
+- Worker and AI services remain internal skeletons for later async AI phases.
 - Passwords are stored as bcrypt hashes; plaintext passwords are never stored.

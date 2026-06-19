@@ -1,0 +1,302 @@
+[
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c01",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340101",
+    "title": "Foundations of Computer Science",
+    "credits": 3,
+    "description": "Introduction to computer science fundamentals, programming, and computational thinking.",
+    "level": "undergraduate",
+    "tags": ["core", "programming"],
+    "prerequisiteCourseIds": [],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340101",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c02",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340102",
+    "title": "Discrete Mathematics",
+    "credits": 3,
+    "description": "Logic, sets, combinatorics, and graph theory for computer science.",
+    "level": "undergraduate",
+    "tags": ["core", "mathematics"],
+    "prerequisiteCourseIds": [],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340102",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c03",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340201",
+    "title": "Data Structures",
+    "credits": 3,
+    "description": "Arrays, lists, trees, hash tables, and algorithmic analysis.",
+    "level": "undergraduate",
+    "tags": ["core"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c01"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340201",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c04",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340202",
+    "title": "Computer Organization and Programming",
+    "credits": 3,
+    "description": "Machine-level representation, assembly, and systems programming basics.",
+    "level": "undergraduate",
+    "tags": ["core", "systems"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c01"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340202",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c05",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340301",
+    "title": "Algorithms 1",
+    "credits": 3,
+    "description": "Design and analysis of algorithms, greedy methods, and dynamic programming.",
+    "level": "undergraduate",
+    "tags": ["core"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c03"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340301",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c06",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340401",
+    "title": "Operating Systems",
+    "credits": 3,
+    "description": "Processes, memory management, scheduling, and concurrency.",
+    "level": "undergraduate",
+    "tags": ["core", "systems"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c04"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340401",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c07",
+    "institutionId": "technion",
+    "subject": "0236",
+    "number": "02360363",
+    "title": "Introduction to Machine Learning",
+    "credits": 3,
+    "description": "Supervised and unsupervised learning fundamentals for CS students.",
+    "level": "undergraduate",
+    "tags": ["elective", "ai"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c05"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02360363",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c08",
+    "institutionId": "technion",
+    "subject": "0236",
+    "number": "02360801",
+    "title": "Software Engineering",
+    "credits": 3,
+    "description": "Software design, testing, and project lifecycle practices.",
+    "level": "undergraduate",
+    "tags": ["core", "software-engineering"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c03"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02360801",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c09",
+    "institutionId": "technion",
+    "subject": "0094",
+    "number": "00940211",
+    "title": "Probability",
+    "credits": 3,
+    "description": "Probability theory for engineering and computer science students.",
+    "level": "undergraduate",
+    "tags": ["mathematics", "core"],
+    "prerequisiteCourseIds": [],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Mathematics" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-math-catalog-2025",
+        "locator": "course:00940211",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c10",
+    "institutionId": "technion",
+    "subject": "0104",
+    "number": "01040130",
+    "title": "Linear Algebra",
+    "credits": 4,
+    "description": "Vector spaces, matrices, eigenvalues, and linear transformations.",
+    "level": "undergraduate",
+    "tags": ["mathematics", "core"],
+    "prerequisiteCourseIds": [],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Mathematics" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-math-catalog-2025",
+        "locator": "course:01040130",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c11",
+    "institutionId": "technion",
+    "subject": "0114",
+    "number": "01140131",
+    "title": "Calculus 1",
+    "credits": 5,
+    "description": "Differential and integral calculus for science and engineering.",
+    "level": "undergraduate",
+    "tags": ["mathematics", "core"],
+    "prerequisiteCourseIds": [],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Mathematics" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-math-catalog-2025",
+        "locator": "course:01140131",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  },
+  {
+    "id": "665f2b0f2a3f7b2a1a9a7c12",
+    "institutionId": "technion",
+    "subject": "0234",
+    "number": "02340501",
+    "title": "Computer Networks",
+    "credits": 3,
+    "description": "Network protocols, layering, routing, and distributed communication.",
+    "level": "undergraduate",
+    "tags": ["core", "systems"],
+    "prerequisiteCourseIds": ["665f2b0f2a3f7b2a1a9a7c06"],
+    "corequisiteCourseIds": [],
+    "catalogYear": 2025,
+    "catalogVersion": "2025.1",
+    "version": "2025.1",
+    "status": "published",
+    "metadata": { "faculty": "Computer Science" },
+    "sourceRefs": [
+      {
+        "sourceId": "seed-technion-cs-catalog-2025",
+        "locator": "course:02340501",
+        "retrievedAt": "2026-06-19T00:00:00.000Z"
+      }
+    ]
+  }
+]

@@ -1,5 +1,6 @@
 const express = require("express");
 const { createAuthRouter } = require("./routes/authRoutes");
+const { createCatalogRouter } = require("./routes/catalogRoutes");
 const { createStudentProfileRouter } = require("./routes/studentProfileRoutes");
 
 function createApp() {
@@ -22,6 +23,7 @@ function createApp() {
 
   app.use("/auth", createAuthRouter());
   app.use("/student-profile", createStudentProfileRouter());
+  app.use("/", createCatalogRouter());
 
   app.use((_request, response) => {
     response.status(404).json({

@@ -1,7 +1,11 @@
 const request = require("supertest");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const { createApp } = require("../../src/app");
-const { closeMongoClient } = require("../../src/db/mongoClient");
+const { closeMongoClient, getDatabase } = require("../../src/db/mongoClient");
+const {
+  TECHNION_SEED,
+  seedTechnionCatalogForTests
+} = require("../helpers/catalogTestHelpers");
 
 jest.setTimeout(30_000);
 
@@ -23,6 +27,9 @@ describe("student profile integration", () => {
     delete process.env.REDIS_URL;
 
     app = createApp();
+
+    const database = await getDatabase();
+    await seedTechnionCatalogForTests(database);
 
     const registerResponse = await request(app).post("/auth/register").send({
       email: "profile-owner@example.com",
@@ -60,7 +67,7 @@ describe("student profile integration", () => {
       .send({
         institutionId: "uni-main",
         programType: "BSc",
-        degreeId: "665f2b0f2a3f7b2a1a9a7f11",
+        degreeId: TECHNION_SEED.degreeId,
         catalogYear: 2025,
         currentSemesterCode: "2025-1",
         preferences: {

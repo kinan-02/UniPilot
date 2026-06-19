@@ -43,16 +43,16 @@ Mandatory constraints:
 
 ## 3) Current Architecture (As Implemented)
 
-Current stage: **auth + student profile backend implemented** (in roadmap terms: Phase 0–1 complete + Phase 2 student profile CRUD implemented).
+Current stage: **auth + student profile + catalog backend implemented** (Phase 4 catalog seed and read-only catalog APIs complete).
 
 Architecture pattern:
-- `api` receives client requests and exposes `/health`, auth routes, and protected `/student-profile` CRUD.
+- `api` receives client requests and exposes `/health`, auth routes, protected `/student-profile` CRUD, and read-only catalog routes (`/courses`, `/degrees`).
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
 - Internal Docker network for inter-service communication by service name.
 
-Current behavior intentionally excludes completed courses, course catalog API, and AI recommendation logic, but includes authentication and student profile CRUD with ownership enforcement.
+Current behavior intentionally excludes completed courses, graduation progress, semester planning, and AI recommendation logic, but includes authentication, student profile CRUD, and read-only Technion catalog APIs backed by a curated seed dataset.
 
 ## 3.1) Technion Academic Data Strategy
 
@@ -73,7 +73,7 @@ UniPilot targets **Technion** as the initial institution (`institutionId: "techn
 
 **Phase boundary:**
 
-- **Phase 4 (catalog seed):** implement a **small curated seed dataset** and `scripts/data/seedCatalog.js` only.
+- **Phase 4 (catalog seed):** implemented — curated Technion CS dataset in `data/validated/technion/2025/` + `seedCatalog.js` / `seedCatalogCli.js`.
 - **Later phase:** full offline pipeline (PDF/HTML extraction, normalization, validation, review, RAG generation, automated refresh).
 
 Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement documents, policies) flow through the pipeline defined in the ingestion architecture doc; only validated artifacts are imported into MongoDB.
@@ -167,6 +167,10 @@ Current implemented tests:
 - Student profile unit tests (payload validation).
 - Student profile integration tests (create/read/update/delete for authenticated user).
 - Student profile security tests (auth required, ownership isolation).
+- Catalog unit tests (seed mappers, query validation, public DTO mappers).
+- Catalog integration tests (courses/degrees/requirements read APIs).
+- Catalog security tests (401 without JWT on all catalog routes).
+- Student profile degree reference integration tests.
 
 Near-term testing priorities:
 - Add integration tests for container/dependency wiring.
@@ -188,6 +192,11 @@ Required and currently implemented:
 - Student profile model with unique `userId` index.
 - Protected student profile CRUD (`POST/GET/PUT/DELETE /student-profile`).
 - Ownership checks: users can only access/modify their own profile.
+- Student profile `degreeId` FK validation against seeded `degrees` collection.
+- Curated Technion catalog seed (`data/validated/technion/2025/`).
+- Catalog models (`courses`, `degrees`, `degree_requirements`) with indexes and provenance fields.
+- Read-only catalog APIs: `GET /courses`, `GET /courses/:id`, `GET /degrees`, `GET /degrees/:id`, `GET /degrees/:id/requirements` (JWT required).
+- Catalog seed CLI (`services/api/src/scripts/seedCatalogCli.js`, `scripts/data/seedCatalog.js`).
 
 Still pending for next phases:
 - AI endpoint rate limiting.
@@ -199,8 +208,8 @@ Canonical roadmap: `docs/planning/IMPLEMENTATION_PHASES.md` and `docs/planning/F
 Practical sequence:
 1. Foundation (done): Docker skeleton + health + internal networking.
 2. Auth foundation (done): user model, register/login, JWT, bcrypt, validation, auth rate limiting.
-3. Student domain (in progress): student profile CRUD done; completed courses/catalog API pending.
-4. Catalog seed (next): small curated Technion dataset + `seedCatalog.js` (not full ingestion pipeline).
+3. Student domain (in progress): student profile CRUD done; completed courses pending.
+4. Catalog seed (done): Technion curated dataset + read-only catalog APIs + seed command.
 5. Async AI pipeline: enqueue, worker processing, status/result flow.
 6. AI decision features (grounded in MongoDB facts + RAG explanations).
 7. Full Technion data ingestion pipeline (PDF/HTML extract, normalize, validate, review, refresh).
@@ -214,6 +223,7 @@ Practical sequence:
 - Only API service host exposure (internal-only for other services).
 - API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
 - Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
+- Catalog read endpoints with JWT protection (shared academic data, not user-owned).
 - bcrypt password hashing, JWT token issuance, and protected-route middleware.
 - Auth validation and auth rate limiting middleware.
 - Student profile validation schemas and MongoDB model/indexes.

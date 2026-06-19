@@ -1,6 +1,7 @@
 const express = require("express");
 const { getDatabase } = require("../db/mongoClient");
 const { requireAuth } = require("../middleware/authMiddleware");
+const { findDegreeById } = require("../models/degreeModel");
 const {
   createStudentProfile,
   deleteStudentProfileByUserId,
@@ -25,6 +26,19 @@ function createStudentProfileRouter() {
     }
   }
 
+  async function validateDegreeReference(database, degreeId) {
+    if (!degreeId) {
+      return null;
+    }
+
+    const degree = await findDegreeById(database, degreeId);
+    if (!degree) {
+      return "Referenced degree was not found in the catalog";
+    }
+
+    return null;
+  }
+
   router.post("/", requireAuth, async (request, response, next) => {
     try {
       const validationResult = validateCreateStudentProfilePayload(request.body);
@@ -45,6 +59,18 @@ function createStudentProfileRouter() {
           success: false,
           data: null,
           error: "Student profile already exists for this user"
+        });
+      }
+
+      const degreeReferenceError = await validateDegreeReference(
+        database,
+        validationResult.data.degreeId
+      );
+      if (degreeReferenceError) {
+        return response.status(400).json({
+          success: false,
+          data: null,
+          error: degreeReferenceError
         });
       }
 
@@ -117,6 +143,18 @@ function createStudentProfileRouter() {
           success: false,
           data: null,
           error: "Student profile not found"
+        });
+      }
+
+      const degreeReferenceError = await validateDegreeReference(
+        database,
+        validationResult.data.degreeId
+      );
+      if (degreeReferenceError) {
+        return response.status(400).json({
+          success: false,
+          data: null,
+          error: degreeReferenceError
         });
       }
 
