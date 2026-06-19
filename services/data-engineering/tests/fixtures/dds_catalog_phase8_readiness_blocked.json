@@ -1,0 +1,9 @@
+{
+  "canImportToStaging": false,
+  "canPromoteToProduction": false,
+  "blockingIssuesForStaging": ["Program count is not 3."],
+  "blockingIssuesForProduction": [],
+  "warnings": [],
+  "reviewStatus": "needs-more-curation",
+  "counts": {}
+}

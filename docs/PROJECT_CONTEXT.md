@@ -84,8 +84,7 @@ The team has decided to migrate the **main backend** from **Node.js / Express** 
 6.5. DDS catalog markdown parser → draft curated JSON — **implemented (Phase 6.5)**  
 7.5. DDS catalog assisted curation (course JSON metadata) — **implemented (Phase 7.5)**  
 7.6. DDS catalog curated JSON signoff review — **implemented (Phase 7.6)**  
-8. Validate against domain/schema — **in progress (reviewed JSON)**    
-8. Import validated DDS data into MongoDB  
+8. Import validated DDS catalog into MongoDB staging — **implemented (Phase 8 staging import)**  
 9. Catalog → Completed Courses → Graduation Progress → Planner → Risk → AI  
 
 ### Python Phase 1 status (implemented)
@@ -133,7 +132,7 @@ Phase 3 scope intentionally excludes catalog, data engineering, and AI/RAG.
 | Item | Status |
 |---|---|
 | `services/data-engineering/` standalone internal container | Done |
-| Staging collections only (`staging_courses`, `staging_degree_requirements`, `staging_ingestion_runs`) | Done |
+| Staging collections only (`staging_courses`, `staging_degree_requirements`, `staging_degree_programs`, `staging_catalog_rules`, `staging_ingestion_runs`) | Done |
 | CLI: `health`, `validate-sample`, `import-sample` | Done |
 | Pydantic models: `NormalizedCourse`, `NormalizedDegreeRequirement`, `IngestionRun` | Done |
 | Validators + Technion DDS normalizer/importer stubs | Done |
@@ -218,10 +217,26 @@ Phase 7.5 scope intentionally excludes staging import, production promotion, and
 | Credit bucket verification against markdown | Done |
 | Title hint resolution (JSON + non-reversed markdown only) | Done |
 | IE/IS chain rules remain non-mandatory choose-N groups | Done |
-| MongoDB / staging / production writes | **Not started** |
+| MongoDB / staging / production writes | **Not started** (signoff only) |
 | Node / Python API changes | **None** |
 
 Phase 7.6 is **agent-assisted source verification**, not true human approval. The reviewed catalog may be suitable for **Phase 8 staging import with review flags preserved**; production promotion still requires human signoff. No MongoDB writes occur in this phase.
+
+### Python Phase 8 status (implemented — DDS catalog staging import only)
+
+| Item | Status |
+|---|---|
+| CLI: `import-dds-catalog-staging` (`--dry-run` supported) | Done |
+| Importer `app/importers/dds_catalog_staging_importer.py` | Done |
+| Staging collections: `staging_degree_programs`, `staging_degree_requirements`, `staging_catalog_rules`, `staging_ingestion_runs` | Done |
+| Idempotent upsert by stable `stagingKey` | Done |
+| Preserves `manualReviewRequired`, `signoffReview`, warnings, `productionEligible: false` | Done |
+| Production collections (`degrees`, `degree_requirements`, `courses`, `catalog`, …) | **Not written** |
+| Production promotion | **Blocked** |
+| Node / Python API changes | **None** |
+| Main API catalog exposure | **None** |
+
+Phase 8 imports the Phase 7.6 reviewed curated catalog into **staging only**. `canPromoteToProduction` must remain `false`; all staging documents set `productionEligible: false` and `requiresHumanSignoff: true`.
 
 ### Target Python stack
 

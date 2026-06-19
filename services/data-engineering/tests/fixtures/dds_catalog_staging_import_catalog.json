@@ -1,0 +1,135 @@
+{
+  "source": {
+    "institutionId": "technion",
+    "sourceType": "dds_catalog_curated_reviewed",
+    "catalogYear": 2025,
+    "catalogVersion": "2025-2026",
+    "sourceFile": "tests/fixtures/dds_catalog_sample.md",
+    "manualReviewRequired": true,
+    "confidence": "medium",
+    "notes": []
+  },
+  "programs": [
+    {
+      "institutionId": "technion",
+      "programCode": "009216-1-000",
+      "name": "הנדסת נתונים ומידע",
+      "nameEn": "Data Science and Engineering",
+      "catalogYear": 2025,
+      "catalogVersion": "2025-2026",
+      "totalCredits": 155.0,
+      "paths": [],
+      "requirementGroups": [
+        {
+          "groupId": "009216-1-000:core-mandatory",
+          "title": "core mandatory",
+          "requirementType": "core",
+          "minCredits": 108.0,
+          "courseReferences": [],
+          "ruleExpression": { "type": "credit_bucket", "operator": "min_credits" },
+          "notes": [],
+          "manualReviewRequired": false,
+          "confidence": "high"
+        },
+        {
+          "groupId": "009216-1-000:semester-1-matrix",
+          "title": "semester 1",
+          "requirementType": "core",
+          "courseReferences": [
+            {
+              "courseNumber": "00940345",
+              "titleHint": "מתמטיקה דיסקרטית ת'",
+              "manualReviewRequired": true,
+              "confidence": "medium"
+            },
+            {
+              "courseNumber": "01040031",
+              "titleHint": null,
+              "manualReviewRequired": true,
+              "confidence": "low",
+              "notes": ["titleHint unresolved after Phase 7.6 signoff."]
+            }
+          ],
+          "ruleExpression": { "type": "semester_matrix", "operator": "all_of", "semester": 1 },
+          "notes": [],
+          "manualReviewRequired": true,
+          "confidence": "medium"
+        }
+      ],
+      "metadata": {},
+      "manualReviewRequired": true,
+      "confidence": "medium"
+    },
+    {
+      "institutionId": "technion",
+      "programCode": "009009-1-000",
+      "name": "הנדסת תעשייה וניהול",
+      "nameEn": "IE",
+      "catalogYear": 2025,
+      "catalogVersion": "2025-2026",
+      "totalCredits": 155.0,
+      "paths": [],
+      "requirementGroups": [
+        {
+          "groupId": "009009-1-000:ie-statistics-elective-chain",
+          "title": "IE statistics chain",
+          "requirementType": "elective",
+          "courseReferences": [],
+          "ruleExpression": {
+            "type": "course_pool",
+            "operator": "choose_n",
+            "chooseCount": 1,
+            "chain": "statistics"
+          },
+          "notes": ["Choose-N chain; not flattened mandatory list."],
+          "manualReviewRequired": true,
+          "confidence": "low"
+        }
+      ],
+      "metadata": {},
+      "manualReviewRequired": true,
+      "confidence": "medium"
+    },
+    {
+      "institutionId": "technion",
+      "programCode": "009118-1-000",
+      "name": "הנדסת מערכות מידע",
+      "nameEn": "IS",
+      "catalogYear": 2025,
+      "catalogVersion": "2025-2026",
+      "totalCredits": 155.0,
+      "paths": [],
+      "requirementGroups": [],
+      "metadata": {},
+      "manualReviewRequired": true,
+      "confidence": "medium"
+    }
+  ],
+  "parserReport": {},
+  "curationMetadata": {
+    "curatedBy": "test-fixture",
+    "curatedAt": "2026-01-01T00:00:00+00:00",
+    "sourceDraftPath": "tests/fixtures/dds_catalog_draft_sample.json",
+    "sourceMarkdownPath": "tests/fixtures/dds_catalog_sample.md",
+    "courseJsonSources": ["courses_sample_201.json"],
+    "curationStatus": "ready-for-staging-with-review-flags",
+    "knownLimitations": [],
+    "countsBefore": {},
+    "countsAfter": {},
+    "unresolvedIssues": ["Missing titleHint: 01040031"]
+  },
+  "curationReport": {
+    "warnings": ["1 course reference still lacks titleHint."]
+  },
+  "signoffReview": {
+    "reviewedBy": "cursor-agent-source-review",
+    "reviewedAt": "2026-01-01T00:00:00+00:00",
+    "reviewStatus": "ready-for-staging-with-review-flags",
+    "sourceFilesReviewed": ["tests/fixtures/dds_catalog_sample.md"],
+    "checksPerformed": ["structure_validation"],
+    "verifiedItems": ["Top-level structure verified."],
+    "unresolvedItems": ["Missing titleHint: 01040031"],
+    "phase8Recommendation": "Safe to import to staging with review flags preserved.",
+    "productionPromotionRecommendation": "Do not promote to production until human signoff."
+  }
+}

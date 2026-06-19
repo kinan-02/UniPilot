@@ -4,7 +4,7 @@ Internal-only Python service for academic data ingestion into **staging** MongoD
 
 ## Scope (Phase 4)
 
-- Staging pipeline foundation (`staging_courses`, `staging_degree_requirements`, `staging_ingestion_runs`)
+- Staging pipeline foundation (`staging_courses`, `staging_degree_requirements`, `staging_degree_programs`, `staging_catalog_rules`, `staging_ingestion_runs`)
 - CLI commands for health checks and **synthetic sample** validation/import
 - Normalizer/importer stubs for future Technion DDS sources
 
@@ -90,6 +90,55 @@ Outputs (committable):
 - `data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json`
 
 Phase 7.6 does **not** write to MongoDB, staging, or production. This is not true human approval — staging import may proceed with review flags; production promotion requires human signoff.
+
+## DDS catalog staging import (Phase 8)
+
+Imports the Phase 7.6 reviewed curated catalog into MongoDB **staging collections only**.
+
+```bash
+# Dry run (no MongoDB writes)
+python -m app.main import-dds-catalog-staging \
+  --catalog-path data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json \
+  --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json \
+  --dry-run
+
+# Real staging import (requires MongoDB)
+python -m app.main import-dds-catalog-staging \
+  --catalog-path data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json \
+  --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json
+```
+
+Docker:
+
+```bash
+docker compose run --rm data-engineering python -m app.main import-dds-catalog-staging \
+  --catalog-path data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json \
+  --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json \
+  --dry-run
+```
+
+**Staging collections written:**
+
+| Collection | Content |
+|---|---|
+| `staging_degree_programs` | 3 DDS degree programs with full catalog context |
+| `staging_degree_requirements` | 41 requirement groups (course refs + review flags) |
+| `staging_catalog_rules` | 22 non-executable rule groups (chains, matrices, tracks) |
+| `staging_ingestion_runs` | Audit record per import |
+
+**Stable staging keys:** `technion-dds:catalog:2025-2026:program:<code>`, `...:requirement:<groupId>`, `...:rule:<groupId>`.
+
+**Inspect staging (mongosh example):**
+
+```javascript
+db.staging_degree_programs.countDocuments({ sourceName: "technion-dds-catalog" })
+db.staging_degree_requirements.find({ productionEligible: false }).limit(3)
+db.staging_catalog_rules.find({ ruleIsExecutable: false }).limit(3)
+```
+
+**Production safety:** importer refuses non-`staging_` collection names and never writes to `degrees`, `degree_requirements`, `courses`, or `catalog`. All documents have `productionEligible: false`.
+
+Phase 8 does **not** expose catalog data via the main API and does **not** implement production promotion.
 
 ## DDS catalog PDF extraction (Phase 6)
 

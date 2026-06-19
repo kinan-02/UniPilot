@@ -163,7 +163,18 @@ docker compose run --rm data-engineering python -m app.main validate-sample
 docker compose run --rm data-engineering python -m app.main import-sample
 ```
 
-Staging collections: `staging_courses`, `staging_degree_requirements`, `staging_ingestion_runs`.
+Staging collections: `staging_courses`, `staging_degree_requirements`, `staging_degree_programs`, `staging_catalog_rules`, `staging_ingestion_runs`.
+
+DDS catalog staging import (Phase 8 — staging only, preserves review flags):
+
+```bash
+docker compose run --rm data-engineering python -m app.main import-dds-catalog-staging \
+  --catalog-path data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json \
+  --readiness-path data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json \
+  --dry-run
+```
+
+Production collections (`degrees`, `degree_requirements`, `courses`, `catalog`) are **not** written. The main API does not expose staging catalog data yet.
 
 See `services/data-engineering/README.md` for service-specific details.
 

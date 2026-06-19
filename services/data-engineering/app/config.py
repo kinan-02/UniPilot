@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     staging_courses_collection: str = "staging_courses"
     staging_degree_requirements_collection: str = "staging_degree_requirements"
+    staging_degree_programs_collection: str = "staging_degree_programs"
+    staging_catalog_rules_collection: str = "staging_catalog_rules"
     staging_ingestion_runs_collection: str = "staging_ingestion_runs"
     dds_catalog_pdf_path: str | None = None
     dds_catalog_md_path: str | None = None

@@ -72,6 +72,28 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 - `curationStatus` may become `ready-for-staging-with-review-flags` but never `production-ready` in this phase.
 - No MongoDB, staging, or production writes in Phase 7.6.
 
+## Phase 8 update (DDS catalog staging import)
+
+| Command | Purpose |
+|---------|---------|
+| `python -m app.main import-dds-catalog-staging --catalog-path … --readiness-path …` | Upsert reviewed catalog into staging collections |
+| `… --dry-run` | Validate inputs and print counts without MongoDB writes |
+
+| Staging collection | Records (Technion DDS 2025-2026) |
+|---|---|
+| `staging_degree_programs` | 3 programs |
+| `staging_degree_requirements` | 41 requirement groups |
+| `staging_catalog_rules` | 22 non-executable rules |
+| `staging_ingestion_runs` | 1 audit record per import |
+
+**Rules:**
+
+- Requires Phase 7.6 `signoffReview` and `canImportToStaging: true` in readiness JSON.
+- Rejects `production-ready` curation status and `canPromoteToProduction: true`.
+- Every document: `isStaging: true`, `productionEligible: false`, `requiresHumanSignoff: true`.
+- Idempotent re-import via stable `stagingKey` values.
+- **No production collection writes.** Main API still does not expose catalog data.
+
 ## Phase 6 update (PDF extraction)
 
 Phase 6 adds a local PDF extraction pipeline:

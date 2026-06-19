@@ -1,0 +1,23 @@
+{
+  "canImportToStaging": true,
+  "canPromoteToProduction": false,
+  "blockingIssuesForStaging": [],
+  "blockingIssuesForProduction": [
+    "Human signoff required on IE/IS chain rules and DS tracks."
+  ],
+  "warnings": [
+    "1 course reference still lacks titleHint."
+  ],
+  "reviewStatus": "ready-for-staging-with-review-flags",
+  "phase8Recommendation": "Safe to import to staging with review flags preserved.",
+  "productionPromotionRecommendation": "Do not promote to production until human signoff.",
+  "counts": {
+    "programs": 3,
+    "requirementGroups": 5,
+    "courseReferences": 2,
+    "missingTitleHints": 1,
+    "manualReviewRequiredItems": 10,
+    "executableRuleGroups": 1,
+    "nonExecutableRuleGroups": 4
+  }
+}

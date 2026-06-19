@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.db import check_mongo_connectivity, close_mongo_client, get_database
+from app.importers.dds_catalog_staging_importer import import_dds_catalog_to_staging
 from app.importers.staging_importer import import_records_to_staging
 from app.logging_config import configure_logging
 from app.sources.sample_data import (
@@ -36,6 +37,8 @@ def run_health() -> int:
         "stagingCollections": {
             "courses": settings.staging_courses_collection,
             "degreeRequirements": settings.staging_degree_requirements_collection,
+            "degreePrograms": settings.staging_degree_programs_collection,
+            "catalogRules": settings.staging_catalog_rules_collection,
             "ingestionRuns": settings.staging_ingestion_runs_collection,
         },
         "note": "Real Technion DDS ingestion is not implemented in Phase 4.",
@@ -264,6 +267,70 @@ def run_signoff_dds_catalog(
     return 0
 
 
+def run_import_dds_catalog_staging(
+    catalog_path: str | None,
+    readiness_path: str | None,
+    dry_run: bool,
+) -> int:
+    settings = get_settings()
+    catalog_file = Path(catalog_path) if catalog_path else None
+    readiness_file = Path(readiness_path) if readiness_path else None
+
+    try:
+        if dry_run:
+            summary = import_dds_catalog_to_staging(
+                None,
+                catalog_path=catalog_file,
+                readiness_path=readiness_file,
+                settings=settings,
+                dry_run=True,
+            )
+        else:
+            if check_mongo_connectivity() != "connected":
+                print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+                return 1
+            database = get_database()
+            summary = import_dds_catalog_to_staging(
+                database,
+                catalog_path=catalog_file,
+                readiness_path=readiness_file,
+                settings=settings,
+                dry_run=False,
+            )
+    except FileNotFoundError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "dryRun": summary.dryRun,
+                "programsUpserted": summary.programsUpserted,
+                "requirementsUpserted": summary.requirementsUpserted,
+                "rulesUpserted": summary.rulesUpserted,
+                "courseReferencesObserved": summary.courseReferencesObserved,
+                "manualReviewRequiredItems": summary.manualReviewRequiredItems,
+                "warningsPreserved": summary.warningsPreserved,
+                "stagingCollections": summary.stagingCollections,
+                "ingestionRunId": summary.ingestionRunId,
+                "ingestionStatus": summary.ingestionStatus,
+                "note": (
+                    "Dry run only — no MongoDB writes."
+                    if summary.dryRun
+                    else "Staging import only — no production collections written."
+                ),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def run_inspect_dds_catalog(pdf_path: str | None) -> int:
     settings = get_settings()
     env_path = os.environ.get("DDS_CATALOG_PDF_PATH") or settings.dds_catalog_pdf_path
@@ -293,6 +360,7 @@ def build_parser() -> argparse.ArgumentParser:
             "parse-dds-catalog-md",
             "curate-dds-catalog",
             "signoff-dds-catalog",
+            "import-dds-catalog-staging",
         ],
         help="Task to execute",
     )
@@ -325,6 +393,18 @@ def build_parser() -> argparse.ArgumentParser:
         dest="draft_path",
         default=None,
         help="Path to parser draft curated catalog JSON",
+    )
+    parser.add_argument(
+        "--catalog-path",
+        dest="catalog_path",
+        default=None,
+        help="Path to Phase 7.6 reviewed curated catalog JSON",
+    )
+    parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="Validate and summarize without writing to MongoDB",
     )
     parser.add_argument(
         "--reviewed-path",
@@ -379,6 +459,12 @@ def main(argv: list[str] | None = None) -> int:
                 args.output,
                 args.report_path,
                 args.readiness_path,
+            )
+        if args.command == "import-dds-catalog-staging":
+            return run_import_dds_catalog_staging(
+                args.catalog_path,
+                args.readiness_path,
+                args.dry_run,
             )
     finally:
         close_mongo_client()

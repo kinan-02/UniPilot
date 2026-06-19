@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,3 +20,4 @@ class IngestionRun(BaseModel):
     itemsValid: int = Field(default=0, ge=0)
     itemsInvalid: int = Field(default=0, ge=0)
     errors: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

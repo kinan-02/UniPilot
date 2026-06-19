@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY data/curated ./data/curated
 
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 USER appuser
