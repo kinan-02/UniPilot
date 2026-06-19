@@ -63,6 +63,55 @@ def test_staging_importer_is_idempotent_for_same_sample_records(mongo_database):
     assert mongo_database[settings.staging_ingestion_runs_collection].count_documents({}) == 2
 
 
+def test_staging_importer_reports_partial_status_for_mixed_batch(mongo_database):
+    settings = get_settings()
+    invalid_course = {**SAMPLE_COURSES[0], "credits": 99}
+
+    finished_run = import_records_to_staging(
+        mongo_database,
+        source_name=SAMPLE_SOURCE_NAME,
+        source_type=SAMPLE_SOURCE_TYPE,
+        courses=[SAMPLE_COURSES[0], invalid_course],
+        degree_requirements=[],
+        settings=settings,
+    )
+
+    assert finished_run.status == "partial"
+    assert finished_run.itemsRead == 2
+    assert finished_run.itemsValid == 1
+    assert finished_run.itemsInvalid == 1
+    assert mongo_database[settings.staging_courses_collection].count_documents({}) == 1
+
+
+def test_finished_ingestion_run_persists_audit_fields(mongo_database):
+    settings = get_settings()
+
+    finished_run = import_records_to_staging(
+        mongo_database,
+        source_name=SAMPLE_SOURCE_NAME,
+        source_type=SAMPLE_SOURCE_TYPE,
+        courses=SAMPLE_COURSES[:1],
+        degree_requirements=[],
+        settings=settings,
+    )
+
+    persisted = mongo_database[settings.staging_ingestion_runs_collection].find_one(
+        {"sourceName": SAMPLE_SOURCE_NAME},
+        sort=[("startedAt", -1)],
+    )
+
+    assert persisted is not None
+    assert persisted["sourceName"] == SAMPLE_SOURCE_NAME
+    assert persisted["sourceType"] == SAMPLE_SOURCE_TYPE
+    assert persisted["status"] == finished_run.status == "completed"
+    assert persisted["startedAt"] is not None
+    assert persisted["finishedAt"] is not None
+    assert persisted["itemsRead"] == 1
+    assert persisted["itemsValid"] == 1
+    assert persisted["itemsInvalid"] == 0
+    assert persisted["errors"] == []
+
+
 def test_staging_importer_captures_invalid_records_without_crashing(mongo_database):
     settings = get_settings()
     invalid_course = {

@@ -5,7 +5,7 @@ from typing import Any
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
-from app.models.ingestion_run import IngestionRun
+from app.models.ingestion_run import IngestionRun, IngestionStatus
 from app.models.normalized_course import NormalizedCourse
 from app.models.normalized_degree_requirement import NormalizedDegreeRequirement
 from app.validators.course_validator import validate_normalized_course
@@ -74,7 +74,7 @@ def _finish_ingestion_run(
     return finished
 
 
-def _resolve_final_status(run: IngestionRun) -> str:
+def _resolve_final_status(run: IngestionRun) -> IngestionStatus:
     if run.itemsInvalid > 0 and run.itemsValid > 0:
         return "partial"
     if run.itemsInvalid > 0 and run.itemsValid == 0:
