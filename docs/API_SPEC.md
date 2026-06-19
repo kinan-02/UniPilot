@@ -295,21 +295,94 @@ Hard-delete the authenticated user's profile.
 
 ## 4.3 Completed Courses (MVP)
 
-### Planned MVP endpoints
-- `GET /completed-courses` (protected, user-owned list)
-- `POST /completed-courses` (protected, add transcript record)
-- `PUT /completed-courses/:id` (protected, correction policy)
-- `DELETE /completed-courses/:id` (protected, soft-delete preferred)
+**Status:** Implemented (Phase 5). User-owned transcript records backed by MongoDB `completed_courses`.
 
-### Request fields
-- `courseId` (required)
-- `courseOfferingId` (optional)
-- `semesterCode`, `grade`, `gradePoints`, `creditsEarned`, `attempt`, `source`
+All routes require `Authorization: Bearer <accessToken>`. Records are scoped to the authenticated user (`token.sub`). Clients must not send `userId`.
+
+### `GET /completed-courses`
+
+List the authenticated user's completed course records (newest first).
+
+**Query parameters (optional):**
+
+| Param | Rules |
+|---|---|
+| `page` | integer ≥ 1, default `1` |
+| `limit` | integer 1–100, default `50` |
+
+Unknown query fields are rejected (`400`).
+
+**Success (`200`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "completedCourses": [ ],
+    "pagination": { "total": 1, "page": 1, "limit": 50 }
+  },
+  "error": null
+}
+```
+
+### `POST /completed-courses`
+
+Create a manual transcript record for the authenticated user.
+
+**Request body:**
+
+| Field | Required | Rules |
+|---|---|---|
+| `courseId` | yes | ObjectId; must exist in published course catalog |
+| `semesterCode` | yes | `YYYY-1` or `YYYY-2` |
+| `grade` | yes | `A+`, `A`, `A-`, `B+`, `B`, `B-`, `C+`, `C`, `C-`, `D`, `F`, `Pass`, `Fail` |
+| `gradePoints` | no | number 0–100 |
+| `creditsEarned` | yes | number 0–36 |
+| `attempt` | no | integer 1–5, default `1` |
+| `metadata` | no | `{ notes?: string (max 500) }` |
+
+`source` is always stored as `manual` for API-created records. `userId`, `official`, and `imported` source values are rejected on create.
+
+**Success (`201`):** `{ success, data: { completedCourse }, error: null }`
+
+**Errors:** `400` validation / unknown course, `409` duplicate `(user, courseId, attempt)`
+
+### `GET /completed-courses/:id`
+
+Fetch one owned record by id.
+
+**Success (`200`):** `{ success, data: { completedCourse }, error: null }`
+
+**Errors:** `404` when not found or not owned (no cross-user leakage)
+
+### `PUT /completed-courses/:id`
+
+Update a **manual** record only. `official` and `imported` records return `403`.
+
+Updatable fields: `semesterCode`, `grade`, `gradePoints`, `creditsEarned`, `metadata` (at least one required).
+
+**Success (`200`):** updated `completedCourse` DTO
+
+**Errors:** `400`, `403` (non-manual), `404`
+
+### `DELETE /completed-courses/:id`
+
+Delete a **manual** record only. `official` and `imported` records return `403`.
+
+**Success (`200`):** `{ success, data: { deleted: true }, error: null }`
+
+**Errors:** `403` (non-manual), `404`
+
+### Public DTO fields
+
+`id`, `courseId`, `courseNumber`, `courseTitle`, `semesterCode`, `grade`, `gradePoints`, `creditsEarned`, `attempt`, `source`, `metadata`, `recordedAt`, `createdAt`, `updatedAt`
 
 ### Rules
-- User can only manage own records.
-- Grade/credits/attempt validation enforced.
-- No plaintext sensitive data involved.
+
+- User can only read/list own records.
+- Duplicate `(userId, courseId, attempt)` conflicts with `409`.
+- Grade and credits validation enforced at boundary.
+- Course reference validated against seeded catalog (`findCourseById`).
 
 ---
 

@@ -1,7 +1,7 @@
-# UniPilot AI — Phase 4 Catalog Backend
+# UniPilot AI — Phase 5 Completed Courses Backend
 
 UniPilot AI is an AI-powered academic decision support platform.  
-This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, and **read-only Technion-style course catalog / degree requirements**:
+This repository currently implements backend foundation plus **authentication**, **student profile CRUD**, **completed courses CRUD**, and **read-only Technion-style course catalog / degree requirements**:
 
 - Dockerized backend services
 - Health endpoint in the API
@@ -11,12 +11,13 @@ This repository currently implements backend foundation plus **authentication**,
 - Protected auth route middleware
 - Input validation and auth rate limiting
 - Protected student profile CRUD (`/student-profile`)
+- Protected completed courses CRUD (`/completed-courses`)
 - Curated Technion CS/SE catalog seed data (2025)
 - Read-only catalog endpoints (`/courses`, `/degrees`)
 - Catalog seed command for MongoDB
 - Unit, integration, and security tests
 
-Completed courses, graduation progress, semester planning, and AI features are intentionally not implemented yet.
+Graduation progress, semester planning, and AI features are intentionally not implemented yet.
 
 ## Services
 
@@ -81,7 +82,7 @@ docker compose down -v
 
 ## Run Tests
 
-API tests (health + auth + student profile + catalog unit/integration/security):
+API tests (health + auth + student profile + completed courses + catalog unit/integration/security):
 
 ```bash
 cd services/api
@@ -166,6 +167,31 @@ Shared academic data — readable by any authenticated user. Not student-owned.
 
 - `GET /degrees/:degreeId/requirements`
 - Header: `Authorization: Bearer <accessToken>`
+
+## Completed Courses API (Protected)
+
+User-owned transcript records. All routes require `Authorization: Bearer <accessToken>`.
+
+- `POST /completed-courses` — add a manual completed course (validates `courseId` against seeded catalog)
+- `GET /completed-courses` — list own records (`?page=1&limit=50`)
+- `GET /completed-courses/:id` — get one owned record
+- `PUT /completed-courses/:id` — update **manual** records only
+- `DELETE /completed-courses/:id` — delete **manual** records only
+
+Example create body:
+
+```json
+{
+  "courseId": "665f2b0f2a3f7b2a1a9a7c01",
+  "semesterCode": "2024-1",
+  "grade": "B+",
+  "gradePoints": 82,
+  "creditsEarned": 3,
+  "attempt": 1
+}
+```
+
+Duplicate `(courseId, attempt)` for the same user returns `409`. `official` / `imported` records (future ingestion) cannot be edited or deleted via API.
 
 ## Notes
 

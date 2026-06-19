@@ -43,16 +43,16 @@ Mandatory constraints:
 
 ## 3) Current Architecture (As Implemented)
 
-Current stage: **auth + student profile + catalog backend implemented** (Phase 4 catalog seed and read-only catalog APIs complete).
+Current stage: **auth + student profile + catalog + completed courses backend implemented** (Phase 5 completed courses CRUD complete).
 
 Architecture pattern:
-- `api` receives client requests and exposes `/health`, auth routes, protected `/student-profile` CRUD, and read-only catalog routes (`/courses`, `/degrees`).
+- `api` receives client requests and exposes `/health`, auth routes, protected `/student-profile` CRUD, protected `/completed-courses` CRUD, and read-only catalog routes (`/courses`, `/degrees`).
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
 - Internal Docker network for inter-service communication by service name.
 
-Current behavior intentionally excludes completed courses, graduation progress, semester planning, and AI recommendation logic, but includes authentication, student profile CRUD, and read-only Technion catalog APIs backed by a curated seed dataset.
+Current behavior intentionally excludes graduation progress, semester planning, and AI recommendation logic, but includes authentication, student profile CRUD, completed courses CRUD, and read-only Technion catalog APIs backed by a curated seed dataset.
 
 ## 3.1) Technion Academic Data Strategy
 
@@ -74,6 +74,7 @@ UniPilot targets **Technion** as the initial institution (`institutionId: "techn
 **Phase boundary:**
 
 - **Phase 4 (catalog seed):** implemented — curated Technion CS dataset in `data/validated/technion/2025/` + `seedCatalog.js` / `seedCatalogCli.js`.
+- **Phase 5 (completed courses):** implemented — user-owned transcript records in `completed_courses` with manual CRUD, catalog `courseId` validation, duplicate attempt handling, and edit/delete restricted to `source=manual`.
 - **Later phase:** full offline pipeline (PDF/HTML extraction, normalization, validation, review, RAG generation, automated refresh).
 
 Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement documents, policies) flow through the pipeline defined in the ingestion architecture doc; only validated artifacts are imported into MongoDB.
@@ -171,6 +172,9 @@ Current implemented tests:
 - Catalog integration tests (courses/degrees/requirements read APIs).
 - Catalog security tests (401 without JWT on all catalog routes).
 - Student profile degree reference integration tests.
+- Completed courses unit tests (payload validation).
+- Completed courses integration tests (create/list/get/update/delete manual records).
+- Completed courses security tests (JWT required, cross-user isolation, non-manual edit/delete blocked).
 
 Near-term testing priorities:
 - Add integration tests for container/dependency wiring.

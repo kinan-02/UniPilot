@@ -1,6 +1,7 @@
 const express = require("express");
 const { createAuthRouter } = require("./routes/authRoutes");
 const { createCatalogRouter } = require("./routes/catalogRoutes");
+const { createCompletedCourseRouter } = require("./routes/completedCourseRoutes");
 const { createStudentProfileRouter } = require("./routes/studentProfileRoutes");
 
 function createApp() {
@@ -23,6 +24,7 @@ function createApp() {
 
   app.use("/auth", createAuthRouter());
   app.use("/student-profile", createStudentProfileRouter());
+  app.use("/completed-courses", createCompletedCourseRouter());
   app.use("/", createCatalogRouter());
 
   app.use((_request, response) => {
