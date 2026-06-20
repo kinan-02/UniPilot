@@ -647,14 +647,15 @@ Calculate graduation progress for the authenticated user.
 
 ### Implemented endpoints
 - `POST /semester-plans/generate` (protected) — generate and persist a deterministic next-semester plan
+- `POST /semester-plans` (protected) — create a student-built manual plan
 - `GET /semester-plans` (protected) — list own planning history (`?page=1&limit=50`)
 - `GET /semester-plans/:id` (protected) — get one owned plan by id
+- `PUT /semester-plans/:planId` (protected) — update manual plan courses and weekly schedule
+- `DELETE /semester-plans/:planId` (protected) — archive (soft delete)
+- `POST /semester-plans/:planId/versions` (protected) — fork a new draft plan version from an owned plan
 
 ### Not implemented yet (later)
-- `POST /semester-plans` (manual create)
-- `PUT /semester-plans/:planId` (update)
-- `POST /semester-plans/:planId/versions` (new plan version)
-- `DELETE /semester-plans/:planId` (archive/soft delete)
+- Plan lineage listing endpoint (optional; versions appear in `GET /semester-plans` history)
 
 ### POST /semester-plans/generate
 
@@ -726,6 +727,76 @@ Calculate graduation progress for the authenticated user.
 - `explanation.blockedByPrerequisites` includes `missingPrerequisites` (course id/number/title) and a human-readable `reason`.
 - `explanation.partialPlan` is `true` when `minCredits` or `maxCredits` targets cannot be fully met.
 - Returns partial/empty plans with structured `explanation` when workload or eligibility limits apply.
+
+### POST /semester-plans (manual create)
+
+**Body (strict):**
+```json
+{
+  "name": "My Spring Plan",
+  "status": "draft",
+  "semesterCode": "2025-2",
+  "plannedCourses": [
+    { "courseId": "665f2b0f2a3f7b2a1a9a7c01", "category": "manual", "reason": "Optional note" }
+  ],
+  "weeklySchedule": {
+    "entries": [
+      {
+        "courseId": "665f2b0f2a3f7b2a1a9a7c01",
+        "academicYear": 2025,
+        "semesterCode": 201,
+        "scheduleGroups": [{ "day": "Sunday", "time": "10:30-12:30" }]
+      }
+    ]
+  }
+}
+```
+
+- `plannerType` is set to `"manual"` server-side.
+- `scheduleGroups` optional when a published offering exists for the course/year/semesterCode; otherwise required.
+- Each semester may include `weeklySchedule` with `status`, `entries`, `conflicts`, `weekView`, and `summary`.
+
+### PUT /semester-plans/:planId
+
+Updates `name`, `status` (`draft`/`active`), and/or full `semesters` array (planned courses + weekly schedule). Increments `version`. Archived plans return `400`.
+
+### DELETE /semester-plans/:planId
+
+Soft-deletes by setting `status` to `archived`.
+
+### POST /semester-plans/:planId/versions
+
+**Body (strict, optional):**
+```json
+{
+  "name": "Optional label for the forked version"
+}
+```
+
+**Response `201`:**
+```json
+{
+  "success": true,
+  "data": {
+    "sourcePlanId": "...",
+    "semesterPlan": {
+      "id": "...",
+      "basePlanId": "...",
+      "version": 2,
+      "status": "draft",
+      "plannerType": "manual",
+      "semesters": [ ]
+    }
+  },
+  "error": null
+}
+```
+
+- Creates a **new** `semester_plans` document copied from the source plan.
+- Sets `basePlanId` to the source plan id and `version` to `source.version + 1`.
+- Resets `status` to `draft`. Default name: `{source.name} v{version}` when `name` omitted.
+- Cannot fork archived plans (`400`).
+- Cross-user fork returns `404`.
 
 ### Errors
 - `404` — student profile not found.

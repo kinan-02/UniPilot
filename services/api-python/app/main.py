@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="UniPilot API (Python)",
         description="FastAPI backend for UniPilot AI — migration target",
-        version="0.7.0",
+        version="0.8.1",
         lifespan=lifespan,
     )
     app.add_exception_handler(RequestValidationError, validation_exception_handler)

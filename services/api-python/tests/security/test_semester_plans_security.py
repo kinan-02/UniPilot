@@ -73,3 +73,75 @@ async def test_generate_rejects_unknown_fields(auth_client, mongo_database):
         json={"semesterCode": "2025-2", "userId": "evil"},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_cross_user_manual_plan_update_returns_404(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+
+    owner_token = await register_access_token(auth_client, "manual-owner@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "name": "Owner Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+
+    other_token = await register_access_token(auth_client, "manual-other@example.com")
+    response = await auth_client.put(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={"name": "Hijack"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cross_user_plan_version_returns_404(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+
+    owner_token = await register_access_token(auth_client, "version-owner@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "name": "Owner Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+
+    other_token = await register_access_token(auth_client, "version-other@example.com")
+    response = await auth_client.post(
+        f"/semester-plans/{plan_id}/versions",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={},
+    )
+    assert response.status_code == 404

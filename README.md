@@ -435,11 +435,18 @@ Progress uses production `degree_requirements` (`credit_bucket`), linked `course
 
 ## Semester Plans API (Protected)
 
-Deterministic next-semester recommendations for the authenticated user. Requires a student profile with a selected `degreeId`.
+Deterministic next-semester recommendations and manual plan editing for the authenticated user. Requires a student profile with a selected `degreeId`. Python API **0.8.1** (Phase 16 + 16.1 + 16.2).
 
+**Auto-generate (deterministic planner):**
 - `POST /semester-plans/generate` — generate and persist a rule-based plan
 - `GET /semester-plans` — list own planning history (`?page=1&limit=50`)
 - `GET /semester-plans/:id` — get one owned plan
+
+**Manual build / weekly schedule / versioning:**
+- `POST /semester-plans` — create a student-built plan
+- `PUT /semester-plans/:id` — update plan courses and weekly schedule
+- `DELETE /semester-plans/:id` — archive (soft delete)
+- `POST /semester-plans/:id/versions` — fork a new draft version (`basePlanId`, incremented `version`)
 
 Example generate body:
 
@@ -451,15 +458,44 @@ Example generate body:
 }
 ```
 
+Example manual create body:
+
+```json
+{
+  "name": "My Spring Plan",
+  "semesterCode": "2025-2",
+  "plannedCourses": [
+    { "courseId": "<catalogCourseObjectId>" }
+  ],
+  "weeklySchedule": {
+    "entries": [
+      {
+        "courseId": "<catalogCourseObjectId>",
+        "academicYear": 2025,
+        "semesterCode": 201
+      }
+    ]
+  }
+}
+```
+
 **Planner behavior (deterministic, no AI):**
+- Mandatory course ordering comes from **`semester_matrix`** catalog rules (semester number, then course number)
+- Electives from linked **`course_pool`** rules and graduation remaining requirements
 - Excludes completed passing courses; failed grades do not count as completed
 - Prioritizes remaining mandatory courses before electives
-- Respects prerequisites from the catalog
+- Respects prerequisites from the catalog (`prerequisites` + `prerequisitesText` fallback)
 - Schedules prerequisite chains within the same semester in dependency order
 - Uses profile `preferences.maxCreditsPerSemester` when `maxCredits` is omitted (default `18`)
 - Returns structured `explanation` with `blockedByPrerequisites`, `missingPrerequisites`, and partial/empty plan reasons when limits apply
 
-**Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/semester-plans/generate`.
+**Manual plan behavior:**
+- `plannerType: "manual"`; student selects catalog courses by `courseId`
+- Optional `weeklySchedule` per semester links courses to catalog offerings (`academicYear`, `semesterCode`, `scheduleGroups`)
+- Server detects overlapping time slots and returns `conflicts` + `weekView`
+- Use `GET /catalog/courses/{courseNumber}/offerings` to pick sections before updating the plan
+
+**Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/semester-plans/generate` or `POST /semester-plans`.
 
 **Errors:** `404` if profile missing; `400` if `degreeId` not selected; `404` if another user's plan id is requested.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extensive Docker verification + performance benchmark for api-python (Phases 1-16)."""
+"""Extensive Docker verification + performance benchmark for api-python (Phases 1-16.2)."""
 
 from __future__ import annotations
 
@@ -134,6 +134,9 @@ async def run_functional_verification(v: Verifier, client: httpx.AsyncClient) ->
         expected=201,
         label="auth register",
     )
+    if r.status_code != 201:
+        v.fail(f"auth register failed with {r.status_code} — skipping remaining functional checks")
+        return
     data = r.json()["data"]
     v.token = data["accessToken"]
     v.user_id = data["user"]["id"]
@@ -285,6 +288,9 @@ async def run_graduation_progress(
         expected=201,
         label="graduation user register",
     )
+    if reg.status_code != 201:
+        v.fail("graduation user register failed — skipping graduation progress E2E")
+        return
     grad_token = reg.json()["data"]["accessToken"]
 
     await v.request(
@@ -615,6 +621,157 @@ async def run_semester_plans(
     )
 
 
+async def run_manual_semester_plans_and_versions(
+    v: Verifier,
+    client: httpx.AsyncClient,
+    *,
+    degree_program_id: str | None,
+    sample_course_id: str | None,
+    sample_course_number: str | None,
+) -> None:
+    """Phase 16.1/16.2 — manual CRUD, weekly schedule, plan versioning."""
+    if not degree_program_id or not sample_course_id:
+        v.warn("skipping manual plan / versioning Docker tests — missing degree or course id")
+        return
+
+    email = f"manual-docker-{uuid.uuid4().hex[:8]}@example.com"
+    reg = await v.request(
+        client,
+        "POST",
+        "/auth/register",
+        json_body={"email": email, "password": PASSWORD},
+        expected=201,
+        label="manual plan user register",
+    )
+    if reg.status_code != 201:
+        v.fail("manual plan user register failed — skipping manual/version E2E")
+        return
+    token = reg.json()["data"]["accessToken"]
+
+    await v.request(
+        client,
+        "POST",
+        "/student-profile",
+        token=token,
+        json_body={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": degree_program_id,
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+        expected=201,
+        label="manual plan profile",
+    )
+
+    create = await v.request(
+        client,
+        "POST",
+        "/semester-plans",
+        token=token,
+        json_body={
+            "name": "Docker Manual Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": sample_course_id}],
+        },
+        expected=201,
+        label="manual plan create",
+    )
+    manual_plan = create.json()["data"]["semesterPlan"]
+    if manual_plan.get("plannerType") == "manual":
+        v.ok("manual plan plannerType=manual")
+    else:
+        v.fail(f"manual plan plannerType unexpected: {manual_plan.get('plannerType')}")
+
+    plan_id = manual_plan.get("id")
+    if not plan_id:
+        v.fail("manual plan missing id")
+        return
+
+    source_version = int(manual_plan.get("version") or 1)
+
+    if sample_course_number:
+        update = await v.request(
+            client,
+            "PUT",
+            f"/semester-plans/{plan_id}",
+            token=token,
+            json_body={
+                "semesters": [
+                    {
+                        "semesterCode": "2025-2",
+                        "plannedCourses": [{"courseId": sample_course_id}],
+                        "weeklySchedule": {
+                            "entries": [
+                                {
+                                    "courseId": sample_course_id,
+                                    "academicYear": 2025,
+                                    "semesterCode": 201,
+                                }
+                            ]
+                        },
+                    }
+                ]
+            },
+            expected=200,
+            label="manual plan weekly schedule update",
+        )
+        source_version = int(update.json()["data"]["semesterPlan"].get("version") or source_version)
+        weekly = (
+            (update.json()["data"]["semesterPlan"].get("semesters") or [{}])[0].get("weeklySchedule")
+        )
+        if weekly and weekly.get("entries"):
+            v.ok("manual plan weeklySchedule populated from offerings")
+        else:
+            v.warn("manual plan weeklySchedule empty — offerings may be missing in Mongo")
+
+    version = await v.request(
+        client,
+        "POST",
+        f"/semester-plans/{plan_id}/versions",
+        token=token,
+        json_body={"name": "Docker Manual Plan v2"},
+        expected=201,
+        label="semester plan version fork",
+    )
+    forked = version.json()["data"]["semesterPlan"]
+    expected_version = source_version + 1
+    if forked.get("basePlanId") == plan_id and forked.get("version") == expected_version:
+        v.ok(f"semester plan version fork basePlanId + version={expected_version}")
+    else:
+        v.fail(
+            f"semester plan version unexpected basePlanId={forked.get('basePlanId')} "
+            f"version={forked.get('version')} expected={expected_version}"
+        )
+
+    await v.request(
+        client,
+        "DELETE",
+        f"/semester-plans/{plan_id}",
+        token=token,
+        expected=200,
+        label="manual plan archive",
+    )
+    await v.request(
+        client,
+        "POST",
+        f"/semester-plans/{plan_id}/versions",
+        token=token,
+        json_body={},
+        expected=400,
+        label="semester plan version rejects archived source",
+    )
+
+    await v.request(
+        client,
+        "DELETE",
+        "/student-profile",
+        token=token,
+        expected=200,
+        label="manual plan profile cleanup",
+    )
+
+
 async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_id: str) -> None:
     v.course_id = course_id
     r = await v.request(
@@ -800,6 +957,13 @@ async def main() -> int:
             semester_one_course_id=semester_one_course_id,
             semester_one_course_number=semester_one_course_number,
             semester_one_matrix_numbers=semester_one_matrix_numbers,
+        )
+        await run_manual_semester_plans_and_versions(
+            v,
+            client,
+            degree_program_id=degree_program_id or None,
+            sample_course_id=semester_one_course_id,
+            sample_course_number=semester_one_course_number,
         )
 
         # Use existing user for login benchmark if register user can't be reused

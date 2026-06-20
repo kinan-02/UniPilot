@@ -15,7 +15,19 @@ from app.repositories.semester_plan_repository import (
     to_public_semester_plan,
     to_public_semester_plan_summary,
 )
-from app.schemas.semester_plan import GenerateSemesterPlanRequest, OBJECT_ID_PATTERN
+from app.schemas.semester_plan import (
+    CreateManualSemesterPlanRequest,
+    CreateSemesterPlanVersionRequest,
+    GenerateSemesterPlanRequest,
+    OBJECT_ID_PATTERN,
+    UpdateSemesterPlanRequest,
+)
+from app.services.manual_semester_plan_service import (
+    archive_semester_plan_by_user,
+    create_manual_semester_plan,
+    create_semester_plan_version_by_user,
+    update_semester_plan_by_user,
+)
 from app.services.semester_plan_service import generate_and_store_semester_plan
 
 router = APIRouter(prefix="/semester-plans", tags=["semester-plans"])
@@ -67,6 +79,56 @@ def _handle_planning_context_error(result: dict[str, Any]) -> None:
             status_code=400,
             detail="Referenced degree was not found in the catalog",
         )
+
+
+def _handle_manual_plan_result(result: dict[str, Any]) -> dict[str, Any]:
+    status = result.get("status")
+    if status == "profile_not_found":
+        raise HTTPException(status_code=404, detail="Student profile not found")
+    if status == "degree_not_selected":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A degree must be selected on the student profile before "
+                "creating or updating a semester plan"
+            ),
+        )
+    if status == "degree_not_found":
+        raise HTTPException(status_code=400, detail="Referenced degree was not found in the catalog")
+    if status == "not_found":
+        raise HTTPException(status_code=404, detail="Semester plan not found")
+    if status == "archived":
+        raise HTTPException(status_code=400, detail="Archived semester plans cannot be updated")
+    if status == "archived_source":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create a new version from an archived semester plan",
+        )
+    if status == "validation_error":
+        errors = result.get("errors") or ["Invalid semester plan payload"]
+        raise HTTPException(status_code=400, detail="; ".join(errors))
+    return result
+
+
+@router.post("", status_code=201)
+async def create_manual_semester_plan_route(
+    payload: CreateManualSemesterPlanRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    await _ensure_semester_plan_indexes_once()
+    database = await get_database()
+
+    result = _handle_manual_plan_result(
+        await create_manual_semester_plan(
+            database,
+            auth.user_id,
+            payload.model_dump(exclude_none=True),
+        )
+    )
+
+    return success_response(
+        {"semesterPlan": to_public_semester_plan(result["plan"])}
+    )
 
 
 @router.post("/generate", status_code=201)
@@ -146,3 +208,71 @@ async def get_semester_plan(
         raise HTTPException(status_code=404, detail="Semester plan not found")
 
     return success_response({"semesterPlan": to_public_semester_plan(plan)})
+
+
+@router.post("/{plan_id}/versions", status_code=201)
+async def create_semester_plan_version(
+    plan_id: str,
+    payload: CreateSemesterPlanVersionRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    await _ensure_semester_plan_indexes_once()
+    database = await get_database()
+
+    result = _handle_manual_plan_result(
+        await create_semester_plan_version_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            name=payload.name,
+        )
+    )
+
+    return success_response(
+        {
+            "semesterPlan": to_public_semester_plan(result["plan"]),
+            "sourcePlanId": result.get("sourcePlanId"),
+        }
+    )
+
+
+@router.put("/{plan_id}")
+async def update_semester_plan(
+    plan_id: str,
+    payload: UpdateSemesterPlanRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    await _ensure_semester_plan_indexes_once()
+    database = await get_database()
+
+    result = _handle_manual_plan_result(
+        await update_semester_plan_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            payload.model_dump(exclude_none=True),
+        )
+    )
+
+    return success_response(
+        {"semesterPlan": to_public_semester_plan(result["plan"])}
+    )
+
+
+@router.delete("/{plan_id}")
+async def archive_semester_plan(
+    plan_id: str,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    database = await get_database()
+
+    result = _handle_manual_plan_result(
+        await archive_semester_plan_by_user(database, auth.user_id, plan_id)
+    )
+
+    return success_response(
+        {"semesterPlan": to_public_semester_plan(result["plan"])}
+    )

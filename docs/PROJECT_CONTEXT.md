@@ -373,9 +373,52 @@ Phase 14 stores user-owned transcript rows in `completed_courses`. Catalog colle
 | pytest unit + integration + security tests | Done |
 | API version `0.6.0` | Done |
 | Node reference backend | Unchanged |
-| Semester planner / academic risk / AI | Not implemented (Python) |
+| Semester planner / academic risk / AI | Not implemented (Python) at Phase 15 |
 
 Phase 15 computes deterministic graduation progress at read time from the authenticated user's profile (`degreeId` → `degree_programs`), `completed_courses`, hard `degree_requirements` (`credit_bucket`), and linked `course_pool` documents in `catalog_rules` (DS elective pool + faculty elective prefix pool). Buckets without linked pools use credit-only heuristic allocation. **Grades:** Technion numeric 0–100; pass strictly above 55. Response includes `requirementProgress`, `missingRequirements`, `assumptions`, and `ineligibleCredits`.
+
+### Python Phase 16 status (implemented — deterministic semester planner)
+
+| Item | Status |
+|---|---|
+| `POST /semester-plans/generate` (JWT, self-scoped) | Done |
+| `GET /semester-plans`, `GET /semester-plans/:id` | Done |
+| Mandatory courses from `semester_matrix` catalog rules (primary) | Done |
+| Electives from linked `course_pool` rules + graduation remaining | Done |
+| Prerequisites from structured `courses.prerequisites` + `prerequisitesText` fallback | Done |
+| Planner `app/planning/semester_planner.py` + `prerequisite_resolver.py` | Done |
+| Service `app/services/semester_plan_service.py` | Done |
+| pytest unit + integration + security + stress tests | Done |
+| API version `0.7.0` | Done |
+| Manual plan CRUD + weekly schedule | See Phase 16.1 |
+| Node reference backend | Unchanged |
+
+Phase 16 generates a deterministic next-semester plan from profile, graduation progress, hard requirements, semester matrix, and course pools. Completed passing courses are excluded; failed grades do not count as completed. Plans persist in `semester_plans` with structured `explanation` (rules applied, blocked prerequisites, partial/empty plan flags).
+
+### Python Phase 16.1 status (implemented — manual plans + weekly schedule)
+
+| Item | Status |
+|---|---|
+| `POST /semester-plans` (manual create) | Done |
+| `PUT /semester-plans/:id` (update courses + weekly schedule) | Done |
+| `DELETE /semester-plans/:id` (archive) | Done |
+| Weekly schedule conflict detection (`weeklySchedule.conflicts`, `weekView`) | Done |
+| Offering resolution via `GET /catalog/courses/:number/offerings` data | Done |
+| API version `0.8.0` | Done |
+| Academic risk analyzer (Python) | Skipped for now (Phase 17) |
+| Plan versioning endpoint (`POST /semester-plans/:id/versions`) | Done (Phase 16.2) |
+
+Students can manually select catalog courses, attach offering schedule groups per semester, and receive deterministic overlap detection. Archived plans cannot be edited. New plan versions fork via `POST /semester-plans/:id/versions` with `basePlanId` linkage and incremented `version`.
+
+### Python Phase 16.2 status (implemented — semester plan versioning)
+
+| Item | Status |
+|---|---|
+| `POST /semester-plans/:id/versions` (fork owned plan) | Done |
+| `basePlanId` + incremented `version` on forked plan | Done |
+| Fork copies semesters/assumptions/explanation; status reset to `draft` | Done |
+| Cannot fork archived plans | Done |
+| API version `0.8.1` | Done |
 
 ### Python Phase 15.1 status (implemented — graduation pool data links)
 
@@ -583,7 +626,8 @@ Required and currently implemented:
 - Deterministic academic risk analyzer (`POST /academic-risks/analyze`) and analysis history (`GET /academic-risks`, `GET /academic-risks/:id`).
 
 Still pending for next phases:
-- AI endpoint rate limiting.
+- Python academic risk analyzer (Phase 17 — deferred).
+- AI endpoint rate limiting (Python: implement with AI phase).
 - Validate `StudentProfile.degreeId` against profile `institutionId` and `catalogYear` once catalog selection UX and multi-catalog support exist (see `docs/planning/FEATURE_BACKLOG.md` → Future TODOs).
 
 ## 9) Development Roadmap
@@ -598,18 +642,22 @@ Canonical roadmaps:
 
 Phases 1–8 on the Node stack are implemented (auth through academic risk analyzer) using curated placeholder catalog data.
 
+### Python migration — current status (Phases 13–16.2)
+
+Python `api-python` on real DDS data includes: catalog read APIs, completed courses CRUD, graduation progress, deterministic semester planner (`POST /semester-plans/generate`), manual plan CRUD + weekly schedule, and plan versioning (`POST /semester-plans/:id/versions`). API version **0.8.1**.
+
 ### Python migration — next work
 
-1. Python Phase 4: data-engineering container (parallel to Node; no Node changes)
-2. Python Phase 4–7: data-engineering container, real DDS collection/validation/import
-3. Python Phase 8+: catalog and academic features on **real DDS data**
-4. AI / RAG / simulation (both stacks): after catalog facts are grounded in real data
+1. **Phase 17:** Academic risk analyzer port (optional; currently deferred)
+2. **Phase 18 / 8g:** Async AI pipeline (Redis queue, worker, rate limiting on AI endpoints)
+3. AI decision features (recommendations, what-if) after async pipeline
+4. Hardening, stress/security testing, documentation, risk/final report
 
 ### Still pending (both stacks / later)
 
 - AI endpoint rate limiting (Python: implement with AI phase)
 - Full Technion ingestion automation beyond DDS subset
-- Simulation features and plan versioning/editing APIs
+- Simulation features
 - Hardening, stress/security testing, documentation, risk/final report
 - Node deprecation decision (only after Python parity + team approval)
 
@@ -623,7 +671,7 @@ Phases 1–8 on the Node stack are implemented (auth through academic risk analy
 - Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
 - Completed courses endpoints (`POST/GET/PUT/DELETE /completed-courses`) with JWT protection, ownership checks, catalog FK validation, and manual-only mutations.
 - Graduation progress endpoint (`GET /graduation-progress`) with JWT protection and deterministic requirement evaluation.
-- Semester plans endpoints (`POST /semester-plans/generate`, `GET /semester-plans`, `GET /semester-plans/:id`) with JWT protection, ownership checks, and deterministic rule-based explanations.
+- Semester plans endpoints (`POST /semester-plans/generate`, manual `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions`, `GET /semester-plans`, `GET /semester-plans/:id`) with JWT protection, ownership checks, and deterministic or manual planner metadata.
 - Academic risks model (`academic_risks`) with user ownership indexes and embedded rule-based findings.
 - Academic risks endpoints (`POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id`) with JWT protection, ownership checks, and deterministic analysis (no LLM).
 - Catalog read endpoints with JWT protection (shared academic data, not user-owned).
