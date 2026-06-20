@@ -337,8 +337,8 @@ Create a manual transcript record for the authenticated user.
 |---|---|---|
 | `courseId` | yes | ObjectId; must exist in published course catalog |
 | `semesterCode` | yes | `YYYY-1` or `YYYY-2` |
-| `grade` | yes | `A+`, `A`, `A-`, `B+`, `B`, `B-`, `C+`, `C`, `C-`, `D`, `F`, `Pass`, `Fail` |
-| `gradePoints` | no | number 0–100 |
+| `grade` | yes | number 0–100 (Technion numeric scale; pass strictly above 55) |
+| `gradePoints` | no | number 0–100 (optional; when set, used for pass/fail if present) |
 | `creditsEarned` | yes | number 0–36 in **0.5 increments** (e.g. `0`, `1`, `1.5`, `2`, `3.5`) |
 | `attempt` | no | integer 1–5, default `1` |
 | `metadata` | no | `{ notes?: string (max 500) }` |
@@ -579,7 +579,7 @@ Combined program + hard requirements + advisory rules + counts.
 
 ## 4.6 Graduation Progress (MVP)
 
-**Status:** Implemented (Phase 6). Deterministic progress computed from the authenticated user's `StudentProfile`, `CompletedCourses`, selected `Degree`, `DegreeRequirements`, and course catalog. No LLM involvement.
+**Status:** Implemented (Python Phase 15; Node Phase 6). Deterministic progress computed from the authenticated user's `StudentProfile`, `CompletedCourses`, selected degree program (`degree_programs._id` via profile `degreeId`), hard `degree_requirements`, linked `course_pool` rules, and course catalog. No LLM involvement.
 
 ### `GET /graduation-progress`
 
@@ -630,12 +630,16 @@ Calculate graduation progress for the authenticated user.
 ### Rules
 
 - Progress is computed only for `token.sub`.
-- Uses published degree requirements from MongoDB; does not invent rules.
-- Passing grades count toward progress (`A+` … `D`, `Pass`); `F` / `Fail` are ignored.
+- Profile `degreeId` must reference a published `degree_programs` document (`400` if unknown).
+- Uses published hard requirements from `degree_requirements` (`credit_bucket` only in Python Phase 15).
+- Linked elective pools (`course_pool` in `catalog_rules`) are enforced for DS and faculty elective buckets via naming convention (`elective-ds` ↔ `elective-ds-pool`, `elective-faculty` ↔ `elective-faculty-pool`).
+- `semester_matrix` and track-specific rules are planning-only — never block graduation in Phase 15.
+- Passing grades count toward progress (numeric score **strictly above 55** on the 0–100 scale); 55 and below are ignored.
 - Multiple attempts on the same course use the best passing `creditsEarned`.
-- Top-level `completedCredits` counts each completed course once; the same credits may also appear inside individual requirement buckets without inflating the global total.
+- Top-level `completedCredits` counts each completed course once; bucket allocation may assign credits to specific requirements without inflating the global total.
 - Credit math supports fractional values (0.5 increments).
-- `requirementProgress` evaluates seeded rule types: `course_set` (`all_of`), `credit_pool`, `total_credits`.
+- `requirementProgress[].eligibilityEnforcement`: `strict_pool` (linked pool) or `credit_bucket_only` (heuristic fill).
+- Response includes `assumptions` documenting Phase 15 scope limits.
 
 ---
 

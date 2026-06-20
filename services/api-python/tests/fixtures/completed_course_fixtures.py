@@ -38,7 +38,7 @@ def build_completed_course_payload(course_id: str, **overrides: Any) -> dict[str
     payload = {
         "courseId": course_id,
         "semesterCode": "2024-1",
-        "grade": "B+",
+        "grade": 82,
         "gradePoints": 82,
         "creditsEarned": 3,
         "attempt": 1,

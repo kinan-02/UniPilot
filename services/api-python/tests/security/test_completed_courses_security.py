@@ -71,7 +71,7 @@ async def test_cross_user_update_returns_404(auth_client, mongo_database):
     cross_update = await auth_client.put(
         f"/completed-courses/{record_id}",
         headers={"Authorization": f"Bearer {token_b}"},
-        json={"grade": "A"},
+        json={"grade": 82},
     )
     assert cross_update.status_code == 404
 
@@ -142,7 +142,7 @@ async def test_non_manual_update_returns_403(auth_client, mongo_database):
     response = await auth_client.put(
         f"/completed-courses/{official_record['_id']}",
         headers={"Authorization": f"Bearer {token}"},
-        json={"grade": "A"},
+        json={"grade": 82},
     )
     assert response.status_code == 403
 

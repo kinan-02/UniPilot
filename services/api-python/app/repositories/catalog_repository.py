@@ -221,11 +221,74 @@ async def get_degree_program_by_code(
     return to_public_degree_program(document)
 
 
+async def find_degree_program_by_id(
+    database: AsyncIOMotorDatabase,
+    degree_id: str,
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    """Return raw published degree program document (includes _id)."""
+    from bson import ObjectId
+
+    settings = settings or get_settings()
+    try:
+        parsed_id = ObjectId(str(degree_id))
+    except Exception:
+        return None
+
+    return await database[settings.degree_programs_collection].find_one(
+        {"_id": parsed_id, **PUBLISHED_FILTER}
+    )
+
+
+async def list_course_pools_for_program(
+    database: AsyncIOMotorDatabase,
+    program_code: str,
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Return course_pool documents from catalog_rules for eligibility enforcement."""
+    settings = settings or get_settings()
+    query = {
+        **PUBLISHED_FILTER,
+        "programCode": program_code,
+        "ruleExpression.type": "course_pool",
+    }
+    cursor = database[settings.catalog_rules_collection].find(query).sort("requirementGroupId", 1)
+    return [doc async for doc in cursor]
+
+
+async def find_courses_by_ids(
+    database: AsyncIOMotorDatabase,
+    course_ids: list[str],
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    from bson import ObjectId
+
+    settings = settings or get_settings()
+    object_ids = []
+    for course_id in course_ids:
+        try:
+            object_ids.append(ObjectId(str(course_id)))
+        except Exception:
+            continue
+
+    if not object_ids:
+        return []
+
+    cursor = database[settings.courses_collection].find(
+        {"_id": {"$in": object_ids}, **PUBLISHED_FILTER}
+    )
+    return [doc async for doc in cursor]
+
+
 async def list_hard_requirements_for_program(
     database: AsyncIOMotorDatabase,
     program_code: str,
     *,
     settings: Settings | None = None,
+    include_internal: bool = False,
 ) -> list[dict[str, Any]]:
     settings = settings or get_settings()
     query = {
@@ -237,7 +300,10 @@ async def list_hard_requirements_for_program(
     cursor = database[settings.degree_requirements_collection].find(query).sort(
         "requirementGroupId", 1
     )
-    return [to_public_hard_requirement(doc) async for doc in cursor]
+    documents = [doc async for doc in cursor]
+    if include_internal:
+        return documents
+    return [to_public_hard_requirement(doc) for doc in documents]
 
 
 async def list_advisory_rules_for_program(

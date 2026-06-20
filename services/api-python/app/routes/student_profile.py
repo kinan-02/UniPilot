@@ -13,6 +13,7 @@ from app.repositories.student_profile_repository import (
     to_public_student_profile,
     update_student_profile_by_user_id,
 )
+from app.services.student_profile_validation import validate_degree_id_for_profile
 from app.schemas.student_profile import (
     CreateStudentProfileRequest,
     UpdateStudentProfileRequest,
@@ -76,6 +77,8 @@ async def create_profile(
             detail="Student profile already exists for this user",
         )
 
+    await validate_degree_id_for_profile(database, payload.degreeId)
+
     try:
         profile = await create_student_profile(
             database,
@@ -112,6 +115,9 @@ async def update_profile(
 
     if not existing_profile:
         raise HTTPException(status_code=404, detail="Student profile not found")
+
+    if payload.degreeId is not None:
+        await validate_degree_id_for_profile(database, payload.degreeId)
 
     updated_profile = await update_student_profile_by_user_id(
         database,

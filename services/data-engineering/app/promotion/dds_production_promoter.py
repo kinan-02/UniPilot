@@ -23,6 +23,7 @@ from app.models.promotion import (
     PromotionGateResult,
     SkippedPromotionItem,
 )
+from app.promotion.graduation_pool_links import linked_credit_bucket_for_pool
 from app.promotion.dds_promotion_gate import (
     _is_hard_requirement,
     build_promotion_gate_result,
@@ -259,6 +260,16 @@ def map_staging_catalog_rule_to_production(
 ) -> dict[str, Any]:
     group_id = staging.get("requirementGroupId", "")
     production_key = production_advisory_catalog_rule_key(group_id, catalog_version)
+    linked_credit_bucket_id = linked_credit_bucket_for_pool(group_id)
+    source_metadata: dict[str, Any] = {
+        "stagingKey": staging.get("stagingKey"),
+        "confidence": staging.get("confidence"),
+        "nonExecutableRulesPolicy": "advisory-only",
+    }
+    if linked_credit_bucket_id:
+        source_metadata["graduationPoolLinkPhase"] = "15.1"
+        source_metadata["linkedCreditBucketId"] = linked_credit_bucket_id
+
     document = {
         "productionKey": production_key,
         "institutionId": staging.get("institutionId", "technion"),
@@ -276,17 +287,15 @@ def map_staging_catalog_rule_to_production(
         "catalogVersion": catalog_version,
         "sourceName": DDS_CATALOG_SOURCE,
         "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
-        "sourceMetadata": {
-            "stagingKey": staging.get("stagingKey"),
-            "confidence": staging.get("confidence"),
-            "nonExecutableRulesPolicy": "advisory-only",
-        },
+        "sourceMetadata": source_metadata,
         "sourceRefs": _source_refs(*(staging.get("sourceFiles") or [])),
         "status": "published",
         "promotedAt": promoted_at,
         "promotionRunId": promotion_run_id,
         "updatedAt": promoted_at,
     }
+    if linked_credit_bucket_id:
+        document["linkedCreditBucketId"] = linked_credit_bucket_id
     _validate_document_safety(document, context=f"catalog_rule {group_id}")
     return document
 

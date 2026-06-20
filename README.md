@@ -109,7 +109,7 @@ npm run test:security
 
 ### Python API (`api-python`)
 
-Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile + Phase 13 catalog + Phase 14 completed courses — unit, integration, security):
+Python backend tests (Phase 1 health + Phase 2 auth + Phase 3 student profile + Phase 13 catalog + Phase 14 completed courses + Phase 15 graduation progress — unit, integration, security):
 
 ```bash
 cd services/api-python
@@ -409,28 +409,29 @@ Example create body:
 {
   "courseId": "665f2b0f2a3f7b2a1a9a7c01",
   "semesterCode": "2024-1",
-  "grade": "B+",
-  "gradePoints": 82,
+  "grade": 82,
   "creditsEarned": 3.5,
   "attempt": 1
 }
 ```
 
+`grade` is a **numeric score 0–100** (Technion scale). Pass is strictly **above 55**; 55 and below do not count toward graduation progress.
+
 Duplicate `(courseId, attempt)` for the same user returns `409`. `creditsEarned` accepts half-credit values in 0.5 increments (for example `3.5`).
 
 `official` and `imported` records are **not** creatable via the public API (only `manual` on `POST`). Future transcript ingestion will insert those via internal trusted import logic. They cannot be edited or deleted via API (`403`).
 
-## Graduation Progress API (Protected)
+## Graduation Progress API (Protected — Python Phase 15)
 
-Deterministic degree progress for the authenticated user. Requires a student profile with a selected `degreeId`.
+Deterministic degree progress for the authenticated user. Requires a student profile with a valid `degreeId` (MongoDB `_id` of a published `degree_programs` document).
 
-- `GET /graduation-progress` — compute credits, mandatory course progress, elective progress, requirement breakdown, and status summary
+- `GET /graduation-progress` — compute credits, requirement breakdown, pool-enforced electives, and status summary
 
-**Prerequisites:** register → create `/student-profile` with `degreeId` → optionally add `/completed-courses` → call `/graduation-progress`.
+**Prerequisites:** register → create `/student-profile` with `degreeId` from `GET /catalog/degree-programs` → optionally add `/completed-courses` → call `/graduation-progress`.
 
-**Errors:** `404` if profile missing; `400` if `degreeId` not selected.
+**Errors:** `404` if profile missing; `400` if `degreeId` not selected or not found in catalog.
 
-Progress uses MongoDB catalog facts and degree requirements only (no LLM).
+Progress uses production `degree_requirements` (`credit_bucket`), linked `course_pool` rules from `catalog_rules` (Phase 15.1 `linkedCreditBucketId` on promoted pools), and completed courses with numeric grades (pass > 55). `semester_matrix` rules are not enforced.
 
 ## Semester Plans API (Protected)
 

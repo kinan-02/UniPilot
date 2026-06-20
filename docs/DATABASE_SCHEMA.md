@@ -375,20 +375,27 @@ Rollback: `rollback-dds-production-promotion` deletes production docs where `pro
 - Keep correction/version behavior explicit but minimal (append-only where practical).
 - Prefer deterministic, explainable progress calculations before advanced AI augmentation.
 
-## 8) Graduation progress computation (Phase 6)
+## 8) Graduation progress computation (Phase 15 — Python)
 
 Graduation progress is **computed at read time** — not stored in a separate collection.
 
 **Inputs (MongoDB):**
-- `student_profiles` for the authenticated `userId` (`degreeId` required)
+- `student_profiles` for the authenticated `userId` (`degreeId` required — references `degree_programs._id`)
 - `completed_courses` for the authenticated `userId`
-- `degrees`, `degree_requirements`, `courses` for the profile's degree/catalog context
+- `degree_programs`, `degree_requirements`, `catalog_rules` (`course_pool` only), `courses` for the profile's degree/catalog context
 
-**Rules:**
-- Passing grades only (`A+` … `D`, `Pass`); `F` / `Fail` excluded
+**Rule classes (Phase 15):**
+| Class | Collection | Enforced in graduation progress |
+|---|---|---|
+| `credit_bucket` | `degree_requirements` | Yes — min credits per bucket |
+| `course_pool` | `catalog_rules` | Yes — when linked via Phase 15.1 `linkedCreditBucketId` or Phase 15.0 naming convention |
+| `semester_matrix` | `catalog_rules` | No — planning-only |
+
+**Allocation:**
+- Passing numeric grades only (0–100 scale, **strictly above 55**); 55 and below excluded
 - One effective completion per `courseId` (best passing `creditsEarned`, latest on tie)
-- Top-level `completedCredits` sums each course **once** (no double-count across requirements)
-- Requirement buckets (`course_set`, `credit_pool`, `total_credits`) evaluate published `degree_requirements` only
-- `statusSummary: complete` only when **every** requirement is satisfied (including electives and `total_credits`)
+- Top-level `completedCredits` sums each course **once**
+- Strict pools: only pool-eligible courses count toward linked buckets
+- Other buckets: greedy credit fill from unassigned passing completions
 
 **API:** `GET /graduation-progress` (JWT, self-scoped). See `docs/API_SPEC.md` §4.6.

@@ -126,6 +126,25 @@ async def find_completed_courses_by_user_id(
     }
 
 
+async def find_all_completed_courses_by_user_id(
+    database: AsyncIOMotorDatabase,
+    user_id: str,
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    settings = settings or get_settings()
+    parsed_user_id = parse_object_id(user_id)
+    if parsed_user_id is None:
+        return []
+
+    return (
+        await database[settings.completed_courses_collection]
+        .find({"userId": parsed_user_id})
+        .sort("recordedAt", -1)
+        .to_list(length=10_000)
+    )
+
+
 async def find_completed_course_by_id_and_user_id(
     database: AsyncIOMotorDatabase,
     record_id: str,

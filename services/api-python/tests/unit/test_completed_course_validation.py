@@ -13,7 +13,7 @@ def test_create_request_accepts_valid_payload():
     payload = CreateCompletedCourseRequest(
         courseId=VALID_COURSE_ID,
         semesterCode="2024-1",
-        grade="A",
+        grade=82,
         creditsEarned=3.5,
         attempt=1,
         metadata={"notes": "reviewed"},
@@ -21,6 +21,17 @@ def test_create_request_accepts_valid_payload():
 
     assert payload.courseId == VALID_COURSE_ID
     assert payload.creditsEarned == 3.5
+    assert payload.grade == 82
+
+
+def test_create_request_accepts_string_numeric_grade():
+    payload = CreateCompletedCourseRequest(
+        courseId=VALID_COURSE_ID,
+        semesterCode="2024-1",
+        grade="82",
+        creditsEarned=3,
+    )
+    assert payload.grade == 82.0
 
 
 def test_create_request_rejects_invalid_course_id():
@@ -28,7 +39,7 @@ def test_create_request_rejects_invalid_course_id():
         CreateCompletedCourseRequest(
             courseId="not-an-object-id",
             semesterCode="2024-1",
-            grade="A",
+            grade=82,
             creditsEarned=3,
         )
 
@@ -39,7 +50,7 @@ def test_create_request_rejects_unknown_fields():
             {
                 "courseId": VALID_COURSE_ID,
                 "semesterCode": "2024-1",
-                "grade": "A",
+                "grade": 82,
                 "creditsEarned": 3,
                 "userId": "malicious-user",
             }
@@ -52,7 +63,7 @@ def test_create_request_rejects_id_field():
             {
                 "courseId": VALID_COURSE_ID,
                 "semesterCode": "2024-1",
-                "grade": "A",
+                "grade": 82,
                 "creditsEarned": 3,
                 "_id": VALID_COURSE_ID,
             }
@@ -64,7 +75,17 @@ def test_create_request_rejects_invalid_grade():
         CreateCompletedCourseRequest(
             courseId=VALID_COURSE_ID,
             semesterCode="2024-1",
-            grade="Z",
+            grade="A+",
+            creditsEarned=3,
+        )
+
+
+def test_create_request_rejects_grade_out_of_range():
+    with pytest.raises(ValidationError):
+        CreateCompletedCourseRequest(
+            courseId=VALID_COURSE_ID,
+            semesterCode="2024-1",
+            grade=101,
             creditsEarned=3,
         )
 
@@ -74,7 +95,7 @@ def test_create_request_rejects_invalid_credit_increment():
         CreateCompletedCourseRequest(
             courseId=VALID_COURSE_ID,
             semesterCode="2024-1",
-            grade="A",
+            grade=82,
             creditsEarned=2.25,
         )
 
@@ -85,7 +106,7 @@ def test_create_request_rejects_official_source():
             {
                 "courseId": VALID_COURSE_ID,
                 "semesterCode": "2024-1",
-                "grade": "A",
+                "grade": 82,
                 "creditsEarned": 3,
                 "source": "official",
             }
@@ -102,7 +123,7 @@ def test_update_request_rejects_user_id():
         UpdateCompletedCourseRequest.model_validate(
             {
                 "userId": VALID_COURSE_ID,
-                "grade": "A",
+                "grade": 82,
             }
         )
 
@@ -112,11 +133,11 @@ def test_update_request_rejects_id_field():
         UpdateCompletedCourseRequest.model_validate(
             {
                 "_id": VALID_COURSE_ID,
-                "grade": "A",
+                "grade": 82,
             }
         )
 
 
 def test_update_request_accepts_partial_payload():
-    payload = UpdateCompletedCourseRequest(grade="A-")
-    assert payload.grade == "A-"
+    payload = UpdateCompletedCourseRequest(grade=78)
+    assert payload.grade == 78

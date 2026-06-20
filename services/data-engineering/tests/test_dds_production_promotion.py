@@ -151,6 +151,22 @@ def test_advisory_rules_are_non_enforced(mongo_database) -> None:
     assert advisory >= len(NON_EXECUTABLE_RULE_GROUP_IDS)
 
 
+def test_graduation_linked_pools_promoted_with_explicit_bucket_ids(mongo_database) -> None:
+    _seed_signed_off_promotion_staging(mongo_database)
+    settings = get_settings()
+    run_dds_production_promotion(mongo_database, confirm_dangerous=True, allow_warnings=True)
+    ds_pool = mongo_database[settings.production_catalog_rules_collection].find_one(
+        {"requirementGroupId": "009216-1-000:elective-ds-pool"}
+    )
+    faculty_pool = mongo_database[settings.production_catalog_rules_collection].find_one(
+        {"requirementGroupId": "009216-1-000:elective-faculty-pool"}
+    )
+    assert ds_pool is not None
+    assert ds_pool["linkedCreditBucketId"] == "009216-1-000:elective-ds"
+    assert faculty_pool is not None
+    assert faculty_pool["linkedCreditBucketId"] == "009216-1-000:elective-faculty"
+
+
 def test_hard_requirements_are_executable_only(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()

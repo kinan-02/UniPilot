@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extensive Docker verification + performance benchmark for api-python (Phases 1-14)."""
+"""Extensive Docker verification + performance benchmark for api-python (Phases 1-15)."""
 
 from __future__ import annotations
 
@@ -59,6 +59,7 @@ class Verifier:
         self.user_id: str | None = None
         self.course_id: str | None = None
         self.completed_id: str | None = None
+        self.degree_program_id: str | None = None
 
     def ok(self, msg: str) -> None:
         self.passed.append(msg)
@@ -155,6 +156,7 @@ async def run_functional_verification(v: Verifier, client: httpx.AsyncClient) ->
         "/student-profile",
         "/catalog/courses?limit=1",
         "/completed-courses",
+        "/graduation-progress",
     ]:
         await v.request(client, "GET", path, expected=401, label=f"no auth {path}")
 
@@ -261,6 +263,136 @@ async def run_functional_verification(v: Verifier, client: httpx.AsyncClient) ->
     # Completed courses - will be done after course_id resolved in main
 
 
+async def run_graduation_progress(
+    v: Verifier,
+    client: httpx.AsyncClient,
+    *,
+    degree_program_id: str | None,
+    course_id: str | None,
+) -> None:
+    if not degree_program_id:
+        v.warn("skipping graduation progress Docker tests — no degree_programs._id resolved")
+        return
+
+    grad_email = f"grad-verify-{uuid.uuid4().hex[:8]}@example.com"
+    reg = await v.request(
+        client,
+        "POST",
+        "/auth/register",
+        json_body={"email": grad_email, "password": PASSWORD},
+        expected=201,
+        label="graduation user register",
+    )
+    grad_token = reg.json()["data"]["accessToken"]
+
+    await v.request(
+        client,
+        "GET",
+        "/graduation-progress",
+        token=grad_token,
+        expected=404,
+        label="graduation no profile",
+    )
+
+    await v.request(
+        client,
+        "POST",
+        "/student-profile",
+        token=grad_token,
+        json_body={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": degree_program_id,
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+        expected=201,
+        label="graduation profile with degreeId",
+    )
+
+    r = await v.request(
+        client,
+        "GET",
+        "/graduation-progress",
+        token=grad_token,
+        expected=200,
+        label="graduation not_started",
+    )
+    progress = r.json()["data"]["graduationProgress"]
+    if progress.get("statusSummary") == "not_started" and progress.get("completedCredits") == 0:
+        v.ok("graduation progress not_started with zero credits")
+    else:
+        v.fail(f"unexpected initial graduation progress: {progress.get('statusSummary')}")
+
+    if progress.get("totalRequiredCredits") == 155:
+        v.ok("graduation totalRequiredCredits=155 (DDS production program)")
+    else:
+        v.warn(f"totalRequiredCredits={progress.get('totalRequiredCredits')} (expected 155 for DDS)")
+
+    req_progress = progress.get("requirementProgress") or []
+    ds_buckets = [x for x in req_progress if str(x.get("requirementGroupId", "")).endswith(":elective-ds")]
+    faculty_buckets = [x for x in req_progress if "elective-faculty" in str(x.get("requirementGroupId", ""))]
+    if ds_buckets and ds_buckets[0].get("eligibilityEnforcement") == "strict_pool":
+        v.ok("elective-ds bucket uses strict_pool enforcement (Phase 15.0)")
+    else:
+        v.warn("elective-ds strict_pool not confirmed — check pool promotion data")
+
+    if faculty_buckets and faculty_buckets[0].get("eligibilityEnforcement") == "strict_pool":
+        v.ok("elective-faculty bucket uses strict_pool enforcement (Phase 15.0)")
+    else:
+        v.warn("elective-faculty strict_pool not confirmed")
+
+    if progress.get("assumptions"):
+        v.ok("graduation response includes assumptions[]")
+    else:
+        v.fail("graduation assumptions[] missing")
+
+    if course_id:
+        await v.request(
+            client,
+            "POST",
+            "/completed-courses",
+            token=grad_token,
+            json_body={
+                "courseId": course_id,
+                "semesterCode": "2024-1",
+                "grade": 82,
+                "creditsEarned": 2,
+                "attempt": 1,
+            },
+            expected=201,
+            label="graduation completed course add",
+        )
+
+        r2 = await v.request(
+            client,
+            "GET",
+            "/graduation-progress",
+            token=grad_token,
+            expected=200,
+            label="graduation after completed course",
+        )
+        after = r2.json()["data"]["graduationProgress"]
+        if after.get("completedCredits", 0) >= 2:
+            v.ok(f"graduation completedCredits={after.get('completedCredits')} after course add")
+        else:
+            v.fail(f"graduation credits not updated: {after.get('completedCredits')}")
+
+        if after.get("statusSummary") in {"in_progress", "not_started"}:
+            v.ok(f"graduation statusSummary={after.get('statusSummary')} after partial progress")
+        else:
+            v.warn(f"unexpected status after one course: {after.get('statusSummary')}")
+
+    await v.request(
+        client,
+        "DELETE",
+        "/student-profile",
+        token=grad_token,
+        expected=200,
+        label="graduation profile cleanup",
+    )
+
+
 async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_id: str) -> None:
     v.course_id = course_id
     r = await v.request(
@@ -271,7 +403,7 @@ async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_i
         json_body={
             "courseId": course_id,
             "semesterCode": "2024-1",
-            "grade": "A",
+            "grade": 82,
             "creditsEarned": 2,
             "attempt": 1,
         },
@@ -294,7 +426,7 @@ async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_i
         "PUT",
         f"/completed-courses/{v.completed_id}",
         token=v.token,
-        json_body={"grade": "A+"},
+        json_body={"grade": 95},
         expected=200,
         label="completed update",
     )
@@ -316,7 +448,7 @@ async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_i
         json_body={
             "courseId": "665f2b0f2a3f7b2a1a9a7fff",
             "semesterCode": "2024-1",
-            "grade": "A",
+            "grade": 82,
             "creditsEarned": 2,
         },
         expected=400,
@@ -338,6 +470,7 @@ async def run_benchmarks(client: httpx.AsyncClient, token: str) -> list[dict[str
         ("catalog_search_he", "GET", "/catalog/courses?q=מתמטיקה&limit=50", token, None, 30),
         ("catalog_summary", "GET", "/catalog/degree-programs/009216-1-000/catalog-summary", token, None, 30),
         ("catalog_requirements", "GET", "/catalog/degree-programs/009216-1-000/requirements", token, None, 30),
+        ("graduation_progress", "GET", "/graduation-progress", token, None, 50),
         ("completed_list", "GET", "/completed-courses", token, None, 50),
     ]
 
@@ -376,14 +509,37 @@ async def main() -> int:
         cwd="/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot",
     )
     course_id = proc.stdout.strip()
+
+    proc_degree = subprocess.run(
+        [
+            "docker", "compose", "exec", "-T", "mongo",
+            "mongosh", "-u", "unipilot", "-p", "unipilot_dev_password",
+            "--authenticationDatabase", "admin", "unipilot_python", "--quiet",
+            "--eval",
+            'const p=db.degree_programs.findOne({programCode:"009216-1-000",status:"published"}); if(p) print(p._id.toString())',
+        ],
+        capture_output=True,
+        text=True,
+        cwd="/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot",
+    )
+    degree_program_id = proc_degree.stdout.strip()
+
     if not course_id:
         print("WARN: could not resolve course ObjectId from Mongo; skipping completed-course Docker tests")
+    if not degree_program_id:
+        print("WARN: could not resolve degree_programs._id from Mongo; skipping graduation progress Docker tests")
 
     v = Verifier()
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
         await run_functional_verification(v, client)
         if course_id:
             await run_completed_courses(v, client, course_id)
+        await run_graduation_progress(
+            v,
+            client,
+            degree_program_id=degree_program_id or None,
+            course_id=course_id or None,
+        )
 
         # Use existing user for login benchmark if register user can't be reused
         bench_token = v.token

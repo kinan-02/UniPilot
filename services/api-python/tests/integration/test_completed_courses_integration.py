@@ -31,7 +31,7 @@ async def test_create_list_get_update_delete_completed_course_flow(auth_client, 
     create_response = await auth_client.post(
         "/completed-courses",
         headers={"Authorization": f"Bearer {access_token}"},
-        json=build_completed_course_payload(catalog["courseId"], semesterCode="2023-1", grade="A"),
+        json=build_completed_course_payload(catalog["courseId"], semesterCode="2023-1", grade=90),
     )
     assert create_response.status_code == 201
     created = create_response.json()["data"]["completedCourse"]
@@ -54,15 +54,15 @@ async def test_create_list_get_update_delete_completed_course_flow(auth_client, 
         headers={"Authorization": f"Bearer {access_token}"},
     )
     assert get_response.status_code == 200
-    assert get_response.json()["data"]["completedCourse"]["grade"] == "A"
+    assert get_response.json()["data"]["completedCourse"]["grade"] == 90
 
     update_response = await auth_client.put(
         f"/completed-courses/{record_id}",
         headers={"Authorization": f"Bearer {access_token}"},
-        json={"grade": "A+", "creditsEarned": 4},
+        json={"grade": 95, "creditsEarned": 4},
     )
     assert update_response.status_code == 200
-    assert update_response.json()["data"]["completedCourse"]["grade"] == "A+"
+    assert update_response.json()["data"]["completedCourse"]["grade"] == 95
 
     delete_response = await auth_client.delete(
         f"/completed-courses/{record_id}",

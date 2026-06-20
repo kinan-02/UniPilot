@@ -359,6 +359,37 @@ Phase 13 reads **production** collections promoted in Phase 12 (`courses`, `cour
 
 Phase 14 stores user-owned transcript rows in `completed_courses`. Catalog collections are read-only for FK validation. Advisory `catalog_rules` and hard `degree_requirements` are not used in completed-course logic. No graduation progress calculation.
 
+### Python Phase 15 status (implemented — graduation progress API)
+
+| Item | Status |
+|---|---|
+| `GET /graduation-progress` (JWT, self-scoped) | Done |
+| `degreeId` on profile validated against `degree_programs._id` | Done |
+| Hard `credit_bucket` rules from `degree_requirements` | Done |
+| Linked `course_pool` enforcement for DS + faculty electives | Done |
+| `semester_matrix` / track rules excluded (planning-only) | Done |
+| Calculator `app/services/graduation_progress_calculator.py` | Done |
+| Service `app/services/graduation_progress_service.py` | Done |
+| pytest unit + integration + security tests | Done |
+| API version `0.6.0` | Done |
+| Node reference backend | Unchanged |
+| Semester planner / academic risk / AI | Not implemented (Python) |
+
+Phase 15 computes deterministic graduation progress at read time from the authenticated user's profile (`degreeId` → `degree_programs`), `completed_courses`, hard `degree_requirements` (`credit_bucket`), and linked `course_pool` documents in `catalog_rules` (DS elective pool + faculty elective prefix pool). Buckets without linked pools use credit-only heuristic allocation. **Grades:** Technion numeric 0–100; pass strictly above 55. Response includes `requirementProgress`, `missingRequirements`, `assumptions`, and `ineligibleCredits`.
+
+### Python Phase 15.1 status (implemented — graduation pool data links)
+
+| Item | Status |
+|---|---|
+| `linkedCreditBucketId` on promoted DS/faculty pool rules | Done |
+| Promotion metadata `graduationPoolLinkPhase: 15.1` | Done |
+| Pools remain `advisoryOnly` / `enforceInGraduationProgress: false` in catalog APIs | Done |
+| Calculator enforces pools via explicit link (overrides naming convention) | Done |
+| Human sign-off notes updated | Done |
+| Re-promotion + E2E verification | Run after deploy |
+
+Phase 15.1 adds explicit `linkedCreditBucketId` on promoted `catalog_rules` for `009216-1-000:elective-ds-pool` → `009216-1-000:elective-ds` and `009216-1-000:elective-faculty-pool` → `009216-1-000:elective-faculty`. Graduation progress uses the link; catalog read APIs still treat these as advisory metadata.
+
 ### Target Python stack
 
 FastAPI, MongoDB, Redis, Python worker, data-engineering container, Pydantic, JWT, bcrypt, pytest, Docker Compose — see migration plan for full architecture.

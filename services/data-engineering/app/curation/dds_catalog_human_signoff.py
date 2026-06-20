@@ -69,6 +69,8 @@ def build_human_signoff_payload(*, signed_off_by: str = "project-owner") -> dict
         "notes": (
             "Human sign-off: 22 non-executable requirement groups may be used for display, "
             "planning, and manual review but must not be mandatory auto-enforcement in production. "
+            "Phase 15.1: DS and faculty elective pools carry linkedCreditBucketId for graduation "
+            "eligibility while remaining advisory in catalog APIs. "
             "14 catalog course references absent from 2025 semester JSON are excluded from "
             "production promotion and must not be ingested as production course records."
         ),

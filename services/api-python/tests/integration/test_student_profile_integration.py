@@ -177,7 +177,10 @@ async def test_delete_profile_removes_current_user_profile(auth_client):
 
 
 @pytest.mark.asyncio
-async def test_create_profile_accepts_optional_degree_id_without_catalog_validation(auth_client):
+async def test_create_profile_accepts_valid_degree_id(auth_client, mongo_database):
+    from tests.fixtures.graduation_progress_fixtures import seed_graduation_progress_fixtures
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
     access_token = await register_access_token(auth_client, "profile-degree@example.com")
 
     response = await auth_client.post(
@@ -185,9 +188,9 @@ async def test_create_profile_accepts_optional_degree_id_without_catalog_validat
         headers={"Authorization": f"Bearer {access_token}"},
         json={
             **PROFILE_PAYLOAD,
-            "degreeId": "665f2b0f2a3f7b2a1a9a7f11",
+            "degreeId": fixtures["programId"],
         },
     )
 
     assert response.status_code == 201
-    assert response.json()["data"]["profile"]["degreeId"] == "665f2b0f2a3f7b2a1a9a7f11"
+    assert response.json()["data"]["profile"]["degreeId"] == fixtures["programId"]

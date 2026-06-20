@@ -1,4 +1,4 @@
-"""Completed course request/response schemas (Node/API_SPEC contract)."""
+"""Completed course request/response schemas (Technion numeric grades 0–100)."""
 
 from __future__ import annotations
 
@@ -8,40 +8,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.student_profile import validate_object_id, validate_semester_code
-
-GRADE_VALUES = (
-    "A+",
-    "A",
-    "A-",
-    "B+",
-    "B",
-    "B-",
-    "C+",
-    "C",
-    "C-",
-    "D",
-    "F",
-    "Pass",
-    "Fail",
-)
-
-GradeValue = Literal[
-    "A+",
-    "A",
-    "A-",
-    "B+",
-    "B",
-    "B-",
-    "C+",
-    "C",
-    "C-",
-    "D",
-    "F",
-    "Pass",
-    "Fail",
-]
+from app.services.grade_evaluation import parse_numeric_grade
 
 OBJECT_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$", re.IGNORECASE)
+
+
+def validate_grade_value(value: int | float | str) -> float:
+    numeric = parse_numeric_grade(value)
+    if numeric is None:
+        raise ValueError("grade must be a number between 0 and 100")
+    return numeric
 
 
 def is_half_credit_increment(value: float) -> bool:
@@ -71,12 +47,17 @@ class CreateCompletedCourseRequest(BaseModel):
 
     courseId: str
     semesterCode: str
-    grade: GradeValue
+    grade: float = Field(ge=0, le=100)
     gradePoints: float | None = Field(default=None, ge=0, le=100)
     creditsEarned: float
     attempt: int | None = Field(default=None, ge=1, le=5)
     source: Literal["manual"] | None = None
     metadata: CompletedCourseMetadata | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def validate_grade(cls, value: int | float | str) -> float:
+        return validate_grade_value(value)
 
     @field_validator("courseId")
     @classmethod
@@ -98,10 +79,17 @@ class UpdateCompletedCourseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     semesterCode: str | None = None
-    grade: GradeValue | None = None
+    grade: float | None = Field(default=None, ge=0, le=100)
     gradePoints: float | None = Field(default=None, ge=0, le=100)
     creditsEarned: float | None = None
     metadata: CompletedCourseMetadata | None = None
+
+    @field_validator("grade", mode="before")
+    @classmethod
+    def validate_grade(cls, value: int | float | str | None) -> float | None:
+        if value is None:
+            return None
+        return validate_grade_value(value)
 
     @field_validator("semesterCode")
     @classmethod
@@ -139,7 +127,7 @@ class CompletedCourseResponse(BaseModel):
     courseNumber: str | None = None
     courseTitle: str | None = None
     semesterCode: str
-    grade: str
+    grade: float
     gradePoints: float | None = None
     creditsEarned: float
     attempt: int
