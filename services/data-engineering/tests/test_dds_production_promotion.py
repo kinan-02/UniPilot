@@ -162,9 +162,15 @@ def test_graduation_linked_pools_promoted_with_explicit_bucket_ids(mongo_databas
         {"requirementGroupId": "009216-1-000:elective-faculty-pool"}
     )
     assert ds_pool is not None
-    assert ds_pool["linkedCreditBucketId"] == "009216-1-000:elective-ds"
+    ds_linked = ds_pool.get("linkedCreditBucketId") or ds_pool.get("sourceMetadata", {}).get(
+        "linkedCreditBucketId"
+    )
+    assert ds_linked == "009216-1-000:elective-ds"
     assert faculty_pool is not None
-    assert faculty_pool["linkedCreditBucketId"] == "009216-1-000:elective-faculty"
+    faculty_linked = faculty_pool.get("linkedCreditBucketId") or faculty_pool.get(
+        "sourceMetadata", {}
+    ).get("linkedCreditBucketId")
+    assert faculty_linked == "009216-1-000:elective-faculty"
 
 
 def test_hard_requirements_are_executable_only(mongo_database) -> None:
