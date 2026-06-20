@@ -14,6 +14,7 @@ from app.routes.catalog import router as catalog_router
 from app.routes.completed_courses import router as completed_courses_router
 from app.routes.graduation_progress import router as graduation_progress_router
 from app.routes.health import router as health_router
+from app.routes.semester_plans import router as semester_plans_router
 from app.routes.student_profile import router as student_profile_router
 from app.config import get_settings
 
@@ -30,7 +31,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="UniPilot API (Python)",
         description="FastAPI backend for UniPilot AI — migration target",
-        version="0.6.0",
+        version="0.7.0",
         lifespan=lifespan,
     )
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(completed_courses_router)
     app.include_router(graduation_progress_router)
+    app.include_router(semester_plans_router)
     return app
 
 

@@ -32,6 +32,8 @@ async def seed_graduation_progress_fixtures(database) -> dict[str, str]:
     course_a = await database[settings.courses_collection].insert_one(_course("00940345", "מתמטיקה דיסקרטית", 4.0))
     course_b = await database[settings.courses_collection].insert_one(_course("00940411", "מבוא למדעי הנתונים", 3.5))
     course_c = await database[settings.courses_collection].insert_one(_course("09400101", "פקולטה בחירה", 3.0))
+    course_d = await database[settings.courses_collection].insert_one(_course("01040031", "מבוא למדעי המחשב", 3.5))
+    course_e = await database[settings.courses_collection].insert_one(_course("00940219", "מבני נתונים", 3.5))
 
     await database[settings.degree_requirements_collection].insert_many(
         [
@@ -43,6 +45,35 @@ async def seed_graduation_progress_fixtures(database) -> dict[str, str]:
 
     await database[settings.catalog_rules_collection].insert_many(
         [
+            {
+                "productionKey": f"technion-dds:advisory-rule:catalog:{PROGRAM_CODE}:semester-1-matrix:2025-2026",
+                "institutionId": "technion",
+                "programCode": PROGRAM_CODE,
+                "requirementGroupId": f"{PROGRAM_CODE}:semester-1-matrix",
+                "recordType": "catalog_rule",
+                "title": "Semester 1 matrix",
+                "ruleExpression": {"type": "semester_matrix", "operator": "all_of", "semester": 1},
+                "courseReferences": [
+                    {"courseNumber": "00940345"},
+                    {"courseNumber": "01040031"},
+                ],
+                "advisoryOnly": True,
+                "enforceInGraduationProgress": False,
+                "status": "published",
+            },
+            {
+                "productionKey": f"technion-dds:advisory-rule:catalog:{PROGRAM_CODE}:semester-2-matrix:2025-2026",
+                "institutionId": "technion",
+                "programCode": PROGRAM_CODE,
+                "requirementGroupId": f"{PROGRAM_CODE}:semester-2-matrix",
+                "recordType": "catalog_rule",
+                "title": "Semester 2 matrix",
+                "ruleExpression": {"type": "semester_matrix", "operator": "all_of", "semester": 2},
+                "courseReferences": [{"courseNumber": "00940219"}],
+                "advisoryOnly": True,
+                "enforceInGraduationProgress": False,
+                "status": "published",
+            },
             {
                 "productionKey": f"technion-dds:advisory-rule:catalog:{PROGRAM_CODE}:elective-ds-pool:2025-2026",
                 "institutionId": "technion",
@@ -81,9 +112,13 @@ async def seed_graduation_progress_fixtures(database) -> dict[str, str]:
         "courseAId": str(course_a.inserted_id),
         "courseBId": str(course_b.inserted_id),
         "courseCId": str(course_c.inserted_id),
+        "courseDId": str(course_d.inserted_id),
+        "courseEId": str(course_e.inserted_id),
         "courseANumber": "00940345",
         "courseBNumber": "00940411",
         "courseCNumber": "09400101",
+        "courseDNumber": "01040031",
+        "courseENumber": "00940219",
     }
 
 

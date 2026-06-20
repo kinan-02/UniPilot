@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extensive Docker verification + performance benchmark for api-python (Phases 1-15)."""
+"""Extensive Docker verification + performance benchmark for api-python (Phases 1-16)."""
 
 from __future__ import annotations
 
@@ -157,6 +157,8 @@ async def run_functional_verification(v: Verifier, client: httpx.AsyncClient) ->
         "/catalog/courses?limit=1",
         "/completed-courses",
         "/graduation-progress",
+        "/semester-plans",
+        "/semester-plans/generate",
     ]:
         await v.request(client, "GET", path, expected=401, label=f"no auth {path}")
 
@@ -393,6 +395,226 @@ async def run_graduation_progress(
     )
 
 
+async def run_semester_plans(
+    v: Verifier,
+    client: httpx.AsyncClient,
+    *,
+    degree_program_id: str | None,
+    semester_one_course_id: str | None,
+    semester_one_course_number: str | None,
+    semester_one_matrix_numbers: list[str],
+) -> None:
+    """Phase 16 — semester planner E2E using live production semester_matrix rules."""
+    if not degree_program_id:
+        v.warn("skipping semester plan Docker tests — no degree_programs._id resolved")
+        return
+
+    if not semester_one_matrix_numbers:
+        v.warn("skipping semester plan matrix assertions — no semester-1 matrix courses in Mongo")
+        return
+
+    plan_email = f"plan-verify-{uuid.uuid4().hex[:8]}@example.com"
+    reg = await v.request(
+        client,
+        "POST",
+        "/auth/register",
+        json_body={"email": plan_email, "password": PASSWORD},
+        expected=201,
+        label="semester plan user register",
+    )
+    if reg.status_code != 201:
+        v.fail("semester plan user register failed — skipping remaining semester plan E2E")
+        return
+    plan_token = reg.json()["data"]["accessToken"]
+
+    await v.request(
+        client,
+        "GET",
+        "/semester-plans",
+        token=plan_token,
+        expected=200,
+        label="semester plan list without profile (empty history)",
+    )
+
+    await v.request(
+        client,
+        "POST",
+        "/semester-plans/generate",
+        token=plan_token,
+        json_body={"semesterCode": "2025-2"},
+        expected=404,
+        label="semester plan generate without profile",
+    )
+
+    await v.request(
+        client,
+        "POST",
+        "/student-profile",
+        token=plan_token,
+        json_body={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": degree_program_id,
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+            "preferences": {"maxCreditsPerSemester": 18},
+        },
+        expected=201,
+        label="semester plan profile with degreeId",
+    )
+
+    gen = await v.request(
+        client,
+        "POST",
+        "/semester-plans/generate",
+        token=plan_token,
+        json_body={"semesterCode": "2025-2", "maxCredits": 12},
+        expected=201,
+        label="semester plan generate",
+    )
+    plan = gen.json()["data"]["semesterPlan"]
+    assumptions = plan.get("assumptions") or {}
+    explanation = plan.get("explanation") or {}
+
+    if plan.get("plannerType") == "deterministic":
+        v.ok("semester plan plannerType=deterministic")
+    else:
+        v.fail(f"semester plan plannerType unexpected: {plan.get('plannerType')}")
+
+    if assumptions.get("mandatorySource") == "semester_matrix":
+        v.ok("semester plan mandatorySource=semester_matrix (catalog table)")
+    else:
+        v.fail(f"semester plan mandatorySource unexpected: {assumptions.get('mandatorySource')}")
+
+    matrix_rule_count = int(assumptions.get("semesterMatrixRuleCount") or 0)
+    if matrix_rule_count >= 1:
+        v.ok(f"semester plan loaded semesterMatrixRuleCount={matrix_rule_count}")
+    else:
+        v.fail("semester plan semesterMatrixRuleCount missing or zero")
+
+    if explanation.get("rulesApplied") and any(
+        "semester matrix" in rule.lower() for rule in explanation["rulesApplied"]
+    ):
+        v.ok("semester plan rulesApplied mentions semester matrix")
+    else:
+        v.fail("semester plan rulesApplied missing semester matrix rule")
+
+    planned = (plan.get("semesters") or [{}])[0].get("plannedCourses") or []
+    planned_numbers = [course.get("courseNumber") for course in planned]
+    if planned:
+        v.ok(f"semester plan recommended {len(planned)} course(s)")
+    else:
+        v.warn("semester plan returned empty plannedCourses on fresh transcript")
+
+    matrix_hits = [number for number in planned_numbers if number in semester_one_matrix_numbers]
+    if matrix_hits:
+        v.ok(f"semester plan includes semester-1 matrix courses: {matrix_hits[:3]}")
+    elif planned:
+        v.warn(
+            f"semester plan courses {planned_numbers[:5]} did not intersect semester-1 matrix "
+            f"{semester_one_matrix_numbers[:5]} — may be blocked by prerequisites/workload"
+        )
+
+    if planned and all(course.get("category") == "mandatory" for course in planned):
+        v.ok("semester plan initial recommendations are mandatory (matrix-sourced)")
+    elif planned:
+        v.warn("semester plan mixed mandatory/elective on first generate")
+
+    plan_id = plan.get("id")
+    if not plan_id:
+        v.fail("semester plan missing id")
+        return
+
+    await v.request(
+        client,
+        "GET",
+        "/semester-plans",
+        token=plan_token,
+        expected=200,
+        label="semester plan list",
+    )
+
+    get_resp = await v.request(
+        client,
+        "GET",
+        f"/semester-plans/{plan_id}",
+        token=plan_token,
+        expected=200,
+        label="semester plan get by id",
+    )
+    if get_resp.json()["data"]["semesterPlan"]["id"] == plan_id:
+        v.ok("semester plan get returns same id")
+    else:
+        v.fail("semester plan get id mismatch")
+
+    await v.request(
+        client,
+        "POST",
+        "/semester-plans/generate",
+        token=plan_token,
+        json_body={"semesterCode": "2025-2", "maxCredits": 12, "userId": "evil"},
+        expected=400,
+        label="semester plan rejects unknown field",
+    )
+
+    await v.request(
+        client,
+        "POST",
+        "/semester-plans/generate",
+        token=plan_token,
+        json_body={"semesterCode": "2025-3", "maxCredits": 6},
+        expected=400,
+        label="semester plan rejects invalid semesterCode",
+    )
+
+    if semester_one_course_id and semester_one_course_number:
+        await v.request(
+            client,
+            "POST",
+            "/completed-courses",
+            token=plan_token,
+            json_body={
+                "courseId": semester_one_course_id,
+                "semesterCode": "2024-1",
+                "grade": 85,
+                "creditsEarned": 4,
+                "attempt": 1,
+            },
+            expected=201,
+            label="semester plan completed matrix course",
+        )
+
+        regen = await v.request(
+            client,
+            "POST",
+            "/semester-plans/generate",
+            token=plan_token,
+            json_body={"semesterCode": "2025-2", "maxCredits": 12, "name": "After completion"},
+            expected=201,
+            label="semester plan regenerate after completion",
+        )
+        regen_plan = regen.json()["data"]["semesterPlan"]
+        regen_numbers = [
+            course.get("courseNumber")
+            for course in (regen_plan.get("semesters") or [{}])[0].get("plannedCourses") or []
+        ]
+        if semester_one_course_number not in regen_numbers:
+            v.ok(f"completed matrix course {semester_one_course_number} excluded from replan")
+        else:
+            v.fail(
+                f"completed matrix course {semester_one_course_number} still recommended after completion"
+            )
+
+    await v.request(
+        client,
+        "DELETE",
+        "/student-profile",
+        token=plan_token,
+        expected=200,
+        label="semester plan profile cleanup",
+    )
+
+
 async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_id: str) -> None:
     v.course_id = course_id
     r = await v.request(
@@ -472,6 +694,15 @@ async def run_benchmarks(client: httpx.AsyncClient, token: str) -> list[dict[str
         ("catalog_requirements", "GET", "/catalog/degree-programs/009216-1-000/requirements", token, None, 30),
         ("graduation_progress", "GET", "/graduation-progress", token, None, 50),
         ("completed_list", "GET", "/completed-courses", token, None, 50),
+        (
+            "semester_plan_generate",
+            "POST",
+            "/semester-plans/generate",
+            token,
+            {"semesterCode": "2025-2", "maxCredits": 12},
+            20,
+        ),
+        ("semester_plan_list", "GET", "/semester-plans", token, None, 30),
     ]
 
     results: list[dict[str, Any]] = []
@@ -494,40 +725,62 @@ async def run_benchmarks(client: httpx.AsyncClient, token: str) -> list[dict[str
 
 async def main() -> int:
     import subprocess
+    from pathlib import Path
 
-    # Resolve production course ObjectId from Mongo
-    proc = subprocess.run(
+    repo_root = Path(__file__).resolve().parents[3]
+
+    mongo_eval = (
+        'const out={};'
+        'const c=db.courses.findOne({courseNumber:"00104000",status:"published"});'
+        'if(c) out.courseId=c._id.toString();'
+        'const p=db.degree_programs.findOne({programCode:"009216-1-000",status:"published"});'
+        'if(p) out.degreeProgramId=p._id.toString();'
+        'const m=db.catalog_rules.findOne({programCode:"009216-1-000",'
+        '"ruleExpression.type":"semester_matrix","requirementGroupId":/semester-1-matrix/});'
+        'if(m){'
+        '  out.semesterOneMatrixNumbers=(m.courseReferences||[]).map(r=>r.courseNumber).filter(Boolean);'
+        '  const first=(m.courseReferences||[]).find(r=>r.courseNumber);'
+        '  if(first){'
+        '    const mc=db.courses.findOne({courseNumber:first.courseNumber,status:"published"});'
+        '    if(mc){ out.semesterOneCourseId=mc._id.toString(); out.semesterOneCourseNumber=first.courseNumber; }'
+        '  }'
+        '}'
+        'const matrixCount=db.catalog_rules.countDocuments({programCode:"009216-1-000",'
+        '"ruleExpression.type":"semester_matrix",status:"published"});'
+        'out.semesterMatrixRuleCount=matrixCount;'
+        'print(JSON.stringify(out));'
+    )
+
+    proc_mongo = subprocess.run(
         [
             "docker", "compose", "exec", "-T", "mongo",
             "mongosh", "-u", "unipilot", "-p", "unipilot_dev_password",
             "--authenticationDatabase", "admin", "unipilot_python", "--quiet",
             "--eval",
-            'const c=db.courses.findOne({courseNumber:"00104000",status:"published"}); if(c) print(c._id.toString())',
+            mongo_eval,
         ],
         capture_output=True,
         text=True,
-        cwd="/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot",
+        cwd=str(repo_root),
     )
-    course_id = proc.stdout.strip()
-
-    proc_degree = subprocess.run(
-        [
-            "docker", "compose", "exec", "-T", "mongo",
-            "mongosh", "-u", "unipilot", "-p", "unipilot_dev_password",
-            "--authenticationDatabase", "admin", "unipilot_python", "--quiet",
-            "--eval",
-            'const p=db.degree_programs.findOne({programCode:"009216-1-000",status:"published"}); if(p) print(p._id.toString())',
-        ],
-        capture_output=True,
-        text=True,
-        cwd="/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot",
-    )
-    degree_program_id = proc_degree.stdout.strip()
+    mongo_bootstrap = json.loads(proc_mongo.stdout.strip() or "{}")
+    course_id = mongo_bootstrap.get("courseId")
+    degree_program_id = mongo_bootstrap.get("degreeProgramId")
+    semester_one_course_id = mongo_bootstrap.get("semesterOneCourseId")
+    semester_one_course_number = mongo_bootstrap.get("semesterOneCourseNumber")
+    semester_one_matrix_numbers = mongo_bootstrap.get("semesterOneMatrixNumbers") or []
 
     if not course_id:
         print("WARN: could not resolve course ObjectId from Mongo; skipping completed-course Docker tests")
     if not degree_program_id:
-        print("WARN: could not resolve degree_programs._id from Mongo; skipping graduation progress Docker tests")
+        print("WARN: could not resolve degree_programs._id from Mongo; skipping graduation/semester plan tests")
+    if mongo_bootstrap.get("semesterMatrixRuleCount", 0) == 0:
+        print("WARN: no semester_matrix catalog rules in Mongo; semester plan matrix E2E may be limited")
+    else:
+        print(
+            f"INFO: found {mongo_bootstrap.get('semesterMatrixRuleCount')} semester_matrix rules; "
+            f"semester-1 courses sample: {semester_one_matrix_numbers[:5]}"
+        )
 
     v = Verifier()
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
@@ -539,6 +792,14 @@ async def main() -> int:
             client,
             degree_program_id=degree_program_id or None,
             course_id=course_id or None,
+        )
+        await run_semester_plans(
+            v,
+            client,
+            degree_program_id=degree_program_id or None,
+            semester_one_course_id=semester_one_course_id,
+            semester_one_course_number=semester_one_course_number,
+            semester_one_matrix_numbers=semester_one_matrix_numbers,
         )
 
         # Use existing user for login benchmark if register user can't be reused
@@ -553,6 +814,21 @@ async def main() -> int:
 
         bench_results = []
         if bench_token:
+            # Ensure benchmark user can hit graduation + semester plan endpoints
+            profile_resp = await client.get("/student-profile", headers={"Authorization": f"Bearer {bench_token}"})
+            if profile_resp.status_code == 404:
+                if degree_program_id:
+                    await client.post(
+                        "/student-profile",
+                        headers={"Authorization": f"Bearer {bench_token}"},
+                        json={
+                            "institutionId": "technion",
+                            "programType": "BSc",
+                            "degreeId": degree_program_id,
+                            "catalogYear": 2025,
+                            "currentSemesterCode": "2025-1",
+                        },
+                    )
             bench_results = await run_benchmarks(client, bench_token)
 
     # Mongo integrity counts
@@ -562,11 +838,11 @@ async def main() -> int:
             "mongosh", "-u", "unipilot", "-p", "unipilot_dev_password",
             "--authenticationDatabase", "admin", "unipilot_python", "--quiet",
             "--eval",
-            'print(JSON.stringify({courses:db.courses.countDocuments(),offerings:db.course_offerings.countDocuments(),programs:db.degree_programs.countDocuments(),requirements:db.degree_requirements.countDocuments(),rules:db.catalog_rules.countDocuments(),completed:db.completed_courses.countDocuments()}))',
+            'print(JSON.stringify({courses:db.courses.countDocuments(),offerings:db.course_offerings.countDocuments(),programs:db.degree_programs.countDocuments(),requirements:db.degree_requirements.countDocuments(),rules:db.catalog_rules.countDocuments(),semesterMatrixRules:db.catalog_rules.countDocuments({"programCode":"009216-1-000","ruleExpression.type":"semester_matrix",status:"published"}),semesterPlans:db.semester_plans.countDocuments(),completed:db.completed_courses.countDocuments()}))',
         ],
         capture_output=True,
         text=True,
-        cwd="/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot",
+        cwd=str(repo_root),
     )
     mongo_counts = json.loads(proc2.stdout.strip() or "{}")
 
@@ -609,7 +885,7 @@ async def main() -> int:
         print(json.dumps(b, indent=2))
 
     # Write JSON report
-    report_path = "/Users/tymoribrahim/Desktop/כתיבת תוכנה בלמידת מכונה/UniPilot/services/api-python/scripts/verify_report.json"
+    report_path = repo_root / "services" / "api-python" / "scripts" / "verify_report.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     print(f"\nFull report written to {report_path}")

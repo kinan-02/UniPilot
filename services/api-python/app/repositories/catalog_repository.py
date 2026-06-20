@@ -126,6 +126,19 @@ async def list_courses(
     return items, total
 
 
+async def find_course_by_number(
+    database: AsyncIOMotorDatabase,
+    course_number: str,
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    """Return raw published course document (includes _id)."""
+    settings = settings or get_settings()
+    return await database[settings.courses_collection].find_one(
+        {**PUBLISHED_FILTER, "courseNumber": course_number}
+    )
+
+
 async def get_course_by_number(
     database: AsyncIOMotorDatabase,
     course_number: str,
@@ -255,6 +268,47 @@ async def list_course_pools_for_program(
         "ruleExpression.type": "course_pool",
     }
     cursor = database[settings.catalog_rules_collection].find(query).sort("requirementGroupId", 1)
+    return [doc async for doc in cursor]
+
+
+async def list_semester_matrix_rules_for_program(
+    database: AsyncIOMotorDatabase,
+    program_code: str,
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    """Return semester_matrix catalog rules — mandatory course source for planning."""
+    settings = settings or get_settings()
+    query = {
+        **PUBLISHED_FILTER,
+        "programCode": program_code,
+        "ruleExpression.type": "semester_matrix",
+    }
+    cursor = database[settings.catalog_rules_collection].find(query).sort("requirementGroupId", 1)
+    return [doc async for doc in cursor]
+
+
+async def list_courses_by_number_prefixes(
+    database: AsyncIOMotorDatabase,
+    prefixes: list[str],
+    *,
+    limit: int = 200,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    if not prefixes:
+        return []
+
+    settings = settings or get_settings()
+    prefix_filters = [
+        {"courseNumber": {"$regex": f"^{re.escape(str(prefix))}"}} for prefix in prefixes
+    ]
+    query: dict[str, Any] = {"$and": [PUBLISHED_FILTER, {"$or": prefix_filters}]}
+    cursor = (
+        database[settings.courses_collection]
+        .find(query)
+        .sort("courseNumber", 1)
+        .limit(limit)
+    )
     return [doc async for doc in cursor]
 
 

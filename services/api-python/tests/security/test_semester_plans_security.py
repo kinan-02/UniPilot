@@ -1,0 +1,75 @@
+import pytest
+
+from tests.fixtures.graduation_progress_fixtures import seed_graduation_progress_fixtures
+
+VALID_PASSWORD = "StrongPass123!"
+
+
+async def register_access_token(client, email: str) -> str:
+    response = await client.post(
+        "/auth/register",
+        json={"email": email, "password": VALID_PASSWORD},
+    )
+    assert response.status_code == 201
+    return response.json()["data"]["accessToken"]
+
+
+@pytest.mark.asyncio
+async def test_semester_plans_require_jwt(auth_client):
+    response = await auth_client.post("/semester-plans/generate", json={"semesterCode": "2025-2"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_cross_user_plan_access_returns_404(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+
+    owner_token = await register_access_token(auth_client, "semester-owner@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+    generate_response = await auth_client.post(
+        "/semester-plans/generate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"semesterCode": "2025-2", "maxCredits": 6},
+    )
+    plan_id = generate_response.json()["data"]["semesterPlan"]["id"]
+
+    other_token = await register_access_token(auth_client, "semester-other@example.com")
+    response = await auth_client.get(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_generate_rejects_unknown_fields(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "semester-strict@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+
+    response = await auth_client.post(
+        "/semester-plans/generate",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-2", "userId": "evil"},
+    )
+    assert response.status_code == 400

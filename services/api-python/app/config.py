@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     catalog_default_limit: int = 50
     catalog_max_limit: int = 200
     completed_courses_collection: str = "completed_courses"
+    semester_plans_collection: str = "semester_plans"
 
     model_config = SettingsConfigDict(
         env_file=".env",
