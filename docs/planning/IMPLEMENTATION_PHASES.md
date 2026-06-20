@@ -1,6 +1,10 @@
 # UniPilot AI — Implementation Phases
 
-Build the project **feature by feature**, backend-first. Do not implement everything at once. Each phase ends with tests, README updates, and commits from team members.
+Last updated: 2026-06-20
+
+Build the project **feature by feature**, backend-first. The **FastAPI** backend (`services/api`) is the current implementation target. Each phase ends with tests, README updates, and commits from team members.
+
+> **Note:** Phases 0–8 below describe the original roadmap. Auth through academic risk analysis are **implemented** on FastAPI with production Technion DDS catalog data. See `docs/PROJECT_CONTEXT.md` for current status.
 
 ## Phase 0 — Project Skeleton & Docker First-Run
 **Goal:** the empty system boots with one command.

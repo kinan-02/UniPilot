@@ -1,6 +1,6 @@
 # UniPilot AI Architecture Freeze
 
-Last updated: 2026-06-19  
+Last updated: 2026-06-20  
 Source of truth inputs: `docs/PROJECT_CONTEXT.md`, `docs/DOMAIN_MODEL.md`, `docs/decisions/0001-system-architecture.md`
 
 This document defines architecture decisions that are considered frozen for the MVP and early implementation phases.
@@ -14,7 +14,8 @@ This document defines architecture decisions that are considered frozen for the 
 ## 2) Docker Services (Frozen Baseline)
 
 ### Required service topology
-- `api` (client-facing HTTP API)
+- `api` (client-facing FastAPI HTTP API)
+- `data-engineering` (internal catalog ingestion / promotion CLI)
 - `mongo` (persistence)
 - `redis` (queue + rate-limit infrastructure)
 - `worker` (background processing)
@@ -22,7 +23,7 @@ This document defines architecture decisions that are considered frozen for the 
 
 ### Exposure rules
 - Only `api` may publish host ports.
-- `mongo`, `redis`, `worker`, `ai` remain internal-only.
+- `data-engineering`, `mongo`, `redis`, `worker`, `ai` remain internal-only.
 
 ### Runtime expectations
 - `docker compose up --build` works from clean clone.
@@ -31,7 +32,7 @@ This document defines architecture decisions that are considered frozen for the 
 
 ## 3) API Architecture (Frozen)
 
-- API stack: Node.js + Express.
+- API stack: **Python 3.12+ / FastAPI** (`services/api`).
 - API owns:
   - auth endpoints
   - input validation
@@ -88,10 +89,11 @@ Minimum quality bar:
 - Auth
 - Student profile
 - Completed courses
-- Course catalog
-- Degree requirements
+- Course catalog (production DDS via `/catalog/*`)
+- Degree requirements (hard + advisory separation)
 - Graduation progress
-- Semester plans
+- Semester plans (deterministic generate + manual + versioning)
+- Academic risk analysis (deterministic)
 
 ### Explicitly out of MVP
 - Full AI advisor endpoints

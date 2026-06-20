@@ -1,0 +1,190 @@
+{
+  "functional": {
+    "passed": 86,
+    "failed": 0,
+    "warnings": 0,
+    "failures": [],
+    "warnings_list": []
+  },
+  "mongo_counts": {
+    "courses": 2204,
+    "offerings": 2806,
+    "programs": 3,
+    "requirements": 19,
+    "rules": 44,
+    "semesterMatrixRules": 8,
+    "semesterPlans": 126,
+    "completed": 17
+  },
+  "benchmarks": [
+    {
+      "name": "health",
+      "count": 100,
+      "ok": 100,
+      "errors": 0,
+      "status_codes": {
+        "200": 100
+      },
+      "min_ms": 4.16,
+      "mean_ms": 5.38,
+      "p50_ms": 5.28,
+      "p95_ms": 7.07,
+      "max_ms": 8.39
+    },
+    {
+      "name": "auth_login",
+      "count": 50,
+      "ok": 4,
+      "errors": 0,
+      "status_codes": {
+        "200": 4,
+        "429": 46
+      },
+      "min_ms": 3.73,
+      "mean_ms": 27.08,
+      "p50_ms": 4.98,
+      "p95_ms": 273.67,
+      "max_ms": 298.56
+    },
+    {
+      "name": "catalog_list_50",
+      "count": 50,
+      "ok": 50,
+      "errors": 0,
+      "status_codes": {
+        "200": 50
+      },
+      "min_ms": 12.53,
+      "mean_ms": 16.08,
+      "p50_ms": 14.54,
+      "p95_ms": 19.1,
+      "max_ms": 55.67
+    },
+    {
+      "name": "catalog_list_200",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 19.31,
+      "mean_ms": 21.65,
+      "p50_ms": 21.29,
+      "p95_ms": 24.18,
+      "max_ms": 25.59
+    },
+    {
+      "name": "catalog_search_he",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 22.95,
+      "mean_ms": 24.63,
+      "p50_ms": 24.28,
+      "p95_ms": 27.19,
+      "max_ms": 28.51
+    },
+    {
+      "name": "catalog_summary",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 9.2,
+      "mean_ms": 11.14,
+      "p50_ms": 10.11,
+      "p95_ms": 11.59,
+      "max_ms": 35.6
+    },
+    {
+      "name": "catalog_requirements",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 4.1,
+      "mean_ms": 4.88,
+      "p50_ms": 4.83,
+      "p95_ms": 5.73,
+      "max_ms": 5.96
+    },
+    {
+      "name": "graduation_progress",
+      "count": 50,
+      "ok": 50,
+      "errors": 0,
+      "status_codes": {
+        "200": 50
+      },
+      "min_ms": 6.65,
+      "mean_ms": 7.88,
+      "p50_ms": 7.61,
+      "p95_ms": 9.48,
+      "max_ms": 9.9
+    },
+    {
+      "name": "completed_list",
+      "count": 50,
+      "ok": 50,
+      "errors": 0,
+      "status_codes": {
+        "200": 50
+      },
+      "min_ms": 3.81,
+      "mean_ms": 4.56,
+      "p50_ms": 4.54,
+      "p95_ms": 5.34,
+      "max_ms": 6.04
+    },
+    {
+      "name": "semester_plan_generate",
+      "count": 20,
+      "ok": 20,
+      "errors": 0,
+      "status_codes": {
+        "201": 20
+      },
+      "min_ms": 113.55,
+      "mean_ms": 126.93,
+      "p50_ms": 124.12,
+      "p95_ms": 143.69,
+      "max_ms": 150.2
+    },
+    {
+      "name": "semester_plan_list",
+      "count": 30,
+      "ok": 30,
+      "errors": 0,
+      "status_codes": {
+        "200": 30
+      },
+      "min_ms": 6.6,
+      "mean_ms": 7.35,
+      "p50_ms": 7.33,
+      "p95_ms": 7.86,
+      "max_ms": 8.85
+    },
+    {
+      "name": "catalog_list_50_concurrent_x20",
+      "count": 20,
+      "ok": 20,
+      "errors": 0,
+      "status_codes": {
+        "200": 20
+      },
+      "min_ms": 27.36,
+      "mean_ms": 109.17,
+      "p50_ms": 113.74,
+      "p95_ms": 140.05,
+      "max_ms": 142.96
+    }
+  ]
+}

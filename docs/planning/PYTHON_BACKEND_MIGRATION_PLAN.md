@@ -1,20 +1,19 @@
 # Python Backend Migration Plan
 
-Last updated: 2026-06-19  
-Status: Approved planning document (no application code in this phase)  
-Related docs: `docs/PROJECT_CONTEXT.md`, `docs/API_SPEC.md`, `docs/DATABASE_SCHEMA.md`, `docs/DOMAIN_MODEL.md`, `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`, `docs/DATA_INGESTION_ARCHITECTURE.md`
+> **Status: COMPLETE (2026-06-20).** The Node.js backend has been removed. `services/api/` (FastAPI) is the sole production API. This document is retained as historical reference only — do not treat migration tasks below as open work.
 
-## 1) Decision Summary
+Last updated: 2026-06-20  
+Related docs: `docs/PROJECT_CONTEXT.md`, `docs/API_SPEC.md`, `docs/DATABASE_SCHEMA.md`
 
-UniPilot will migrate the **main backend** from **Node.js / Express** to **Python / FastAPI**.
+## 1) Decision Summary (historical)
 
-| Item | Policy |
+UniPilot migrated the main backend from **Node.js / Express** to **Python / FastAPI**. Migration completed 2026-06-20.
+
+| Item | Final state |
 |---|---|
-| Existing Node backend | **Kept unchanged** as the reference implementation during migration |
-| Python backend | **New target implementation**, built in parallel |
-| Behavioral contract | `docs/API_SPEC.md` + current Node behavior |
-| Node removal | **Not allowed** until Python reaches feature parity and the team explicitly approves |
-| This document | Planning only — **no application code** is part of this task |
+| Node backend | **Removed** |
+| Python backend | **`services/api/`** — sole production API |
+| Behavioral contract | `docs/API_SPEC.md` + pytest + Docker verify script |
 
 ## 2) Why We Are Doing This
 

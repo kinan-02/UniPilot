@@ -1,8 +1,8 @@
 # DDS Production Promotion Report (Phase 12)
 
-Promotion run: `dds-promotion-f92665dcf502`
-Started: 2026-06-20T10:49:23+00:00
-Finished: 2026-06-20T10:49:24+00:00
+Promotion run: `dds-promotion-797af35eb6b8`
+Started: 2026-06-20T10:51:29+00:00
+Finished: 2026-06-20T10:51:30+00:00
 Status: **completed**
 Gate status: **pass-with-warnings**
 Dry run: **False**
@@ -38,14 +38,14 @@ Production writes performed: **True**
 - courses: 2204
 - degree_programs: 3
 - degree_requirements: 19
-- promotion_runs: 3
+- promotion_runs: 4
 ### After
 - catalog_rules: 44
 - course_offerings: 2806
 - courses: 2204
 - degree_programs: 3
 - degree_requirements: 19
-- promotion_runs: 4
+- promotion_runs: 5
 
 ## Skipped excluded courses
 - `00960226` — production-excluded-by-human-signoff
@@ -67,7 +67,7 @@ Production writes performed: **True**
 - Non-executable groups promoted to `catalog_rules` with `enforceInGraduationProgress: false`.
 
 ## Rollback notes
-- Delete production docs with promotionRunId=dds-promotion-f92665dcf502 to roll back this run.
+- Delete production docs with promotionRunId=dds-promotion-797af35eb6b8 to roll back this run.
 - Do not delete staging data.
 - Advisory catalog rules remain non-enforced in graduation progress.
 

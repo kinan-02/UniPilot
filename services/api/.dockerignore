@@ -1,5 +1,10 @@
-node_modules
-npm-debug.log
-coverage
-test
-*.md
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+tests
+requirements-dev.txt
+pytest.ini

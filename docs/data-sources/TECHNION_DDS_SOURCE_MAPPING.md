@@ -1,8 +1,12 @@
 # Technion DDS Source Mapping
 
-Last updated: 2026-06-19  
-Phase: **6.5 — markdown parser → draft curated JSON** (no MongoDB import, no staging writes)  
-Related: `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`, `services/data-engineering/data/raw/technion/manifest.json`
+Last updated: 2026-06-20
+
+Maps Technion Faculty of Data and Decision Sciences (DDS) source documents to UniPilot normalized models and MongoDB production collections. Consumed by `services/data-engineering` (import/promotion) and `services/api` (read APIs).
+
+Related: `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`, `services/data-engineering/data/raw/technion/manifest.json`, `services/data-engineering/README.md`
+
+> **Pipeline status:** Phases 6.5–12 are implemented (parse → staging → production promotion). Sections below retain phase history for traceability.
 
 ## Phase 6.5 update (markdown parser)
 
@@ -180,7 +184,7 @@ Reports: `data/reports/technion/dds_production_promotion_report.json`, `.md`
 
 ## Phase 13 update (Python read-only catalog API)
 
-The Python API (`services/api-python`) exposes read-only catalog routes under `/catalog/*`, reading production collections promoted in Phase 12. Hard requirements (`degree_requirements`) and advisory rules (`catalog_rules`) are separate endpoints; advisory rules always expose `enforceInGraduationProgress: false`.
+The Python API (`services/api`) exposes read-only catalog routes under `/catalog/*`, reading production collections promoted in Phase 12. Hard requirements (`degree_requirements`) and advisory rules (`catalog_rules`) are separate endpoints; advisory rules always expose `enforceInGraduationProgress: false`.
 
 ## Phase 6 update (PDF extraction)
 

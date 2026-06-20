@@ -1,14 +1,8 @@
-# Data Engineering Service (Phase 4 Foundation)
+# Data Engineering Service
 
-Internal-only Python service for academic data ingestion into **staging** MongoDB collections.
+Internal-only Python service for Technion academic data ingestion, staging validation, and guarded production promotion into MongoDB.
 
-## Scope (Phase 4)
-
-- Staging pipeline foundation (`staging_courses`, `staging_degree_requirements`, `staging_degree_programs`, `staging_catalog_rules`, `staging_ingestion_runs`)
-- CLI commands for health checks and **synthetic sample** validation/import
-- Normalizer/importer stubs for future Technion DDS sources
-
-**Not in scope yet:** real Technion Faculty of Data and Decision Sciences (DDS) scraping, PDF/HTML parsing, or promotion into production `courses` / `degree_requirements` collections.
+See also: `docs/DATA_INGESTION_ARCHITECTURE.md`, `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`, root `README.md`.
 
 ## Local source files (Phase 5)
 
@@ -279,7 +273,7 @@ python -m app.main rollback-dds-production-promotion \
 
 Reports: `data/reports/technion/dds_production_promotion_report.json`, `.md`
 
-**Catalog API migration is still a later phase** — production data is written here; Python catalog APIs read it in a future phase.
+**Catalog API:** Production data is consumed by FastAPI `/catalog/*` routes in `services/api` (implemented).
 
 ## DDS catalog PDF extraction (Phase 6)
 

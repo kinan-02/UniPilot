@@ -3,6 +3,10 @@
 node_modules/
 **/node_modules/
 coverage/
+.coverage
+__pycache__/
+**/__pycache__/
+*.pyc
 npm-debug.log
 *.log
 

@@ -30,7 +30,7 @@ Long AI requests are handled asynchronously: the API validates + authenticates t
 ## Consequences
 - **Positive:** Meets all mandatory constraints; clean separation of concerns; resilient to slow/failed AI calls; scalable (stateless API, shared Redis); least exposure.
 - **Negative / trade-offs:** More moving parts; requires healthchecks/retry for first-run reliability; async flow adds a polling/status mechanism and job-state management.
-- **Follow-ups:** Implement Phase 0 skeleton (compose + healthchecks + `.env.example`); define job-state schema; add stress tests for the queue; document run/test steps in README.
+- **Follow-ups (completed):** Phase 0 skeleton, FastAPI API, auth, catalog promotion, deterministic planners. Remaining: async AI pipeline, RAG, submission reports.
 
 ## Compliance Check
 - [x] Backend-first

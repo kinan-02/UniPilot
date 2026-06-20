@@ -1,6 +1,6 @@
 # UniPilot AI — Project Context (Source of Truth)
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
 Use it before starting major coding, architecture updates, or roadmap decisions.
 
 If this file and another doc conflict:
@@ -52,60 +52,20 @@ Architecture pattern:
 
 Current behavior intentionally excludes AI recommendation, simulation, and RAG logic, but includes authentication, student profile CRUD, completed courses CRUD, deterministic graduation progress, deterministic semester planning, deterministic academic risk analysis, and read-only Technion catalog APIs backed by a curated seed dataset.
 
-## 3.2) Python Backend Migration (Approved Plan)
+Last updated: 2026-06-20
 
-The team has decided to migrate the **main backend** from **Node.js / Express** to **Python / FastAPI**.
+## 3.2) Backend Migration — Complete
+
+The **Node.js / Express** reference backend has been **removed**. **`services/api/`** (Python / FastAPI) is the sole production API.
 
 | Policy | Detail |
 |---|---|
-| Node backend | **Reference implementation** — keep unchanged during migration |
-| Python backend | **New target** — built in parallel, feature by feature |
-| Behavioral contract | `docs/API_SPEC.md` + current Node behavior and tests |
-| Node removal | Only after Python feature parity + explicit team approval |
+| Production API | `services/api/` — FastAPI on port 8000 inside Docker |
+| MongoDB database | `unipilot_python` (promoted Technion DDS catalog) |
+| Behavioral contract | `docs/API_SPEC.md` + pytest + `scripts/verify_and_benchmark.py` |
+| Historical plan | `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md` (archived reference) |
 
-**Canonical plan:** `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`  
-**Real DDS data plan:** `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`
-
-### Why migrate
-
-- Course material and assignments use Python; the team is more comfortable with Python.
-- Python is better suited for data engineering, PDF processing, AI, RAG, and academic data ingestion.
-- Auth and Student Profile can be ported first (minimal catalog dependency).
-- Catalog, requirements, progress, planner, and risk analyzer should wait for **real Technion DDS data** (not placeholder seed).
-
-### Python migration order (summary)
-
-1. FastAPI skeleton + Docker — **implemented (Phase 1)**  
-2. Auth — **implemented (Phase 2)**  
-3. Student Profile — **implemented (Phase 3)** (`degreeId` optional; no catalog FK validation yet)  
-4. Data-engineering container — **implemented (Phase 4)**  
-5. Collect/process real DDS data — **source intake started (Phase 5)**  
-6. DDS catalog PDF extraction + manual-curation foundation — **implemented (Phase 6)**  
-6.5. DDS catalog markdown parser → draft curated JSON — **implemented (Phase 6.5)**  
-7.5. DDS catalog assisted curation (course JSON metadata) — **implemented (Phase 7.5)**  
-7.6. DDS catalog curated JSON signoff review — **implemented (Phase 7.6)**  
-8. Import validated DDS catalog into MongoDB staging — **implemented (Phase 8 staging import)**  
-9. Technion course JSON staging import — **implemented (Phase 9)**  
-10. Staging data quality review + cross-link validation — **implemented (Phase 10)**  
-10.5. Staging blocker cleanup + quality recheck — **implemented (Phase 10.5)**  
-11. Staging → production promotion gate (dry-run plan only) — **implemented (Phase 11)**  
-12. Guarded DDS staging → production promotion — **implemented (Phase 12)**  
-13. Python Course Catalog API (read-only, production collections) — **implemented (Phase 13)**  
-14. Python Completed Courses migration — **implemented (Phase 14)**  
-14. Python Completed Courses migration  
-
-### Python Phase 1 status (implemented)
-
-| Item | Status |
-|---|---|
-| `services/api-python/` FastAPI skeleton | Done |
-| `GET /health` with MongoDB + Redis connectivity checks | Done |
-| `api-python` Docker Compose service (host-exposed) | Done |
-| Separate MongoDB database (`unipilot_python`) | Done |
-| pytest health tests | Done |
-| Node reference backend | Unchanged |
-
-Phase 1 scope intentionally excludes student profile, data engineering, and AI/RAG.
+**Do not** reintroduce a second API container or expose internal services to the host.
 
 ### Python Phase 2 status (implemented)
 
@@ -116,8 +76,6 @@ Phase 1 scope intentionally excludes student profile, data engineering, and AI/R
 | Pydantic strict validation (email normalize, password policy incl. 72-byte bcrypt limit) | Done |
 | Redis-backed auth rate limiting (in-memory fallback in `test` env) | Done |
 | pytest unit / integration / security auth tests | Done |
-| Node reference backend | Unchanged |
-
 Phase 2 scope intentionally excludes student profile, data engineering, and AI/RAG.
 
 ### Python Phase 3 status (implemented)
@@ -130,8 +88,6 @@ Phase 2 scope intentionally excludes student profile, data engineering, and AI/R
 | Pydantic strict validation (institution, program, semester, preferences) | Done |
 | `degreeId` optional; **no catalog validation** until real DDS import | Done |
 | pytest unit / integration / security student profile tests | Done |
-| Node reference backend | Unchanged |
-
 Phase 3 scope intentionally excludes catalog, data engineering, and AI/RAG.
 
 ### Python Phase 4 status (implemented)
@@ -145,8 +101,6 @@ Phase 3 scope intentionally excludes catalog, data engineering, and AI/RAG.
 | Validators + Technion DDS normalizer/importer stubs | Done |
 | Synthetic sample import to staging (not production catalog) | Done |
 | pytest foundation tests (config, validation, staging importer) | Done |
-| Node reference backend | Unchanged |
-
 Phase 4 scope intentionally excludes real Technion DDS scraping/import, catalog API migration, and promotion from staging to production collections.
 
 ### Python Phase 5 status (implemented — source intake & mapping only)
@@ -160,8 +114,6 @@ Phase 4 scope intentionally excludes real Technion DDS scraping/import, catalog 
 | `.gitignore` rules for large raw JSON/PDF | Done |
 | MongoDB / staging import of real data | **Not started** |
 | PDF parsing pipeline | **Not started** |
-| Node reference backend | Unchanged |
-
 Phase 5 scope intentionally excludes production import, staging import of real data, PDF parsing implementation, catalog API migration, and live website scraping.
 
 ### Python Phase 6 status (implemented — PDF extraction & manual-curation foundation)
@@ -176,8 +128,6 @@ Phase 5 scope intentionally excludes production import, staging import of real d
 | Proposed catalog models (`NormalizedDegreeProgram`, etc.) | Done (stubs only) |
 | Manual curation template JSON | Done |
 | MongoDB / staging / production writes | **Not started** |
-| Node reference backend | Unchanged |
-
 Phase 6 scope intentionally excludes staging import of degree requirements, production promotion, catalog API migration, and fully automated table parsing without manual review.
 
 ### Python Phase 6.5 status (implemented — markdown parser → draft curated JSON)
@@ -192,8 +142,6 @@ Phase 6 scope intentionally excludes staging import of degree requirements, prod
 | Output: `data/generated/technion/dds_catalog/dds_catalog_curated_draft.json` | Done (gitignored) |
 | `CuratedCatalogDocument` Pydantic model | Done |
 | MongoDB / staging / production writes | **Not started** |
-| Node reference backend | Unchanged |
-
 Phase 6.5 scope intentionally excludes staging import, semester JSON merge (prerequisites/offerings), and production promotion. Draft JSON requires manual review before any import.
 
 ### Python Phase 7.5 status (implemented — assisted curation, course JSON metadata)
@@ -336,8 +284,6 @@ Phase 12 writes production data **only** when `--i-confirm-dangerous-production-
 | Repository `app/repositories/catalog_repository.py` (read-only) | Done |
 | JWT required (matches Node catalog auth policy) | Done |
 | pytest catalog unit + integration tests | Done |
-| Node reference backend | Unchanged |
-
 Phase 13 reads **production** collections promoted in Phase 12 (`courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`). Hard requirements come only from `degree_requirements`; advisory/non-executable metadata comes only from `catalog_rules` with `enforceInGraduationProgress: false`. No write endpoints; no graduation progress or planner logic.
 
 ### Python Phase 14 status (implemented — completed courses API)
@@ -354,7 +300,6 @@ Phase 13 reads **production** collections promoted in Phase 12 (`courses`, `cour
 | Unique `(userId, courseId, attempt)` index | Done |
 | `userId` server-assigned from JWT; client `userId`/`_id` rejected | Done |
 | pytest unit + integration + security tests | Done |
-| Node reference backend | Unchanged |
 | Graduation progress / planner / AI | Not implemented |
 
 Phase 14 stores user-owned transcript rows in `completed_courses`. Catalog collections are read-only for FK validation. Advisory `catalog_rules` and hard `degree_requirements` are not used in completed-course logic. No graduation progress calculation.
@@ -372,7 +317,6 @@ Phase 14 stores user-owned transcript rows in `completed_courses`. Catalog colle
 | Service `app/services/graduation_progress_service.py` | Done |
 | pytest unit + integration + security tests | Done |
 | API version `0.6.0` | Done |
-| Node reference backend | Unchanged |
 | Semester planner / academic risk / AI | Not implemented (Python) at Phase 15 |
 
 Phase 15 computes deterministic graduation progress at read time from the authenticated user's profile (`degreeId` → `degree_programs`), `completed_courses`, hard `degree_requirements` (`credit_bucket`), and linked `course_pool` documents in `catalog_rules` (DS elective pool + faculty elective prefix pool). Buckets without linked pools use credit-only heuristic allocation. **Grades:** Technion numeric 0–100; pass strictly above 55. Response includes `requirementProgress`, `missingRequirements`, `assumptions`, and `ineligibleCredits`.
@@ -391,8 +335,6 @@ Phase 15 computes deterministic graduation progress at read time from the authen
 | pytest unit + integration + security + stress tests | Done |
 | API version `0.7.0` | Done |
 | Manual plan CRUD + weekly schedule | See Phase 16.1 |
-| Node reference backend | Unchanged |
-
 Phase 16 generates a deterministic next-semester plan from profile, graduation progress, hard requirements, semester matrix, and course pools. Completed passing courses are excluded; failed grades do not count as completed. Plans persist in `semester_plans` with structured `explanation` (rules applied, blocked prerequisites, partial/empty plan flags).
 
 ### Python Phase 16.1 status (implemented — manual plans + weekly schedule)
@@ -435,9 +377,7 @@ Phase 15.1 adds explicit `linkedCreditBucketId` on promoted `catalog_rules` for 
 
 ### Target Python stack
 
-FastAPI, MongoDB, Redis, Python worker, data-engineering container, Pydantic, JWT, bcrypt, pytest, Docker Compose — see migration plan for full architecture.
-
-**Do not** delete or modify the Node backend as part of Python migration tasks. **Do not** mark Node as legacy until the migration definition of done is met.
+FastAPI, MongoDB, Redis, Python worker, data-engineering container, Pydantic, JWT, bcrypt, pytest, Docker Compose.
 
 ## 3.1) Technion Academic Data Strategy
 
@@ -458,7 +398,7 @@ UniPilot targets **Technion** as the initial institution (`institutionId: "techn
 
 **Phase boundary:**
 
-- **Phase 4 (catalog seed):** implemented — curated Technion CS dataset in `data/validated/technion/2025/` + `seedCatalog.js` / `seedCatalogCli.js`.
+- **Phase 4 (catalog seed, legacy):** small curated placeholder in `data/validated/technion/2025/` — superseded by DDS promotion (Phase 12) into `unipilot_python`.
 - **Phase 5 (completed courses):** implemented — user-owned transcript records in `completed_courses` with manual CRUD, catalog `courseId` validation, duplicate attempt handling, `creditsEarned` in 0.5 increments (0–36), and edit/delete restricted to `source=manual`.
 - **Phase 6 (graduation progress):** implemented — deterministic `GET /graduation-progress` using student profile, completed courses, degree requirements, and catalog facts (no LLM).
 - **Phase 7 (semester planner):** implemented — deterministic `POST /semester-plans/generate` plus planning history (`GET /semester-plans`, `GET /semester-plans/:id`) using profile, completed courses, catalog, degree requirements, and graduation progress (no LLM).
@@ -469,44 +409,32 @@ Raw Technion inputs (PDFs, HTML pages, faculty URLs, catalogs, requirement docum
 
 ## 4) Tech Stack
 
-### 4.1 Current (Node reference — implemented)
-
-- Runtime: Node.js 20 (Alpine images)
-- API framework: Express
-- Database: MongoDB 7
-- Queue/cache/rate-limit foundation: Redis 7
-- Container orchestration: Docker Compose
-- Testing (current): Jest + Supertest
-- Language: JavaScript (CommonJS)
-
-### 4.2 Target (Python — Phase 3 complete)
+### 4.1 Production API (implemented)
 
 - Runtime: Python 3.12+ (pinned in Dockerfile)
 - API framework: FastAPI
-- Database: MongoDB 7 (separate DB name `unipilot_python` during parallel dev)
-- Queue/cache: Redis 7
+- Database: MongoDB 7 (`unipilot_python` — promoted Technion DDS catalog)
+- Queue/cache/rate-limit: Redis 7
 - Validation: Pydantic v2
-- Auth: JWT + bcrypt (matches Node reference behavior)
-- Testing: pytest + httpx + mongomock-motor
-- **Phase 1 implemented:** skeleton, `GET /health`, Docker `api-python` service
-- **Phase 2 implemented:** auth routes, rate limiting, auth test suites
-- **Phase 3 implemented:** student profile CRUD, ownership enforcement, profile test suites
-- **Not yet implemented:** catalog, data engineering, AI/RAG
-- See `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
+- Auth: JWT + bcrypt
+- Testing: pytest + httpx + mongomock-motor (271 tests, ≥80% coverage target)
+- Container orchestration: Docker Compose
+- Internal services: `worker`, `ai`, `data-engineering` (not host-exposed)
+
+See `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md` for migration history.
 
 ## 5) Docker Services
 
 | Service | Role | Host-exposed | Internal Port | Healthcheck | Notes |
 |---|---|---|---|---|---|
-| `api` | Node reference backend API | Yes (host `API_PORT` -> container `3000`) | 3000 | Yes | Reference implementation |
-| `api-python` | FastAPI migration target | Yes (host `API_PYTHON_PORT` -> container `8000`) | 8000 | Yes | Parallel dev; uses `unipilot_python` DB |
+| `api` | FastAPI backend API | Yes (host `API_PORT` -> container `8000`) | 8000 | Yes | Sole client-facing API |
 | `mongo` | Persistent database | No | 27017 | Yes | Uses `mongo_data` named volume |
 | `redis` | Queue/rate-limit foundation | No | 6379 | Yes | Internal-only |
 | `worker` | Background worker skeleton | No | 3002 | Yes | Internal-only |
 | `ai` | AI service skeleton | No | 3001 | Yes | Internal-only |
 
 Networking and exposure rules:
-- `api` and `api-python` may publish host ports during parallel migration.
+- Only `api` (FastAPI) may publish a host port during normal operation.
 - All services must stay on `unipilot-internal` network.
 - Do not expose `mongo`, `redis`, `worker`, or `ai`.
 
@@ -515,44 +443,24 @@ Networking and exposure rules:
 ```text
 services/
   api/
-    src/
-      app.js
-      server.js
-      db/
-      middleware/
-      models/
+    app/
+      main.py
       routes/
-      security/
-      validation/
-    test/
-      health.test.js
-      unit/
-      integration/
-      security/
+      services/
+      repositories/
+      planning/
+    tests/
+    scripts/
     Dockerfile
-    package.json
+  data-engineering/
   worker/
-    src/
-      index.js
-    Dockerfile
-    package.json
   ai/
-    src/
-      index.js
-    Dockerfile
-    package.json
 docker-compose.yml
 .env.example
 README.md
 docs/
-  architecture/
-  planning/
-  reports/
-  decisions/
-  DATA_INGESTION_ARCHITECTURE.md
-data/                          # offline catalog artifacts (see ingestion architecture)
-  validated/                   # Phase 4: small curated Technion seed committed here
-scripts/data/                  # offline ingestion scripts (Phase 4: seedCatalog.js only)
+data/
+scripts/
 ```
 
 ## 7) Testing Strategy
@@ -614,8 +522,8 @@ Required and currently implemented:
 - Student profile `degreeId` FK validation against seeded `degrees` collection.
 - Curated Technion catalog seed (`data/validated/technion/2025/`) marked as **placeholder data** (`isCuratedPlaceholder`, not official Technion extracts).
 - Catalog models (`courses`, `degrees`, `degree_requirements`) with indexes and provenance fields.
-- Read-only catalog APIs: `GET /courses`, `GET /courses/:id`, `GET /degrees`, `GET /degrees/:id`, `GET /degrees/:id/requirements` (JWT required).
-- Catalog seed CLI (`services/api/src/scripts/seedCatalogCli.js`, `scripts/data/seedCatalog.js`).
+- Read-only catalog APIs under `/catalog/*` (JWT required), backed by promoted Technion DDS production collections.
+- Data-engineering pipeline promotes catalog into MongoDB (`unipilot_python`); no Node seed CLI.
 - Completed courses model (`completed_courses`) with unique `(userId, courseId, attempt)` index.
 - Protected completed courses CRUD (`POST/GET/PUT/DELETE /completed-courses`) with ownership checks.
 - Completed course `courseId` FK validation against published `courses` catalog.
@@ -626,47 +534,36 @@ Required and currently implemented:
 - Deterministic academic risk analyzer (`POST /academic-risks/analyze`) and analysis history (`GET /academic-risks`, `GET /academic-risks/:id`).
 
 Still pending for next phases:
-- Python academic risk analyzer (Phase 17 — deferred).
-- AI endpoint rate limiting (Python: implement with AI phase).
+- AI endpoint rate limiting (implement with AI/RAG phase).
 - Validate `StudentProfile.degreeId` against profile `institutionId` and `catalogYear` once catalog selection UX and multi-catalog support exist (see `docs/planning/FEATURE_BACKLOG.md` → Future TODOs).
 
 ## 9) Development Roadmap
 
 Canonical roadmaps:
 
-- **Node (reference, implemented):** `docs/planning/IMPLEMENTATION_PHASES.md`, `docs/planning/FEATURE_BACKLOG.md`
-- **Python migration:** `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
+- **Delivery phases:** `docs/planning/IMPLEMENTATION_PHASES.md`, `docs/planning/FEATURE_BACKLOG.md`
 - **Real DDS data:** `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`
+- **Migration history (archived):** `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`
 
-### Node reference — completed through Phase 8
+### Production backend (FastAPI — `services/api`)
 
-Phases 1–8 on the Node stack are implemented (auth through academic risk analyzer) using curated placeholder catalog data.
+**FastAPI is the sole client-facing API** (Docker service `api`, container port 8000). MongoDB database: `MONGO_DB` (default `unipilot_python`).
 
-### Python migration — current status (Phases 13–16.2)
+Implemented: auth, profile, catalog (`/catalog/*`), completed courses, graduation progress, semester plans (generate + manual + weekly schedule + versioning), academic risk analyzer. API version **1.0.0**. pytest: **272** tests (unit, integration, security, stress). Docker E2E: `services/api/scripts/verify_and_benchmark.py`.
 
-Python `api-python` on real DDS data includes: catalog read APIs, completed courses CRUD, graduation progress, deterministic semester planner (`POST /semester-plans/generate`), manual plan CRUD + weekly schedule, and plan versioning (`POST /semester-plans/:id/versions`). API version **0.8.1**.
+### Still pending
 
-### Python migration — next work
-
-1. **Phase 17:** Academic risk analyzer port (optional; currently deferred)
-2. **Phase 18 / 8g:** Async AI pipeline (Redis queue, worker, rate limiting on AI endpoints)
-3. AI decision features (recommendations, what-if) after async pipeline
-4. Hardening, stress/security testing, documentation, risk/final report
-
-### Still pending (both stacks / later)
-
-- AI endpoint rate limiting (Python: implement with AI phase)
-- Full Technion ingestion automation beyond DDS subset
+- Async AI pipeline (worker + ai stubs exist; enqueue/rate-limit on AI endpoints not implemented)
+- Full Technion ingestion automation beyond current DDS subset
 - Simulation features
-- Hardening, stress/security testing, documentation, risk/final report
-- Node deprecation decision (only after Python parity + team approval)
+- Hardening docs: risk assessment, test report, final project report
 
 ## 10) What Has Already Been Implemented
 
-- Multi-service Docker Compose stack (`api`, `api-python`, `mongo`, `redis`, `worker`, `ai`).
+- Multi-service Docker Compose stack (`api`, `data-engineering`, `mongo`, `redis`, `worker`, `ai`).
 - Healthchecks and startup ordering for core dependencies.
 - MongoDB named volume persistence (`mongo_data`).
-- Host exposure for `api` (Node reference) and `api-python` (Python migration) during parallel development; all other services internal-only.
+- Host exposure for `api` (FastAPI) only; all other services internal-only.
 - API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
 - Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
 - Completed courses endpoints (`POST/GET/PUT/DELETE /completed-courses`) with JWT protection, ownership checks, catalog FK validation, and manual-only mutations.
@@ -680,7 +577,7 @@ Python `api-python` on real DDS data includes: catalog read APIs, completed cour
 - Student profile validation schemas and MongoDB model/indexes.
 - Completed courses validation schemas, MongoDB model/indexes, and test suites.
 - Auth and student profile test suites (unit + integration + security) in addition to health test.
-- Service Dockerfiles with deterministic install (`npm ci`) and non-root users.
+- Service Dockerfiles with pinned Python base images and non-root users.
 - Core project workflow/rules/prompts/playbooks/ADRs documentation scaffold.
 
 ## 11) What Should NOT Change Without Discussion
@@ -701,7 +598,7 @@ Before major implementation work:
 1. Read this file (`docs/PROJECT_CONTEXT.md`).
 2. For **Python migration** work, read `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`.
 3. For **real DDS catalog data**, read `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`.
-4. Read `docs/planning/IMPLEMENTATION_PHASES.md` for Node reference phase history.
+4. Read `docs/planning/IMPLEMENTATION_PHASES.md` for phase history.
 5. For catalog/ingestion design, read `docs/DATA_INGESTION_ARCHITECTURE.md`.
 6. Read relevant rule files in `.cursor/rules/unipilot-*.mdc`.
 7. Implement one feature at a time and update docs/tests with each feature.

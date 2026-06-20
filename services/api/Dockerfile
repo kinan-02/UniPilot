@@ -1,15 +1,18 @@
-FROM node:20.19.2-alpine
+FROM python:3.12.8-slim-bookworm
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-COPY src ./src
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-EXPOSE 3000
+COPY app ./app
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 USER appuser
 
-CMD ["node", "src/server.js"]
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

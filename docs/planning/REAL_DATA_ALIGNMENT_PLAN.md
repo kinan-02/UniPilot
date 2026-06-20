@@ -1,8 +1,8 @@
 # Real Technion DDS Data Alignment Plan
 
-Last updated: 2026-06-19  
-Status: Planning (pre-implementation)  
-Related docs: `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md`, `docs/DATA_INGESTION_ARCHITECTURE.md`, `docs/DOMAIN_MODEL.md`, `docs/DATABASE_SCHEMA.md`, `docs/PROJECT_CONTEXT.md`
+Last updated: 2026-06-20  
+Status: **Mostly complete** — DDS subset promoted; FastAPI catalog and planners operational. RAG and full automation remain open.  
+Related docs: `docs/DATA_INGESTION_ARCHITECTURE.md`, `docs/DOMAIN_MODEL.md`, `docs/DATABASE_SCHEMA.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 1) Purpose
 
@@ -87,7 +87,7 @@ data/
   validated/technion/dds/<catalogYear>/   # import-ready
 ```
 
-Follow the global pipeline stages in `docs/DATA_INGESTION_ARCHITECTURE.md`; DDS uses a dedicated namespace so placeholder CS seed (`data/validated/technion/2025/`) remains available for Node reference tests.
+Follow the global pipeline stages in `docs/DATA_INGESTION_ARCHITECTURE.md`; production catalog is promoted via `data-engineering` into `unipilot_python`.
 
 ### 4.3 Manifest requirements
 
@@ -144,7 +144,7 @@ If real DDS data does not fit the current schema:
 2. Propose schema changes in `docs/DATABASE_SCHEMA.md`
 3. Update `docs/DOMAIN_MODEL.md` if domain concepts change
 4. Add ADR if the change affects API contract
-5. Update Node reference **only if** team decides to keep Node in sync (optional during Python-first period)
+5. Update schema/docs when DDS mapping reveals gaps (see `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`)
 6. Re-run validation before import
 
 **StudentProfile impact:**
@@ -179,12 +179,9 @@ After successful import, implement Python features in this order (see `PYTHON_BA
 
 Each feature must use **imported DDS data** in integration tests, not the placeholder CS seed.
 
-## 9) Node Reference Backend During Alignment
+## 9) Node Reference Backend (historical)
 
-- Node backend **stays unchanged** and continues to use placeholder seed for its test suite
-- Node remains the behavioral reference for API envelopes, auth, and profile patterns
-- Catalog-dependent Node behavior is a reference for **logic patterns**, not for **DDS factual data**
-- Do not delete placeholder seed until team approves and Python parity is verified
+The Node reference backend has been **removed** (2026-06-20). FastAPI (`services/api`) is the sole API. Integration tests use promoted DDS data in `unipilot_python`, not placeholder seed.
 
 ## 10) Risks and Mitigations
 
@@ -194,22 +191,20 @@ Each feature must use **imported DDS data** in integration tests, not the placeh
 | Prerequisites incomplete in sources | Mark confidence; block import of uncertain edges; manual review |
 | Requirement rules too complex for current DSL | Extend `ruleExpression` via schema ADR; do not hack planner |
 | Team imports before validation | Gate import CLI on validation report token/file |
-| Python and Node catalog diverge | Single validated JSON source of truth; Node not required to import DDS |
+| Python and Node catalog diverge | **Resolved** — single FastAPI API; Node removed |
 
 ## 11) Exit Criteria (Real Data Alignment Complete)
 
-- [ ] Real DDS subset collected and documented in manifest
-- [ ] Data-engineering container processes raw → validated JSON
-- [ ] Validation report approved
-- [ ] Schema/docs updated for any mismatches
-- [ ] MongoDB populated from validated DDS data
-- [ ] README documents DDS import and valid degree/course identifiers
-- [ ] Python catalog-dependent implementation unblocked
+- [x] Real DDS subset collected and documented in manifest
+- [x] Data-engineering container processes raw → staging → production promotion
+- [x] Validation and promotion reports generated
+- [x] MongoDB populated from promoted DDS data (`unipilot_python`)
+- [x] FastAPI catalog APIs read production collections
+- [ ] Full automation beyond current DDS subset (ongoing)
+- [ ] RAG index from validated policy text (future)
 
 ## 12) Immediate Next Steps
 
-1. Approve this plan alongside `PYTHON_BACKEND_MIGRATION_PLAN.md`
-2. Identify official DDS source URLs/PDFs and assign collection owners
-3. Build data-engineering container (Python Phase 4)
-4. Collect first DDS subset into `data/raw/technion/dds/<catalogYear>/`
-5. Run validation report before any Python catalog API work
+1. Expand DDS source coverage and refresh promotion as catalogs update
+2. Async AI pipeline (worker + ai) with rate limiting
+3. Final submission artifacts (risk assessment, test report, project report)

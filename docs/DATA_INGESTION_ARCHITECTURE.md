@@ -1,8 +1,8 @@
 # UniPilot Technion Data Ingestion Architecture
 
-Last updated: 2026-06-19  
-Status: Design (pre-implementation)  
-Related docs: `docs/PROJECT_CONTEXT.md`, `docs/DOMAIN_MODEL.md`, `docs/DATABASE_SCHEMA.md`, `docs/API_SPEC.md`
+Last updated: 2026-06-20  
+Status: **Partially implemented** — Technion DDS pipeline operational via `services/data-engineering`; RAG generation remains future work.  
+Related docs: `docs/PROJECT_CONTEXT.md`, `docs/DOMAIN_MODEL.md`, `docs/DATABASE_SCHEMA.md`, `docs/API_SPEC.md`, `services/data-engineering/README.md`
 
 ## 1) Purpose
 
@@ -19,16 +19,24 @@ The design separates two concerns that must never be conflated:
 
 ## 2) Scope and Phase Boundaries
 
-### Phase 4 (near-term implementation)
+### Implemented (Technion DDS subset)
 
-Implement **only a small, curated seed dataset** for development and demos:
+The **`data-engineering`** internal service implements the DDS catalog pipeline:
 
-- Hand-authored or minimally transformed JSON under `data/validated/technion/<catalogYear>/`
-- A single import path via `scripts/data/seedCatalog.js`
-- Enough data to unblock student profile `degreeId` FK validation, catalog read APIs, and early AI grounding tests
-- **No** automated PDF/HTML crawling, **no** full pipeline scripts in production use yet
+1. Parse / curate DDS catalog markdown and course JSON (Phases 6–7.6)
+2. Import into MongoDB **staging** collections (Phase 8–9)
+3. Validate staging quality and resolve blockers (Phases 10–10.5)
+4. Human sign-off and promotion gate (Phases 11–12)
+5. **Production promotion** into `courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`
+6. **API consumption** via FastAPI `/catalog/*` routes (`services/api`)
 
-### Later phase (full ingestion pipeline)
+See `services/data-engineering/README.md` for CLI commands.
+
+### Legacy Phase 4 (superseded)
+
+Early development used a small hand-authored placeholder under `data/validated/technion/2025/` imported via a Node `seedCatalog.js` script. That path is **removed**. New environments must promote DDS data through `data-engineering`.
+
+### Later phase (full automation + RAG)
 
 Implement the complete offline pipeline described in this document:
 
@@ -104,7 +112,7 @@ scripts/data/
   normalizeCourses.js           # extracted -> normalized courses (+offerings)
   normalizeRequirements.js      # extracted -> normalized degrees/requirements
   validateCatalog.js            # normalized -> validated + reports/*
-  seedCatalog.js                # validated -> MongoDB (Phase 4: primary script)
+  promote-dds-to-production.py   # staging → production (Phase 12; replaces legacy seedCatalog.js)
 ```
 
 ### Git policy
@@ -136,7 +144,7 @@ flowchart LR
   J --> M[AI service retrieval]
 ```
 
-Each stage is **idempotent** and writes artifacts to disk before the next stage mutates downstream state. MongoDB is updated only from `data/validated/` via `seedCatalog.js`.
+Each stage is **idempotent** and writes artifacts to disk before the next stage mutates downstream state. **Production MongoDB** is updated via `data-engineering promote-dds-to-production` after staging validation and human sign-off (legacy `seedCatalog.js` removed).
 
 ---
 
@@ -372,7 +380,9 @@ Validated records receive `status: "approved"` (or `status: "published"` at seed
 
 ## 12) Stage 7 — MongoDB Seeding / Import
 
-**Script:** `scripts/data/seedCatalog.js`
+**Script (current):** `docker compose run --rm data-engineering python -m app.main promote-dds-to-production` (see `services/data-engineering/README.md`)
+
+**Legacy (removed):** `scripts/data/seedCatalog.js` — Node placeholder seed importer; do not use.
 
 **Goal:** Upsert validated catalog documents into MongoDB collections.
 
@@ -397,7 +407,7 @@ Validated records receive `status: "approved"` (or `status: "published"` at seed
 ### Phase 4 behavior
 
 - Seed a **small curated** Technion subset (e.g. one degree track, 10–30 courses, minimal requirements).
-- Run manually: `node scripts/data/seedCatalog.js --institution technion --catalogYear 2025`
+- Run promotion: see `services/data-engineering/README.md` § Phase 12
 - Docker: seed step runs as a documented one-off admin command, **not** on every `docker compose up` (keeps first-run deterministic with bundled seed optional via env flag later).
 
 ---
@@ -528,15 +538,15 @@ sequenceDiagram
   participant Fetch as fetchSources.js
   participant Pipe as Extract/Normalize/Validate
   participant Review as Review queue
-  participant Seed as seedCatalog.js
+  participant Promote as data-engineering promote
   participant DB as MongoDB
 
   Cron->>Fetch: check manifest URLs / etag
   Fetch->>Pipe: new/changed sources only
   Pipe->>Review: low confidence / conflicts
   Review->>Pipe: human approval
-  Pipe->>Seed: validated bundle
-  Seed->>DB: upsert new catalogVersion
+  Pipe->>Promote: validated + approved staging
+  Promote->>DB: upsert new catalogVersion
 ```
 
 **Policies:**
@@ -558,7 +568,7 @@ sequenceDiagram
 | `normalizeCourses.js` | Later | Extracted text → `courses` / `course_offerings` normalized JSON |
 | `normalizeRequirements.js` | Later | Extracted text → `degrees` / `degree_requirements` normalized JSON |
 | `validateCatalog.js` | Later (Phase 4 minimal version optional) | Normalized → validated + reports |
-| `seedCatalog.js` | **Phase 4** | Validated → MongoDB upsert |
+| `promote-dds-to-production` | **Phase 12** | Staging → production upsert |
 
 All scripts accept `--institution technion --catalogYear <year>` and log to `data/reports/`.
 
@@ -569,7 +579,7 @@ All scripts accept `--institution technion --catalogYear <year>` and log to `dat
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │ Offline ingestion (scripts/data/*, data/*)                  │
-│  raw → extracted → normalized → validated → seedCatalog.js   │
+│  raw → extracted → normalized → validated → staging → production promote   │
 └───────────────────────────┬─────────────────────────────────┘
                             │ upsert
                             ▼
@@ -592,14 +602,15 @@ All scripts accept `--institution technion --catalogYear <year>` and log to `dat
 
 ---
 
-## 20) Phase 4 Deliverable Checklist (Small Curated Seed Only)
+## 20) Deliverable Checklist (DDS production catalog)
 
-- [ ] Create `data/validated/technion/2025/` with curated `degrees.json`, `courses.json`, `degree_requirements.json`
-- [ ] Implement `scripts/data/seedCatalog.js` (idempotent upsert)
-- [ ] Every seeded record includes `sourceRefs`, `catalogYear`, `catalogVersion`
-- [ ] Enable `student_profiles.degreeId` FK validation against seeded `degrees`
-- [ ] Document seed command in `README.md`
-- [ ] Defer `fetchSources`, PDF/HTML extractors, and automated normalizers to later phase
+- [x] `data-engineering` staging import + quality validation (Phases 8–10)
+- [x] Human sign-off + promotion gate (Phases 11–12)
+- [x] Production promotion into `unipilot_python` MongoDB
+- [x] FastAPI `/catalog/*` read APIs (`services/api`)
+- [x] Document promotion commands in `README.md` and `services/data-engineering/README.md`
+- [ ] RAG chunk generation from policy documents (later phase)
+- [ ] Automated refresh workflow (§17)
 
 ---
 

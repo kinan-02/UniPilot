@@ -1,18 +1,15 @@
 # UniPilot AI Domain Model
 
-Last updated: 2026-06-19
-Status: Draft for architecture/design alignment before implementation
+Last updated: 2026-06-20  
+Status: Aligned with `docs/API_SPEC.md`, `docs/DATABASE_SCHEMA.md`, and `docs/PROJECT_CONTEXT.md`
 
-This document defines the complete academic domain model for UniPilot AI and is intended to guide API, database, and AI feature implementation.
+This document defines the academic domain model for UniPilot AI and guides API, database, and feature implementation.
 
 ## Scope and Assumptions
 
-- Source reviewed: `docs/PROJECT_CONTEXT.md`.
-- Requested docs not found at review time:
-  - `docs/API_SPEC.md`
-  - `docs/DATABASE_SCHEMA.md`
-  - `docs/ARCHITECTURE_FREEZE.md`
-- This model is therefore authoritative for domain design until those documents exist.
+- Primary institution: Technion (`institutionId: "technion"`).
+- Catalog data is promoted Technion DDS production data (not placeholder seed).
+- API exposes catalog as read-only `/catalog/*` routes backed by `degree_programs`, `courses`, `degree_requirements`, and `catalog_rules`.
 
 ## Core Entity Relationship Overview
 

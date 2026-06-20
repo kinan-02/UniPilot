@@ -10,12 +10,11 @@
 
 ## 1. How to Reproduce
 ```bash
-# Commands used to run the suites (must match README)
-<unit test command>
-<integration test command>
-<e2e test command>
-<stress test command>
-<security test command>
+# Unit / integration / security / stress (must match README)
+cd services/api && pytest
+
+# Docker E2E + benchmarks (stack must be running)
+cd services/api && python scripts/verify_and_benchmark.py
 ```
 
 ## 2. Summary

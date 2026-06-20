@@ -1,6 +1,6 @@
 # UniPilot AI Database Schema (MongoDB)
 
-Last updated: 2026-06-19  
+Last updated: 2026-06-20  
 Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 1) Scope and Principles
@@ -15,22 +15,28 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 2) Collection Inventory
 
-### MVP collections
+### MVP collections (implemented)
 - `users`
 - `student_profiles`
-- `degrees`
-- `degree_requirements`
+- `degree_programs` (promoted DDS catalog; API: `/catalog/degree-programs`)
+- `degree_requirements` (hard executable rules)
+- `catalog_rules` (advisory / non-executable rules)
 - `courses`
 - `course_offerings`
 - `completed_courses`
 - `semester_plans`
+- `academic_risks`
+
+### Staging collections (data-engineering only)
+- `staging_courses`, `staging_course_offerings`, `staging_degree_programs`, `staging_degree_requirements`, `staging_catalog_rules`, `staging_ingestion_runs`
 
 ### Later collections
 - `ai_recommendations`
 - `simulation_scenarios`
 - `simulation_results`
-- `academic_risks`
 - `career_goals`
+
+> **Naming note:** Production catalog uses `degree_programs` (with `programCode`) rather than a generic `degrees` collection. Legacy docs may refer to `degrees` — treat as the same domain concept.
 
 ## 3) Detailed Collection Schemas
 
@@ -364,7 +370,7 @@ Common promoted fields: `sourceName`, `catalogVersion`, `promotedAt`, `promotion
 
 Rollback: `rollback-dds-production-promotion` deletes production docs where `promotionRunId` matches; staging collections are untouched.
 
-**Phase 13 consumers:** `services/api-python` read-only `/catalog/*` endpoints query these collections; see `docs/API_SPEC.md` §4.4.1.
+**Phase 13 consumers:** `services/api` read-only `/catalog/*` endpoints query these collections; see `docs/API_SPEC.md` §4.4.1.
 
 ---
 

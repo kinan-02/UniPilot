@@ -1,6 +1,6 @@
 # UniPilot AI API Specification
 
-Last updated: 2026-06-19  
+Last updated: 2026-06-20  
 Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 1) Scope and Release Boundaries
@@ -39,22 +39,22 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ## 3) Entity Availability Matrix
 
-| Entity | API Exposure | Phase |
+| Entity | API Exposure | Status |
 |---|---|---|
-| User | Auth + self info only | MVP (partially implemented) |
-| StudentProfile | Full self CRUD (singleton `/student-profile`) | MVP (implemented) |
-| Degree | Read-only (`GET /degrees`, `GET /degrees/:id`) | MVP (implemented) |
-| DegreeRequirement | Read-only (`GET /degrees/:id/requirements`) | MVP (implemented) |
-| Course | Read-only (`GET /courses`, `GET /courses/:id`) | MVP (implemented) |
-| CourseOffering | Read-only | MVP |
-| CompletedCourse | User-owned CRUD | MVP |
-| SemesterPlan | User-owned CRUD/versioned | MVP |
-| Semester | Embedded in SemesterPlan | MVP |
+| User | Auth + self info only | Implemented |
+| StudentProfile | Full self CRUD (`/student-profile`) | Implemented |
+| DegreeProgram | Read-only (`/catalog/degree-programs/*`) | Implemented |
+| DegreeRequirement | Read-only (hard requirements under `/catalog/degree-programs/{code}/requirements`) | Implemented |
+| CatalogRule | Read-only (advisory rules under `/catalog/degree-programs/{code}/advisory-rules`) | Implemented |
+| Course | Read-only (`/catalog/courses/*`) | Implemented |
+| CourseOffering | Read-only (`/catalog/courses/{number}/offerings`) | Implemented |
+| CompletedCourse | User-owned CRUD | Implemented |
+| SemesterPlan | User-owned CRUD + versioning | Implemented |
+| AcademicRisk | User-owned analyze + history | Implemented |
 | AIRecommendation | Read-only to user | Later |
 | SimulationScenario | User-owned CRUD | Later |
 | SimulationResult | User-owned read | Later |
-| AcademicRisk | User-owned analyze + history | Phase 8 |
-| CareerGoal | User-owned CRUD | Later (optional MVP extension) |
+| CareerGoal | User-owned CRUD | Later (optional) |
 
 ## 4) Endpoints
 
@@ -295,9 +295,9 @@ Hard-delete the authenticated user's profile.
 
 ## 4.3 Completed Courses (MVP)
 
-**Status:** Implemented (Node Phase 5; Python Phase 14). User-owned transcript records backed by MongoDB `completed_courses`.
+**Status:** Implemented. User-owned transcript records backed by MongoDB `completed_courses`.
 
-**Python (`api-python`):** Same route contract as Node (`POST/GET/PUT/DELETE /completed-courses`, record id in path). `courseId` must reference a published document in the **production** `courses` collection (Phase 12 promotion). Does not calculate graduation progress; does not read advisory `catalog_rules`.
+**Python (`services/api`):** Same route contract (`POST/GET/PUT/DELETE /completed-courses`, record id in path). `courseId` must reference a published document in the **production** `courses` collection (Phase 12 promotion). Does not calculate graduation progress; does not read advisory `catalog_rules`.
 
 All routes require `Authorization: Bearer <accessToken>`. Records are scoped to the authenticated user (`token.sub`). Clients must not send `userId`.
 
@@ -384,7 +384,7 @@ Delete a **manual** record only. `official` and `imported` records return `403`.
 - User can only read/list own records.
 - Duplicate `(userId, courseId, attempt)` conflicts with `409`.
 - Grade and credits validation enforced at boundary.
-- Course reference validated against seeded catalog (`findCourseById`).
+- Course reference validated against published production catalog (`courses` collection).
 
 ### Official / imported records (not public API)
 
@@ -394,143 +394,15 @@ Future transcript ingestion or registrar sync will insert `official` / `imported
 
 ---
 
-## 4.4 Course Catalog (MVP, read-only)
+## 4.4 Course Catalog (read-only, production DDS)
 
-**Status:** Implemented (Phase 4). Data source: curated Technion-style **placeholder** seed in `data/validated/technion/2025/` (not official Technion extracts).
+**Status:** Implemented. Data source: **production** MongoDB collections promoted via `data-engineering` (Phase 12): `courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`.
 
-Shared academic catalog data — **not student-owned**. All routes require `Authorization: Bearer <accessToken>`.
+**Auth:** JWT required (`Authorization: Bearer <accessToken>`).
 
-### `GET /courses`
+**Prefix:** `/catalog`
 
-List published courses for an institution and catalog year.
-
-**Query parameters (required unless noted):**
-
-| Param | Required | Rules |
-|---|---|---|
-| `institutionId` | yes | string, 1–100 chars (e.g. `technion`) |
-| `catalogYear` | yes | integer, 1990–2100 |
-| `page` | no | integer ≥ 1, default `1` |
-| `limit` | no | integer 1–100, default `50` |
-
-Unknown query fields are rejected (`400`).
-
-**Success (`200`):**
-
-```json
-{
-  "success": true,
-  "data": {
-    "courses": [ ],
-    "pagination": { "total": 12, "page": 1, "limit": 50 }
-  },
-  "error": null
-}
-```
-
-Each course includes: `id`, `institutionId`, `subject`, `number`, `title`, `credits`, `description`, `level`, `tags`, `prerequisiteIds`, `corequisiteIds`, `catalogYear`, `catalogVersion`, `version`, `status`, `metadata`, `sourceRefs`, timestamps.
-
-**Errors:** `400` validation, `401` missing/invalid JWT, `500` internal.
-
----
-
-### `GET /courses/:courseId`
-
-Get a single published course by MongoDB id.
-
-**Success (`200`):** `{ "success": true, "data": { "course": { } }, "error": null }`  
-**Errors:** `400` invalid id, `401` auth, `404` not found, `500` internal.
-
----
-
-### Not implemented yet
-
-- `GET /course-offerings`
-- `GET /course-offerings/:offeringId`
-
----
-
-## 4.5 Degree Requirements (MVP, read-only)
-
-**Status:** Implemented (Phase 4). Uses same curated placeholder seed as §4.4.
-
-Shared academic catalog data — **not student-owned**. All routes require JWT.
-
-### `GET /degrees`
-
-List published degrees for an institution and catalog year.
-
-**Query parameters:**
-
-| Param | Required | Rules |
-|---|---|---|
-| `institutionId` | yes | string, 1–100 chars |
-| `catalogYear` | yes | integer, 1990–2100 |
-
-**Success (`200`):**
-
-```json
-{
-  "success": true,
-  "data": { "degrees": [ ] },
-  "error": null
-}
-```
-
-Each degree includes: `id`, `institutionId`, `code`, `name`, `version`, `catalogYear`, `catalogVersion`, `effectiveFrom`, `effectiveTo`, `status`, `metadata`, `sourceRefs`, timestamps.
-
-**Errors:** `400`, `401`, `500`.
-
----
-
-### `GET /degrees/:degreeId`
-
-Get a single published degree.
-
-**Success (`200`):** `{ "success": true, "data": { "degree": { } }, "error": null }`  
-**Errors:** `400` invalid id, `401`, `404`, `500`.
-
----
-
-### `GET /degrees/:degreeId/requirements`
-
-List published requirements for a degree, filtered to the degree's `version`.
-
-**Success (`200`):**
-
-```json
-{
-  "success": true,
-  "data": {
-    "degreeId": "...",
-    "catalogYear": 2025,
-    "catalogVersion": "2025.1",
-    "requirements": [ ]
-  },
-  "error": null
-}
-```
-
-Each requirement includes: `id`, `degreeId`, `version`, `catalogYear`, `catalogVersion`, `requirementType`, `title`, `ruleExpression`, `minCredits`, `courseIds`, `priority`, `isMandatory`, `status`, `metadata`, `sourceRefs`, timestamps.
-
-**Errors:** `400`, `401`, `404` degree not found, `500`.
-
-### Catalog access rules
-
-- Read-only for authenticated students; no write endpoints.
-- Only `status: "published"` records are returned.
-- `catalogYear` + `catalogVersion` are explicit on all catalog entities.
-- Seeded records include `metadata.isCuratedPlaceholder: true` until real Technion ingestion replaces them.
-
----
-
-## 4.4.1 Python DDS Catalog API (Phase 13, read-only)
-
-**Status:** Implemented. Data source: **production** MongoDB collections promoted in Phase 12 (`courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`).
-
-**Auth:** JWT required (`Authorization: Bearer <accessToken>`), matching Node §4.4–4.5.
-
-**Prefix:** `/catalog` (Python migration path; Node legacy uses `/courses` and `/degrees` with ObjectId keys).
+> **Note:** Legacy routes `GET /courses` and `GET /degrees` from the removed Node backend are **not** part of the current API. Use `/catalog/*` below.
 
 ### `GET /catalog/courses`
 
@@ -579,7 +451,7 @@ Combined program + hard requirements + advisory rules + counts.
 
 ## 4.6 Graduation Progress (MVP)
 
-**Status:** Implemented (Python Phase 15; Node Phase 6). Deterministic progress computed from the authenticated user's `StudentProfile`, `CompletedCourses`, selected degree program (`degree_programs._id` via profile `degreeId`), hard `degree_requirements`, linked `course_pool` rules, and course catalog. No LLM involvement.
+**Status:** Implemented. Deterministic progress computed from the authenticated user's `StudentProfile`, `CompletedCourses`, selected degree program (`degree_programs._id` via profile `degreeId`), hard `degree_requirements`, linked `course_pool` rules, and course catalog. No LLM involvement.
 
 ### `GET /graduation-progress`
 
