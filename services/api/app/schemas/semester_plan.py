@@ -55,17 +55,60 @@ class GenerateSemesterPlanRequest(BaseModel):
         return self
 
 
+class SelectedGroupsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lecture: int | str | None = None
+    tutorial: int | str | None = None
+    lab: int | str | None = None
+    project: int | str | None = None
+
+
 class ManualPlannedCourseInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     courseId: str
     category: str | None = Field(default=None, min_length=1, max_length=64)
     reason: str | None = Field(default=None, min_length=1, max_length=240)
+    isActive: bool = True
+    selectedGroups: SelectedGroupsInput | None = None
+    notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("courseId")
     @classmethod
     def validate_course_id(cls, value: str) -> str:
         return validate_object_id(value)
+
+
+class CustomEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = Field(default=None, min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=120)
+    day: str = Field(min_length=1, max_length=32)
+    startTime: str = Field(min_length=4, max_length=8)
+    endTime: str = Field(min_length=4, max_length=8)
+    notes: str | None = Field(default=None, max_length=500)
+    color: str | None = Field(default=None, max_length=32)
+
+
+class PatchPlannedCourseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    isActive: bool | None = None
+    selectedGroups: SelectedGroupsInput | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class ReorderPlannedCoursesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    courseIds: list[str] = Field(min_length=1)
+
+    @field_validator("courseIds")
+    @classmethod
+    def validate_course_ids(cls, value: list[str]) -> list[str]:
+        return [validate_object_id(course_id) for course_id in value]
 
 
 class WeeklyScheduleEntryInput(BaseModel):
@@ -97,6 +140,7 @@ class ManualSemesterInput(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     plannedCourses: list[ManualPlannedCourseInput] = Field(min_length=1)
     weeklySchedule: WeeklyScheduleInput | None = None
+    customEvents: list[CustomEventInput] | None = None
 
     @field_validator("semesterCode")
     @classmethod
@@ -176,6 +220,12 @@ class UpdateSemesterPlanRequest(BaseModel):
         if value not in ALLOWED_PLAN_STATUSES:
             raise ValueError("status must be draft or active")
         return value
+
+
+class UpdateSemesterPlanShareRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shareEnabled: bool
 
 
 class SemesterPlanListQuery(BaseModel):

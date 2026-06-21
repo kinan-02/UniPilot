@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,19 +15,28 @@ from app.repositories.semester_plan_repository import (
     find_semester_plans_by_user_id,
     to_public_semester_plan,
     to_public_semester_plan_summary,
+    to_public_shared_semester_plan,
 )
+from app.services.planner_enrichment_service import enrich_semester_plan
 from app.schemas.semester_plan import (
     CreateManualSemesterPlanRequest,
     CreateSemesterPlanVersionRequest,
     GenerateSemesterPlanRequest,
     OBJECT_ID_PATTERN,
+    PatchPlannedCourseRequest,
+    ReorderPlannedCoursesRequest,
     UpdateSemesterPlanRequest,
+    UpdateSemesterPlanShareRequest,
 )
 from app.services.manual_semester_plan_service import (
     archive_semester_plan_by_user,
     create_manual_semester_plan,
     create_semester_plan_version_by_user,
+    get_shared_semester_plan_by_token,
+    patch_planned_course_by_user,
+    reorder_planned_courses_by_user,
     update_semester_plan_by_user,
+    update_semester_plan_share_by_user,
 )
 from app.services.semester_plan_service import generate_and_store_semester_plan
 
@@ -35,6 +45,8 @@ router = APIRouter(prefix="/semester-plans", tags=["semester-plans"])
 _semester_plan_indexes_ready = False
 
 LIST_QUERY_ALLOWED = frozenset({"page", "limit"})
+COURSE_NUMBER_RE = re.compile(r"^0\d{7}$")
+SHARE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
 
 def reset_semester_plan_indexes_state() -> None:
@@ -59,6 +71,21 @@ def success_response(data: Any) -> dict[str, Any]:
         "data": data,
         "error": None,
     }
+
+
+async def _public_plan_with_insights(
+    database,
+    user_id: str,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    enriched = await enrich_semester_plan(database, user_id, plan)
+    public = to_public_semester_plan(enriched)
+    if public is None:
+        return {}
+    insights = enriched.get("plannerInsights")
+    if insights:
+        public["plannerInsights"] = insights
+    return public
 
 
 def _handle_planning_context_error(result: dict[str, Any]) -> None:
@@ -127,7 +154,11 @@ async def create_manual_semester_plan_route(
     )
 
     return success_response(
-        {"semesterPlan": to_public_semester_plan(result["plan"])}
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
     )
 
 
@@ -147,7 +178,11 @@ async def generate_semester_plan(
     _handle_planning_context_error(result)
 
     return success_response(
-        {"semesterPlan": to_public_semester_plan(result["plan"])}
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
     )
 
 
@@ -195,6 +230,39 @@ def validate_plan_id_param(plan_id: str) -> str:
     return plan_id
 
 
+def validate_course_number_param(course_number: str) -> str:
+    if not COURSE_NUMBER_RE.fullmatch(course_number):
+        raise HTTPException(
+            status_code=400,
+            detail="course_number must be an 8-digit Technion course number",
+        )
+    return course_number
+
+
+def validate_share_token_param(share_token: str) -> str:
+    if not SHARE_TOKEN_RE.fullmatch(share_token):
+        raise HTTPException(status_code=400, detail="Invalid share token")
+    return share_token
+
+
+@router.get("/shared/{share_token}")
+async def get_shared_semester_plan(share_token: str) -> dict[str, Any]:
+    validate_share_token_param(share_token)
+    database = await get_database()
+    result = await get_shared_semester_plan_by_token(database, share_token)
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Shared semester plan not found")
+
+    plan = result["plan"]
+    user_id = str(plan.get("userId"))
+    enriched = await enrich_semester_plan(database, user_id, plan)
+    public = to_public_shared_semester_plan(enriched)
+    insights = enriched.get("plannerInsights")
+    if insights and public is not None:
+        public["plannerInsights"] = insights
+    return success_response({"semesterPlan": public})
+
+
 @router.get("/{plan_id}")
 async def get_semester_plan(
     plan_id: str,
@@ -207,7 +275,11 @@ async def get_semester_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Semester plan not found")
 
-    return success_response({"semesterPlan": to_public_semester_plan(plan)})
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(database, auth.user_id, plan),
+        }
+    )
 
 
 @router.post("/{plan_id}/versions", status_code=201)
@@ -231,7 +303,9 @@ async def create_semester_plan_version(
 
     return success_response(
         {
-            "semesterPlan": to_public_semester_plan(result["plan"]),
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            ),
             "sourcePlanId": result.get("sourcePlanId"),
         }
     )
@@ -257,7 +331,92 @@ async def update_semester_plan(
     )
 
     return success_response(
-        {"semesterPlan": to_public_semester_plan(result["plan"])}
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
+    )
+
+
+@router.patch("/{plan_id}/courses/{course_number}")
+async def patch_planned_course(
+    plan_id: str,
+    course_number: str,
+    payload: PatchPlannedCourseRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    validate_course_number_param(course_number)
+    if payload.model_dump(exclude_none=True) == {}:
+        raise HTTPException(status_code=400, detail="At least one field must be provided")
+
+    database = await get_database()
+    result = _handle_manual_plan_result(
+        await patch_planned_course_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            course_number,
+            payload.model_dump(exclude_none=True),
+        )
+    )
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
+    )
+
+
+@router.put("/{plan_id}/courses/order")
+async def reorder_planned_courses(
+    plan_id: str,
+    payload: ReorderPlannedCoursesRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    database = await get_database()
+    result = _handle_manual_plan_result(
+        await reorder_planned_courses_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            payload.courseIds,
+        )
+    )
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
+    )
+
+
+@router.patch("/{plan_id}/share")
+async def update_semester_plan_share(
+    plan_id: str,
+    payload: UpdateSemesterPlanShareRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    database = await get_database()
+    result = _handle_manual_plan_result(
+        await update_semester_plan_share_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            share_enabled=payload.shareEnabled,
+        )
+    )
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
     )
 
 
@@ -274,5 +433,9 @@ async def archive_semester_plan(
     )
 
     return success_response(
-        {"semesterPlan": to_public_semester_plan(result["plan"])}
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"]
+            )
+        }
     )

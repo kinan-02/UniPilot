@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.planning.schedule_group_selection import filter_schedule_groups_by_selection
+from app.planning.semester_codes import pick_best_offering
 from app.planning.weekly_schedule import build_weekly_schedule_payload
 from app.repositories import catalog_repository
 from app.services.graduation_progress_calculator import round_credits
@@ -30,6 +32,9 @@ def build_manual_planned_course(
     *,
     category: str | None = None,
     reason: str | None = None,
+    is_active: bool = True,
+    selected_groups: dict[str, Any] | None = None,
+    notes: str | None = None,
 ) -> dict[str, Any]:
     return {
         "courseId": _normalize_course_id(course["_id"]),
@@ -38,7 +43,28 @@ def build_manual_planned_course(
         "credits": _course_credits(course),
         "category": category or "manual",
         "reason": reason or "Added manually by student",
+        "isActive": is_active,
+        "selectedGroups": selected_groups
+        or {"lecture": None, "tutorial": None, "lab": None, "project": None},
+        "notes": notes,
     }
+
+
+def _default_selected_groups() -> dict[str, Any]:
+    return {"lecture": None, "tutorial": None, "lab": None, "project": None}
+
+
+def _selected_groups_from_input(item: dict[str, Any]) -> dict[str, Any] | None:
+    selected = item.get("selectedGroups")
+    if selected is None:
+        return None
+    if hasattr(selected, "model_dump"):
+        return selected.model_dump()
+    return dict(selected)
+
+
+def is_course_active(planned_course: dict[str, Any]) -> bool:
+    return planned_course.get("isActive", True) is not False
 
 
 def _find_offering_match(
@@ -47,10 +73,45 @@ def _find_offering_match(
     academic_year: int,
     semester_code: int,
 ) -> dict[str, Any] | None:
-    for offering in offerings:
-        if offering.get("academicYear") == academic_year and offering.get("semesterCode") == semester_code:
-            return offering
-    return None
+    return pick_best_offering(
+        offerings,
+        preferred_academic_year=academic_year,
+        semester_code=semester_code,
+    )
+
+
+async def _load_offering_for_schedule(
+    database,
+    *,
+    course_number: str,
+    academic_year: int,
+    semester_code: int,
+) -> dict[str, Any] | None:
+    """Load offering for plan semester; fall back to nearest catalog year for same term."""
+    offerings = await catalog_repository.list_offerings_for_course(
+        database,
+        course_number,
+        academic_year=academic_year,
+        semester_code=semester_code,
+    )
+    offering = _find_offering_match(
+        offerings,
+        academic_year=academic_year,
+        semester_code=semester_code,
+    )
+    if offering:
+        return offering
+
+    all_for_term = await catalog_repository.list_offerings_for_course(
+        database,
+        course_number,
+        semester_code=semester_code,
+    )
+    return _find_offering_match(
+        all_for_term,
+        academic_year=academic_year,
+        semester_code=semester_code,
+    )
 
 
 async def resolve_weekly_schedule_entries(
@@ -69,6 +130,8 @@ async def resolve_weekly_schedule_entries(
         if not planned:
             errors.append(f"Weekly schedule references courseId {course_id} not in plannedCourses")
             continue
+        if not is_course_active(planned):
+            continue
 
         course_number = planned["courseNumber"]
         academic_year = int(schedule_input["academicYear"])
@@ -76,14 +139,9 @@ async def resolve_weekly_schedule_entries(
         schedule_groups = schedule_input.get("scheduleGroups")
 
         if not schedule_groups:
-            offerings = await catalog_repository.list_offerings_for_course(
+            offering = await _load_offering_for_schedule(
                 database,
-                course_number,
-                academic_year=academic_year,
-                semester_code=semester_code,
-            )
-            offering = _find_offering_match(
-                offerings,
+                course_number=course_number,
                 academic_year=academic_year,
                 semester_code=semester_code,
             )
@@ -97,6 +155,14 @@ async def resolve_weekly_schedule_entries(
 
         if not schedule_groups:
             errors.append(f"Offering for course {course_number} has no scheduleGroups")
+            continue
+
+        schedule_groups = filter_schedule_groups_by_selection(
+            schedule_groups,
+            planned.get("selectedGroups"),
+        )
+        if not schedule_groups:
+            errors.append(f"No schedule groups selected for course {course_number}")
             continue
 
         built_entries.append(
@@ -122,6 +188,7 @@ async def build_manual_semester_payload(
     notes: str | None,
     planned_course_inputs: list[dict[str, Any]],
     weekly_schedule_input: dict[str, Any] | None,
+    custom_events: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     if not planned_course_inputs:
         return None, ["plannedCourses must contain at least one course"]
@@ -145,10 +212,14 @@ async def build_manual_semester_payload(
                 course,
                 category=item.get("category"),
                 reason=item.get("reason"),
+                is_active=item.get("isActive", True),
+                selected_groups=_selected_groups_from_input(item),
+                notes=item.get("notes"),
             )
         )
 
-    total_credits = round_credits(sum(course["credits"] for course in planned_courses))
+    active_courses = [course for course in planned_courses if is_course_active(course)]
+    total_credits = round_credits(sum(course["credits"] for course in active_courses))
     semester_payload: dict[str, Any] = {
         "semesterCode": semester_code,
         "goalCredits": goal_credits if goal_credits is not None else total_credits,
@@ -158,15 +229,32 @@ async def build_manual_semester_payload(
         "constraintsSnapshot": {},
     }
 
+    normalized_custom_events = [
+        event.model_dump() if hasattr(event, "model_dump") else dict(event)
+        for event in (custom_events or [])
+    ]
+    if normalized_custom_events:
+        semester_payload["customEvents"] = normalized_custom_events
+
     if weekly_schedule_input is not None:
+        planned_by_id = {_normalize_course_id(course["courseId"]): course for course in planned_courses}
+        schedule_inputs = [
+            entry
+            for entry in (weekly_schedule_input.get("entries") or [])
+            if entry.get("courseId")
+            and is_course_active(planned_by_id.get(_normalize_course_id(entry["courseId"]), {}))
+        ]
         schedule_entries, schedule_errors = await resolve_weekly_schedule_entries(
             database,
             planned_courses=planned_courses,
-            schedule_inputs=weekly_schedule_input.get("entries") or [],
+            schedule_inputs=schedule_inputs,
         )
         if schedule_errors:
             return None, schedule_errors
-        semester_payload["weeklySchedule"] = build_weekly_schedule_payload(schedule_entries)
+        semester_payload["weeklySchedule"] = build_weekly_schedule_payload(
+            schedule_entries,
+            custom_events=normalized_custom_events,
+        )
 
     return semester_payload, []
 
@@ -178,9 +266,10 @@ def build_manual_plan_document(
     status: str = "draft",
 ) -> dict[str, Any]:
     primary = semesters[0]
-    total_credits = round_credits(
-        sum(course.get("credits") or 0 for course in primary.get("plannedCourses") or [])
-    )
+    active_courses = [
+        course for course in (primary.get("plannedCourses") or []) if is_course_active(course)
+    ]
+    total_credits = round_credits(sum(course.get("credits") or 0 for course in active_courses))
     return {
         "name": name,
         "status": status,
@@ -191,11 +280,11 @@ def build_manual_plan_document(
             "editable": True,
         },
         "explanation": {
-            "summary": f"Manual plan with {len(primary.get('plannedCourses') or [])} course(s)",
+            "summary": f"Manual plan with {len(active_courses)} active course(s)",
             "totalRecommendedCredits": total_credits,
             "rulesApplied": ["manual_selection"],
             "partialPlan": False,
-            "emptyPlan": len(primary.get("plannedCourses") or []) == 0,
+            "emptyPlan": len(active_courses) == 0,
         },
         "semesters": semesters,
     }
@@ -241,6 +330,7 @@ async def _build_semesters_from_request(
             notes=semester_input.get("notes"),
             planned_course_inputs=semester_input["plannedCourses"],
             weekly_schedule_input=semester_input.get("weeklySchedule"),
+            custom_events=semester_input.get("customEvents"),
         )
         if errors:
             validation_errors.extend(errors)
@@ -350,15 +440,16 @@ async def update_semester_plan_by_user(
         updates["semesters"] = semesters
 
         primary = (semesters or [{}])[0]
-        total_credits = round_credits(
-            sum(course.get("credits") or 0 for course in primary.get("plannedCourses") or [])
-        )
+        active_courses = [
+            course for course in (primary.get("plannedCourses") or []) if is_course_active(course)
+        ]
+        total_credits = round_credits(sum(course.get("credits") or 0 for course in active_courses))
         explanation = dict(existing_plan.get("explanation") or {})
         explanation.update(
             {
-                "summary": f"Manual plan with {len(primary.get('plannedCourses') or [])} course(s)",
+                "summary": f"Manual plan with {len(active_courses)} active course(s)",
                 "totalRecommendedCredits": total_credits,
-                "emptyPlan": len(primary.get("plannedCourses") or []) == 0,
+                "emptyPlan": len(active_courses) == 0,
             }
         )
         updates["explanation"] = explanation
@@ -408,6 +499,184 @@ async def create_semester_plan_version_by_user(
     return {"status": "ok", "plan": stored_plan, "sourcePlanId": plan_id}
 
 
+async def _rebuild_weekly_schedule_for_semester(
+    database,
+    semester: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    from app.planning.semester_codes import plan_semester_to_offering_keys
+
+    planned = semester.get("plannedCourses") or []
+    offering_keys = plan_semester_to_offering_keys(str(semester.get("semesterCode") or ""))
+    if not offering_keys:
+        return build_weekly_schedule_payload(
+            [],
+            custom_events=semester.get("customEvents") or [],
+        ), []
+
+    academic_year, technion_code = offering_keys
+    schedule_inputs = [
+        {
+            "courseId": course["courseId"],
+            "academicYear": academic_year,
+            "semesterCode": technion_code,
+        }
+        for course in planned
+        if is_course_active(course)
+    ]
+    entries, errors = await resolve_weekly_schedule_entries(
+        database,
+        planned_courses=planned,
+        schedule_inputs=schedule_inputs,
+    )
+    if errors:
+        return None, errors
+    return (
+        build_weekly_schedule_payload(
+            entries,
+            custom_events=semester.get("customEvents") or [],
+        ),
+        [],
+    )
+
+
+async def patch_planned_course_by_user(
+    database,
+    user_id: str,
+    plan_id: str,
+    course_number: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    from app.repositories.semester_plan_repository import (
+        find_semester_plan_by_id_and_user_id,
+        update_semester_plan_by_id_and_user_id,
+    )
+
+    existing_plan = await find_semester_plan_by_id_and_user_id(database, plan_id, user_id)
+    if not existing_plan:
+        return {"status": "not_found"}
+    if existing_plan.get("status") == "archived":
+        return {"status": "archived"}
+
+    semesters = [dict(semester) for semester in existing_plan.get("semesters") or []]
+    if not semesters:
+        return {"status": "validation_error", "errors": ["Plan has no semesters"]}
+
+    primary = semesters[0]
+    planned_courses = [dict(course) for course in primary.get("plannedCourses") or []]
+    target_index = next(
+        (
+            index
+            for index, course in enumerate(planned_courses)
+            if str(course.get("courseNumber") or "") == course_number
+        ),
+        None,
+    )
+    if target_index is None:
+        return {
+            "status": "validation_error",
+            "errors": [f"Course {course_number} is not in this plan"],
+        }
+
+    course = planned_courses[target_index]
+    if payload.get("isActive") is not None:
+        course["isActive"] = bool(payload["isActive"])
+    if payload.get("selectedGroups") is not None:
+        selected = payload["selectedGroups"]
+        course["selectedGroups"] = (
+            selected.model_dump() if hasattr(selected, "model_dump") else dict(selected)
+        )
+    if "notes" in payload:
+        course["notes"] = payload.get("notes")
+
+    planned_courses[target_index] = course
+    primary["plannedCourses"] = planned_courses
+
+    weekly_schedule, schedule_errors = await _rebuild_weekly_schedule_for_semester(
+        database,
+        primary,
+    )
+    if schedule_errors:
+        return {"status": "validation_error", "errors": schedule_errors}
+    primary["weeklySchedule"] = weekly_schedule
+    semesters[0] = primary
+
+    active_courses = [item for item in planned_courses if is_course_active(item)]
+    total_credits = round_credits(sum(item.get("credits") or 0 for item in active_courses))
+    explanation = dict(existing_plan.get("explanation") or {})
+    explanation.update(
+        {
+            "summary": f"Manual plan with {len(active_courses)} active course(s)",
+            "totalRecommendedCredits": total_credits,
+            "emptyPlan": len(active_courses) == 0,
+        }
+    )
+
+    updated_plan = await update_semester_plan_by_id_and_user_id(
+        database,
+        plan_id,
+        user_id,
+        {
+            "semesters": semesters,
+            "explanation": explanation,
+            "version": int(existing_plan.get("version") or 1) + 1,
+        },
+    )
+    if not updated_plan:
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": updated_plan}
+
+
+async def reorder_planned_courses_by_user(
+    database,
+    user_id: str,
+    plan_id: str,
+    course_ids: list[str],
+) -> dict[str, Any]:
+    from app.repositories.semester_plan_repository import (
+        find_semester_plan_by_id_and_user_id,
+        update_semester_plan_by_id_and_user_id,
+    )
+
+    existing_plan = await find_semester_plan_by_id_and_user_id(database, plan_id, user_id)
+    if not existing_plan:
+        return {"status": "not_found"}
+    if existing_plan.get("status") == "archived":
+        return {"status": "archived"}
+
+    semesters = [dict(semester) for semester in existing_plan.get("semesters") or []]
+    if not semesters:
+        return {"status": "validation_error", "errors": ["Plan has no semesters"]}
+
+    primary = semesters[0]
+    planned_courses = [dict(course) for course in primary.get("plannedCourses") or []]
+    by_id = {_normalize_course_id(course["courseId"]): course for course in planned_courses}
+    normalized_ids = [_normalize_course_id(course_id) for course_id in course_ids]
+
+    if len(normalized_ids) != len(set(normalized_ids)):
+        return {"status": "validation_error", "errors": ["Duplicate courseIds in reorder payload"]}
+    if set(normalized_ids) != set(by_id.keys()):
+        return {
+            "status": "validation_error",
+            "errors": ["Reorder payload must include every planned course exactly once"],
+        }
+
+    primary["plannedCourses"] = [by_id[course_id] for course_id in normalized_ids]
+    semesters[0] = primary
+
+    updated_plan = await update_semester_plan_by_id_and_user_id(
+        database,
+        plan_id,
+        user_id,
+        {
+            "semesters": semesters,
+            "version": int(existing_plan.get("version") or 1) + 1,
+        },
+    )
+    if not updated_plan:
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": updated_plan}
+
+
 async def archive_semester_plan_by_user(
     database,
     user_id: str,
@@ -428,8 +697,57 @@ async def archive_semester_plan_by_user(
         database,
         plan_id,
         user_id,
-        {"status": "archived"},
+        {"status": "archived", "shareEnabled": False},
     )
     if not updated_plan:
         return {"status": "not_found"}
     return {"status": "ok", "plan": updated_plan}
+
+
+async def update_semester_plan_share_by_user(
+    database,
+    user_id: str,
+    plan_id: str,
+    *,
+    share_enabled: bool,
+) -> dict[str, Any]:
+    import secrets
+
+    from app.repositories.semester_plan_repository import (
+        find_semester_plan_by_id_and_user_id,
+        update_semester_plan_by_id_and_user_id,
+    )
+
+    existing_plan = await find_semester_plan_by_id_and_user_id(database, plan_id, user_id)
+    if not existing_plan:
+        return {"status": "not_found"}
+    if existing_plan.get("status") == "archived":
+        return {"status": "archived"}
+
+    updates: dict[str, Any] = {"shareEnabled": bool(share_enabled)}
+    if share_enabled and not existing_plan.get("shareToken"):
+        updates["shareToken"] = secrets.token_urlsafe(24)
+
+    updated_plan = await update_semester_plan_by_id_and_user_id(
+        database,
+        plan_id,
+        user_id,
+        updates,
+    )
+    if not updated_plan:
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": updated_plan}
+
+
+async def get_shared_semester_plan_by_token(
+    database,
+    share_token: str,
+) -> dict[str, Any]:
+    from app.repositories.semester_plan_repository import find_semester_plan_by_share_token
+
+    plan = await find_semester_plan_by_share_token(database, share_token)
+    if not plan:
+        return {"status": "not_found"}
+    if plan.get("status") == "archived":
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": plan}

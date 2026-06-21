@@ -35,6 +35,12 @@ async def ensure_semester_plan_indexes(
         [("userId", 1), ("status", 1)],
         name="semester_plans_user_status",
     )
+    await collection.create_index(
+        [("shareToken", 1)],
+        name="semester_plans_share_token",
+        unique=True,
+        sparse=True,
+    )
 
 
 def build_semester_plan_document(user_id: str, plan_data: dict[str, Any]) -> dict[str, Any]:
@@ -152,6 +158,20 @@ async def _fetch_plans_page(collection, query, skip, limit):
     return plans, total
 
 
+async def find_semester_plan_by_share_token(
+    database: AsyncIOMotorDatabase,
+    share_token: str,
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    settings = settings or get_settings()
+    if not share_token:
+        return None
+    return await database[settings.semester_plans_collection].find_one(
+        {"shareToken": share_token, "shareEnabled": True}
+    )
+
+
 async def find_semester_plan_by_id_and_user_id(
     database: AsyncIOMotorDatabase,
     plan_id: str,
@@ -206,6 +226,8 @@ def _serialize_semester(semester: dict[str, Any]) -> dict[str, Any]:
     }
     if semester.get("weeklySchedule") is not None:
         payload["weeklySchedule"] = semester.get("weeklySchedule")
+    if semester.get("customEvents") is not None:
+        payload["customEvents"] = semester.get("customEvents")
     return payload
 
 
@@ -241,7 +263,7 @@ def to_public_semester_plan(plan_document: dict[str, Any] | None) -> dict[str, A
     if not plan_document:
         return None
 
-    return {
+    payload = {
         "id": str(plan_document["_id"]),
         "name": plan_document.get("name"),
         "status": plan_document.get("status"),
@@ -260,4 +282,18 @@ def to_public_semester_plan(plan_document: dict[str, Any] | None) -> dict[str, A
         ],
         "createdAt": _format_datetime(plan_document.get("createdAt")),
         "updatedAt": _format_datetime(plan_document.get("updatedAt")),
+        "shareEnabled": bool(plan_document.get("shareEnabled")),
     }
+    if plan_document.get("shareEnabled") and plan_document.get("shareToken"):
+        payload["shareToken"] = str(plan_document["shareToken"])
+    return payload
+
+
+def to_public_shared_semester_plan(plan_document: dict[str, Any] | None) -> dict[str, Any] | None:
+    public = to_public_semester_plan(plan_document)
+    if public is None:
+        return None
+    public.pop("shareToken", None)
+    public["readOnly"] = True
+    public["shareEnabled"] = True
+    return public

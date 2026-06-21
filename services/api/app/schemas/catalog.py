@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 COURSE_NUMBER_PATTERN = r"^0\d{7}$"
 PROGRAM_CODE_PATTERN = r"^\d{6}-\d-\d{3}$"
@@ -18,12 +18,21 @@ class CourseMetadata(BaseModel):
     notCanonicalCatalog: bool | None = None
 
 
+class SemesterOfferingSummary(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    academicYear: int
+    semesterCode: int
+    slotTypes: list[str] = Field(default_factory=list)
+    instructors: str | None = None
+
+
 class CourseSummary(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str | None = None
     courseNumber: str
-    institutionId: str
+    institutionId: str | None = None
     title: str | None = None
     titleHebrew: str | None = None
     credits: float | None = None
@@ -33,6 +42,7 @@ class CourseSummary(BaseModel):
     catalogVersion: str | None = None
     status: str = "published"
     metadata: CourseMetadata = Field(default_factory=CourseMetadata)
+    semesterOfferingSummary: SemesterOfferingSummary | None = None
 
 
 class CourseOffering(BaseModel):
@@ -145,6 +155,10 @@ class CourseListQuery(BaseModel):
     q: str | None = Field(default=None, max_length=200)
     faculty: str | None = Field(default=None, max_length=200)
     courseNumber: str | None = Field(default=None, max_length=8)
+    academicYear: int | None = Field(default=None, ge=1990, le=2100)
+    semesterCode: int | None = None
+    minCredits: float | None = Field(default=None, ge=0)
+    maxCredits: float | None = Field(default=None, ge=0)
     limit: int = Field(default=50, ge=1, le=200)
     offset: int = Field(default=0, ge=0)
     includeOfferings: bool = False
@@ -157,6 +171,23 @@ class CourseListQuery(BaseModel):
         if not re.fullmatch(COURSE_NUMBER_PATTERN, value):
             raise ValueError("courseNumber must be an 8-digit Technion course number")
         return value
+
+    @field_validator("semesterCode")
+    @classmethod
+    def validate_semester_code(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value not in VALID_SEMESTER_CODES:
+            raise ValueError("semesterCode must be one of 200, 201, 202")
+        return value
+
+    @model_validator(mode="after")
+    def validate_semester_pair(self) -> "CourseListQuery":
+        has_year = self.academicYear is not None
+        has_code = self.semesterCode is not None
+        if has_year ^ has_code:
+            raise ValueError("academicYear and semesterCode must be provided together")
+        return self
 
 
 class CourseOfferingsQuery(BaseModel):

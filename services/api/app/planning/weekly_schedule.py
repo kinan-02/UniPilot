@@ -174,9 +174,46 @@ def build_week_view(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return week_view
 
 
-def build_weekly_schedule_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
-    conflicts = detect_schedule_conflicts(entries)
-    if not entries:
+def summarize_slot_types(schedule_groups: list[dict[str, Any]]) -> list[str]:
+    types: set[str] = set()
+    for group in schedule_groups or []:
+        normalized = normalize_schedule_group(group)
+        slot_type = normalized.get("slotType") or ""
+        if slot_type:
+            types.add(slot_type)
+    return sorted(types)
+
+
+def build_weekly_schedule_payload(
+    entries: list[dict[str, Any]],
+    *,
+    custom_events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    merged_entries = list(entries)
+    for event in custom_events or []:
+        day = str(event.get("day") or "").strip()
+        start_time = str(event.get("startTime") or "").strip()
+        end_time = str(event.get("endTime") or "").strip()
+        if not day or not start_time or not end_time:
+            continue
+        merged_entries.append(
+            {
+                "courseId": str(event.get("id") or event.get("title") or "custom"),
+                "courseNumber": "CUSTOM",
+                "courseTitle": str(event.get("title") or "Custom event"),
+                "scheduleGroups": [
+                    {
+                        "day": day,
+                        "time": f"{start_time}-{end_time}",
+                        "type": "custom",
+                    }
+                ],
+                "isCustomEvent": True,
+            }
+        )
+
+    conflicts = detect_schedule_conflicts(merged_entries)
+    if not merged_entries:
         status = "empty"
     elif conflicts:
         status = "conflicts"
@@ -184,6 +221,8 @@ def build_weekly_schedule_payload(entries: list[dict[str, Any]]) -> dict[str, An
         status = "valid"
 
     summary = f"{len(entries)} course(s) scheduled"
+    if custom_events:
+        summary = f"{summary}; {len(custom_events)} custom block(s)"
     if conflicts:
         summary = f"{summary}; {len(conflicts)} conflict(s)"
     else:
@@ -192,7 +231,8 @@ def build_weekly_schedule_payload(entries: list[dict[str, Any]]) -> dict[str, An
     return {
         "status": status,
         "entries": entries,
+        "customEvents": custom_events or [],
         "conflicts": conflicts,
-        "weekView": build_week_view(entries),
+        "weekView": build_week_view(merged_entries),
         "summary": summary,
     }

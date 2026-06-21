@@ -92,12 +92,21 @@ def _build_course_search_filter(
     q: str | None,
     faculty: str | None,
     course_number: str | None,
+    course_numbers: list[str] | None = None,
+    min_credits: float | None = None,
+    max_credits: float | None = None,
 ) -> dict[str, Any]:
     filters: list[dict[str, Any]] = [PUBLISHED_FILTER.copy()]
     if course_number:
         filters.append({"courseNumber": course_number})
+    if course_numbers is not None:
+        filters.append({"courseNumber": {"$in": course_numbers}})
     if faculty:
         filters.append({"faculty": {"$regex": re.escape(faculty), "$options": "i"}})
+    if min_credits is not None:
+        filters.append({"credits": {"$gte": min_credits}})
+    if max_credits is not None:
+        filters.append({"credits": {"$lte": max_credits}})
     if q:
         pattern = re.escape(q)
         filters.append(
@@ -115,19 +124,116 @@ def _build_course_search_filter(
     return {"$and": filters}
 
 
+async def list_course_numbers_with_semester_offerings(
+    database: AsyncIOMotorDatabase,
+    *,
+    academic_year: int,
+    semester_code: int,
+    settings: Settings | None = None,
+) -> set[str]:
+    """Course numbers with offerings for a term; exact academic year first, then same term."""
+    settings = settings or get_settings()
+    collection = database[settings.course_offerings_collection]
+    exact_query = {
+        **PUBLISHED_FILTER,
+        "academicYear": academic_year,
+        "semesterCode": semester_code,
+    }
+    exact = await collection.distinct("courseNumber", exact_query)
+    if exact:
+        return set(exact)
+
+    fallback_query = {**PUBLISHED_FILTER, "semesterCode": semester_code}
+    fallback = await collection.distinct("courseNumber", fallback_query)
+    return set(fallback)
+
+
+async def list_offerings_for_courses_in_semester(
+    database: AsyncIOMotorDatabase,
+    course_numbers: list[str],
+    *,
+    academic_year: int,
+    semester_code: int,
+    settings: Settings | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Map courseNumber -> best matching offering for planner search summaries."""
+    from app.planning.semester_codes import pick_best_offering
+
+    if not course_numbers:
+        return {}
+
+    settings = settings or get_settings()
+    collection = database[settings.course_offerings_collection]
+    cursor = collection.find(
+        {
+            **PUBLISHED_FILTER,
+            "courseNumber": {"$in": course_numbers},
+            "semesterCode": semester_code,
+        }
+    )
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    async for document in cursor:
+        number = str(document.get("courseNumber") or "")
+        grouped.setdefault(number, []).append(document)
+
+    summaries: dict[str, dict[str, Any]] = {}
+    for number, offerings in grouped.items():
+        best = pick_best_offering(
+            offerings,
+            preferred_academic_year=academic_year,
+            semester_code=semester_code,
+        )
+        if not best:
+            continue
+        from app.planning.weekly_schedule import summarize_slot_types
+
+        summaries[number] = {
+            "academicYear": int(best.get("academicYear") or academic_year),
+            "semesterCode": int(best.get("semesterCode") or semester_code),
+            "slotTypes": summarize_slot_types(best.get("scheduleGroups") or []),
+            "instructors": best.get("instructors"),
+        }
+    return summaries
+
+
 async def list_courses(
     database: AsyncIOMotorDatabase,
     *,
     q: str | None = None,
     faculty: str | None = None,
     course_number: str | None = None,
+    academic_year: int | None = None,
+    semester_code: int | None = None,
+    min_credits: float | None = None,
+    max_credits: float | None = None,
     limit: int = 50,
     offset: int = 0,
     settings: Settings | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     settings = settings or get_settings()
     collection = database[settings.courses_collection]
-    query = _build_course_search_filter(q=q, faculty=faculty, course_number=course_number)
+
+    semester_course_numbers: list[str] | None = None
+    offering_summaries: dict[str, dict[str, Any]] = {}
+    if academic_year is not None and semester_code is not None:
+        semester_numbers = await list_course_numbers_with_semester_offerings(
+            database,
+            academic_year=academic_year,
+            semester_code=semester_code,
+            settings=settings,
+        )
+        if not semester_numbers:
+            return [], 0
+        semester_course_numbers = sorted(semester_numbers)
+
+    query = _build_course_search_filter(
+        q=q,
+        faculty=faculty,
+        course_number=course_number,
+        course_numbers=semester_course_numbers,
+        min_credits=min_credits,
+        max_credits=max_credits,
+    )
     total = await collection.count_documents(query)
     cursor = (
         collection.find(query)
@@ -136,6 +242,21 @@ async def list_courses(
         .limit(limit)
     )
     items = [to_public_course(doc) async for doc in cursor]
+
+    if academic_year is not None and semester_code is not None and items:
+        numbers = [item["courseNumber"] for item in items if item.get("courseNumber")]
+        offering_summaries = await list_offerings_for_courses_in_semester(
+            database,
+            numbers,
+            academic_year=academic_year,
+            semester_code=semester_code,
+            settings=settings,
+        )
+        for item in items:
+            summary = offering_summaries.get(str(item.get("courseNumber") or ""))
+            if summary:
+                item["semesterOfferingSummary"] = summary
+
     return items, total
 
 
