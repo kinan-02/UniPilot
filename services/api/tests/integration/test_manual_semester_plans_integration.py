@@ -60,6 +60,9 @@ async def test_create_manual_semester_plan(auth_client, mongo_database):
     assert plan["plannerType"] == "manual"
     assert len(plan["semesters"][0]["plannedCourses"]) == 2
     assert plan["semesters"][0]["plannedCourses"][0]["courseNumber"]
+    insights = plan.get("plannerInsights")
+    assert insights is not None
+    assert insights["totalCredits"] > 0
 
 
 @pytest.mark.asyncio
@@ -124,6 +127,80 @@ async def test_update_manual_semester_plan_adds_weekly_schedule(auth_client, mon
     assert len(weekly["entries"]) == 2
     assert len(weekly["conflicts"]) == 1
     assert plan["version"] == 2
+    assert plan.get("plannerInsights") is not None
+
+
+@pytest.mark.asyncio
+async def test_get_manual_plan_includes_credit_warning(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "manual-plan-insights@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+    await auth_client.put(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"preferences": {"maxCreditsPerSemester": 3}},
+    )
+
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Insights Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {"courseId": fixtures["courseAId"]},
+                {"courseId": fixtures["courseBId"]},
+            ],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+
+    get_response = await auth_client.get(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    insights = get_response.json()["data"]["semesterPlan"]["plannerInsights"]
+    assert insights["totalCredits"] > insights["maxCreditsPerSemester"]
+    assert insights["creditsWarning"]["status"] == "over_max"
+
+
+@pytest.mark.asyncio
+async def test_manual_weekly_schedule_resolves_nearest_catalog_year(auth_client, mongo_database):
+    """Plan code 2026-2 should still find spring offerings stored under academicYear 2025."""
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    await seed_course_offerings(
+        mongo_database,
+        course_number="00940345",
+        course_id=fixtures["courseAId"],
+    )
+    token = await register_access_token(auth_client, "manual-plan-year-fallback@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Spring with calendar-year mismatch",
+            "semesterCode": "2026-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+            "weeklySchedule": {
+                "entries": [
+                    {
+                        "courseId": fixtures["courseAId"],
+                        "academicYear": 2026,
+                        "semesterCode": 201,
+                    }
+                ]
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    weekly = response.json()["data"]["semesterPlan"]["semesters"][0]["weeklySchedule"]
+    assert weekly is not None
+    assert len(weekly["entries"]) == 1
+    assert weekly["entries"][0]["scheduleGroups"]
 
 
 @pytest.mark.asyncio

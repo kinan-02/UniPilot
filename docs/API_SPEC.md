@@ -408,12 +408,18 @@ Future transcript ingestion or registrar sync will insert `official` / `imported
 
 | Param | Required | Rules |
 |---|---|---|
-| `q` | no | text search over course number, Hebrew title, faculty |
+| `q` | no | text search over course number, Hebrew title, English title, faculty |
 | `faculty` | no | case-insensitive contains |
 | `courseNumber` | no | exact 8-digit Technion number |
+| `academicYear` | no | must be paired with `semesterCode`; filters to courses with offerings in that term |
+| `semesterCode` | no | `200` (winter), `201` (spring), `202` (summer); must be paired with `academicYear` |
+| `minCredits` | no | minimum course credits |
+| `maxCredits` | no | maximum course credits |
 | `limit` | no | 1–200, default 50 |
 | `offset` | no | ≥ 0, default 0 |
 | `includeOfferings` | no | boolean, default false |
+
+When `academicYear` + `semesterCode` are provided, only courses with a published offering for that term are returned. Each item may include `semesterOfferingSummary` (`slotTypes`, resolved offering year).
 
 **Success (`200`):** `{ success, data: { items, total, limit, offset }, error: null }`
 
@@ -627,10 +633,31 @@ Calculate graduation progress for the authenticated user.
 - `plannerType` is set to `"manual"` server-side.
 - `scheduleGroups` optional when a published offering exists for the course/year/semesterCode; otherwise required.
 - Each semester may include `weeklySchedule` with `status`, `entries`, `conflicts`, `weekView`, and `summary`.
+- `GET`, `POST`, and `PUT` plan responses include `plannerInsights`: `totalCredits` (active courses only), `maxCreditsPerSemester`, optional `creditsWarning`, `courseWarnings`, `scheduleConflicts`, `examSummary`, and `staleCourseWarnings`. Catalog data is read-only; only user-owned plan documents are persisted in `semester_plans`.
 
 ### PUT /semester-plans/:planId
 
 Updates `name`, `status` (`draft`/`active`), and/or full `semesters` array (planned courses + weekly schedule). Increments `version`. Archived plans return `400`.
+
+Planned courses support `isActive`, `selectedGroups`, and `notes`. Semesters may include `customEvents`.
+
+### PATCH /semester-plans/:planId/courses/:course_number
+
+Update a single planned course (`isActive`, `selectedGroups`, `notes`). Rebuilds schedule for active courses.
+
+### PUT /semester-plans/:planId/courses/order
+
+Body: `{ "courseIds": [...] }` — reorder planned courses; all IDs required exactly once.
+
+### PATCH /semester-plans/:planId/share
+
+**Body:** `{ "shareEnabled": true | false }` (JWT, owner only)
+
+When enabled, generates a stable `shareToken` if missing. Response includes `shareEnabled` and `shareToken` on the plan. Disabling sharing keeps the token but blocks public access. Archiving a plan disables sharing.
+
+### GET /semester-plans/shared/:share_token
+
+**Public (no JWT).** Returns read-only plan when sharing is enabled. Response includes `readOnly: true` and omits `shareToken`. Returns `404` when sharing is disabled, token invalid, or plan archived.
 
 ### DELETE /semester-plans/:planId
 

@@ -273,3 +273,33 @@ async def test_limit_max_enforced(auth_client, mongo_database):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_list_courses_filtered_by_semester_offerings(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-semester-filter@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses?academicYear=2025&semesterCode=201&limit=50",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    items = response.json()["data"]["items"]
+    assert len(items) >= 1
+    assert all(item.get("semesterOfferingSummary") for item in items)
+    assert items[0]["semesterOfferingSummary"]["semesterCode"] == 201
+
+
+@pytest.mark.asyncio
+async def test_semester_filter_requires_both_params(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-semester-pair@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses?academicYear=2025",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400

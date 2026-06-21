@@ -58,6 +58,48 @@ def test_detect_schedule_conflicts_ignores_non_overlapping_days():
     assert detect_schedule_conflicts(entries) == []
 
 
+def test_detect_schedule_conflicts_exact_overlap():
+    entries = [
+        {
+            "courseNumber": "00940345",
+            "scheduleGroups": [{"day": "Sunday", "time": "10:30-12:30"}],
+        },
+        {
+            "courseNumber": "00940411",
+            "scheduleGroups": [{"day": "Sunday", "time": "10:30-12:30"}],
+        },
+    ]
+    assert len(detect_schedule_conflicts(entries)) == 1
+
+
+def test_detect_schedule_conflicts_adjacent_classes_do_not_overlap():
+    entries = [
+        {
+            "courseNumber": "00940345",
+            "scheduleGroups": [{"day": "Sunday", "time": "10:30-12:30"}],
+        },
+        {
+            "courseNumber": "00940411",
+            "scheduleGroups": [{"day": "Sunday", "time": "12:30-14:30"}],
+        },
+    ]
+    assert detect_schedule_conflicts(entries) == []
+
+
+def test_detect_schedule_conflicts_partial_overlap():
+    entries = [
+        {
+            "courseNumber": "00940345",
+            "scheduleGroups": [{"day": "Tuesday", "time": "09:00-11:00"}],
+        },
+        {
+            "courseNumber": "00940411",
+            "scheduleGroups": [{"day": "Tuesday", "time": "10:00-12:00"}],
+        },
+    ]
+    assert len(detect_schedule_conflicts(entries)) == 1
+
+
 def test_build_weekly_schedule_payload_marks_conflicts_status():
     payload = build_weekly_schedule_payload(
         [
@@ -77,3 +119,28 @@ def test_build_weekly_schedule_payload_marks_conflicts_status():
     assert payload["status"] == "conflicts"
     assert len(payload["conflicts"]) == 1
     assert payload["weekView"][0]["day"] == "Sunday"
+
+
+def test_build_weekly_schedule_payload_detects_custom_event_conflicts():
+    payload = build_weekly_schedule_payload(
+        [
+            {
+                "courseNumber": "00940345",
+                "courseTitle": "A",
+                "scheduleGroups": [{"day": "Sunday", "time": "10:30-12:30"}],
+            },
+        ],
+        custom_events=[
+            {
+                "id": "gym",
+                "title": "Gym",
+                "day": "Sunday",
+                "startTime": "11:00",
+                "endTime": "12:00",
+            }
+        ],
+    )
+
+    assert payload["status"] == "conflicts"
+    assert any("00940345" in (conflict.get("courseNumbers") or []) for conflict in payload["conflicts"])
+    assert payload.get("customEvents")
