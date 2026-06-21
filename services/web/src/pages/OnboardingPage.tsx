@@ -44,7 +44,10 @@ export function OnboardingPage() {
     }
   }, [profileQuery.data, navigate])
 
-  const programs = programsQuery.data?.items ?? []
+  const programs = (programsQuery.data?.items ?? []).filter((program) => Boolean(program.id))
+  const programsLoading = programsQuery.isLoading
+  const programsLoadError = programsQuery.isError
+  const programsEmpty = !programsLoading && !programsLoadError && programs.length === 0
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -103,14 +106,24 @@ export function OnboardingPage() {
             value={degreeId}
             onChange={(e) => setDegreeId(e.target.value)}
             required
+            disabled={programsLoading || programsEmpty || programsLoadError}
           >
             <option value="">{t('onboarding.selectProgram')}</option>
             {programs.map((program) => (
-              <option key={program.programCode} value={program.id ?? ''}>
-                {program.name ?? program.nameHebrew ?? program.programCode}
+              <option key={program.id} value={program.id!}>
+                {program.name ?? program.nameHebrew ?? program.nameEn ?? program.programCode}
               </option>
             ))}
           </Select>
+          {programsLoading ? (
+            <p className="text-sm text-[var(--color-muted)]">{t('onboarding.programsLoading')}</p>
+          ) : null}
+          {programsLoadError ? (
+            <p className="text-sm text-[var(--color-danger)]">{t('onboarding.programsLoadFailed')}</p>
+          ) : null}
+          {programsEmpty ? (
+            <p className="text-sm text-[var(--color-danger)]">{t('onboarding.programsEmpty')}</p>
+          ) : null}
           <Input
             label={t('onboarding.catalogYear')}
             type="number"
@@ -126,7 +139,7 @@ export function OnboardingPage() {
             required
           />
           {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
-          <Button type="submit" className="w-full" loading={loading}>
+          <Button type="submit" className="w-full" loading={loading} disabled={programsLoading || programsEmpty || programsLoadError}>
             {t('onboarding.continueDashboard')}
           </Button>
         </form>

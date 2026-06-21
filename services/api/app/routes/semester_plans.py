@@ -17,12 +17,14 @@ from app.repositories.semester_plan_repository import (
     to_public_semester_plan_summary,
     to_public_shared_semester_plan,
 )
-from app.services.planner_enrichment_service import enrich_semester_plan
+from app.services.planner_enrichment_service import resolve_public_plan_insights
 from app.schemas.semester_plan import (
     CreateManualSemesterPlanRequest,
     CreateSemesterPlanVersionRequest,
     GenerateSemesterPlanRequest,
     OBJECT_ID_PATTERN,
+    PatchLessonSelectionRequest,
+    PatchMaybeCoursesRequest,
     PatchPlannedCourseRequest,
     ReorderPlannedCoursesRequest,
     UpdateSemesterPlanRequest,
@@ -33,6 +35,9 @@ from app.services.manual_semester_plan_service import (
     create_manual_semester_plan,
     create_semester_plan_version_by_user,
     get_shared_semester_plan_by_token,
+    patch_lesson_selection_by_user,
+    patch_maybe_courses_by_user,
+    patch_maybe_lesson_selection_by_user,
     patch_planned_course_by_user,
     reorder_planned_courses_by_user,
     update_semester_plan_by_user,
@@ -77,8 +82,17 @@ async def _public_plan_with_insights(
     database,
     user_id: str,
     plan: dict[str, Any],
+    *,
+    recompute: bool = False,
+    persist_snapshot: bool = False,
 ) -> dict[str, Any]:
-    enriched = await enrich_semester_plan(database, user_id, plan)
+    enriched = await resolve_public_plan_insights(
+        database,
+        user_id,
+        plan,
+        recompute=recompute,
+        persist_snapshot=persist_snapshot,
+    )
     public = to_public_semester_plan(enriched)
     if public is None:
         return {}
@@ -156,7 +170,7 @@ async def create_manual_semester_plan_route(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
         }
     )
@@ -180,7 +194,7 @@ async def generate_semester_plan(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
         }
     )
@@ -255,7 +269,13 @@ async def get_shared_semester_plan(share_token: str) -> dict[str, Any]:
 
     plan = result["plan"]
     user_id = str(plan.get("userId"))
-    enriched = await enrich_semester_plan(database, user_id, plan)
+    enriched = await resolve_public_plan_insights(
+        database,
+        user_id,
+        plan,
+        recompute=False,
+        persist_snapshot=False,
+    )
     public = to_public_shared_semester_plan(enriched)
     insights = enriched.get("plannerInsights")
     if insights and public is not None:
@@ -277,7 +297,9 @@ async def get_semester_plan(
 
     return success_response(
         {
-            "semesterPlan": await _public_plan_with_insights(database, auth.user_id, plan),
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, plan, recompute=False, persist_snapshot=False
+            ),
         }
     )
 
@@ -304,7 +326,7 @@ async def create_semester_plan_version(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             ),
             "sourcePlanId": result.get("sourcePlanId"),
         }
@@ -333,7 +355,7 @@ async def update_semester_plan(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
         }
     )
@@ -364,7 +386,88 @@ async def patch_planned_course(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
+            )
+        }
+    )
+
+
+@router.patch("/{plan_id}/courses/{course_number}/lesson-selection")
+async def patch_lesson_selection(
+    plan_id: str,
+    course_number: str,
+    payload: PatchLessonSelectionRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    validate_course_number_param(course_number)
+    database = await get_database()
+    result = _handle_manual_plan_result(
+        await patch_lesson_selection_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            course_number,
+            payload.model_dump(),
+        )
+    )
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
+            )
+        }
+    )
+
+
+@router.patch("/{plan_id}/maybe-courses")
+async def patch_maybe_courses(
+    plan_id: str,
+    payload: PatchMaybeCoursesRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    database = await get_database()
+    result = _handle_manual_plan_result(
+        await patch_maybe_courses_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            payload.model_dump(),
+        )
+    )
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"], recompute=False, persist_snapshot=False
+            )
+        }
+    )
+
+
+@router.patch("/{plan_id}/maybe-courses/{course_number}/lesson-selection")
+async def patch_maybe_lesson_selection(
+    plan_id: str,
+    course_number: str,
+    payload: PatchLessonSelectionRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    validate_plan_id_param(plan_id)
+    validate_course_number_param(course_number)
+    database = await get_database()
+    result = _handle_manual_plan_result(
+        await patch_maybe_lesson_selection_by_user(
+            database,
+            auth.user_id,
+            plan_id,
+            course_number,
+            payload.model_dump(),
+        )
+    )
+    return success_response(
+        {
+            "semesterPlan": await _public_plan_with_insights(
+                database, auth.user_id, result["plan"], recompute=False, persist_snapshot=False
             )
         }
     )
@@ -389,7 +492,7 @@ async def reorder_planned_courses(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
         }
     )
@@ -414,7 +517,7 @@ async def update_semester_plan_share(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
         }
     )
@@ -435,7 +538,7 @@ async def archive_semester_plan(
     return success_response(
         {
             "semesterPlan": await _public_plan_with_insights(
-                database, auth.user_id, result["plan"]
+                database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
         }
     )

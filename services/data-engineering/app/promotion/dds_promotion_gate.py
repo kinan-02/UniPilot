@@ -11,11 +11,7 @@ from typing import Any
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
-from app.curation.dds_catalog_human_signoff import (
-    NON_EXECUTABLE_RULE_GROUP_IDS,
-    PRODUCTION_EXCLUDED_COURSE_NUMBERS,
-    extract_human_signoff_from_staged_programs,
-)
+from app.curation.catalog_signoff import extract_catalog_signoff
 from app.importers.dds_catalog_staging_importer import (
     EXECUTABLE_RULE_TYPES,
     PRODUCTION_COLLECTION_NAMES,
@@ -34,9 +30,10 @@ from app.quality.dds_staging_quality import (
     build_dds_staging_quality_report,
     default_json_report_path as default_quality_json_path,
 )
-from app.sources.technion_dds_catalog_pdf import service_root
+from app.paths import service_root
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
 
+EXCLUDED_COURSE_SKIP_REASON = "production-excluded-by-catalog-signoff"
 EXPECTED_PROGRAM_CODES = ["009216-1-000", "009009-1-000", "009118-1-000"]
 EXPECTED_TOTAL_CREDITS = 155.0
 
@@ -132,10 +129,14 @@ def build_promotion_gate_result(
     courses = list(database[settings.staging_courses_collection].find(_course_filter()))
     offerings = list(database[settings.staging_course_offerings_collection].find({}))
 
-    human_signoff = extract_human_signoff_from_staged_programs(programs)
-    excluded_courses = set(human_signoff.get("productionExcludedCourseNumbers", []))
-    advisory_group_ids = set(human_signoff.get("signedOffNonExecutableRuleGroupIds", []))
-    advisory_group_ids |= set(NON_EXECUTABLE_RULE_GROUP_IDS)
+    catalog_signoff = extract_catalog_signoff(programs)
+    excluded_courses = set(catalog_signoff.get("productionExcludedCourseNumbers", []))
+    advisory_group_ids = set(catalog_signoff.get("signedOffNonExecutableRuleGroupIds", []))
+    for document in requirements:
+        group = document.get("requirementGroup", {})
+        group_id = group.get("groupId")
+        if group_id and not document.get("ruleIsExecutable", True):
+            advisory_group_ids.add(group_id)
 
     quality_live = build_dds_staging_quality_report(database, settings=settings)
     quality_file_summary = _load_quality_summary(quality_json_path)
@@ -241,27 +242,28 @@ def build_promotion_gate_result(
         blocker=bad_staging_flags,
     )
 
-    # --- Human signoff ---
+    # --- Catalog sign-off (vault wiki or legacy human) ---
+    signoff_label = "vaultSignoff" if catalog_signoff.get("signoffSource") == "vault-wiki" else "catalogSignoff"
     add_check(
-        "policy.human_signoff_present",
-        bool(human_signoff),
-        "humanSignoff metadata present on staged programs."
-        if human_signoff
-        else "humanSignoff metadata missing.",
+        "policy.catalog_signoff_present",
+        bool(catalog_signoff),
+        f"{signoff_label} metadata present on staged programs."
+        if catalog_signoff
+        else "Catalog sign-off metadata missing.",
         severity="blocker",
-        blocker=not human_signoff,
+        blocker=not catalog_signoff,
     )
-    advisory_policy_ok = human_signoff.get("nonExecutableRulesPolicy") == "advisory-only"
+    advisory_policy_ok = catalog_signoff.get("nonExecutableRulesPolicy") == "advisory-only"
     add_check(
         "policy.non_executable_advisory",
         advisory_policy_ok,
         "nonExecutableRulesPolicy is advisory-only."
         if advisory_policy_ok
-        else f"Unexpected policy: {human_signoff.get('nonExecutableRulesPolicy')!r}",
+        else f"Unexpected policy: {catalog_signoff.get('nonExecutableRulesPolicy')!r}",
         severity="blocker",
         blocker=not advisory_policy_ok,
     )
-    enforce_off = human_signoff.get("enforceNonExecutableRulesInProduction") is False
+    enforce_off = catalog_signoff.get("enforceNonExecutableRulesInProduction") is False
     add_check(
         "policy.no_mandatory_non_executable",
         enforce_off,
@@ -272,7 +274,7 @@ def build_promotion_gate_result(
         blocker=not enforce_off,
     )
     exclude_policy_ok = (
-        human_signoff.get("productionExcludedCoursePolicy")
+        catalog_signoff.get("productionExcludedCoursePolicy")
         == "omit-from-production-do-not-ingest"
     )
     add_check(
@@ -284,13 +286,17 @@ def build_promotion_gate_result(
         severity="blocker",
         blocker=not exclude_policy_ok,
     )
-    expected_excluded = set(PRODUCTION_EXCLUDED_COURSE_NUMBERS)
-    actual_excluded = set(human_signoff.get("productionExcludedCourseNumbers", []))
+    staging_course_numbers = {
+        doc.get("courseNumber") for doc in courses if doc.get("courseNumber")
+    }
+    catalog_refs = _collect_course_refs_from_requirements(requirements)
+    expected_excluded = catalog_refs - staging_course_numbers
+    actual_excluded = set(catalog_signoff.get("productionExcludedCourseNumbers", []))
     excluded_match = actual_excluded == expected_excluded
     add_check(
         "policy.excluded_courses_list",
         excluded_match,
-        "Production-excluded course list matches expected 14 numbers."
+        "Production-excluded course list matches catalog refs absent from semester JSON staging."
         if excluded_match
         else f"Excluded list mismatch: extra={sorted(actual_excluded - expected_excluded)} "
         f"missing={sorted(expected_excluded - actual_excluded)}",
@@ -300,6 +306,31 @@ def build_promotion_gate_result(
             "expected": sorted(expected_excluded),
             "actual": sorted(actual_excluded),
         },
+    )
+    staging_non_executable = {
+        doc.get("requirementGroup", {}).get("groupId")
+        for doc in requirements
+        if not _is_hard_requirement(doc)
+        and doc.get("requirementGroup", {}).get("groupId")
+    }
+    signed_off_groups = set(catalog_signoff.get("signedOffNonExecutableRuleGroupIds", []))
+    non_exec_signoff_ok = staging_non_executable <= signed_off_groups
+    unsigned_groups = sorted(staging_non_executable - signed_off_groups)
+    if non_exec_signoff_ok:
+        non_exec_message = "All staged non-executable groups are covered by catalog sign-off."
+    elif len(unsigned_groups) <= 5:
+        non_exec_message = f"Unsigned non-executable groups: {unsigned_groups}"
+    else:
+        non_exec_message = (
+            f"Unsigned non-executable groups: {unsigned_groups[:5]} "
+            f"(+{len(unsigned_groups) - 5} more)"
+        )
+    add_check(
+        "policy.non_executable_groups_signed_off",
+        non_exec_signoff_ok,
+        non_exec_message,
+        severity="blocker",
+        blocker=not non_exec_signoff_ok,
     )
 
     # --- Quality ---
@@ -378,17 +409,18 @@ def build_promotion_gate_result(
     # --- Build promotion plan ---
     plan = PromotionPlan()
     policies = PromotionPolicy(
-        nonExecutableRulesPolicy=str(human_signoff.get("nonExecutableRulesPolicy", "advisory-only")),
+        nonExecutableRulesPolicy=str(catalog_signoff.get("nonExecutableRulesPolicy", "advisory-only")),
         enforceNonExecutableRulesInProduction=bool(
-            human_signoff.get("enforceNonExecutableRulesInProduction", False)
+            catalog_signoff.get("enforceNonExecutableRulesInProduction", False)
         ),
         productionExcludedCoursePolicy=str(
-            human_signoff.get("productionExcludedCoursePolicy", "omit-from-production-do-not-ingest")
+            catalog_signoff.get("productionExcludedCoursePolicy", "omit-from-production-do-not-ingest")
         ),
         productionExcludedCourseNumbers=sorted(excluded_courses),
-        signedOffBy=human_signoff.get("signedOffBy"),
-        signedOffAt=human_signoff.get("signedOffAt"),
+        signedOffBy=catalog_signoff.get("signedOffBy"),
+        signedOffAt=catalog_signoff.get("signedOffAt"),
     )
+    promoted_advisory_group_ids: set[str] = set()
 
     for program in programs:
         code = program.get("programCode", "")
@@ -421,6 +453,7 @@ def build_promotion_gate_result(
                 )
             )
         elif _is_advisory_requirement(document, advisory_group_ids):
+            promoted_advisory_group_ids.add(group_id)
             advisory_rule_ids.append(group_id)
             plan.advisoryCatalogRules.append(
                 PromotionPlanItem(
@@ -444,6 +477,16 @@ def build_promotion_gate_result(
 
     for rule in rules:
         group_id = rule.get("requirementGroupId", rule.get("stagingKey", ""))
+        if group_id in promoted_advisory_group_ids:
+            plan.skippedItems.append(
+                SkippedPromotionItem(
+                    itemType="catalog_rule",
+                    identifier=group_id,
+                    reason="already-promoted-from-requirement-group",
+                    details={"dedupe": "advisory_requirement_group"},
+                )
+            )
+            continue
         advisory_rule_ids.append(group_id)
         plan.advisoryCatalogRules.append(
             PromotionPlanItem(
@@ -467,7 +510,7 @@ def build_promotion_gate_result(
                 SkippedPromotionItem(
                     itemType="course",
                     identifier=number,
-                    reason="production-excluded-by-human-signoff",
+                    reason="production-excluded-by-catalog-signoff",
                     details={"policy": policies.productionExcludedCoursePolicy},
                 )
             )
@@ -513,20 +556,20 @@ def build_promotion_gate_result(
     req_course_refs = _collect_course_refs_from_requirements(requirements)
     for number in sorted(req_course_refs & excluded_courses):
         if not any(
-            item.identifier == number and item.reason == "production-excluded-by-human-signoff"
+            item.identifier == number and item.reason == EXCLUDED_COURSE_SKIP_REASON
             for item in plan.skippedItems
         ):
             plan.skippedItems.append(
                 SkippedPromotionItem(
                     itemType="catalog_course_reference",
                     identifier=number,
-                    reason="production-excluded-by-human-signoff",
+                    reason="production-excluded-by-catalog-signoff",
                     details={"note": "May remain in catalog refs as reference-only; no production course row."},
                 )
             )
 
     excluded_in_plan = [
-        item for item in plan.skippedItems if item.reason == "production-excluded-by-human-signoff"
+        item for item in plan.skippedItems if item.reason == EXCLUDED_COURSE_SKIP_REASON
     ]
     add_check(
         "plan.no_excluded_courses_in_writes",
@@ -658,7 +701,7 @@ def render_promotion_plan_markdown(report: PromotionReport) -> str:
     excluded = [
         item
         for item in plan.skippedItems
-        if item.reason == "production-excluded-by-human-signoff"
+        if item.reason == EXCLUDED_COURSE_SKIP_REASON
     ]
     if excluded:
         for item in excluded[:20]:

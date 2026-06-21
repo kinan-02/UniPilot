@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.planning.lesson_events import (
+    extract_lesson_options_from_offering,
+    sync_selected_groups_from_events,
+    validate_lesson_selection,
+)
 from app.planning.schedule_group_selection import filter_schedule_groups_by_selection
 from app.planning.semester_codes import pick_best_offering
 from app.planning.weekly_schedule import build_weekly_schedule_payload
@@ -34,6 +39,7 @@ def build_manual_planned_course(
     reason: str | None = None,
     is_active: bool = True,
     selected_groups: dict[str, Any] | None = None,
+    selected_lesson_events: list[dict[str, Any]] | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
     return {
@@ -44,14 +50,15 @@ def build_manual_planned_course(
         "category": category or "manual",
         "reason": reason or "Added manually by student",
         "isActive": is_active,
+        "selectedLessonEvents": selected_lesson_events or [],
         "selectedGroups": selected_groups
-        or {"lecture": None, "tutorial": None, "lab": None, "project": None},
+        or {"lecture": [], "tutorial": [], "lab": [], "project": []},
         "notes": notes,
     }
 
 
 def _default_selected_groups() -> dict[str, Any]:
-    return {"lecture": None, "tutorial": None, "lab": None, "project": None}
+    return {"lecture": [], "tutorial": [], "lab": [], "project": []}
 
 
 def _selected_groups_from_input(item: dict[str, Any]) -> dict[str, Any] | None:
@@ -61,6 +68,19 @@ def _selected_groups_from_input(item: dict[str, Any]) -> dict[str, Any] | None:
     if hasattr(selected, "model_dump"):
         return selected.model_dump()
     return dict(selected)
+
+
+def _selected_lesson_events_from_input(item: dict[str, Any]) -> list[dict[str, Any]] | None:
+    selected = item.get("selectedLessonEvents")
+    if selected is None:
+        return None
+    events: list[dict[str, Any]] = []
+    for event in selected:
+        if hasattr(event, "model_dump"):
+            events.append(event.model_dump())
+        else:
+            events.append(dict(event))
+    return events
 
 
 def is_course_active(planned_course: dict[str, Any]) -> bool:
@@ -88,30 +108,13 @@ async def _load_offering_for_schedule(
     semester_code: int,
 ) -> dict[str, Any] | None:
     """Load offering for plan semester; fall back to nearest catalog year for same term."""
-    offerings = await catalog_repository.list_offerings_for_course(
+    offerings_by_number = await catalog_repository.list_best_offerings_for_courses(
         database,
-        course_number,
+        [course_number],
         academic_year=academic_year,
         semester_code=semester_code,
     )
-    offering = _find_offering_match(
-        offerings,
-        academic_year=academic_year,
-        semester_code=semester_code,
-    )
-    if offering:
-        return offering
-
-    all_for_term = await catalog_repository.list_offerings_for_course(
-        database,
-        course_number,
-        semester_code=semester_code,
-    )
-    return _find_offering_match(
-        all_for_term,
-        academic_year=academic_year,
-        semester_code=semester_code,
-    )
+    return offerings_by_number.get(course_number)
 
 
 async def resolve_weekly_schedule_entries(
@@ -123,6 +126,41 @@ async def resolve_weekly_schedule_entries(
     planned_by_id = {_normalize_course_id(course["courseId"]): course for course in planned_courses}
     errors: list[str] = []
     built_entries: list[dict[str, Any]] = []
+
+    needs_offering: list[tuple[dict[str, Any], dict[str, Any], str, int, int]] = []
+    for schedule_input in schedule_inputs:
+        course_id = _normalize_course_id(schedule_input["courseId"])
+        planned = planned_by_id.get(course_id)
+        if not planned:
+            errors.append(f"Weekly schedule references courseId {course_id} not in plannedCourses")
+            continue
+        if not is_course_active(planned):
+            continue
+        if schedule_input.get("scheduleGroups"):
+            continue
+        needs_offering.append(
+            (
+                schedule_input,
+                planned,
+                planned["courseNumber"],
+                int(schedule_input["academicYear"]),
+                int(schedule_input["semesterCode"]),
+            )
+        )
+
+    offerings_by_number: dict[str, dict[str, Any]] = {}
+    if needs_offering:
+        by_term: dict[tuple[int, int], list[str]] = {}
+        for _, _, course_number, academic_year, semester_code in needs_offering:
+            by_term.setdefault((academic_year, semester_code), []).append(course_number)
+        for (academic_year, semester_code), numbers in by_term.items():
+            batch = await catalog_repository.list_best_offerings_for_courses(
+                database,
+                numbers,
+                academic_year=academic_year,
+                semester_code=semester_code,
+            )
+            offerings_by_number.update(batch)
 
     for schedule_input in schedule_inputs:
         course_id = _normalize_course_id(schedule_input["courseId"])
@@ -139,12 +177,7 @@ async def resolve_weekly_schedule_entries(
         schedule_groups = schedule_input.get("scheduleGroups")
 
         if not schedule_groups:
-            offering = await _load_offering_for_schedule(
-                database,
-                course_number=course_number,
-                academic_year=academic_year,
-                semester_code=semester_code,
-            )
+            offering = offerings_by_number.get(course_number)
             if not offering:
                 errors.append(
                     f"No published offering for course {course_number} "
@@ -160,9 +193,12 @@ async def resolve_weekly_schedule_entries(
         schedule_groups = filter_schedule_groups_by_selection(
             schedule_groups,
             planned.get("selectedGroups"),
+            selected_lesson_events=planned.get("selectedLessonEvents"),
+            course_number=course_number,
+            academic_year=academic_year,
+            semester_code=semester_code,
         )
         if not schedule_groups:
-            errors.append(f"No schedule groups selected for course {course_number}")
             continue
 
         built_entries.append(
@@ -179,23 +215,18 @@ async def resolve_weekly_schedule_entries(
     return built_entries, errors
 
 
-async def build_manual_semester_payload(
+async def _build_planned_course_list_from_inputs(
     database,
-    *,
-    semester_code: str,
-    goal_credits: float | None,
-    order: int | None,
-    notes: str | None,
     planned_course_inputs: list[dict[str, Any]],
-    weekly_schedule_input: dict[str, Any] | None,
-    custom_events: list[dict[str, Any]] | None = None,
-) -> tuple[dict[str, Any] | None, list[str]]:
+    *,
+    field_label: str,
+) -> tuple[list[dict[str, Any]] | None, list[str]]:
     if not planned_course_inputs:
-        return None, ["plannedCourses must contain at least one course"]
+        return [], []
 
     course_ids = [_normalize_course_id(item["courseId"]) for item in planned_course_inputs]
     if len(course_ids) != len(set(course_ids)):
-        return None, ["Duplicate courseId in plannedCourses"]
+        return None, [f"Duplicate courseId in {field_label}"]
 
     catalog_courses = await catalog_repository.find_courses_by_ids(database, course_ids)
     catalog_by_id = {_normalize_course_id(course["_id"]): course for course in catalog_courses}
@@ -214,9 +245,55 @@ async def build_manual_semester_payload(
                 reason=item.get("reason"),
                 is_active=item.get("isActive", True),
                 selected_groups=_selected_groups_from_input(item),
+                selected_lesson_events=_selected_lesson_events_from_input(item),
                 notes=item.get("notes"),
             )
         )
+    return planned_courses, []
+
+
+async def build_manual_semester_payload(
+    database,
+    *,
+    semester_code: str,
+    goal_credits: float | None,
+    order: int | None,
+    notes: str | None,
+    planned_course_inputs: list[dict[str, Any]],
+    maybe_course_inputs: list[dict[str, Any]] | None = None,
+    weekly_schedule_input: dict[str, Any] | None,
+    custom_events: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    maybe_inputs = maybe_course_inputs or []
+    if not planned_course_inputs and not maybe_inputs:
+        return None, ["plannedCourses or maybeCourses must contain at least one course"]
+
+    planned_courses, planned_errors = await _build_planned_course_list_from_inputs(
+        database,
+        planned_course_inputs,
+        field_label="plannedCourses",
+    )
+    if planned_errors:
+        return None, planned_errors
+    assert planned_courses is not None
+
+    maybe_courses, maybe_errors = await _build_planned_course_list_from_inputs(
+        database,
+        maybe_course_inputs or [],
+        field_label="maybeCourses",
+    )
+    if maybe_errors:
+        return None, maybe_errors
+    assert maybe_courses is not None
+
+    planned_ids = {_normalize_course_id(course["courseId"]) for course in planned_courses}
+    maybe_ids = {_normalize_course_id(course["courseId"]) for course in maybe_courses}
+    overlap = planned_ids & maybe_ids
+    if overlap:
+        return None, [
+            f"courseId {course_id} cannot appear in both plannedCourses and maybeCourses"
+            for course_id in sorted(overlap)
+        ]
 
     active_courses = [course for course in planned_courses if is_course_active(course)]
     total_credits = round_credits(sum(course["credits"] for course in active_courses))
@@ -225,6 +302,7 @@ async def build_manual_semester_payload(
         "goalCredits": goal_credits if goal_credits is not None else total_credits,
         "order": order if order is not None else 1,
         "plannedCourses": planned_courses,
+        "maybeCourses": maybe_courses,
         "notes": notes or "",
         "constraintsSnapshot": {},
     }
@@ -305,6 +383,8 @@ def collect_course_ids_across_semesters(semesters: list[dict[str, Any]]) -> list
     for semester in semesters:
         for course in semester.get("plannedCourses") or []:
             course_ids.append(_normalize_course_id(course["courseId"]))
+        for course in semester.get("maybeCourses") or []:
+            course_ids.append(_normalize_course_id(course["courseId"]))
     return course_ids
 
 
@@ -329,6 +409,7 @@ async def _build_semesters_from_request(
             order=semester_input.get("order", index),
             notes=semester_input.get("notes"),
             planned_course_inputs=semester_input["plannedCourses"],
+            maybe_course_inputs=semester_input.get("maybeCourses"),
             weekly_schedule_input=semester_input.get("weeklySchedule"),
             custom_events=semester_input.get("customEvents"),
         )
@@ -380,6 +461,7 @@ async def create_manual_semester_plan(
             "order": 1,
             "notes": payload.get("notes"),
             "plannedCourses": payload["plannedCourses"],
+            "maybeCourses": payload.get("maybeCourses"),
             "weeklySchedule": payload.get("weeklySchedule"),
         }
 
@@ -585,9 +667,128 @@ async def patch_planned_course_by_user(
         course["selectedGroups"] = (
             selected.model_dump() if hasattr(selected, "model_dump") else dict(selected)
         )
+    if payload.get("selectedLessonEvents") is not None:
+        events = payload["selectedLessonEvents"]
+        normalized_events = [
+            event.model_dump() if hasattr(event, "model_dump") else dict(event)
+            for event in events
+        ]
+        course["selectedLessonEvents"] = normalized_events
+        course["selectedGroups"] = sync_selected_groups_from_events(normalized_events)
+
     if "notes" in payload:
         course["notes"] = payload.get("notes")
 
+    planned_courses[target_index] = course
+    primary["plannedCourses"] = planned_courses
+
+    weekly_schedule, schedule_errors = await _rebuild_weekly_schedule_for_semester(
+        database,
+        primary,
+    )
+    if schedule_errors:
+        return {"status": "validation_error", "errors": schedule_errors}
+    primary["weeklySchedule"] = weekly_schedule
+    semesters[0] = primary
+
+    active_courses = [item for item in planned_courses if is_course_active(item)]
+    total_credits = round_credits(sum(item.get("credits") or 0 for item in active_courses))
+    explanation = dict(existing_plan.get("explanation") or {})
+    explanation.update(
+        {
+            "summary": f"Manual plan with {len(active_courses)} active course(s)",
+            "totalRecommendedCredits": total_credits,
+            "emptyPlan": len(active_courses) == 0,
+        }
+    )
+
+    updated_plan = await update_semester_plan_by_id_and_user_id(
+        database,
+        plan_id,
+        user_id,
+        {
+            "semesters": semesters,
+            "explanation": explanation,
+            "version": int(existing_plan.get("version") or 1) + 1,
+        },
+    )
+    if not updated_plan:
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": updated_plan}
+
+
+async def patch_lesson_selection_by_user(
+    database,
+    user_id: str,
+    plan_id: str,
+    course_number: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    from app.planning.semester_codes import plan_semester_to_offering_keys
+    from app.repositories.semester_plan_repository import (
+        find_semester_plan_by_id_and_user_id,
+        update_semester_plan_by_id_and_user_id,
+    )
+
+    existing_plan = await find_semester_plan_by_id_and_user_id(database, plan_id, user_id)
+    if not existing_plan:
+        return {"status": "not_found"}
+    if existing_plan.get("status") == "archived":
+        return {"status": "archived"}
+
+    semesters = [dict(semester) for semester in existing_plan.get("semesters") or []]
+    if not semesters:
+        return {"status": "validation_error", "errors": ["Plan has no semesters"]}
+
+    primary = semesters[0]
+    planned_courses = [dict(course) for course in primary.get("plannedCourses") or []]
+    target_index = next(
+        (
+            index
+            for index, course in enumerate(planned_courses)
+            if str(course.get("courseNumber") or "") == course_number
+        ),
+        None,
+    )
+    if target_index is None:
+        return {
+            "status": "validation_error",
+            "errors": [f"Course {course_number} is not in this plan"],
+        }
+
+    offering_keys = plan_semester_to_offering_keys(str(primary.get("semesterCode") or ""))
+    if not offering_keys:
+        return {"status": "validation_error", "errors": ["Invalid semester code"]}
+
+    academic_year, technion_code = offering_keys
+    offering = await _load_offering_for_schedule(
+        database,
+        course_number=course_number,
+        academic_year=academic_year,
+        semester_code=technion_code,
+    )
+    if not offering:
+        return {
+            "status": "validation_error",
+            "errors": [
+                f"No published offering for course {course_number} "
+                f"in {academic_year} semesterCode {technion_code}"
+            ],
+        }
+
+    raw_events = payload.get("selectedLessonEvents") or []
+    selected_events = [
+        event.model_dump() if hasattr(event, "model_dump") else dict(event)
+        for event in raw_events
+    ]
+    available_options = extract_lesson_options_from_offering(offering, course_number=course_number)
+    validation_errors = validate_lesson_selection(selected_events, available_options)
+    if validation_errors:
+        return {"status": "validation_error", "errors": validation_errors}
+
+    course = planned_courses[target_index]
+    course["selectedLessonEvents"] = selected_events
+    course["selectedGroups"] = sync_selected_groups_from_events(selected_events)
     planned_courses[target_index] = course
     primary["plannedCourses"] = planned_courses
 
@@ -661,6 +862,162 @@ async def reorder_planned_courses_by_user(
         }
 
     primary["plannedCourses"] = [by_id[course_id] for course_id in normalized_ids]
+    semesters[0] = primary
+
+    updated_plan = await update_semester_plan_by_id_and_user_id(
+        database,
+        plan_id,
+        user_id,
+        {
+            "semesters": semesters,
+            "version": int(existing_plan.get("version") or 1) + 1,
+        },
+    )
+    if not updated_plan:
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": updated_plan}
+
+
+async def patch_maybe_courses_by_user(
+    database,
+    user_id: str,
+    plan_id: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    from app.repositories.semester_plan_repository import (
+        find_semester_plan_by_id_and_user_id,
+        update_semester_plan_by_id_and_user_id,
+    )
+
+    existing_plan = await find_semester_plan_by_id_and_user_id(database, plan_id, user_id)
+    if not existing_plan:
+        return {"status": "not_found"}
+    if existing_plan.get("status") == "archived":
+        return {"status": "archived"}
+
+    semesters = [dict(semester) for semester in existing_plan.get("semesters") or []]
+    if not semesters:
+        return {"status": "validation_error", "errors": ["Plan has no semesters"]}
+
+    primary = semesters[0]
+    planned_courses = primary.get("plannedCourses") or []
+    maybe_inputs = [
+        item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        for item in (payload.get("maybeCourses") or [])
+    ]
+
+    maybe_courses, maybe_errors = await _build_planned_course_list_from_inputs(
+        database,
+        maybe_inputs,
+        field_label="maybeCourses",
+    )
+    if maybe_errors:
+        return {"status": "validation_error", "errors": maybe_errors}
+    assert maybe_courses is not None
+
+    planned_ids = {_normalize_course_id(course["courseId"]) for course in planned_courses}
+    maybe_ids = {_normalize_course_id(course["courseId"]) for course in maybe_courses}
+    overlap = planned_ids & maybe_ids
+    if overlap:
+        return {
+            "status": "validation_error",
+            "errors": [
+                f"courseId {course_id} cannot appear in both plannedCourses and maybeCourses"
+                for course_id in sorted(overlap)
+            ],
+        }
+
+    primary["maybeCourses"] = maybe_courses
+    semesters[0] = primary
+
+    updated_plan = await update_semester_plan_by_id_and_user_id(
+        database,
+        plan_id,
+        user_id,
+        {
+            "semesters": semesters,
+            "version": int(existing_plan.get("version") or 1) + 1,
+        },
+    )
+    if not updated_plan:
+        return {"status": "not_found"}
+    return {"status": "ok", "plan": updated_plan}
+
+
+async def patch_maybe_lesson_selection_by_user(
+    database,
+    user_id: str,
+    plan_id: str,
+    course_number: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    from app.planning.semester_codes import plan_semester_to_offering_keys
+    from app.repositories.semester_plan_repository import (
+        find_semester_plan_by_id_and_user_id,
+        update_semester_plan_by_id_and_user_id,
+    )
+
+    existing_plan = await find_semester_plan_by_id_and_user_id(database, plan_id, user_id)
+    if not existing_plan:
+        return {"status": "not_found"}
+    if existing_plan.get("status") == "archived":
+        return {"status": "archived"}
+
+    semesters = [dict(semester) for semester in existing_plan.get("semesters") or []]
+    if not semesters:
+        return {"status": "validation_error", "errors": ["Plan has no semesters"]}
+
+    primary = semesters[0]
+    maybe_courses = [dict(course) for course in primary.get("maybeCourses") or []]
+    target_index = next(
+        (
+            index
+            for index, course in enumerate(maybe_courses)
+            if str(course.get("courseNumber") or "") == course_number
+        ),
+        None,
+    )
+    if target_index is None:
+        return {
+            "status": "validation_error",
+            "errors": [f"Course {course_number} is not in maybeCourses"],
+        }
+
+    offering_keys = plan_semester_to_offering_keys(str(primary.get("semesterCode") or ""))
+    if not offering_keys:
+        return {"status": "validation_error", "errors": ["Invalid semester code"]}
+
+    academic_year, technion_code = offering_keys
+    offering = await _load_offering_for_schedule(
+        database,
+        course_number=course_number,
+        academic_year=academic_year,
+        semester_code=technion_code,
+    )
+    if not offering:
+        return {
+            "status": "validation_error",
+            "errors": [
+                f"No published offering for course {course_number} "
+                f"in {academic_year} semesterCode {technion_code}"
+            ],
+        }
+
+    raw_events = payload.get("selectedLessonEvents") or []
+    selected_events = [
+        event.model_dump() if hasattr(event, "model_dump") else dict(event)
+        for event in raw_events
+    ]
+    available_options = extract_lesson_options_from_offering(offering, course_number=course_number)
+    validation_errors = validate_lesson_selection(selected_events, available_options)
+    if validation_errors:
+        return {"status": "validation_error", "errors": validation_errors}
+
+    course = maybe_courses[target_index]
+    course["selectedLessonEvents"] = selected_events
+    course["selectedGroups"] = sync_selected_groups_from_events(selected_events)
+    maybe_courses[target_index] = course
+    primary["maybeCourses"] = maybe_courses
     semesters[0] = primary
 
     updated_plan = await update_semester_plan_by_id_and_user_id(

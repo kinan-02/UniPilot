@@ -75,7 +75,10 @@ export function ProfilePage() {
     )
   }
 
-  const programs = programsQuery.data?.items ?? []
+  const programs = (programsQuery.data?.items ?? []).filter((program) => Boolean(program.id))
+  const programsLoading = programsQuery.isLoading
+  const programsLoadError = programsQuery.isError
+  const programsEmpty = !programsLoading && !programsLoadError && programs.length === 0
 
   return (
     <div className="animate-fade-in">
@@ -95,14 +98,26 @@ export function ProfilePage() {
             <option value="BSc">BSc</option>
             <option value="MSc">MSc</option>
           </Select>
-          <Select label="Degree program" value={degreeId} onChange={(e) => setDegreeId(e.target.value)}>
+          <Select
+            label="Degree program"
+            value={degreeId}
+            onChange={(e) => setDegreeId(e.target.value)}
+            disabled={programsLoading || programsEmpty || programsLoadError}
+          >
             <option value="">None selected</option>
             {programs.map((p) => (
-              <option key={p.programCode} value={p.id ?? ''}>
+              <option key={p.id} value={p.id!}>
                 {p.name ?? p.nameEn ?? p.programCode}
               </option>
             ))}
           </Select>
+          {programsLoading ? <p className="text-sm text-[var(--color-muted)]">Loading degree programs…</p> : null}
+          {programsLoadError ? (
+            <p className="text-sm text-[var(--color-danger)]">Could not load degree programs</p>
+          ) : null}
+          {programsEmpty ? (
+            <p className="text-sm text-[var(--color-danger)]">No degree programs are available yet.</p>
+          ) : null}
           <Input
             label="Catalog year"
             type="number"

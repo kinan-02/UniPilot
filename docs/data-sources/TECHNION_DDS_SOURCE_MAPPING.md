@@ -1,83 +1,91 @@
 # Technion DDS Source Mapping
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
-Maps Technion Faculty of Data and Decision Sciences (DDS) source documents to UniPilot normalized models and MongoDB production collections. Consumed by `services/data-engineering` (import/promotion) and `services/api` (read APIs).
+Maps Technion academic sources to UniPilot normalized models and MongoDB production collections. Consumed by `services/data-engineering` (import/promotion) and `services/api` (read APIs).
 
-Related: `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`, `services/data-engineering/data/raw/technion/manifest.json`, `services/data-engineering/README.md`
+Related: `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`, `docs/planning/REAL_DATA_ALIGNMENT_PLAN.md`, `services/data-engineering/data/raw/technion/manifest.json`, `services/data-engineering/README.md`
 
-> **Pipeline status:** Phases 6.5–12 are implemented (parse → staging → production promotion). Sections below retain phase history for traceability.
+## Authoritative sources (2026-06-21)
 
-## Phase 6.5 update (markdown parser)
+| Concern | Source | Path |
+|---------|--------|------|
+| Semester planner (offerings, groups, schedules) | Technion semester JSON exports | `data/raw/technion/courses_2025_{200,201,202}.json` |
+| Catalog (programs, requirements, courses, regulations) | Obsidian wiki vault | `data/catalog_valut/wiki/` |
 
-When the docx-export markdown is available locally, prefer it over raw PDF extraction:
+### Semester JSON
 
-| Command | Purpose |
-|---------|---------|
-| `python -m app.main parse-dds-catalog-md --md-path <path>` | Parse markdown → draft `dds_catalog_curated_draft.json` |
+| File | Semester | Scope |
+|------|----------|-------|
+| `courses_2025_200.json` | Winter (200) | University-wide offerings |
+| `courses_2025_201.json` | Spring (201) | University-wide offerings |
+| `courses_2025_202.json` | Summer (202) | University-wide summer offerings |
 
-| File | Type | Notes |
-|------|------|-------|
-| `services/data-engineering/data/raw/technion/technion_dds_catalog_from_docx_clean.md` | Markdown | ~2,800 lines; three programs; semester tables; elective lists |
+**CLI:** `python -m app.main import-technion-courses-staging`
 
-**Parser fixes applied:**
-
-- Course numbers normalized to 8-digit `0xxxxxxx` (OCR trailing zeros, `3 0980413` junk prefix)
-- Hebrew RTL reversal on table cells (reuses `hebrew_rtl.py`)
-- Credit buckets extracted per program (108 / 24.5 / 10.5 / 12 for DS; 103 / 40 / 12 for IE; 107.5 / 35.5 / 12 for IS)
-- Choose-N / chain rules flagged `manualReviewRequired` in `parserReport`
-- Prerequisites and semester offerings still come from semester JSON (not this doc)
-
-**Limitations (unchanged):**
-
-- Draft JSON is not validated for staging import without manual review
-- No MongoDB, staging, or production writes in Phase 6.5
-
-## Phase 7.5 update (assisted curation)
-
-| Command | Purpose |
-|---------|---------|
-| `python -m app.main curate-dds-catalog` | Enrich parser draft → reviewed JSON + markdown report |
-
-| File | Type | Notes |
-|------|------|-------|
-| `data/generated/technion/dds_catalog/dds_catalog_curated_draft.json` | JSON | Parser output (gitignored) — **not overwritten** |
-| `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json` | JSON | Cursor-assisted reviewed catalog |
-| `data/curated/technion/dds_catalog/dds_catalog_curated_review_report.md` | Markdown | Curation report |
-| `data/raw/technion/courses_2025_200.json` | JSON | Winter offerings (200) — metadata reference only |
-| `data/raw/technion/courses_2025_201.json` | JSON | Spring offerings (201) |
-| `data/raw/technion/courses_2025_202.json` | JSON | Summer offerings (202) |
+**Maps to:** `staging_courses`, `staging_course_offerings` → production `courses`, `course_offerings`
 
 **Rules:**
 
-- Degree requirements come from DDS catalog markdown/draft only.
-- Course JSON enriches `titleHint`, `creditsHint`, faculty, prerequisites text, and `semestersOffered` when course numbers match exactly.
-- Courses appearing only in semester JSON are **not** added as requirements.
-- Choose-N / focus chains are encoded as rule groups and notes, not flattened mandatory course lists.
-- No MongoDB, staging, or production writes in Phase 7.5.
+- Offering snapshots only — not degree requirements.
+- Merges duplicate courses across semester files.
+- Enriches metadata (`title`, credits, prerequisites text, faculty) when numbers match.
 
-## Phase 7.6 update (agent-assisted signoff review)
+### Catalog wiki vault
 
-| Command | Purpose |
-|---------|---------|
-| `python -m app.main signoff-dds-catalog` | Source-verify reviewed JSON → updated JSON + signoff report + Phase 8 readiness check |
+| Path | Description |
+|------|-------------|
+| `data/catalog_valut/CLAUDE.md` | Wiki schema, naming, ingest protocol |
+| `data/catalog_valut/raw/` | Immutable source PDFs (provenance) |
+| `data/catalog_valut/wiki/entities/` | Faculties, tracks, programs |
+| `data/catalog_valut/wiki/courses/` | Course pages (`<code>-<slug>.md`) |
+| `data/catalog_valut/wiki/concepts/` | Regulations, policies, specializations |
+| `data/catalog_valut/wiki/index.md` | Content catalog |
 
-| File | Type | Notes |
-|------|------|-------|
-| `data/curated/technion/dds_catalog/dds_catalog_curated_reviewed.json` | JSON | Updated with `signoffReview` metadata and verified credit buckets |
-| `data/curated/technion/dds_catalog/dds_catalog_signoff_review_report.md` | Markdown | Agent-assisted signoff report (not human approval) |
-| `data/curated/technion/dds_catalog/dds_catalog_phase8_readiness_check.json` | JSON | `canImportToStaging` / `canPromoteToProduction` gate for Phase 8 |
+**Planned CLI:** `export-vault-catalog` → `data/generated/technion/catalog/catalog_reviewed.json`
+
+**Maps to:** `staging_degree_programs`, `staging_degree_requirements`, `staging_catalog_rules` → production equivalents
 
 **Rules:**
 
-- Same requirement boundaries as Phase 7.5 — markdown is source of truth for degree requirements.
-- Course JSON may only enrich metadata fields (`titleHint`, `creditsHint`, faculty, prerequisites text, offerings).
-- Uncertainty keeps `manualReviewRequired: true`; warnings are not removed unless resolved.
-- `curationStatus` may become `ready-for-staging-with-review-flags` but never `production-ready` in this phase.
-- No MongoDB, staging, or production writes in Phase 7.6.
+- Wiki is source of truth for degree requirements and program structure.
+- Semester JSON enriches course metadata only (same boundary as before).
+- Export is deterministic (no LLM at import time).
+
+See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md` for implementation phases.
+
+## Active pipeline (staging → production)
+
+| Command | Purpose |
+|---------|---------|
+| `import-technion-courses-staging` | Semester JSON → staging courses/offerings |
+| `import-dds-catalog-staging` | Vault-export JSON → staging programs/requirements |
+| `validate-dds-staging-quality` | Cross-link and quality reports |
+| `export-vault-catalog` | Wiki vault → reviewed JSON (includes sign-off) |
+| `plan-dds-production-promotion` | Promotion gate dry-run |
+| `promote-dds-to-production` | Staging → production (guarded) |
+
+## Retired sources (removed 2026-06-21)
+
+| Removed | Replacement |
+|---------|-------------|
+| `technion_dds_catalog_from_docx_clean.md` | `catalog_valut/wiki/` |
+| `09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf` in `raw/technion/` | `catalog_valut/raw/` |
+| `parse-dds-catalog-md`, `curate-dds-catalog`, `signoff-dds-catalog` | `export-vault-catalog` (planned) |
+| `data/curated/technion/dds_catalog/*.json` | `data/generated/technion/catalog/` (wiki export) |
+
+---
+
+## Historical phase notes (6–7.6 retired)
+
+<details>
+<summary>Phases 6–7.6 — markdown/PDF parser pipeline (superseded)</summary>
+
+These phases implemented PDF extraction, markdown parsing, assisted curation, and agent signoff. Code and data were removed when the catalog wiki vault became authoritative. Phase 8+ staging/promotion commands remain active; input is transitioning to vault export JSON.
+
+</details>
 
 ## Phase 8 update (DDS catalog staging import)
-
 | Command | Purpose |
 |---------|---------|
 | `python -m app.main import-dds-catalog-staging --catalog-path … --readiness-path …` | Upsert reviewed catalog into staging collections |
@@ -86,13 +94,13 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 | Staging collection | Records (Technion DDS 2025-2026) |
 |---|---|
 | `staging_degree_programs` | 3 programs |
-| `staging_degree_requirements` | 41 requirement groups |
-| `staging_catalog_rules` | 22 non-executable rules |
+| `staging_degree_requirements` | 51 requirement groups (16 hard + 35 advisory) |
+| `staging_catalog_rules` | Legacy only — vault import no longer dual-writes here |
 | `staging_ingestion_runs` | 1 audit record per import |
 
 **Rules:**
 
-- Requires Phase 7.6 `signoffReview` and `canImportToStaging: true` in readiness JSON.
+- Requires vault-export JSON with `signoffReview` and `canImportToStaging: true` in readiness JSON.
 - Rejects `production-ready` curation status and `canPromoteToProduction: true`.
 - Every document: `isStaging: true`, `productionEligible: false`, `requiresHumanSignoff: true`.
 - Idempotent re-import via stable `stagingKey` values.
@@ -135,15 +143,9 @@ When the docx-export markdown is available locally, prefer it over raw PDF extra
 
 **No automatic fixes.** Production promotion remains blocked until Phase 12 after explicit approval.
 
-## Phase 10.5 update (blocker cleanup + revalidation)
+## Phase 10.5 (retired)
 
-| Command | Purpose |
-|---------|---------|
-| `python -m app.main cleanup-dds-staging-blockers` | Source-backed curated JSON fixes + readiness refresh |
-| `… --dry-run` | Preview changes without writing files |
-| Re-run `import-dds-catalog-staging` + `validate-dds-staging-quality` | Refresh staging + reports after cleanup |
-
-Removes parser/OCR artifacts when evidence is strong, enriches `titleHint` from markdown/JSON, fixes cognition track non-mandatory modeling, and documents courses valid in catalog but absent from 2025 semester JSON.
+Blocker cleanup and manual human sign-off CLIs were removed after the catalog wiki vault became authoritative. Use `export-vault-catalog` for sign-off and re-run staging import when catalog JSON changes.
 
 ## Phase 11 update (promotion gate — dry-run plan only)
 
@@ -186,46 +188,38 @@ Reports: `data/reports/technion/dds_production_promotion_report.json`, `.md`
 
 The Python API (`services/api`) exposes read-only catalog routes under `/catalog/*`, reading production collections promoted in Phase 12. Hard requirements (`degree_requirements`) and advisory rules (`catalog_rules`) are separate endpoints; advisory rules always expose `enforceInGraduationProgress: false`.
 
-## Phase 6 update (PDF extraction)
+## Phase 6 update (PDF extraction — retired)
 
-Phase 6 adds a local PDF extraction pipeline:
+<details>
+<summary>Historical — superseded by catalog vault</summary>
 
-| Command | Purpose |
-|---------|---------|
-| `python -m app.main inspect-dds-catalog --pdf-path <path>` | Summary only (pages, program codes, course numbers, warnings) |
-| `python -m app.main extract-dds-catalog --pdf-path <path>` | Write gitignored artifacts under `data/generated/technion/dds_catalog/` |
+Phase 6 PDF extraction commands (`inspect-dds-catalog`, `extract-dds-catalog`) and related code were removed 2026-06-21. Catalog PDFs live under `catalog_valut/raw/`.
 
-Artifacts include per-page raw/processed text, `extraction_report.json`, and heuristic `candidate_sections.json`.
-
-**Limitations (unchanged):**
-
-- Hebrew RTL cleanup is best-effort; tables are not structured.
-- Candidate sections require **manual curation** (`data/samples/dds_catalog_curated_template.json`) before staging import.
-- No MongoDB, staging, or production writes in Phase 6.
+</details>
 
 ---
 
 ## 1) Purpose
 
-Document the structure of **local Technion DDS source files**, map fields to UniPilot normalized models, and list gaps/risks before any staging or production import.
-
-Phases 5–6 do **not** import into MongoDB. Phase 6 adds local PDF extraction artifacts only.
+Document the structure of **local Technion source files**, map fields to UniPilot normalized models, and list gaps/risks before staging or production import.
 
 ---
 
 ## 2) Source inventory
 
-| File | Type | Records / size | Scope |
-|------|------|----------------|-------|
-| `services/data-engineering/data/raw/technion/courses_2025_201.json` | JSON array | **1,289** courses | Spring semester (**201**) offerings — **university-wide** |
-| `services/data-engineering/data/raw/technion/courses_2025_202.json` | JSON array | **93** courses | Summer semester (**202**) offerings — **university-wide** |
-| `services/data-engineering/data/raw/technion/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf` | PDF | **13** pages, ~475 KB | DDS faculty catalog **2025/2026 (תשפ״ו)** — programs, tracks, requirements |
-| `services/data-engineering/data/raw/technion/technion_dds_catalog_from_docx_clean.md` | Markdown | ~2,800 lines | Same catalog content as PDF, docx export — **preferred for Phase 6.5 parser** |
+| File / path | Type | Scope |
+|-------------|------|-------|
+| `data/raw/technion/courses_2025_200.json` | JSON | Winter (200) semester offerings — university-wide |
+| `data/raw/technion/courses_2025_201.json` | JSON | Spring (201) semester offerings — university-wide |
+| `data/raw/technion/courses_2025_202.json` | JSON | Summer (202) semester offerings — university-wide |
+| `data/catalog_valut/wiki/` | Markdown wiki | Catalog knowledge — programs, tracks, requirements, courses, regulations |
+| `data/catalog_valut/raw/*.pdf` | PDF | Immutable catalog source documents (provenance) |
 
 ### Semester code convention
 
 | File suffix | Meaning | Example `semesterCode` |
 |-------------|---------|------------------------|
+| `200` | Winter (חורף) | `2025-200` |
 | `201` | Spring (אביב) | `2025-201` |
 | `202` | Summer (קיץ) | `2025-202` |
 

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.planning.exam_summary import active_planned_courses, build_exam_summary
+from app.planning.lesson_events import (
+    build_lesson_selection_warnings,
+    normalize_planned_course_lessons,
+)
 from app.planning.planner_warnings import build_planner_insights
 from app.planning.semester_codes import plan_semester_to_offering_keys
 from app.repositories import catalog_repository
@@ -27,26 +32,17 @@ async def _offerings_for_planned_courses(
         return {}
 
     academic_year, technion_code = offering_keys
-    offerings_by_number: dict[str, dict[str, Any]] = {}
-    for planned in planned_courses:
-        course_number = str(planned.get("courseNumber") or "")
-        if not course_number or course_number in offerings_by_number:
-            continue
-        offerings = await catalog_repository.list_offerings_for_course(
-            database,
-            course_number,
-            semester_code=technion_code,
-        )
-        from app.planning.semester_codes import pick_best_offering
-
-        best = pick_best_offering(
-            offerings,
-            preferred_academic_year=academic_year,
-            semester_code=technion_code,
-        )
-        if best:
-            offerings_by_number[course_number] = best
-    return offerings_by_number
+    course_numbers = [
+        str(planned.get("courseNumber") or "")
+        for planned in planned_courses
+        if planned.get("courseNumber")
+    ]
+    return await catalog_repository.list_best_offerings_for_courses(
+        database,
+        course_numbers,
+        academic_year=academic_year,
+        semester_code=technion_code,
+    )
 
 
 def _stale_course_warnings(
@@ -88,13 +84,16 @@ async def enrich_semester_plan(
         if course.get("courseId") is not None
     ]
 
-    profile = await find_student_profile_by_user_id(database, user_id)
-    completed_records = await find_all_completed_courses_by_user_id(database, user_id)
-    catalog_courses = await find_courses_by_ids(database, course_ids)
-    offerings_by_number = await _offerings_for_planned_courses(
-        database,
-        planned_courses=planned,
-        semester_code=str(primary.get("semesterCode") or ""),
+    semester_code = str(primary.get("semesterCode") or "")
+    profile, completed_records, catalog_courses, offerings_by_number = await asyncio.gather(
+        find_student_profile_by_user_id(database, user_id),
+        find_all_completed_courses_by_user_id(database, user_id),
+        find_courses_by_ids(database, course_ids),
+        _offerings_for_planned_courses(
+            database,
+            planned_courses=planned,
+            semester_code=semester_code,
+        ),
     )
 
     insights = build_planner_insights(
@@ -112,6 +111,56 @@ async def enrich_semester_plan(
     )
     insights["staleCourseWarnings"] = _stale_course_warnings(planned, offerings_by_number)
 
+    offering_keys = plan_semester_to_offering_keys(semester_code)
+    lesson_warnings: list[dict[str, Any]] = []
+    if offering_keys:
+        academic_year, technion_code = offering_keys
+        for planned_course in planned:
+            offering = offerings_by_number.get(str(planned_course.get("courseNumber") or ""))
+            normalized = normalize_planned_course_lessons(
+                planned_course,
+                offering=offering,
+                academic_year=academic_year,
+                semester_code=technion_code,
+            )
+            lesson_warnings.extend(build_lesson_selection_warnings(normalized, offering))
+    insights["lessonSelectionWarnings"] = lesson_warnings
+    insights["planVersion"] = int(plan.get("version") or 1)
+
     enriched = dict(plan)
     enriched["plannerInsights"] = insights
+    return enriched
+
+
+async def resolve_public_plan_insights(
+    database: AsyncIOMotorDatabase,
+    user_id: str,
+    plan: dict[str, Any],
+    *,
+    recompute: bool,
+    persist_snapshot: bool,
+) -> dict[str, Any]:
+    """Use stored snapshot on read; recompute and optionally persist on writes."""
+    snapshot = plan.get("plannerInsights")
+
+    if not recompute:
+        if snapshot:
+            enriched = dict(plan)
+            enriched["plannerInsights"] = snapshot
+            return enriched
+        return await enrich_semester_plan(database, user_id, plan)
+
+    enriched = await enrich_semester_plan(database, user_id, plan)
+    insights = enriched.get("plannerInsights")
+    if persist_snapshot and insights:
+        from app.repositories.semester_plan_repository import update_semester_plan_by_id_and_user_id
+
+        plan_id = str(plan["_id"])
+        await update_semester_plan_by_id_and_user_id(
+            database,
+            plan_id,
+            user_id,
+            {"plannerInsights": insights},
+        )
+        enriched["plannerInsights"] = insights
     return enriched

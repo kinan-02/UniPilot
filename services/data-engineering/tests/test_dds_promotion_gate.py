@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import get_settings
-from app.curation.dds_catalog_human_signoff import (
-    NON_EXECUTABLE_RULE_GROUP_IDS,
+from app.curation.catalog_policies import (
     PRODUCTION_EXCLUDED_COURSE_NUMBERS,
-    build_human_signoff_payload,
+    build_catalog_signoff_payload,
 )
 from app.importers.dds_catalog_staging_importer import PRODUCTION_COLLECTION_NAMES, SOURCE_NAME as DDS_CATALOG_SOURCE
 from app.main import run_plan_dds_production_promotion, run_promote_dds_to_production
 from app.promotion.dds_promotion_gate import (
+    EXCLUDED_COURSE_SKIP_REASON,
     build_promotion_gate_result,
     render_promotion_plan_markdown,
     run_promotion_gate_plan,
@@ -21,6 +21,43 @@ from app.models.promotion import PromotionReport
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
 
 EXPECTED_PROGRAMS = ["009216-1-000", "009009-1-000", "009118-1-000"]
+SEED_ADVISORY_GROUP_IDS = (
+    "009216-1-000:semester-1-matrix",
+    "009216-1-000:semester-2-matrix",
+    "009216-1-000:semester-3-matrix",
+    "009216-1-000:semester-4-matrix",
+    "009216-1-000:semester-5-matrix",
+    "009216-1-000:semester-7-matrix",
+    "009216-1-000:semester-8-matrix",
+    "009216-1-000:elective-ds-pool",
+    "009216-1-000:elective-faculty-pool",
+    "009216-1-000:cognition-track:requirements",
+    "009216-1-000:math-analytics-track:requirements",
+    "009009-1-000:semester-1-matrix",
+    "009009-1-000:semester-2-matrix",
+    "009009-1-000:semester-3-matrix",
+    "009009-1-000:semester-4-matrix",
+    "009009-1-000:semester-5-matrix",
+    "009009-1-000:semester-6-matrix",
+    "009009-1-000:semester-7-matrix",
+    "009009-1-000:semester-8-matrix",
+    "009009-1-000:ie-statistics-elective-chain",
+    "009009-1-000:ie-behavior-science-chain",
+    "009009-1-000:ie-focus-chain",
+    "009009-1-000:ie-additional-faculty-electives",
+    "009118-1-000:semester-1-matrix",
+    "009118-1-000:semester-2-matrix",
+    "009118-1-000:semester-3-matrix",
+    "009118-1-000:semester-4-matrix",
+    "009118-1-000:semester-5-matrix",
+    "009118-1-000:semester-7-matrix",
+    "009118-1-000:semester-8-matrix",
+    "009118-1-000:is-behavior-science-chain",
+    "009118-1-000:is-focus-chain-performance",
+    "009118-1-000:is-focus-chain-ml",
+    "009118-1-000:is-focus-chain-game-theory",
+    "009118-1-000:is-additional-faculty-electives",
+)
 HARD_GROUP_IDS = [
     "009216-1-000:core-mandatory",
     "009216-1-000:math-electives",
@@ -48,9 +85,18 @@ def _staging_doc_flags() -> dict[str, bool]:
     return {"isStaging": True, "productionEligible": False}
 
 
-def _seed_signed_off_promotion_staging(database, *, include_human_signoff: bool = True) -> None:
+def _build_seed_catalog_signoff(*, excluded_numbers: list[str]) -> dict[str, object]:
+    return build_catalog_signoff_payload(
+        signed_off_by="test-reviewer",
+        excluded_course_numbers=excluded_numbers,
+        non_executable_group_ids=list(SEED_ADVISORY_GROUP_IDS),
+    )
+
+
+def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: bool = True) -> None:
     settings = get_settings()
-    human = build_human_signoff_payload(signed_off_by="test-reviewer")
+    excluded_in_catalog = [PRODUCTION_EXCLUDED_COURSE_NUMBERS[0]]
+    catalog_signoff = _build_seed_catalog_signoff(excluded_numbers=excluded_in_catalog)
 
     for code in EXPECTED_PROGRAMS:
         program_doc = {
@@ -65,8 +111,8 @@ def _seed_signed_off_promotion_staging(database, *, include_human_signoff: bool 
             "signoffReview": {"reviewStatus": "ready-for-staging-with-review-flags"},
             **_staging_doc_flags(),
         }
-        if include_human_signoff:
-            program_doc["curationReport"] = {"humanSignoff": human}
+        if include_catalog_signoff:
+            program_doc["curationReport"] = {"vaultSignoff": catalog_signoff}
         database[settings.staging_degree_programs_collection].insert_one(program_doc)
 
     for group_id in HARD_GROUP_IDS:
@@ -88,7 +134,7 @@ def _seed_signed_off_promotion_staging(database, *, include_human_signoff: bool 
             }
         )
 
-    for group_id in NON_EXECUTABLE_RULE_GROUP_IDS:
+    for group_id in SEED_ADVISORY_GROUP_IDS:
         program_code = group_id.split(":")[0]
         refs: list[dict[str, object]] = []
         if group_id.endswith("elective-ds-pool"):
@@ -148,19 +194,6 @@ def _seed_signed_off_promotion_staging(database, *, include_human_signoff: bool 
             }
         )
 
-    for number in PRODUCTION_EXCLUDED_COURSE_NUMBERS[:2]:
-        database[settings.staging_courses_collection].insert_one(
-            {
-                "stagingKey": f"technion:course:{number}",
-                "sourceName": COURSE_JSON_SOURCE,
-                "courseNumber": number,
-                "titleHebrew": f"Excluded {number}",
-                "credits": 3.0,
-                "metadata": {"degreeRequirementsInferred": False},
-                **_staging_doc_flags(),
-            }
-        )
-
 
 def test_gate_passes_with_signed_off_staging(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
@@ -172,23 +205,23 @@ def test_gate_passes_with_signed_off_staging(mongo_database) -> None:
     assert gate.plannedWrites.counts["hardDegreeRequirements"] == len(HARD_GROUP_IDS)
 
 
-def test_gate_fails_without_human_signoff(mongo_database) -> None:
-    _seed_signed_off_promotion_staging(mongo_database, include_human_signoff=False)
+def test_gate_fails_without_catalog_signoff(mongo_database) -> None:
+    _seed_signed_off_promotion_staging(mongo_database, include_catalog_signoff=False)
     gate = build_promotion_gate_result(mongo_database)
     assert gate.gateStatus == "fail"
     assert gate.canPromote is False
-    assert any(check.checkId == "policy.human_signoff_present" and not check.passed for check in gate.checks)
+    assert any(check.checkId == "policy.catalog_signoff_present" and not check.passed for check in gate.checks)
 
 
 def test_gate_fails_if_excluded_course_list_missing(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()
     program = mongo_database[settings.staging_degree_programs_collection].find_one({})
-    human = program["curationReport"]["humanSignoff"]
-    human["productionExcludedCourseNumbers"] = human["productionExcludedCourseNumbers"][:5]
+    signoff = program["curationReport"]["vaultSignoff"]
+    signoff["productionExcludedCourseNumbers"] = []
     mongo_database[settings.staging_degree_programs_collection].update_one(
         {"_id": program["_id"]},
-        {"$set": {"curationReport.humanSignoff": human}},
+        {"$set": {"curationReport.vaultSignoff": signoff}},
     )
     gate = build_promotion_gate_result(mongo_database)
     assert gate.gateStatus == "fail"
@@ -203,19 +236,42 @@ def test_excluded_courses_not_in_planned_course_writes(mongo_database) -> None:
     skipped = {
         item.identifier
         for item in gate.plannedWrites.skippedItems
-        if item.reason == "production-excluded-by-human-signoff"
+        if item.reason == EXCLUDED_COURSE_SKIP_REASON
     }
     assert PRODUCTION_EXCLUDED_COURSE_NUMBERS[0] in skipped
-    assert PRODUCTION_EXCLUDED_COURSE_NUMBERS[1] in skipped
 
 
 def test_non_executable_rules_become_advisory(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     gate = build_promotion_gate_result(mongo_database, allow_warnings=True)
-    assert gate.plannedWrites.counts["advisoryCatalogRules"] >= len(NON_EXECUTABLE_RULE_GROUP_IDS)
+    assert gate.plannedWrites.counts["advisoryCatalogRules"] >= len(SEED_ADVISORY_GROUP_IDS)
     assert all(not item.enforceInGraduationProgress for item in gate.plannedWrites.advisoryCatalogRules)
     hard_ids = {item.identifier for item in gate.plannedWrites.hardDegreeRequirements}
-    assert not hard_ids.intersection(set(NON_EXECUTABLE_RULE_GROUP_IDS))
+    assert not hard_ids.intersection(set(SEED_ADVISORY_GROUP_IDS))
+
+
+def test_catalog_rule_skipped_when_requirement_group_already_promoted(mongo_database) -> None:
+    _seed_signed_off_promotion_staging(mongo_database)
+    gate = build_promotion_gate_result(mongo_database, allow_warnings=True)
+    skipped = {
+        (item.identifier, item.reason)
+        for item in gate.plannedWrites.skippedItems
+        if item.itemType == "catalog_rule"
+    }
+    assert any(
+        reason == "already-promoted-from-requirement-group" for _, reason in skipped
+    ), f"expected catalog_rule dedupe skip, got {skipped}"
+    catalog_rule_ids = {
+        item.identifier
+        for item in gate.plannedWrites.advisoryCatalogRules
+        if item.itemType == "catalog_rule"
+    }
+    requirement_group_ids = {
+        item.identifier
+        for item in gate.plannedWrites.advisoryCatalogRules
+        if item.itemType == "advisory_requirement_group"
+    }
+    assert not catalog_rule_ids.intersection(requirement_group_ids)
 
 
 def test_gate_fails_on_credit_mismatches(mongo_database) -> None:

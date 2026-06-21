@@ -221,6 +221,7 @@ def _serialize_semester(semester: dict[str, Any]) -> dict[str, Any]:
         "goalCredits": semester.get("goalCredits"),
         "order": semester.get("order"),
         "plannedCourses": semester.get("plannedCourses") or [],
+        "maybeCourses": semester.get("maybeCourses") or [],
         "notes": semester.get("notes") or "",
         "constraintsSnapshot": semester.get("constraintsSnapshot") or {},
     }

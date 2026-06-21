@@ -22,9 +22,8 @@ class Settings(BaseSettings):
     production_courses_collection: str = "courses"
     production_course_offerings_collection: str = "course_offerings"
     production_promotion_runs_collection: str = "promotion_runs"
-    dds_catalog_pdf_path: str | None = None
-    dds_catalog_md_path: str | None = None
-    dds_catalog_output_dir: str = "data/generated/technion/dds_catalog"
+    dds_catalog_output_dir: str = "data/generated/technion/catalog"
+    catalog_vault_path: str = "data/catalog_valut"
 
     model_config = SettingsConfigDict(
         env_file=".env",

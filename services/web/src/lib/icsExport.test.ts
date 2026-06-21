@@ -42,4 +42,29 @@ describe('icsExport', () => {
     expect(content).toContain('Gym')
     expect(content).toContain('END:VCALENDAR')
   })
+
+  it('does not duplicate custom blocks already baked into weekView', () => {
+    const content = generatePlanIcs({
+      planName: 'Fall plan',
+      schedule: {
+        weekView: [
+          {
+            day: 'Sunday',
+            slots: [
+              {
+                day: 'Sunday',
+                timeRange: '07:00-08:00',
+                courseNumber: 'CUSTOM',
+                courseTitle: 'Gym',
+                slotType: 'custom',
+              },
+            ],
+          },
+        ],
+      },
+      customEvents: [{ id: '1', title: 'Gym', day: 'Sunday', startTime: '07:00', endTime: '08:00' }],
+    })
+
+    expect(content.match(/Gym/g)?.length).toBe(1)
+  })
 })

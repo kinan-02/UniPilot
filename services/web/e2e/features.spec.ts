@@ -13,35 +13,99 @@ test.describe('Catalog', () => {
   })
 })
 
-test.describe('Manual plan wizard', () => {
+test.describe('Semester planner workspace', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/plans')
-    await expect(page.getByRole('heading', { name: /תכנון סמסטר|Semester plans/i })).toBeVisible()
+    await page.goto('/plans/new')
+    await expect(page.getByRole('heading', { name: /תוכנית חדשה|New plan/i })).toBeVisible()
   })
 
-  test('3-step flow: basics, courses, save', async ({ page }) => {
-    await page.getByRole('button', { name: /בנייה ידנית|Build manually/i }).click()
-
-    await expect(page.getByText(/לאיזה סמסטר|Which semester/i)).toBeVisible()
-    await page.getByRole('main').getByRole('button', { name: /המשך|Continue/i }).click()
-
-    const search = page.getByPlaceholder(/חפש קורס|Search course/i)
+  test('maybe courses: add, grid preview, move between lists', async ({ page }) => {
+    const search = page.getByPlaceholder(/חיפוש מספר|Search course number|חפש קורס/i)
     await search.fill('02340117')
-    await page.getByRole('listbox').getByRole('option').first().click({ timeout: 15_000 })
+    await expect(page.getByText(/02340117/).first()).toBeVisible({ timeout: 15_000 })
 
-    await page.getByRole('main').getByRole('button', { name: /המשך|Continue/i }).click()
+    await page.getByRole('button', { name: /הוסף לאולי|Add to maybe/i }).click()
+    const maybePanel = page.getByTestId('maybe-courses-panel')
+    await expect(maybePanel.getByText('02340117')).toBeVisible({ timeout: 10_000 })
+
+    const maybeGridBlock = page
+      .locator('.planner-workspace')
+      .getByRole('button')
+      .filter({ hasText: '02340117' })
+      .first()
+    await expect(maybeGridBlock).toBeVisible({ timeout: 15_000 })
+
+    await maybePanel.locator('button[title="העבר לנבחרים"], button[title="Move to selected"]').click()
+    const selectedPanel = page.getByTestId('selected-courses-panel')
+    await expect(selectedPanel.getByText('02340117')).toBeVisible({ timeout: 10_000 })
+
+    await selectedPanel.locator('button[title="העבר לאולי"], button[title="Move to maybe"]').click()
+    await expect(maybePanel.getByText('02340117')).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('CheeseFork-style flow: semester, search, add course, grid lesson selection, save', async ({ page }) => {
+    await expect(page.getByText(/חיפוש קורסים לסמסטר|Search courses for semester/i)).toBeVisible()
     await expect(page.getByText(/לוח שבועי|Weekly schedule/i).first()).toBeVisible()
 
+    const search = page.getByPlaceholder(/חיפוש מספר|Search course number|חפש קורס/i)
+    await search.fill('02340117')
+    await expect(page.getByText(/02340117/).first()).toBeVisible({ timeout: 15_000 })
+
+    await page.getByRole('button', { name: /הוסף לתוכנית|Add to plan/i }).click()
+    await expect(page.getByText(/4.*נק|4.*cred/i).first()).toBeVisible()
+
+    const lessonBlock = page
+      .locator('.planner-workspace')
+      .getByRole('button')
+      .filter({ hasText: '02340117' })
+      .first()
+    await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
+    await lessonBlock.click()
+
+    await expect(page.getByText(/Lecture|הרצאה/i).first()).toBeVisible({ timeout: 10_000 })
+
     await page.getByRole('button', { name: /שמירת תוכנית|Save plan/i }).click()
-    await expect(page.getByRole('heading', { name: /תוכנית|Plan/i })).toBeVisible({ timeout: 20_000 })
+    await expect(page).toHaveURL(/\/plans\/[^/]+\/edit/, { timeout: 20_000 })
   })
 
-  test('blocks continue without courses on step 2', async ({ page }) => {
-    await page.getByRole('button', { name: /בנייה ידנית|Build manually/i }).click()
-    await page.getByRole('main').getByRole('button', { name: /המשך|Continue/i }).click()
-    await page.getByRole('main').getByRole('button', { name: /המשך|Continue/i }).click()
+  test('saved plan: move selected to maybe persists after reload', async ({ page }) => {
+    const search = page.getByPlaceholder(/חיפוש מספר|Search course number|חפש קורס/i)
+    await search.fill('02340117')
+    await expect(page.getByText(/02340117/).first()).toBeVisible({ timeout: 15_000 })
 
-    await expect(page.getByText(/לפחות קורס אחד|at least one course/i)).toBeVisible()
+    await page.getByRole('button', { name: /הוסף לתוכנית|Add to plan/i }).click()
+    const selectedPanel = page.getByTestId('selected-courses-panel')
+    await expect(selectedPanel.getByText('02340117')).toBeVisible({ timeout: 10_000 })
+
+    await page.getByRole('button', { name: /שמירת תוכנית|Save plan/i }).click()
+    await expect(page).toHaveURL(/\/plans\/([^/]+)\/edit/, { timeout: 20_000 })
+
+    const persistResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        /\/semester-plans\/[^/]+$/.test(response.url()) &&
+        response.status() === 200,
+    )
+    await selectedPanel.locator('button[title="העבר לאולי"], button[title="Move to maybe"]').click()
+    const maybePanel = page.getByTestId('maybe-courses-panel')
+    await expect(maybePanel.getByText('02340117')).toBeVisible({ timeout: 10_000 })
+    await persistResponse
+
+    await page.reload()
+    await expect(page.getByRole('heading', { name: /עריכת תוכנית|Edit plan/i })).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByTestId('maybe-courses-panel').getByText('02340117')).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByTestId('selected-courses-panel').getByText('02340117')).toHaveCount(0)
+  })
+
+  test('plans list links to new planner route', async ({ page }) => {
+    await page.goto('/plans')
+    await page.getByRole('button', { name: /תוכנית חדשה|New plan/i }).click()
+    await expect(page).toHaveURL(/\/plans\/new/)
+    await expect(page.getByRole('heading', { name: /תוכנית חדשה|New plan/i })).toBeVisible()
   })
 })
 
@@ -63,9 +127,10 @@ test.describe('Protected routes', () => {
     await context.close()
   })
 
-  test('plans accessible without completing onboarding', async ({ page }) => {
+  test('planner accessible at /plans/new without embedded wizard tab', async ({ page }) => {
     await page.goto('/plans')
-    await page.getByRole('button', { name: /בנייה ידנית|Build manually/i }).click()
-    await expect(page.getByText(/ניתן לבנות תוכנית|build a plan without/i)).toBeVisible()
+    await expect(page.getByRole('button', { name: /בנייה ידנית|Build manually/i })).toHaveCount(0)
+    await page.getByRole('button', { name: /תוכנית חדשה|New plan/i }).click()
+    await expect(page.getByText(/חיפוש קורסים לסמסטר|Search courses for semester/i)).toBeVisible()
   })
 })

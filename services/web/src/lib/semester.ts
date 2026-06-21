@@ -70,9 +70,14 @@ export function semesterLabel(code: string, locale: 'he' | 'en'): string {
   if (!parsed) return code
   const yearRange = `${parsed.academicYear}-${parsed.academicYear + 1}`
   if (locale === 'he') {
-    const terms = ['סמסטר א׳', 'סמסטר ב׳ (אביב)', 'סמסטר קיץ']
+    const terms = ['חורף (200)', 'אביב (201)', 'קיץ (202)']
     return `${yearRange} · ${terms[parsed.termIndex - 1] ?? code}`
   }
-  const terms = ['Semester A', 'Spring semester', 'Summer semester']
+  const terms = ['Winter (200)', 'Spring (201)', 'Summer (202)']
   return `${yearRange} · ${terms[parsed.termIndex - 1] ?? code}`
+}
+
+/** Technion offering semester code shown in catalog APIs (200/201/202). */
+export function offeringSemesterCode(planSemesterCode: string): string | null {
+  return parseSemesterCode(planSemesterCode)?.semesterCode.toString() ?? null
 }

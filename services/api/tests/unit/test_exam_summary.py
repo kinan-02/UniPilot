@@ -31,8 +31,32 @@ def test_exams_from_offering_missing_data():
         course_number="00940345",
         course_name="Discrete Math",
     )
+    assert exams == []
+
+
+def test_exams_from_offering_skips_unscheduled_entries():
+    exams = exams_from_offering(
+        {"examDates": {"moedA": "TBD", "moedB": "2025-08-10 09:00"}},
+        course_number="00940345",
+        course_name="Discrete Math",
+    )
     assert len(exams) == 1
-    assert exams[0]["isMissing"] is True
+    assert exams[0]["moed"] == "B"
+
+
+def test_exams_from_offering_catalog_exam_keys():
+    exams = exams_from_offering(
+        {
+            "examDates": {
+                "examA": "01-06-2025 09:00",
+                "examB": "10-08-2025 09:00",
+            }
+        },
+        course_number="00940345",
+        course_name="Discrete Math",
+    )
+    assert len(exams) == 2
+    assert {exam["moed"] for exam in exams} == {"A", "B"}
 
 
 def test_build_exam_summary_excludes_inactive_courses():

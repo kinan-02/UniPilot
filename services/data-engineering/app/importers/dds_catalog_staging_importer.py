@@ -20,7 +20,7 @@ from app.models.staging_catalog import (
     Phase8ReadinessCheck,
     StagingCatalogImportMetadata,
 )
-from app.sources.technion_dds_catalog_pdf import service_root
+from app.paths import default_catalog_reviewed_path, default_readiness_path as vault_default_readiness_path
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ EXPECTED_TOTAL_CREDITS = 155.0
 ALLOWED_CURATION_STATUSES = {
     "ready-for-staging-with-review-flags",
     "ready-for-human-signoff",
+    "vault-signed-ready-for-staging",
 }
 BLOCKED_CURATION_STATUSES = {
     "production-ready",
@@ -87,25 +88,11 @@ class CatalogStagingImportPlan:
 
 
 def default_catalog_path() -> Path:
-    return (
-        service_root()
-        / "data"
-        / "curated"
-        / "technion"
-        / "dds_catalog"
-        / "dds_catalog_curated_reviewed.json"
-    )
+    return default_catalog_reviewed_path()
 
 
 def default_readiness_path() -> Path:
-    return (
-        service_root()
-        / "data"
-        / "curated"
-        / "technion"
-        / "dds_catalog"
-        / "dds_catalog_phase8_readiness_check.json"
-    )
+    return vault_default_readiness_path()
 
 
 def _utc_now() -> datetime:
@@ -122,10 +109,6 @@ def program_staging_key(catalog_version: str, program_code: str) -> str:
 
 def requirement_staging_key(catalog_version: str, group_id: str) -> str:
     return f"technion-dds:catalog:{catalog_version}:requirement:{group_id}"
-
-
-def rule_staging_key(catalog_version: str, group_id: str) -> str:
-    return f"technion-dds:catalog:{catalog_version}:rule:{group_id}"
 
 
 def assert_staging_collection_name(collection_name: str) -> None:
@@ -368,32 +351,6 @@ def build_catalog_staging_plan(
                     "importWarnings": list(readiness.warnings),
                 }
             )
-
-            if not executable:
-                rule_key = rule_staging_key(catalog_version, group.groupId)
-                rule_import_meta = build_import_metadata(
-                    staging_key=rule_key,
-                    document=document,
-                    import_run_id=dry_run_run_id,
-                    catalog_path=catalog_path,
-                    readiness_path=readiness_path,
-                )
-                rule_documents.append(
-                    {
-                        **rule_import_meta.model_dump(mode="json"),
-                        "recordType": "catalog_rule",
-                        "programCode": program.programCode,
-                        "institutionId": program.institutionId,
-                        "requirementGroupId": group.groupId,
-                        "ruleExpression": rule_expression,
-                        "notes": list(group.notes),
-                        "manualReviewRequired": group.manualReviewRequired,
-                        "confidence": group.confidence,
-                        "ruleIsExecutable": False,
-                        "treatsCoursesAsMandatory": False,
-                        "importWarnings": list(readiness.warnings),
-                    }
-                )
 
     summary = CatalogStagingImportSummary(
         dryRun=dry_run,

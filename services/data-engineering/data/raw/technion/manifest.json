@@ -1,20 +1,27 @@
 {
   "institutionId": "technion",
-  "faculty": "Data and Decision Sciences (DDS)",
   "catalogYear": 2025,
   "catalogVersion": "2025-2026",
   "hebrewYearLabel": "תשפ״ו",
-  "inspectedAt": "2026-06-19",
-  "phase": "5-source-intake-mapping-only",
+  "inspectedAt": "2026-06-21",
+  "phase": "semester-offerings-only",
   "sources": [
+    {
+      "id": "courses_2025_200",
+      "path": "courses_2025_200.json",
+      "type": "json",
+      "semesterCode": "2025-200",
+      "semesterLabelHe": "סמסטר חורף (200)",
+      "scope": "university-wide semester offerings (semester planner)",
+      "gitignored": true
+    },
     {
       "id": "courses_2025_201",
       "path": "courses_2025_201.json",
       "type": "json",
       "semesterCode": "2025-201",
       "semesterLabelHe": "סמסטר אביב (201)",
-      "recordCount": 1289,
-      "scope": "university-wide semester offerings (not DDS-only)",
+      "scope": "university-wide semester offerings (semester planner)",
       "gitignored": true
     },
     {
@@ -23,22 +30,18 @@
       "type": "json",
       "semesterCode": "2025-202",
       "semesterLabelHe": "סמסטר קיץ (202)",
-      "recordCount": 93,
-      "scope": "university-wide summer offerings (not DDS-only)",
-      "gitignored": true
-    },
-    {
-      "id": "dds_catalog_pdf_2025",
-      "path": "09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf",
-      "type": "pdf",
-      "pageCount": 13,
-      "sizeBytes": 474883,
-      "scope": "DDS faculty programs, degree paths, requirement tables, elective pools",
+      "scope": "university-wide summer offerings (semester planner)",
       "gitignored": true
     }
   ],
+  "catalogVault": {
+    "path": "data/catalog_valut",
+    "scope": "degree programs, requirements, course metadata, regulations (all faculties; DDS ingested first)",
+    "wikiIndex": "data/catalog_valut/wiki/index.md"
+  },
   "notes": [
-    "Raw files are local-only; mapping document is docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md",
-    "Do not import into production MongoDB collections until a later validated staging phase"
+    "Semester JSON files feed the semester planner via import-technion-courses-staging.",
+    "Catalog knowledge is maintained in catalog_valut wiki; export to JSON is planned (see docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md).",
+    "Large JSON files are gitignored."
   ]
 }

@@ -9,7 +9,10 @@ from app.core.errors import (
     unhandled_exception_handler,
     validation_exception_handler,
 )
-from app.db.mongo import close_mongo_client
+from app.db.catalog_bootstrap import ensure_development_catalog
+from app.db.catalog_indexes import ensure_catalog_indexes
+from app.db.mongo import close_mongo_client, get_database
+from app.db.redis import close_redis
 from app.routes.auth import router as auth_router
 from app.routes.catalog import router as catalog_router
 from app.routes.completed_courses import router as completed_courses_router
@@ -25,7 +28,11 @@ from app.config import get_settings
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     settings.require_jwt_secret()
+    database = await get_database()
+    await ensure_development_catalog(database, settings)
+    await ensure_catalog_indexes(database, settings=settings)
     yield
+    await close_redis()
     close_mongo_client()
 
 

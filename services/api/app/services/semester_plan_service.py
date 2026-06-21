@@ -103,10 +103,8 @@ async def _load_planning_catalog_courses(
         semester_matrix_documents=semester_matrix_documents,
     )
     by_number: list[dict[str, Any]] = []
-    for number in sorted(numbers):
-        course = await catalog_repository.find_course_by_number(database, number)
-        if course:
-            by_number.append(course)
+    if numbers:
+        by_number = await catalog_repository.find_courses_by_numbers(database, sorted(numbers))
 
     prefixes: set[str] = set()
     for pool_document in pool_documents:

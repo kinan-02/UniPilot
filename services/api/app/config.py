@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     service_name: str = "api"
     environment: str = "development"
+    auto_seed_catalog: bool = False
     api_port: int = 8000
     mongo_uri: str | None = None
     redis_url: str | None = None
@@ -22,6 +23,9 @@ class Settings(BaseSettings):
     catalog_rules_collection: str = "catalog_rules"
     catalog_default_limit: int = 50
     catalog_max_limit: int = 200
+    catalog_cache_enabled: bool = True
+    catalog_cache_ttl_seconds: int = 300
+    catalog_offerings_batch_max: int = 50
     completed_courses_collection: str = "completed_courses"
     semester_plans_collection: str = "semester_plans"
     academic_risks_collection: str = "academic_risks"

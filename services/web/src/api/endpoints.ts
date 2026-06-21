@@ -67,6 +67,19 @@ export const catalogApi = {
       `/catalog/courses/${courseNumber}/offerings${suffix}`,
     )
   },
+  offeringsBatch: (
+    courseNumbers: string[],
+    params?: { academicYear?: number; semesterCode?: number },
+  ) => {
+    const query = new URLSearchParams()
+    query.set('courseNumbers', courseNumbers.join(','))
+    if (params?.academicYear) query.set('academicYear', String(params.academicYear))
+    if (params?.semesterCode) query.set('semesterCode', String(params.semesterCode))
+    return apiRequest<{
+      offeringsByCourseNumber: Record<string, CourseOffering[]>
+      totalCourses: number
+    }>(`/catalog/offerings?${query}`)
+  },
   degreePrograms: () =>
     apiRequest<{ items: DegreeProgram[]; total: number }>('/catalog/degree-programs'),
 }
@@ -123,6 +136,21 @@ export const plansApi = {
   patchCourse: (planId: string, courseNumber: string, body: Record<string, unknown>) =>
     apiRequest<{ semesterPlan: SemesterPlan }>(
       `/semester-plans/${planId}/courses/${courseNumber}`,
+      { method: 'PATCH', body },
+    ),
+  patchLessonSelection: (planId: string, courseNumber: string, body: Record<string, unknown>) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(
+      `/semester-plans/${planId}/courses/${courseNumber}/lesson-selection`,
+      { method: 'PATCH', body },
+    ),
+  patchMaybeCourses: (planId: string, maybeCourses: Record<string, unknown>[]) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(`/semester-plans/${planId}/maybe-courses`, {
+      method: 'PATCH',
+      body: { maybeCourses },
+    }),
+  patchMaybeLessonSelection: (planId: string, courseNumber: string, body: Record<string, unknown>) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(
+      `/semester-plans/${planId}/maybe-courses/${courseNumber}/lesson-selection`,
       { method: 'PATCH', body },
     ),
   reorderCourses: (planId: string, courseIds: string[]) =>

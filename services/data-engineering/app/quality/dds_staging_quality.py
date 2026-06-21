@@ -18,14 +18,14 @@ from app.importers.dds_catalog_staging_importer import (
     PRODUCTION_COLLECTION_NAMES,
     assert_staging_collection_name,
 )
-from app.curation.dds_catalog_human_signoff import extract_human_signoff_from_staged_programs
+from app.curation.catalog_signoff import extract_catalog_signoff
 from app.models.quality_report import (
     DdsStagingQualityReport,
     QualityCheckResult,
     QualityFinding,
 )
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
-from app.sources.technion_dds_catalog_pdf import service_root
+from app.paths import service_root
 
 DDS_CATALOG_SOURCE = "technion-dds-catalog"
 QUALITY_SOURCE_NAME = "technion-dds-staging-quality"
@@ -171,11 +171,11 @@ def build_dds_staging_quality_report(
     courses = list(database[settings.staging_courses_collection].find(_course_filter()))
     offerings = list(database[settings.staging_course_offerings_collection].find({}))
     staged_course_numbers = {doc.get("courseNumber") for doc in courses if doc.get("courseNumber")}
-    human_signoff = extract_human_signoff_from_staged_programs(programs)
-    production_excluded_courses = set(human_signoff.get("productionExcludedCourseNumbers", []))
+    catalog_signoff = extract_catalog_signoff(programs)
+    production_excluded_courses = set(catalog_signoff.get("productionExcludedCourseNumbers", []))
     non_executable_signed_off = (
-        human_signoff.get("enforceNonExecutableRulesInProduction") is False
-        and bool(human_signoff.get("signedOffNonExecutableRuleGroupIds"))
+        catalog_signoff.get("enforceNonExecutableRulesInProduction") is False
+        and bool(catalog_signoff.get("signedOffNonExecutableRuleGroupIds"))
     )
 
     def add_finding(
@@ -428,7 +428,7 @@ def build_dds_staging_quality_report(
             "info",
             "cross_link",
             (
-                f"{len(missing_excluded_from_production)} catalog course references are human-signed "
+                f"{len(missing_excluded_from_production)} catalog course references are vault-signed "
                 "production exclusions (not in 2025 JSON; omit from production)."
             ),
             {"courseNumbers": missing_excluded_from_production},
@@ -439,6 +439,16 @@ def build_dds_staging_quality_report(
         ref
         for ref in course_refs
         if not ref.get("titleHint") and COURSE_NUMBER_PATTERN.fullmatch(str(ref.get("courseNumber", "")))
+    ]
+    missing_title_actionable = [
+        ref
+        for ref in missing_title_refs
+        if ref.get("courseNumber") not in production_excluded_courses
+    ]
+    missing_title_excluded = [
+        ref
+        for ref in missing_title_refs
+        if ref.get("courseNumber") in production_excluded_courses
     ]
     fillable_from_courses: list[dict[str, str]] = []
     for ref in missing_title_refs:
@@ -453,15 +463,32 @@ def build_dds_staging_quality_report(
                 }
             )
 
-    if missing_title_refs:
-        warnings.append(f"{len(missing_title_refs)} course references lack titleHint in catalog staging.")
+    if missing_title_actionable:
+        warnings.append(
+            f"{len(missing_title_actionable)} in-scope course references lack titleHint in catalog staging.",
+        )
         add_finding(
             "titles.missing_title_hint",
             "production-blocker",
             "title_metadata",
-            f"{len(missing_title_refs)} catalog course references missing titleHint.",
-            {"count": len(missing_title_refs)},
+            f"{len(missing_title_actionable)} catalog course references missing titleHint.",
+            {"count": len(missing_title_actionable)},
         )
+    elif missing_title_excluded and non_executable_signed_off:
+        add_finding(
+            "titles.missing_title_hint_excluded_only",
+            "info",
+            "title_metadata",
+            (
+                f"{len(missing_title_excluded)} production-excluded catalog references lack titleHint; "
+                "vault sign-off allows reference-only metadata."
+            ),
+            {"count": len(missing_title_excluded), "courseNumbers": sorted(
+                {ref.get("courseNumber") for ref in missing_title_excluded if ref.get("courseNumber")}
+            )},
+        )
+    elif missing_title_refs:
+        warnings.append(f"{len(missing_title_refs)} course references lack titleHint in catalog staging.")
     if fillable_from_courses:
         recommendations.append(
             f"{len(fillable_from_courses)} missing titleHints could be enriched from staging_courses "
@@ -544,14 +571,14 @@ def build_dds_staging_quality_report(
     if non_executable_requirement_groups and not non_executable_signed_off:
         production_blockers.append(
             f"{len(non_executable_requirement_groups)} non-executable requirement groups "
-            "require human signoff before production.",
+            "require vault catalog sign-off before production.",
         )
         api_blockers.append(
             "API migration must expose non-executable rules as manual-review items or remain staging-only.",
         )
     elif non_executable_signed_off:
         add_finding(
-            "rules.human_signoff_advisory_only",
+            "rules.vault_signoff_advisory_only",
             "info",
             "rules",
             (
@@ -597,18 +624,18 @@ def build_dds_staging_quality_report(
         recommendation = "needs-staging-fixes"
         status = "needs-fixes"
         summary = "Staging data is incomplete or structurally invalid for cross-link review."
-    elif production_blockers or missing_title_refs or missing_actionable:
+    elif production_blockers or missing_title_actionable or missing_actionable:
         recommendation = "ready-for-production-promotion-design"
         status = "pass-with-warnings"
         summary = (
             "Staged DDS catalog and course data are structurally present. "
-            "Production promotion remains blocked pending human signoff and metadata fixes."
+            "Production promotion remains blocked pending vault metadata fixes."
         )
     elif non_executable_signed_off and production_excluded_courses:
         recommendation = "ready-for-production-promotion-design"
         status = "pass"
         summary = (
-            "Human sign-off recorded: non-executable groups are advisory-only and "
+            "Vault wiki sign-off recorded: non-executable groups are advisory-only and "
             f"{len(production_excluded_courses)} cross-link gap courses are excluded from production."
         )
     else:
@@ -622,7 +649,7 @@ def build_dds_staging_quality_report(
         )
     else:
         recommendations.append(
-            "Do not promote to production until human signoff on non-executable rules and OCR-suspect numbers.",
+            "Do not promote to production until vault sign-off on non-executable rules and OCR-suspect numbers.",
         )
     recommendations.extend(
         [
@@ -648,7 +675,8 @@ def build_dds_staging_quality_report(
             "uniqueCatalogCourseReferences": len(unique_ref_numbers),
             "missingCatalogCourseReferences": len(missing_actionable),
             "productionExcludedCatalogCourseReferences": len(missing_excluded_from_production),
-            "missingTitleHints": len(missing_title_refs),
+            "missingTitleHints": len(missing_title_actionable),
+            "missingTitleHintsExcludedOnly": len(missing_title_excluded),
             "creditMismatches": len(credit_mismatches),
             "manualReviewRequiredItems": manual_review_summary["total"],
             "executableRuleGroups": executable_count,

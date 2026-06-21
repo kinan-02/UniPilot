@@ -42,6 +42,24 @@ def _strip_internal_fields(document: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in document.items() if key not in INTERNAL_FIELDS}
 
 
+def _dedupe_catalog_rules_by_group_id(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep one rule per requirementGroupId, preferring the copy with course references."""
+    best_by_group: dict[str, dict[str, Any]] = {}
+    for document in documents:
+        group_id = str(document.get("requirementGroupId") or "")
+        if not group_id:
+            continue
+        existing = best_by_group.get(group_id)
+        if existing is None:
+            best_by_group[group_id] = document
+            continue
+        existing_refs = len(existing.get("courseReferences") or [])
+        new_refs = len(document.get("courseReferences") or [])
+        if new_refs > existing_refs:
+            best_by_group[group_id] = document
+    return [best_by_group[group_id] for group_id in sorted(best_by_group)]
+
+
 def _sanitize_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     if not metadata:
         return {"degreeRequirementsInferred": False}
@@ -329,16 +347,115 @@ async def list_offerings_for_course(
     semester_code: int | None = None,
     settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
+    grouped = await list_offerings_grouped_for_courses(
+        database,
+        [course_number],
+        academic_year=academic_year,
+        semester_code=semester_code,
+        settings=settings,
+    )
+    return grouped.get(course_number, [])
+
+
+async def list_offerings_grouped_for_courses(
+    database: AsyncIOMotorDatabase,
+    course_numbers: list[str],
+    *,
+    academic_year: int | None = None,
+    semester_code: int | None = None,
+    settings: Settings | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Batch-fetch offerings grouped by courseNumber."""
+    unique_numbers = sorted({str(number) for number in course_numbers if number})
+    if not unique_numbers:
+        return {}
+
     settings = settings or get_settings()
-    query: dict[str, Any] = {**PUBLISHED_FILTER, "courseNumber": course_number}
+    query: dict[str, Any] = {
+        **PUBLISHED_FILTER,
+        "courseNumber": {"$in": unique_numbers},
+    }
     if academic_year is not None:
         query["academicYear"] = academic_year
     if semester_code is not None:
         query["semesterCode"] = semester_code
+
+    grouped: dict[str, list[dict[str, Any]]] = {number: [] for number in unique_numbers}
     cursor = database[settings.course_offerings_collection].find(query).sort(
         [("academicYear", 1), ("semesterCode", 1)]
     )
-    return [to_public_offering(doc) async for doc in cursor]
+    async for document in cursor:
+        number = str(document.get("courseNumber") or "")
+        if number in grouped:
+            grouped[number].append(to_public_offering(document))
+    return grouped
+
+
+async def list_best_offerings_for_courses(
+    database: AsyncIOMotorDatabase,
+    course_numbers: list[str],
+    *,
+    academic_year: int,
+    semester_code: int,
+    settings: Settings | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Return best offering per courseNumber for a plan term (exact year, then term fallback)."""
+    from app.planning.semester_codes import pick_best_offering
+
+    unique_numbers = sorted({str(number) for number in course_numbers if number})
+    if not unique_numbers:
+        return {}
+
+    exact_grouped = await list_offerings_grouped_for_courses(
+        database,
+        unique_numbers,
+        academic_year=academic_year,
+        semester_code=semester_code,
+        settings=settings,
+    )
+    fallback_grouped = await list_offerings_grouped_for_courses(
+        database,
+        unique_numbers,
+        academic_year=None,
+        semester_code=semester_code,
+        settings=settings,
+    )
+
+    best_by_number: dict[str, dict[str, Any]] = {}
+    for number in unique_numbers:
+        exact = pick_best_offering(
+            exact_grouped.get(number, []),
+            preferred_academic_year=academic_year,
+            semester_code=semester_code,
+        )
+        if exact:
+            best_by_number[number] = exact
+            continue
+        fallback = pick_best_offering(
+            fallback_grouped.get(number, []),
+            preferred_academic_year=academic_year,
+            semester_code=semester_code,
+        )
+        if fallback:
+            best_by_number[number] = fallback
+    return best_by_number
+
+
+async def find_courses_by_numbers(
+    database: AsyncIOMotorDatabase,
+    course_numbers: list[str],
+    *,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    unique_numbers = sorted({str(number) for number in course_numbers if number})
+    if not unique_numbers:
+        return []
+
+    settings = settings or get_settings()
+    cursor = database[settings.courses_collection].find(
+        {**PUBLISHED_FILTER, "courseNumber": {"$in": unique_numbers}}
+    )
+    return [doc async for doc in cursor]
 
 
 async def list_degree_programs(
@@ -419,7 +536,8 @@ async def list_semester_matrix_rules_for_program(
         "ruleExpression.type": "semester_matrix",
     }
     cursor = database[settings.catalog_rules_collection].find(query).sort("requirementGroupId", 1)
-    return [doc async for doc in cursor]
+    documents = [doc async for doc in cursor]
+    return _dedupe_catalog_rules_by_group_id(documents)
 
 
 async def list_courses_by_number_prefixes(
@@ -510,4 +628,6 @@ async def list_advisory_rules_for_program(
     cursor = database[settings.catalog_rules_collection].find(query).sort(
         "requirementGroupId", 1
     )
-    return [to_public_advisory_rule(doc) async for doc in cursor]
+    documents = [doc async for doc in cursor]
+    deduped = _dedupe_catalog_rules_by_group_id(documents)
+    return [to_public_advisory_rule(doc) for doc in deduped]

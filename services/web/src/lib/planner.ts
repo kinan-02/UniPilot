@@ -32,6 +32,31 @@ export function courseNumbersInConflict(schedule?: WeeklySchedule): Set<string> 
   return conflictNumbers
 }
 
+export type ConflictGridBounds = {
+  day: string
+  startMinutes: number
+  endMinutes: number
+  courseNumbers: string[]
+}
+
+export function conflictsToGridBounds(
+  conflicts: WeeklySchedule['conflicts'] = [],
+): ConflictGridBounds[] {
+  const bounds: ConflictGridBounds[] = []
+  for (const conflict of conflicts ?? []) {
+    if (!conflict.day || !conflict.timeRange) continue
+    const parsed = parseTimeRange(conflict.timeRange)
+    if (!parsed) continue
+    bounds.push({
+      day: conflict.day,
+      startMinutes: parsed.start,
+      endMinutes: parsed.end,
+      courseNumbers: conflict.courseNumbers ?? [],
+    })
+  }
+  return bounds
+}
+
 export function formatSlotTypes(types?: string[]): string {
   if (!types?.length) return ''
   return types.join(' · ')
@@ -87,6 +112,63 @@ export function formatMinutes(total: number): string {
   const hours = Math.floor(total / 60)
   const minutes = total % 60
   return `${hours}:${String(minutes).padStart(2, '0')}`
+}
+
+const WEEKDAY_COLUMNS_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי'] as const
+const WEEKDAY_COLUMNS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const
+const FRIDAY_SORT_KEYS = new Set([daySortKey('שישי'), daySortKey('Friday')])
+const SATURDAY_SORT_KEYS = new Set([daySortKey('שבת'), daySortKey('Saturday')])
+
+/** Fixed Sun–Thu columns; Friday only when an event falls on Friday; never Saturday. */
+export function weekGridDays(locale: 'he' | 'en', eventDays: string[] = []): string[] {
+  const weekdays = locale === 'he' ? WEEKDAY_COLUMNS_HE : WEEKDAY_COLUMNS_EN
+  const columns = [...weekdays.slice(0, 5)]
+  const hasFriday = eventDays.some((day) => FRIDAY_SORT_KEYS.has(daySortKey(day)))
+  if (hasFriday) columns.push(weekdays[5])
+  return columns
+}
+
+export function isSaturdayDay(day: string): boolean {
+  return SATURDAY_SORT_KEYS.has(daySortKey(day))
+}
+
+export function isCustomGridEvent(event: GridEvent): boolean {
+  return (
+    event.courseNumber === 'CUSTOM' ||
+    event.courseNumber === '●' ||
+    event.slotType === 'custom' ||
+    event.slotType === 'personal'
+  )
+}
+
+/** Merge schedule + custom blocks without duplicating server-baked CUSTOM slots. */
+export function collectGridEvents(
+  schedule: WeeklySchedule | undefined,
+  customEvents: CustomEvent[] = [],
+  previewEvents: GridEvent[] = [],
+  customEventsDirty = false,
+): GridEvent[] {
+  const built = eventsFromSchedule(schedule)
+  const hasBuiltSchedule = built.length > 0
+
+  if (!hasBuiltSchedule) {
+    const fallbackCustom = customEvents.length ? customEvents : schedule?.customEvents
+    return [...eventsFromCustomBlocks(fallbackCustom), ...previewEvents]
+  }
+
+  if (customEventsDirty) {
+    return [
+      ...built.filter((event) => !isCustomGridEvent(event)),
+      ...eventsFromCustomBlocks(customEvents),
+      ...previewEvents,
+    ]
+  }
+
+  return [...built, ...previewEvents]
+}
+
+export function scheduleIncludesCustomBlocks(schedule?: WeeklySchedule): boolean {
+  return eventsFromSchedule(schedule).some(isCustomGridEvent)
 }
 
 export function eventsFromCustomBlocks(customEvents: CustomEvent[] = []): GridEvent[] {

@@ -8,7 +8,7 @@ export function PlanBuilderPage() {
   const { t } = useTranslation()
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-4">
       <PageHeader title={id ? t('plans.editPlan') : t('plans.newPlan')} />
       <SemesterPlanner planId={id} />
     </div>

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { catalogApi } from '../../api/endpoints'
 import { useTranslation } from '../../i18n'
@@ -47,9 +48,9 @@ export function CourseDetailModal({
 
   const course = detailQuery.data
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="course-detail-title"
@@ -101,6 +102,7 @@ export function CourseDetailModal({
               <div>
                 <dt className="text-xs font-medium text-[var(--color-text-muted)]">{t('planner.prerequisites')}</dt>
                 <dd className="whitespace-pre-wrap">{course.prerequisitesText}</dd>
+                <p className="mt-1 text-xs text-[var(--color-warning)]">{t('planner.prereqManualVerify')}</p>
               </div>
             ) : null}
             {course.corequisitesText ? (
@@ -170,6 +172,7 @@ export function CourseDetailModal({
           </dl>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

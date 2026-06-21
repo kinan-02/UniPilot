@@ -2,10 +2,10 @@ import time
 from collections import defaultdict
 from typing import Protocol
 
-import redis.asyncio as redis
 from fastapi import HTTPException, Request
 
 from app.config import get_settings
+from app.db.redis_client import get_redis_client
 
 RATE_LIMIT_PREFIX = "rl:auth:"
 
@@ -40,19 +40,17 @@ class RedisRateLimitStore:
         self._redis_url = redis_url
 
     async def is_allowed(self, key: str, *, window_ms: int, max_requests: int) -> bool:
-        client = redis.from_url(
-            self._redis_url,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
+        client = get_redis_client()
+        if client is None:
+            return True
 
         try:
             count = await client.incr(key)
             if count == 1:
                 await client.pexpire(key, window_ms)
             return count <= max_requests
-        finally:
-            await client.aclose()
+        except Exception:
+            return True
 
 
 _in_memory_store = InMemoryRateLimitStore()

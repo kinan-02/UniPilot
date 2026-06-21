@@ -13,6 +13,7 @@ type SharePlanPanelProps = {
     shareToken?: string | null
     status?: string
   }
+  embedded?: boolean
 }
 
 export function buildShareUrl(shareToken: string): string {
@@ -20,7 +21,7 @@ export function buildShareUrl(shareToken: string): string {
   return `${origin}/shared/plans/${shareToken}`
 }
 
-export function SharePlanPanel({ planId, plan }: SharePlanPanelProps) {
+export function SharePlanPanel({ planId, plan, embedded = false }: SharePlanPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [copied, setCopied] = useState(false)
@@ -44,38 +45,40 @@ export function SharePlanPanel({ planId, plan }: SharePlanPanelProps) {
     window.setTimeout(() => setCopied(false), 2000)
   }
 
-  return (
-    <Card>
-      <div className="flex items-start gap-3">
-        <Link2 className="mt-0.5 h-4 w-4 text-[var(--color-primary)]" />
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">{t('planner.shareTitle')}</h3>
-          <p className="mt-1 text-xs text-[var(--color-text-muted)]">{t('planner.shareHint')}</p>
+  const content = (
+    <div className="flex items-start gap-3">
+      <Link2 className="mt-0.5 h-4 w-4 text-[var(--color-primary)]" />
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-semibold">{t('planner.shareTitle')}</h3>
+        <p className="mt-1 text-xs text-[var(--color-text-muted)]">{t('planner.shareHint')}</p>
 
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enabled}
-              disabled={shareMutation.isPending}
-              onChange={(e) => shareMutation.mutate(e.target.checked)}
-              className="rounded border-[var(--color-border)]"
-            />
-            {t('planner.shareEnabled')}
-          </label>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={shareMutation.isPending}
+            onChange={(e) => shareMutation.mutate(e.target.checked)}
+            className="rounded border-[var(--color-border)]"
+          />
+          {t('planner.shareEnabled')}
+        </label>
 
-          {enabled && shareUrl ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <code className="max-w-full truncate rounded-lg bg-[var(--color-surface-muted)] px-2 py-1 text-xs">
-                {shareUrl}
-              </code>
-              <Button variant="secondary" size="sm" onClick={copyLink}>
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copied ? t('planner.linkCopied') : t('planner.copyLink')}
-              </Button>
-            </div>
-          ) : null}
-        </div>
+        {enabled && shareUrl ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <code className="max-w-full truncate rounded-lg bg-[var(--color-surface-muted)] px-2 py-1 text-xs">
+              {shareUrl}
+            </code>
+            <Button variant="secondary" size="sm" onClick={copyLink}>
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {copied ? t('planner.linkCopied') : t('planner.copyLink')}
+            </Button>
+          </div>
+        ) : null}
       </div>
-    </Card>
+    </div>
   )
+
+  if (embedded) return <Card>{content}</Card>
+
+  return <Card>{content}</Card>
 }

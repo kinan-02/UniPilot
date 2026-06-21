@@ -56,6 +56,7 @@ class CatalogRequirementGroup(BaseModel):
     courseReferences: list[CatalogCourseReference] = Field(default_factory=list)
     ruleExpression: dict[str, Any] = Field(default_factory=dict)
     pageNumbers: list[int] = Field(default_factory=list)
+    wikiSourceRefs: list[dict[str, str]] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     manualReviewRequired: bool = True
     confidence: ConfidenceLevel = "low"
@@ -87,6 +88,7 @@ class NormalizedDegreeProgram(BaseModel):
     requirementGroups: list[CatalogRequirementGroup] = Field(default_factory=list)
     pageNumbers: list[int] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    wikiSourceRefs: list[dict[str, str]] = Field(default_factory=list)
     manualReviewRequired: bool = True
     confidence: ConfidenceLevel = "low"
 

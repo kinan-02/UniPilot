@@ -1,6 +1,6 @@
 # UniPilot AI — Project Context (Source of Truth)
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 Use it before starting major coding, architecture updates, or roadmap decisions.
 
 If this file and another doc conflict:
@@ -8,7 +8,7 @@ If this file and another doc conflict:
 2. Follow accepted ADRs in `docs/decisions/`.
 3. Update this file so it stays current.
 
-For Technion catalog ingestion design, see `docs/DATA_INGESTION_ARCHITECTURE.md`.
+For Technion catalog ingestion design, see `docs/DATA_INGESTION_ARCHITECTURE.md` and `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
 
 ## 1) Project Vision
 
@@ -114,9 +114,24 @@ Phase 4 scope intentionally excludes real Technion DDS scraping/import, catalog 
 | `.gitignore` rules for large raw JSON/PDF | Done |
 | MongoDB / staging import of real data | **Not started** |
 | PDF parsing pipeline | **Not started** |
-Phase 5 scope intentionally excludes production import, staging import of real data, PDF parsing implementation, catalog API migration, and live website scraping.
+Phase 5 scope intentionally excludes production import, staging import of real data, and live website scraping.
 
-### Python Phase 6 status (implemented — PDF extraction & manual-curation foundation)
+### Data source pivot (2026-06-21)
+
+| Source | Path | Role |
+|--------|------|------|
+| Semester JSON | `data/raw/technion/courses_2025_{200,201,202}.json` | Semester planner — offerings only |
+| Catalog wiki vault | `data/catalog_valut/wiki/` | Programs, requirements, courses, regulations |
+
+**Retired:** PDF extraction, docx markdown export, and markdown parser pipeline (`parse-dds-catalog-md`, `curate-dds-catalog`, `signoff-dds-catalog`). Raw catalog PDFs remain under `catalog_valut/raw/` for provenance.
+
+**Next:** `export-vault-catalog` CLI (planned) → existing staging import + production promotion. See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
+
+### Python Phase 6–7.6 status (retired — superseded by catalog vault)
+
+Phases 6–7.6 (PDF extraction, markdown parser, assisted curation, agent signoff) were implemented and then **removed** when the catalog wiki vault became the authoritative catalog source. Historical phase notes below are kept for traceability only.
+
+### Python Phase 6 status (retired)
 
 | Item | Status |
 |---|---|

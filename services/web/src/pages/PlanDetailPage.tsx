@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import { plansApi } from '../api/endpoints'
@@ -14,6 +14,7 @@ export function PlanDetailPage() {
   const { id = '' } = useParams()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   const planQuery = useQuery({
     queryKey: ['plan', id],
@@ -23,7 +24,10 @@ export function PlanDetailPage() {
 
   const forkMutation = useMutation({
     mutationFn: () => plansApi.forkVersion(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['plans'] }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['plans'] })
+      navigate(`/plans/${data.semesterPlan.id}/edit`)
+    },
   })
 
   if (planQuery.isLoading) {
@@ -126,10 +130,7 @@ export function PlanDetailPage() {
 
           <div className="mt-6 border-t border-[var(--color-border)] pt-6">
             <h3 className="mb-3 text-sm font-semibold">{t('plans.weeklySchedule')}</h3>
-            <WeeklyScheduleGrid
-              schedule={semester.weeklySchedule}
-              customEvents={semester.customEvents ?? semester.weeklySchedule?.customEvents}
-            />
+            <WeeklyScheduleGrid schedule={semester.weeklySchedule} />
           </div>
         </Card>
       ))}

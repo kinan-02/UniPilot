@@ -7,9 +7,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.config import get_settings
 from app.db.mongo import get_database
 from app.dependencies.auth import AuthContext, require_auth
 from app.repositories import catalog_repository
+from app.services.catalog_cache import (
+    course_cache_key,
+    degree_programs_cache_key,
+    get_cached_json,
+    offerings_batch_cache_key,
+    set_cached_json,
+)
 from app.schemas.catalog import (
     COURSE_NUMBER_PATTERN,
     PROGRAM_CODE_PATTERN,
@@ -99,12 +107,14 @@ async def list_catalog_courses(
 
     summaries = [CourseSummary.model_validate(item) for item in items]
     if query.includeOfferings:
+        course_numbers = [summary.courseNumber for summary in summaries]
+        grouped = await catalog_repository.list_offerings_grouped_for_courses(
+            database,
+            course_numbers,
+        )
         detailed_items: list[CourseDetail] = []
         for summary in summaries:
-            offerings = await catalog_repository.list_offerings_for_course(
-                database,
-                summary.courseNumber,
-            )
+            offerings = grouped.get(summary.courseNumber, [])
             detail = CourseDetail(
                 **summary.model_dump(),
                 offerings=[CourseOffering.model_validate(o) for o in offerings],
@@ -137,6 +147,11 @@ async def get_catalog_course(
 ) -> dict[str, Any]:
     validate_course_number_param(course_number)
     database = await get_database()
+    cache_key = course_cache_key(course_number)
+    cached = await get_cached_json(cache_key)
+    if cached is not None:
+        return success_response({"course": cached})
+
     course = await catalog_repository.get_course_by_number(database, course_number)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -147,7 +162,9 @@ async def get_catalog_course(
         detail = detail.model_copy(
             update={"offerings": [CourseOffering.model_validate(o) for o in offerings]}
         )
-    return success_response({"course": detail.model_dump()})
+    payload = detail.model_dump()
+    await set_cached_json(cache_key, payload)
+    return success_response({"course": payload})
 
 
 @router.get("/courses/{course_number}/offerings")
@@ -181,18 +198,91 @@ async def get_catalog_course_offerings(
     )
 
 
+@router.get("/offerings")
+async def batch_catalog_offerings(
+    courseNumbers: str = Query(..., max_length=2000),
+    academicYear: int | None = Query(default=None, ge=1990, le=2100),
+    semesterCode: int | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    settings = get_settings()
+    numbers = [
+        number.strip()
+        for number in courseNumbers.split(",")
+        if number.strip()
+    ]
+    if not numbers:
+        raise HTTPException(status_code=400, detail="courseNumbers must list at least one course")
+    if len(numbers) > settings.catalog_offerings_batch_max:
+        raise HTTPException(
+            status_code=400,
+            detail=f"courseNumbers supports at most {settings.catalog_offerings_batch_max} entries",
+        )
+    for number in numbers:
+        validate_course_number_param(number)
+    if semesterCode is not None and semesterCode not in {200, 201, 202}:
+        raise HTTPException(status_code=400, detail="semesterCode must be one of 200, 201, 202")
+
+    cache_key = offerings_batch_cache_key(
+        numbers,
+        academic_year=academicYear,
+        semester_code=semesterCode,
+    )
+    cached = await get_cached_json(cache_key)
+    if cached is not None:
+        return success_response(cached)
+
+    database = await get_database()
+    if academicYear is not None and semesterCode is not None:
+        best = await catalog_repository.list_best_offerings_for_courses(
+            database,
+            numbers,
+            academic_year=academicYear,
+            semester_code=semesterCode,
+        )
+        offerings_by_number = {
+            number: [best[number]] if number in best else []
+            for number in numbers
+        }
+    else:
+        grouped = await catalog_repository.list_offerings_grouped_for_courses(
+            database,
+            numbers,
+            academic_year=academicYear,
+            semester_code=semesterCode,
+        )
+        offerings_by_number = {
+            number: grouped.get(number, []) for number in numbers
+        }
+
+    payload = {
+        "offeringsByCourseNumber": {
+            number: [CourseOffering.model_validate(item).model_dump() for item in items]
+            for number, items in offerings_by_number.items()
+        },
+        "totalCourses": len(numbers),
+    }
+    await set_cached_json(cache_key, payload)
+    return success_response(payload)
+
+
 @router.get("/degree-programs")
 async def list_catalog_degree_programs(
     _auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    cache_key = degree_programs_cache_key()
+    cached = await get_cached_json(cache_key)
+    if cached is not None:
+        return success_response(cached)
+
     database = await get_database()
     programs = await catalog_repository.list_degree_programs(database)
-    return success_response(
-        {
-            "items": [DegreeProgram.model_validate(item).model_dump() for item in programs],
-            "total": len(programs),
-        }
-    )
+    payload = {
+        "items": [DegreeProgram.model_validate(item).model_dump() for item in programs],
+        "total": len(programs),
+    }
+    await set_cached_json(cache_key, payload)
+    return success_response(payload)
 
 
 @router.get("/degree-programs/{program_code}")

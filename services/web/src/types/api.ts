@@ -104,11 +104,17 @@ export type CourseDetail = CourseSummary & {
   offerings?: CourseOffering[]
 }
 
+export type SelectedLessonEvent = {
+  eventId: string
+  type: string
+  group?: string | null
+}
+
 export type SelectedGroups = {
-  lecture?: number | null
-  tutorial?: number | null
-  lab?: number | null
-  project?: number | null
+  lecture?: number | string | string[] | null
+  tutorial?: number | string | string[] | null
+  lab?: number | string | string[] | null
+  project?: number | string | string[] | null
 }
 
 export type CustomEvent = {
@@ -172,6 +178,13 @@ export type PlannerInsights = {
     status?: string
     message?: string
   }>
+  lessonSelectionWarnings?: Array<{
+    courseNumber?: string
+    courseId?: string
+    type?: string
+    eventId?: string
+    message?: string
+  }>
 }
 
 export type ScheduleSlot = {
@@ -212,6 +225,7 @@ export type PlannedCourse = {
   reason?: string
   isActive?: boolean
   selectedGroups?: SelectedGroups
+  selectedLessonEvents?: SelectedLessonEvent[]
   notes?: string
 }
 
@@ -225,6 +239,7 @@ export type SemesterPlan = {
     semesterCode: string
     goalCredits?: number
     plannedCourses: PlannedCourse[]
+    maybeCourses?: PlannedCourse[]
     weeklySchedule?: WeeklySchedule
     customEvents?: CustomEvent[]
   }>

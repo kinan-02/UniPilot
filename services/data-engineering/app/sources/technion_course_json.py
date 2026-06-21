@@ -10,7 +10,7 @@ from typing import Any
 
 from app.models.staging_course import StagedTechnionCourse, StagedTechnionCourseOffering
 from app.sources.technion_course_json_index import SEMESTER_CODE_LABELS
-from app.sources.technion_dds_catalog_pdf import service_root
+from app.paths import service_root
 from app.utils.course_numbers import normalize_course_number
 
 FILENAME_PATTERN = re.compile(r"courses_(\d{4})_(\d{3})\.json$")

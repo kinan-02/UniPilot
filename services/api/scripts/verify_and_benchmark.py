@@ -31,6 +31,63 @@ def _resolve_base_url() -> str:
 BASE_URL = _resolve_base_url()
 PASSWORD = "StrongPass123!"
 
+MONGO_BOOTSTRAP_EVAL = """
+const out = {};
+const FALLBACK_COURSES = ["00940345", "02340117", "01040031", "00104000"];
+for (const num of FALLBACK_COURSES) {
+  const c = db.courses.findOne({courseNumber: num, status: "published"});
+  if (c) {
+    out.courseId = c._id.toString();
+    out.sampleCourseNumber = num;
+    break;
+  }
+}
+const p = db.degree_programs.findOne({programCode: "009216-1-000", status: "published"});
+if (p) out.degreeProgramId = p._id.toString();
+
+const semesterOneRules = db.catalog_rules.find({
+  programCode: "009216-1-000",
+  requirementGroupId: /semester-1-matrix/,
+  "ruleExpression.type": "semester_matrix",
+  status: "published",
+}).toArray();
+
+const matrixNumbers = [];
+for (const rule of semesterOneRules) {
+  for (const ref of (rule.courseReferences || [])) {
+    if (ref.courseNumber && !matrixNumbers.includes(ref.courseNumber)) {
+      matrixNumbers.push(ref.courseNumber);
+    }
+  }
+}
+out.semesterOneMatrixNumbers = matrixNumbers;
+
+function pickCourseId(numbers) {
+  for (const num of numbers) {
+    const mc = db.courses.findOne({courseNumber: num, status: "published"});
+    if (mc) return {courseId: mc._id.toString(), courseNumber: num};
+  }
+  return null;
+}
+
+const picked = pickCourseId(matrixNumbers);
+if (picked) {
+  out.semesterOneCourseId = picked.courseId;
+  out.semesterOneCourseNumber = picked.courseNumber;
+} else if (out.courseId) {
+  out.semesterOneCourseId = out.courseId;
+  out.semesterOneCourseNumber = out.sampleCourseNumber || null;
+}
+
+out.semesterMatrixRuleCount = db.catalog_rules.distinct("requirementGroupId", {
+  programCode: "009216-1-000",
+  "ruleExpression.type": "semester_matrix",
+  status: "published",
+}).length;
+
+print(JSON.stringify(out));
+"""
+
 
 @dataclass
 class BenchResult:
@@ -725,7 +782,17 @@ async def run_manual_semester_plans_and_versions(
                 "semesters": [
                     {
                         "semesterCode": "2025-2",
-                        "plannedCourses": [{"courseId": sample_course_id}],
+                        "plannedCourses": [
+                            {
+                                "courseId": sample_course_id,
+                                "selectedGroups": {
+                                    "lecture": 0,
+                                    "tutorial": None,
+                                    "lab": None,
+                                    "project": None,
+                                },
+                            }
+                        ],
                         "weeklySchedule": {
                             "entries": [
                                 {
@@ -978,7 +1045,14 @@ async def run_completed_courses(v: Verifier, client: httpx.AsyncClient, course_i
     await v.request(client, "DELETE", "/student-profile", token=v.token, expected=200, label="profile delete")
 
 
-async def run_benchmarks(client: httpx.AsyncClient, token: str) -> list[dict[str, Any]]:
+async def run_benchmarks(
+    client: httpx.AsyncClient,
+    token: str,
+    *,
+    planner_plan_id: str | None = None,
+    planner_course_numbers: list[str] | None = None,
+    planner_maybe_course_id: str | None = None,
+) -> list[dict[str, Any]]:
     benches: list[BenchResult] = []
 
     scenarios = [
@@ -1002,12 +1076,56 @@ async def run_benchmarks(client: httpx.AsyncClient, token: str) -> list[dict[str
         ("semester_plan_list", "GET", "/semester-plans", token, None, 30),
     ]
 
+    course_numbers = planner_course_numbers or []
+    if course_numbers:
+        batch_path = (
+            "/catalog/offerings?courseNumbers="
+            + ",".join(course_numbers)
+            + "&academicYear=2025&semesterCode=201"
+        )
+        scenarios.append(("catalog_offerings_batch", "GET", batch_path, token, None, 30))
+
+    if planner_plan_id:
+        scenarios.append(
+            ("semester_plan_get", "GET", f"/semester-plans/{planner_plan_id}", token, None, 30)
+        )
+        if planner_maybe_course_id:
+            scenarios.append(
+                (
+                    "semester_plan_maybe_patch",
+                    "PATCH",
+                    f"/semester-plans/{planner_plan_id}/maybe-courses",
+                    token,
+                    {"maybeCourses": [{"courseId": planner_maybe_course_id}]},
+                    20,
+                )
+            )
+
     results: list[dict[str, Any]] = []
     for name, method, path, tok, body, n in scenarios:
         bench = BenchResult(name=name)
         for _ in range(n):
             await bench_request(client, bench, method, path, token=tok, json_body=body)
         results.append(bench.summary())
+
+    if course_numbers:
+        sequential_bench = BenchResult(name=f"catalog_offerings_sequential_x{len(course_numbers)}")
+        for _ in range(15):
+            start = time.perf_counter()
+            status = 200
+            try:
+                for number in course_numbers:
+                    response = await client.get(
+                        f"/catalog/courses/{number}/offerings?academicYear=2025&semesterCode=201",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    if response.status_code != 200:
+                        status = response.status_code
+            except Exception as exc:  # noqa: BLE001
+                sequential_bench.add((time.perf_counter() - start) * 1000, 0, str(exc))
+                continue
+            sequential_bench.add((time.perf_counter() - start) * 1000, status)
+        results.append(sequential_bench.summary())
 
     # Concurrent catalog load
     concurrent_bench = BenchResult(name="catalog_list_50_concurrent_x20")
@@ -1026,35 +1144,13 @@ async def main() -> int:
 
     repo_root = Path(__file__).resolve().parents[3]
 
-    mongo_eval = (
-        'const out={};'
-        'const c=db.courses.findOne({courseNumber:"00104000",status:"published"});'
-        'if(c) out.courseId=c._id.toString();'
-        'const p=db.degree_programs.findOne({programCode:"009216-1-000",status:"published"});'
-        'if(p) out.degreeProgramId=p._id.toString();'
-        'const m=db.catalog_rules.findOne({programCode:"009216-1-000",'
-        '"ruleExpression.type":"semester_matrix","requirementGroupId":/semester-1-matrix/});'
-        'if(m){'
-        '  out.semesterOneMatrixNumbers=(m.courseReferences||[]).map(r=>r.courseNumber).filter(Boolean);'
-        '  const first=(m.courseReferences||[]).find(r=>r.courseNumber);'
-        '  if(first){'
-        '    const mc=db.courses.findOne({courseNumber:first.courseNumber,status:"published"});'
-        '    if(mc){ out.semesterOneCourseId=mc._id.toString(); out.semesterOneCourseNumber=first.courseNumber; }'
-        '  }'
-        '}'
-        'const matrixCount=db.catalog_rules.countDocuments({programCode:"009216-1-000",'
-        '"ruleExpression.type":"semester_matrix",status:"published"});'
-        'out.semesterMatrixRuleCount=matrixCount;'
-        'print(JSON.stringify(out));'
-    )
-
     proc_mongo = subprocess.run(
         [
             "docker", "compose", "exec", "-T", "mongo",
             "mongosh", "-u", "unipilot", "-p", "unipilot_dev_password",
             "--authenticationDatabase", "admin", "unipilot_python", "--quiet",
             "--eval",
-            mongo_eval,
+            MONGO_BOOTSTRAP_EVAL,
         ],
         capture_output=True,
         text=True,
@@ -1080,6 +1176,10 @@ async def main() -> int:
         )
 
     v = Verifier()
+    bench_results: list[dict[str, Any]] = []
+    bench_plan_id: str | None = None
+    bench_course_numbers: list[str] = []
+    bench_maybe_course_id: str | None = None
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
         await run_functional_verification(v, client)
         if course_id:
@@ -1102,8 +1202,9 @@ async def main() -> int:
             v,
             client,
             degree_program_id=degree_program_id or None,
-            sample_course_id=semester_one_course_id,
-            sample_course_number=semester_one_course_number,
+            sample_course_id=semester_one_course_id or course_id,
+            sample_course_number=semester_one_course_number
+            or mongo_bootstrap.get("sampleCourseNumber"),
         )
         await run_academic_risks(
             v,
@@ -1122,7 +1223,7 @@ async def main() -> int:
             if login.status_code == 200:
                 bench_token = login.json()["data"]["accessToken"]
 
-        bench_results = []
+        bench_results: list[dict[str, Any]] = []
         if bench_token:
             # Ensure benchmark user can hit graduation + semester plan endpoints
             profile_resp = await client.get("/student-profile", headers={"Authorization": f"Bearer {bench_token}"})
@@ -1139,7 +1240,44 @@ async def main() -> int:
                             "currentSemesterCode": "2025-1",
                         },
                     )
-            bench_results = await run_benchmarks(client, bench_token)
+            catalog_resp = await client.get(
+                "/catalog/courses?limit=8",
+                headers={"Authorization": f"Bearer {bench_token}"},
+            )
+            catalog_items: list[dict[str, Any]] = []
+            if catalog_resp.status_code == 200:
+                catalog_items = catalog_resp.json().get("data", {}).get("items") or []
+                bench_course_numbers = [
+                    str(item["courseNumber"])
+                    for item in catalog_items[:3]
+                    if item.get("courseNumber")
+                ]
+                if len(catalog_items) > 1 and catalog_items[1].get("id"):
+                    bench_maybe_course_id = str(catalog_items[1]["id"])
+            plan_course_id = semester_one_course_id
+            if not plan_course_id and catalog_items and catalog_items[0].get("id"):
+                plan_course_id = str(catalog_items[0]["id"])
+            if degree_program_id and plan_course_id:
+                plan_create = await client.post(
+                    "/semester-plans",
+                    headers={"Authorization": f"Bearer {bench_token}"},
+                    json={
+                        "name": "Benchmark Planner Plan",
+                        "semesterCode": "2025-2",
+                        "plannedCourses": [{"courseId": plan_course_id}],
+                    },
+                )
+                if plan_create.status_code == 201:
+                    bench_plan_id = plan_create.json()["data"]["semesterPlan"]["id"]
+            if bench_token and not bench_plan_id:
+                v.warn("benchmark planner plan not created — semester_plan_get/maybe_patch skipped")
+            bench_results = await run_benchmarks(
+                client,
+                bench_token,
+                planner_plan_id=bench_plan_id,
+                planner_course_numbers=bench_course_numbers,
+                planner_maybe_course_id=bench_maybe_course_id,
+            )
 
     # Mongo integrity counts
     proc2 = subprocess.run(
@@ -1156,7 +1294,11 @@ async def main() -> int:
     )
     mongo_counts = json.loads(proc2.stdout.strip() or "{}")
 
+    from datetime import datetime, timezone
+
     report = {
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "base_url": BASE_URL,
         "functional": {
             "passed": len(v.passed),
             "failed": len(v.failed),
@@ -1165,6 +1307,11 @@ async def main() -> int:
             "warnings_list": v.warnings,
         },
         "mongo_counts": mongo_counts,
+        "benchmark_context": {
+            "planner_plan_id": bench_plan_id,
+            "planner_course_numbers": bench_course_numbers,
+            "planner_maybe_course_id": bench_maybe_course_id,
+        },
         "benchmarks": bench_results,
     }
 

@@ -62,3 +62,17 @@ body {
 .animate-fade-in {
   animation: fade-in 0.35s ease-out both;
 }
+
+@media print {
+  .print\:hidden {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  @page {
+    margin: 1cm;
+  }
+}

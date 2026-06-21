@@ -4,7 +4,7 @@
     "sourceType": "dds_catalog_curated_reviewed",
     "catalogYear": 2025,
     "catalogVersion": "2025-2026",
-    "sourceFile": "tests/fixtures/dds_catalog_sample.md",
+    "sourceFile": "data/catalog_valut/wiki",
     "manualReviewRequired": true,
     "confidence": "medium",
     "notes": []

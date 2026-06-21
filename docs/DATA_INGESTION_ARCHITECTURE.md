@@ -1,7 +1,7 @@
 # UniPilot Technion Data Ingestion Architecture
 
-Last updated: 2026-06-20  
-Status: **Partially implemented** — Technion DDS pipeline operational via `services/data-engineering`; RAG generation remains future work.  
+Last updated: 2026-06-21  
+Status: **Partially implemented** — Technion DDS pipeline operational via `services/data-engineering`; catalog wiki vault is the authoritative catalog source; vault export CLI planned. RAG generation remains future work.  
 Related docs: `docs/PROJECT_CONTEXT.md`, `docs/DOMAIN_MODEL.md`, `docs/DATABASE_SCHEMA.md`, `docs/API_SPEC.md`, `services/data-engineering/README.md`
 
 ## 1) Purpose
@@ -23,12 +23,16 @@ The design separates two concerns that must never be conflated:
 
 The **`data-engineering`** internal service implements the DDS catalog pipeline:
 
-1. Parse / curate DDS catalog markdown and course JSON (Phases 6–7.6)
-2. Import into MongoDB **staging** collections (Phase 8–9)
-3. Validate staging quality and resolve blockers (Phases 10–10.5)
-4. Human sign-off and promotion gate (Phases 11–12)
-5. **Production promotion** into `courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`
-6. **API consumption** via FastAPI `/catalog/*` routes (`services/api`)
+1. Maintain catalog knowledge in `data/catalog_valut/wiki/` (human/LLM curated)
+2. Export wiki → reviewed JSON (`export-vault-catalog` — **planned**)
+3. Import semester JSON for offerings (Phase 9)
+4. Import into MongoDB **staging** collections (Phase 8–9)
+5. Validate staging quality and resolve blockers (Phases 10–10.5)
+6. Human sign-off and promotion gate (Phases 11–12)
+7. **Production promotion** into `courses`, `course_offerings`, `degree_programs`, `degree_requirements`, `catalog_rules`
+8. **API consumption** via FastAPI `/catalog/*` routes (`services/api`)
+
+**Retired:** PDF/markdown parser pipeline (Phases 6–7.6). See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
 
 See `services/data-engineering/README.md` for CLI commands.
 

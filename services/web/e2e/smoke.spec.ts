@@ -31,8 +31,8 @@ test.describe('UniPilot smoke flow', () => {
     await page.getByRole('navigation').getByRole('link', { name: /תכנון סמסטר|Plans/i }).click()
     await expect(page.getByRole('heading', { name: /תכנון סמסטר|Semester plans/i })).toBeVisible()
 
-    await page.getByRole('button', { name: /בנייה ידנית|Build manually/i }).click()
-    await expect(page.getByText(/ניתן לבנות תוכנית|build a plan without/i)).toBeVisible()
+    await page.getByRole('button', { name: /תוכנית חדשה|New plan/i }).click()
+    await expect(page.getByText(/חיפוש קורסים לסמסטר|Search courses for semester/i)).toBeVisible()
 
     await page.getByRole('navigation').getByRole('link', { name: /לוח בקרה|Dashboard/i }).click()
     await page.getByRole('button', { name: /התנתקות|Sign out/i }).click()

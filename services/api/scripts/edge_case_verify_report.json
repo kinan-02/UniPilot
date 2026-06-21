@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-06-21T21:42:49.521623+00:00",
+  "base_url": "http://localhost:8000",
+  "passed": 17,
+  "failed": 0,
+  "failures": [],
+  "checks_passed": [
+    "health ok",
+    "catalog unauthenticated",
+    "register",
+    "empty catalog list",
+    "catalog populated total=2068",
+    "offset beyond total",
+    "invalid course number",
+    "missing course",
+    "invalid program code",
+    "empty batch offerings",
+    "semester pair incomplete",
+    "search no match",
+    "graduation no profile",
+    "plan generate no profile",
+    "weak password rejected",
+    "excluded course",
+    "vault-aligned advisory/hard totals 35/16"
+  ]
+}

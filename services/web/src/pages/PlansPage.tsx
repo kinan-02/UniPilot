@@ -1,10 +1,9 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { plansApi } from '../api/endpoints'
 import { isAuthError } from '../auth/AuthContext'
-import { SemesterPlanner } from '../components/plans/SemesterPlanner'
 import { Button } from '../components/ui/Button'
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
@@ -12,11 +11,12 @@ import { useTranslation } from '../i18n'
 import { defaultSemesterCode, semesterLabel } from '../lib/semester'
 import { validateCredits, validateSemesterCode } from '../lib/validation'
 
-type PlansTab = 'list' | 'build' | 'generate'
+type PlansTab = 'list' | 'generate'
 
 export function PlansPage() {
   const { t, locale } = useTranslation()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<PlansTab>('list')
   const [semesterCode, setSemesterCode] = useState(defaultSemesterCode())
   const [maxCredits, setMaxCredits] = useState('12')
@@ -38,10 +38,10 @@ export function PlansPage() {
         maxCredits: Number(maxCredits),
       })
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['plans'] })
       setGenerateError('')
-      setTab('list')
+      navigate(`/plans/${data.semesterPlan.id}`)
     },
     onError: (err) => {
       setGenerateError(isAuthError(err) ? err.message : t('common.errorGeneric'))
@@ -52,7 +52,6 @@ export function PlansPage() {
 
   const tabs: { id: PlansTab; label: string }[] = [
     { id: 'list', label: t('plans.myPlans') },
-    { id: 'build', label: t('plans.buildManual') },
     { id: 'generate', label: t('plans.autoGenerate') },
   ]
 
@@ -80,7 +79,7 @@ export function PlansPage() {
       {tab === 'list' ? (
         <>
           <div className="flex justify-end">
-            <Button onClick={() => setTab('build')}>
+            <Button onClick={() => navigate('/plans/new')}>
               <Plus className="h-4 w-4" />
               {t('plans.newPlan')}
             </Button>
@@ -144,8 +143,6 @@ export function PlansPage() {
           )}
         </>
       ) : null}
-
-      {tab === 'build' ? <SemesterPlanner /> : null}
 
       {tab === 'generate' ? (
         <Card>

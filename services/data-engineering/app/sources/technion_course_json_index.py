@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.sources.technion_dds_catalog_pdf import service_root
+from app.paths import service_root
 from app.utils.course_numbers import normalize_course_number
 
 SEMESTER_CODE_LABELS: dict[int, str] = {

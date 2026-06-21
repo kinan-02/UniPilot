@@ -7,10 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.config import get_settings
-from app.curation.dds_catalog_human_signoff import (
-    NON_EXECUTABLE_RULE_GROUP_IDS,
-    PRODUCTION_EXCLUDED_COURSE_NUMBERS,
-)
+from app.curation.catalog_policies import PRODUCTION_EXCLUDED_COURSE_NUMBERS
 from app.importers.dds_catalog_staging_importer import PROMOTION_WRITE_COLLECTIONS
 from app.main import run_promote_dds_to_production, run_rollback_dds_production_promotion
 from app.promotion.dds_production_promoter import (
@@ -23,6 +20,7 @@ from app.promotion.dds_production_promoter import (
 from tests.test_dds_promotion_gate import (
     EXPECTED_PROGRAMS,
     HARD_GROUP_IDS,
+    SEED_ADVISORY_GROUP_IDS,
     _seed_signed_off_promotion_staging,
 )
 
@@ -79,9 +77,42 @@ def test_promotion_writes_expected_collections(mongo_database) -> None:
         == len(HARD_GROUP_IDS)
     )
     assert mongo_database[settings.production_catalog_rules_collection].count_documents({}) > 0
+    unique_groups = len(
+        mongo_database[settings.production_catalog_rules_collection].distinct("requirementGroupId")
+    )
+    assert unique_groups == mongo_database[settings.production_catalog_rules_collection].count_documents({})
     assert mongo_database[settings.production_courses_collection].count_documents({}) == 3
     assert mongo_database[settings.production_course_offerings_collection].count_documents({}) == 3
     assert mongo_database[settings.production_promotion_runs_collection].count_documents({}) == 1
+
+
+def test_promotion_removes_superseded_catalog_rule_duplicates(mongo_database) -> None:
+    _seed_signed_off_promotion_staging(mongo_database)
+    settings = get_settings()
+    group_id = SEED_ADVISORY_GROUP_IDS[0]
+    mongo_database[settings.production_catalog_rules_collection].insert_one(
+        {
+            "productionKey": f"technion-dds:advisory-rule:catalog:{group_id}:2025-2026",
+            "recordType": "catalog_rule",
+            "requirementGroupId": group_id,
+            "programCode": "009216-1-000",
+            "status": "published",
+            "courseReferences": [],
+        }
+    )
+    run_dds_production_promotion(mongo_database, confirm_dangerous=True, allow_warnings=True)
+    assert (
+        mongo_database[settings.production_catalog_rules_collection].count_documents(
+            {"requirementGroupId": group_id, "recordType": "catalog_rule"}
+        )
+        == 0
+    )
+    assert (
+        mongo_database[settings.production_catalog_rules_collection].count_documents(
+            {"requirementGroupId": group_id, "recordType": "advisory_requirement_group"}
+        )
+        == 1
+    )
 
 
 def test_idempotent_rerun_does_not_duplicate(mongo_database) -> None:
@@ -148,7 +179,7 @@ def test_advisory_rules_are_non_enforced(mongo_database) -> None:
     advisory = mongo_database[settings.production_catalog_rules_collection].count_documents(
         {"advisoryOnly": True}
     )
-    assert advisory >= len(NON_EXECUTABLE_RULE_GROUP_IDS)
+    assert advisory >= len(SEED_ADVISORY_GROUP_IDS)
 
 
 def test_graduation_linked_pools_promoted_with_explicit_bucket_ids(mongo_database) -> None:
@@ -177,7 +208,7 @@ def test_hard_requirements_are_executable_only(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()
     run_dds_production_promotion(mongo_database, confirm_dangerous=True, allow_warnings=True)
-    for group_id in NON_EXECUTABLE_RULE_GROUP_IDS:
+    for group_id in SEED_ADVISORY_GROUP_IDS:
         assert (
             mongo_database[settings.production_degree_requirements_collection].count_documents(
                 {"requirementGroupId": group_id}

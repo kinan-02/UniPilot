@@ -11,6 +11,7 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      AUTO_SEED_CATALOG: ${AUTO_SEED_CATALOG:-false}
       BCRYPT_SALT_ROUNDS: ${BCRYPT_SALT_ROUNDS:-12}
       AUTH_RATE_LIMIT_WINDOW_MS: ${AUTH_RATE_LIMIT_WINDOW_MS:-60000}
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-5}
@@ -59,6 +60,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./services/data-engineering/data/raw:/app/data/raw:ro
+      - ./services/data-engineering/data/catalog_valut:/app/data/catalog_valut:ro
+      - ./services/data-engineering/data/generated:/app/data/generated
       - ./services/data-engineering/data/reports:/app/data/reports
     networks:
       - unipilot-internal

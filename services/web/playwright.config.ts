@@ -30,5 +30,14 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
+    {
+      name: 'planner-catalog',
+      testMatch: /planner-catalog\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
+      },
+      dependencies: ['setup'],
+    },
   ],
 })

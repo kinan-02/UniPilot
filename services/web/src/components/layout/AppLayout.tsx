@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BookOpen,
   CalendarDays,
@@ -19,6 +19,8 @@ export function AppLayout() {
   const { user, logout } = useAuth()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isPlannerWorkspace = /^\/plans\/(?:new|[^/]+\/edit)$/.test(location.pathname)
 
   const navItems = [
     { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard, end: true },
@@ -92,7 +94,12 @@ export function AppLayout() {
         <div className="border-b border-[var(--color-border)] px-4 py-3 lg:hidden">
           <LanguageSwitcher />
         </div>
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            'mx-auto px-3 py-6 sm:px-4 lg:px-6',
+            isPlannerWorkspace ? 'max-w-none' : 'max-w-6xl py-8 sm:px-6 lg:px-8',
+          )}
+        >
           <Outlet />
         </div>
       </main>

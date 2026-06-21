@@ -54,8 +54,14 @@ async def test_patch_course_toggle_inactive_excludes_credits_and_conflicts(
             "name": "Toggle Plan",
             "semesterCode": "2025-2",
             "plannedCourses": [
-                {"courseId": fixtures["courseAId"], "isActive": True},
-                {"courseId": fixtures["courseBId"], "isActive": True},
+                {
+                    "courseId": fixtures["courseAId"],
+                    "selectedGroups": {"lecture": 0, "tutorial": None, "lab": None, "project": None},
+                },
+                {
+                    "courseId": fixtures["courseBId"],
+                    "selectedGroups": {"lecture": 0, "tutorial": None, "lab": None, "project": None},
+                },
             ],
             "weeklySchedule": {
                 "entries": [

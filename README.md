@@ -44,8 +44,12 @@ Set `MONGO_DB=unipilot_python` in `.env` (matches `.env.example`) so the API rea
 
 **First-time catalog data:** promote DDS production data via `data-engineering` (Phase 12). See [Data engineering](#data-engineering) below. The API expects published documents in `courses`, `degree_programs`, `degree_requirements`, and `catalog_rules`.
 
+Keep `AUTO_SEED_CATALOG=false` (default in `.env.example`) so the API does **not** insert dev fixture catalog before promotion. After a volume wipe, run the vault → staging → production pipeline once (see Data engineering README).
+
 ```bash
 docker compose down -v   # clean reset (destroys Mongo volume)
+docker compose up --build -d
+# then promote catalog (export → import staging → import courses → promote)
 ```
 
 ### Local frontend development
@@ -85,8 +89,8 @@ pytest tests/stress
 With the stack running (uses `API_PORT` from `.env`, default 8000):
 
 ```bash
-cd services/api
-python scripts/verify_and_benchmark.py
+cd services/api && python scripts/verify_and_benchmark.py
+cd services/api && python scripts/edge_case_verify.py   # boundary + validation checks
 ```
 
 Writes `services/api/scripts/verify_report.json`. Covers auth, catalog, completed courses, graduation progress, semester plans (generate + manual + versioning), and academic risks against live MongoDB.
@@ -129,6 +133,22 @@ Full contract: `docs/API_SPEC.md`. API version **1.0.0**.
 ### Quick start flow
 
 Register via the web UI at `/register`, complete onboarding with a degree program, then explore catalog, transcript, progress, plans, and risks from the sidebar.
+
+### Manual semester planner
+
+Build a semester schedule at **`/plans/new`** or edit an existing manual plan at **`/plans/:id/edit`**.
+
+The planner is a CheeseFork-inspired schedule workspace (product inspiration only — no CheeseFork code in this repo):
+
+1. Select semester (year + Technion semester code: 200 winter, 201 spring, 202 summer).
+2. Search catalog courses with offerings for that semester; preview before adding.
+3. Add courses to your plan; choose exact lecture/tutorial/lab groups per course.
+4. The weekly grid shows **selected lesson events from active courses only**; inactive courses stay in the list but are excluded from credits, conflicts, exams, and export.
+5. Review exams, conflicts, and change warnings; save explicitly; share read-only via token or export `.ics`.
+
+Plan data is user-owned (`semester_plans` collection). Catalog/course/offering data is read-only. Shared plans: **`/shared/:token`** (read-only, no private profile data).
+
+See `docs/API_SPEC.md` for `selectedLessonEvents`, `PATCH .../lesson-selection`, and `plannerInsights`.
 
 ## Data engineering
 

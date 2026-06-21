@@ -43,7 +43,7 @@ def test_build_plan_from_fixtures() -> None:
     )
     assert plan.summary.programsUpserted == 3
     assert plan.summary.requirementsUpserted == 3
-    assert plan.summary.rulesUpserted == 2
+    assert plan.summary.rulesUpserted == 0
     assert plan.summary.courseReferencesObserved == 2
     assert plan.summary.manualReviewRequiredItems >= 1
 
@@ -73,11 +73,11 @@ def test_import_writes_staging_only(mongo_database) -> None:
     )
     assert summary.programsUpserted == 3
     assert summary.requirementsUpserted == 3
-    assert summary.rulesUpserted == 2
+    assert summary.rulesUpserted == 0
     assert summary.ingestionRunId is not None
     assert mongo_database[settings.staging_degree_programs_collection].count_documents({}) == 3
     assert mongo_database[settings.staging_degree_requirements_collection].count_documents({}) == 3
-    assert mongo_database[settings.staging_catalog_rules_collection].count_documents({}) == 2
+    assert mongo_database[settings.staging_catalog_rules_collection].count_documents({}) == 0
     assert mongo_database[settings.staging_ingestion_runs_collection].count_documents({}) == 1
     assert mongo_database.courses.count_documents({}) == 0
     assert mongo_database.degree_requirements.count_documents({}) == 0
@@ -100,7 +100,7 @@ def test_import_is_idempotent(mongo_database) -> None:
     )
     assert mongo_database[settings.staging_degree_programs_collection].count_documents({}) == 3
     assert mongo_database[settings.staging_degree_requirements_collection].count_documents({}) == 3
-    assert mongo_database[settings.staging_catalog_rules_collection].count_documents({}) == 2
+    assert mongo_database[settings.staging_catalog_rules_collection].count_documents({}) == 0
     assert mongo_database[settings.staging_ingestion_runs_collection].count_documents({}) == 2
 
 

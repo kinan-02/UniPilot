@@ -3,10 +3,8 @@ import { cn } from '../../lib/utils'
 export function Card({
   className,
   children,
-}: {
-  className?: string
-  children: React.ReactNode
-}) {
+  ...props
+}: React.ComponentProps<'div'>) {
   return (
     <div
       className={cn(
@@ -14,6 +12,7 @@ export function Card({
         'shadow-[var(--shadow-soft)]',
         className,
       )}
+      {...props}
     >
       {children}
     </div>

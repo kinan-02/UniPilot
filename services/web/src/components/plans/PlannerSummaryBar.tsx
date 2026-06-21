@@ -9,6 +9,8 @@ type PlannerSummaryBarProps = {
   conflictCount: number
   examCount: number
   maxCredits?: number
+  missingLessonCount?: number
+  changesCount?: number
   className?: string
 }
 
@@ -19,6 +21,8 @@ export function PlannerSummaryBar({
   conflictCount,
   examCount,
   maxCredits,
+  missingLessonCount = 0,
+  changesCount = 0,
   className,
 }: PlannerSummaryBarProps) {
   const { t } = useTranslation()
@@ -55,6 +59,18 @@ export function PlannerSummaryBar({
         <span className="text-[var(--color-text-muted)]">{t('planner.examsCount')}:</span>{' '}
         <strong>{examCount}</strong>
       </span>
+      {missingLessonCount > 0 ? (
+        <span>
+          <span className="text-[var(--color-text-muted)]">{t('planner.missingLessons')}:</span>{' '}
+          <strong className="text-[var(--color-warning)]">{missingLessonCount}</strong>
+        </span>
+      ) : null}
+      {changesCount > 0 ? (
+        <span>
+          <span className="text-[var(--color-text-muted)]">{t('planner.changes')}:</span>{' '}
+          <strong className="text-[var(--color-warning)]">{changesCount}</strong>
+        </span>
+      ) : null}
     </div>
   )
 }

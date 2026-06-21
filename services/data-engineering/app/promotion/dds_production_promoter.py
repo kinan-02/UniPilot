@@ -12,7 +12,7 @@ from pymongo import ReplaceOne
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
-from app.curation.dds_catalog_human_signoff import PRODUCTION_EXCLUDED_COURSE_NUMBERS
+from app.promotion.dds_promotion_gate import EXCLUDED_COURSE_SKIP_REASON
 from app.importers.dds_catalog_staging_importer import (
     PROMOTION_WRITE_COLLECTIONS,
     SOURCE_NAME as DDS_CATALOG_SOURCE,
@@ -28,7 +28,7 @@ from app.promotion.dds_promotion_gate import (
     _is_hard_requirement,
     build_promotion_gate_result,
 )
-from app.sources.technion_dds_catalog_pdf import service_root
+from app.paths import service_root
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
 
 PROMOTION_COLLECTION_SOURCE_NAMES: dict[str, str] = {
@@ -314,9 +314,11 @@ def map_staging_course_to_production(
     promotion_run_id: str,
     promoted_at: str,
     catalog_version: str,
+    production_excluded_course_numbers: set[str] | None = None,
 ) -> dict[str, Any]:
     number = staging.get("courseNumber", "")
-    if number in PRODUCTION_EXCLUDED_COURSE_NUMBERS:
+    excluded = production_excluded_course_numbers or set()
+    if number in excluded:
         raise ProductionPromotionError(f"Refusing to promote excluded course {number}.")
     production_key = production_course_key(number)
     metadata = dict(staging.get("metadata") or {})
@@ -361,9 +363,11 @@ def map_staging_offering_to_production(
     promoted_at: str,
     catalog_version: str,
     promoted_course_numbers: set[str],
+    production_excluded_course_numbers: set[str] | None = None,
 ) -> dict[str, Any]:
     number = staging.get("courseNumber", "")
-    if number in PRODUCTION_EXCLUDED_COURSE_NUMBERS:
+    excluded = production_excluded_course_numbers or set()
+    if number in excluded:
         raise ProductionPromotionError(f"Refusing to promote offering for excluded course {number}.")
     if number not in promoted_course_numbers:
         raise ProductionPromotionError(f"Refusing offering for non-promoted course {number}.")
@@ -503,6 +507,7 @@ def build_production_documents(
     )
 
     promoted_numbers = {item.identifier for item in plan.courses}
+    excluded_numbers = set(gate.policiesApplied.productionExcludedCourseNumbers)
     documents: dict[str, list[dict[str, Any]]] = {
         settings.production_degree_programs_collection: [],
         settings.production_degree_requirements_collection: [],
@@ -573,6 +578,7 @@ def build_production_documents(
             promotion_run_id=promotion_run_id,
             promoted_at=promoted_at,
             catalog_version=catalog_version,
+            production_excluded_course_numbers=excluded_numbers,
         )
         documents[settings.production_courses_collection].append(doc)
         planned_keys[settings.production_courses_collection].add(doc["productionKey"])
@@ -587,6 +593,7 @@ def build_production_documents(
             promoted_at=promoted_at,
             catalog_version=catalog_version,
             promoted_course_numbers=promoted_numbers,
+            production_excluded_course_numbers=excluded_numbers,
         )
         documents[settings.production_course_offerings_collection].append(doc)
         planned_keys[settings.production_course_offerings_collection].add(doc["productionKey"])
@@ -611,6 +618,23 @@ def _upsert_production_documents(
         result = database[collection].bulk_write(operations, ordered=False)
         counts_written[collection] = result.upserted_count + result.modified_count + result.matched_count
     return counts_written
+
+
+def _remove_superseded_catalog_rule_duplicates(
+    database: Database,
+    settings: Settings,
+    requirement_group_ids: set[str],
+) -> int:
+    """Drop legacy catalog_rule rows superseded by advisory_requirement_group promotion."""
+    if not requirement_group_ids:
+        return 0
+    result = database[settings.production_catalog_rules_collection].delete_many(
+        {
+            "recordType": "catalog_rule",
+            "requirementGroupId": {"$in": sorted(requirement_group_ids)},
+        }
+    )
+    return int(result.deleted_count)
 
 
 def _production_counts(database: Database, settings: Settings) -> dict[str, int]:
@@ -665,7 +689,7 @@ def render_production_promotion_markdown(result: ProductionPromotionResult) -> s
         lines.append(f"- {key}: {value}")
     lines.extend(["", "## Skipped excluded courses"])
     excluded = [
-        item for item in run.skippedItems if item.reason == "production-excluded-by-human-signoff"
+        item for item in run.skippedItems if item.reason == EXCLUDED_COURSE_SKIP_REASON
     ]
     for item in excluded[:20]:
         lines.append(f"- `{item.identifier}` — {item.reason}")
@@ -814,6 +838,22 @@ def run_dds_production_promotion(
             out_md = md_path or default_production_promotion_md_path()
             write_production_promotion_report(result, json_path=out_json, md_path=out_md)
             return result
+
+        promoted_advisory_group_ids = {
+            str(item.identifier)
+            for item in gate.plannedWrites.advisoryCatalogRules
+            if item.itemType == "advisory_requirement_group" and item.identifier
+        }
+        duplicates_removed = _remove_superseded_catalog_rule_duplicates(
+            database,
+            settings,
+            promoted_advisory_group_ids,
+        )
+        if duplicates_removed:
+            run.rollbackNotes.append(
+                f"Removed {duplicates_removed} superseded catalog_rule duplicate(s) "
+                "before advisory_requirement_group promotion."
+            )
 
         validate_production_collections_for_promotion(
             database,

@@ -55,13 +55,27 @@ class GenerateSemesterPlanRequest(BaseModel):
         return self
 
 
+class SelectedLessonEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    eventId: str = Field(min_length=1, max_length=256)
+    type: str = Field(min_length=1, max_length=64)
+    group: str | None = Field(default=None, max_length=64)
+
+
 class SelectedGroupsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    lecture: int | str | None = None
-    tutorial: int | str | None = None
-    lab: int | str | None = None
-    project: int | str | None = None
+    lecture: int | str | list[str] | None = None
+    tutorial: int | str | list[str] | None = None
+    lab: int | str | list[str] | None = None
+    project: int | str | list[str] | None = None
+
+
+class PatchLessonSelectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selectedLessonEvents: list[SelectedLessonEventInput] = Field(default_factory=list)
 
 
 class ManualPlannedCourseInput(BaseModel):
@@ -72,6 +86,7 @@ class ManualPlannedCourseInput(BaseModel):
     reason: str | None = Field(default=None, min_length=1, max_length=240)
     isActive: bool = True
     selectedGroups: SelectedGroupsInput | None = None
+    selectedLessonEvents: list[SelectedLessonEventInput] | None = None
     notes: str | None = Field(default=None, max_length=500)
 
     @field_validator("courseId")
@@ -111,6 +126,12 @@ class ReorderPlannedCoursesRequest(BaseModel):
         return [validate_object_id(course_id) for course_id in value]
 
 
+class PatchMaybeCoursesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    maybeCourses: list[ManualPlannedCourseInput] = Field(default_factory=list)
+
+
 class WeeklyScheduleEntryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -138,7 +159,8 @@ class ManualSemesterInput(BaseModel):
     goalCredits: float | None = None
     order: int | None = Field(default=None, ge=1, le=20)
     notes: str | None = Field(default=None, max_length=500)
-    plannedCourses: list[ManualPlannedCourseInput] = Field(min_length=1)
+    plannedCourses: list[ManualPlannedCourseInput] = Field(default_factory=list)
+    maybeCourses: list[ManualPlannedCourseInput] = Field(default_factory=list)
     weeklySchedule: WeeklyScheduleInput | None = None
     customEvents: list[CustomEventInput] | None = None
 
@@ -154,6 +176,12 @@ class ManualSemesterInput(BaseModel):
             return None
         return validate_credit_load(value)
 
+    @model_validator(mode="after")
+    def validate_course_lists(self) -> "ManualSemesterInput":
+        if not self.plannedCourses and not self.maybeCourses:
+            raise ValueError("plannedCourses or maybeCourses must contain at least one course")
+        return self
+
 
 class CreateManualSemesterPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -164,6 +192,7 @@ class CreateManualSemesterPlanRequest(BaseModel):
     goalCredits: float | None = None
     notes: str | None = Field(default=None, max_length=500)
     plannedCourses: list[ManualPlannedCourseInput] | None = None
+    maybeCourses: list[ManualPlannedCourseInput] | None = None
     weeklySchedule: WeeklyScheduleInput | None = None
     semesters: list[ManualSemesterInput] | None = None
 

@@ -6,8 +6,8 @@ import re
 from datetime import date, datetime
 from typing import Any
 
-MOED_A_KEYS = frozenset({"moedA", "moed_a", "Moed A", "מועד א", "מועד א'"})
-MOED_B_KEYS = frozenset({"moedB", "moed_b", "Moed B", "מועד ב", "מועד ב'"})
+MOED_A_KEYS = frozenset({"moedA", "moed_a", "examA", "exam_a", "Moed A", "מועד א", "מועד א'", "מועד א׳"})
+MOED_B_KEYS = frozenset({"moedB", "moed_b", "examB", "exam_b", "Moed B", "מועד ב", "מועד ב'", "מועד ב׳"})
 
 DATE_PATTERNS = (
     re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?"),
@@ -45,9 +45,9 @@ def _moed_from_key(key: str) -> str | None:
     if normalized in MOED_B_KEYS:
         return "B"
     lower = normalized.lower()
-    if "moeda" in lower or "moed_a" in lower:
+    if "exama" in lower or "moeda" in lower or "moed_a" in lower:
         return "A"
-    if "moedb" in lower or "moed_b" in lower:
+    if "examb" in lower or "moedb" in lower or "moed_b" in lower:
         return "B"
     if "מועד א" in normalized:
         return "A"
@@ -63,48 +63,28 @@ def exams_from_offering(
     course_name: str,
 ) -> list[dict[str, Any]]:
     if not offering:
-        return [
-            {
-                "courseNumber": course_number,
-                "courseName": course_name,
-                "moed": None,
-                "date": None,
-                "startTime": None,
-                "endTime": None,
-                "raw": None,
-                "isMissing": True,
-            }
-        ]
+        return []
 
     exam_dates = offering.get("examDates") or {}
     if not exam_dates:
-        return [
-            {
-                "courseNumber": course_number,
-                "courseName": course_name,
-                "moed": None,
-                "date": None,
-                "startTime": None,
-                "endTime": None,
-                "raw": None,
-                "isMissing": True,
-            }
-        ]
+        return []
 
     items: list[dict[str, Any]] = []
     for key, value in exam_dates.items():
         moed = _moed_from_key(str(key))
         parsed_date, start_time, raw = _parse_exam_datetime(value)
+        if parsed_date is None:
+            continue
         items.append(
             {
                 "courseNumber": course_number,
                 "courseName": course_name,
                 "moed": moed or str(key),
-                "date": parsed_date.isoformat() if parsed_date else None,
+                "date": parsed_date.isoformat(),
                 "startTime": start_time,
                 "endTime": None,
                 "raw": raw or str(value) if value else None,
-                "isMissing": parsed_date is None and not value,
+                "isMissing": False,
             }
         )
     return items
@@ -137,21 +117,11 @@ def build_exam_summary(
         for entry in entries
         if entry.get("date") is not None
     ]
-    unsorted = [entry for entry in entries if entry.get("date") is None]
     sortable.sort(key=lambda item: (item["date"], item.get("startTime") or "", item["courseNumber"]))
 
     warnings: list[dict[str, Any]] = []
     by_date: dict[str, list[str]] = {}
     for entry in sortable:
-        if entry.get("isMissing"):
-            warnings.append(
-                {
-                    "type": "missing_exam",
-                    "courseNumber": entry["courseNumber"],
-                    "message": f"Exam date missing for {entry['courseNumber']}",
-                }
-            )
-            continue
         date_key = str(entry["date"])
         by_date.setdefault(date_key, []).append(entry["courseNumber"])
 
@@ -168,10 +138,10 @@ def build_exam_summary(
             )
 
     return {
-        "exams": sortable + unsorted,
+        "exams": sortable,
         "warnings": warnings,
         "totalExams": len(sortable),
-        "missingCount": sum(1 for entry in entries if entry.get("isMissing")),
+        "missingCount": 0,
     }
 
 

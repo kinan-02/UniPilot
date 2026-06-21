@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.planning.lesson_events import (
+    _canonical_slot_type,
+    filter_groups_by_lesson_selection,
+    group_schedule_by_type,
+)
 from app.planning.weekly_schedule import normalize_schedule_group
 
 SLOT_TYPE_ALIASES: dict[str, tuple[str, ...]] = {
@@ -14,65 +19,24 @@ SLOT_TYPE_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _canonical_slot_type(slot_type: str) -> str:
-    normalized = slot_type.strip().lower()
-    if not normalized:
-        return "other"
-    for canonical, aliases in SLOT_TYPE_ALIASES.items():
-        if normalized in aliases or any(alias.lower() in normalized for alias in aliases):
-            return canonical
-    return normalized
-
-
-def group_schedule_by_type(schedule_groups: list[dict[str, Any]]) -> dict[str, list[tuple[int, dict[str, Any]]]]:
-    grouped: dict[str, list[tuple[int, dict[str, Any]]]] = {}
-    for index, group in enumerate(schedule_groups or []):
-        normalized = normalize_schedule_group(group)
-        canonical = _canonical_slot_type(normalized.get("slotType") or "")
-        grouped.setdefault(canonical, []).append((index, group))
-    return grouped
-
-
 def filter_schedule_groups_by_selection(
     schedule_groups: list[dict[str, Any]],
     selected_groups: dict[str, Any] | None,
+    *,
+    selected_lesson_events: list[dict[str, Any]] | None = None,
+    course_number: str | None = None,
+    academic_year: int | None = None,
+    semester_code: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Return schedule groups included in the plan based on selectedGroups."""
-    if not schedule_groups:
-        return []
-    if not selected_groups:
-        return list(schedule_groups)
-
-    explicit_values = [
-        value
-        for key, value in selected_groups.items()
-        if key in {"lecture", "tutorial", "lab", "project"} and value is not None
-    ]
-    if not explicit_values:
-        return list(schedule_groups)
-
-    grouped = group_schedule_by_type(schedule_groups)
-    selected: list[dict[str, Any]] = []
-
-    for slot_key in ("lecture", "tutorial", "lab", "project"):
-        selection = selected_groups.get(slot_key)
-        if selection is None:
-            continue
-        bucket = grouped.get(slot_key, [])
-        if not bucket:
-            continue
-        if isinstance(selection, int):
-            if 0 <= selection < len(bucket):
-                selected.append(bucket[selection][1])
-            continue
-        if isinstance(selection, str):
-            for _, group in bucket:
-                normalized = normalize_schedule_group(group)
-                if normalized.get("slotType") == selection:
-                    selected.append(group)
-                    break
-
-    return selected if selected else list(schedule_groups)
+    """Return schedule groups included in the plan based on lesson selection."""
+    return filter_groups_by_lesson_selection(
+        schedule_groups,
+        selected_lesson_events=selected_lesson_events,
+        selected_groups=selected_groups,
+        course_number=course_number,
+        academic_year=academic_year,
+        semester_code=semester_code,
+    )
 
 
 def available_group_options(schedule_groups: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

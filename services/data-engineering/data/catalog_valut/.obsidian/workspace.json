@@ -1,0 +1,225 @@
+{
+  "main": {
+    "id": "ac463fe0124a2e95",
+    "type": "split",
+    "children": [
+      {
+        "id": "f3fad8ed68c4bddc",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b2fd510d06facc60",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "wiki/ingestion-plan-full-catalog.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "ingestion-plan-full-catalog"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "30813bd8c08b5013",
+    "type": "split",
+    "children": [
+      {
+        "id": "479527ea59a2d109",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b5f4107843f30ac6",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "da06fbafdfc282f7",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "d3f5c64c7e7e7d71",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "8c2424db3a5f0886",
+    "type": "split",
+    "children": [
+      {
+        "id": "5d2affaf5a079ecd",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d43e40b03192bc29",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "wiki/ingestion-plan-full-catalog.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for ingestion-plan-full-catalog"
+            }
+          },
+          {
+            "id": "ae841851caa19cf9",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "wiki/ingestion-plan-full-catalog.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from ingestion-plan-full-catalog"
+            }
+          },
+          {
+            "id": "0b8000db8acb68ff",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "610dbf40c3ca645a",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "f32ed21305850243",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "wiki/ingestion-plan-full-catalog.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of ingestion-plan-full-catalog"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "b2fd510d06facc60",
+  "lastOpenFiles": [
+    "faculty-biotechnology-food-engineering.md",
+    "wiki/entities/track-chemistry-haznek.md",
+    "wiki/ingestion-plan-full-catalog.md",
+    "wiki/entities/track-mathematics-physics.md",
+    "wiki/entities/track-civil-engineering-structures.md",
+    "wiki/entities/track-electrical-engineering.md",
+    "wiki/entities/track-biology-human-development.md",
+    "wiki/entities/track-physics-math.md",
+    "wiki/entities/track-biochemical-engineering.md",
+    "wiki/entities/track-mechanical-engineering.md",
+    "wiki/entities/track-mathematics-bsc.md",
+    "wiki/entities/track-physics-three-year.md",
+    "wiki/entities/track-biology-general.md",
+    "wiki/entities/track-chemistry-chemistry.md",
+    "wiki/entities/track-civil-engineering-water-transport.md",
+    "wiki/entities/track-chemical-engineering.md",
+    "wiki/entities/faculty-biology.md",
+    "wiki/entities/faculty-physics.md",
+    "wiki/entities/faculty-chemistry.md",
+    "wiki/entities/faculty-mathematics.md",
+    "wiki/entities/faculty-electrical-computer-engineering.md",
+    "wiki/entities/faculty-civil-environmental-engineering.md",
+    "wiki/entities/faculty-chemical-engineering.md",
+    "wiki/entities/faculty-mechanical-engineering.md",
+    "wiki/concepts/pregnancy-fertility-adaptations.md",
+    "wiki/concepts/reserve-service-adaptations.md",
+    "raw/catalog2025-26.pdf",
+    "wiki/courses/0940224-data-structures-algorithms.md.tmp.9839.bee694a0fecf",
+    "wiki/courses",
+    "raw/09-מדעי-הנתונים-וההחלטות-תשפ״ו.pdf",
+    "wiki/entities",
+    "wiki/sources",
+    "wiki/concepts",
+    "wiki",
+    "raw/assets",
+    "raw"
+  ]
+}

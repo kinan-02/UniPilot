@@ -1,7 +1,7 @@
 /** Generate ICS calendar export for semester plan (Asia/Jerusalem). */
 
 import type { CustomEvent, ExamSummary, WeeklySchedule } from '../types/api'
-import { eventsFromSchedule } from './planner'
+import { eventsFromSchedule, scheduleIncludesCustomBlocks } from './planner'
 
 const TZ = 'Asia/Jerusalem'
 const DAY_TO_DOW: Record<string, number> = {
@@ -52,9 +52,16 @@ type IcsOptions = {
   schedule?: WeeklySchedule
   examSummary?: ExamSummary
   customEvents?: CustomEvent[]
+  customEventsDirty?: boolean
 }
 
-export function generatePlanIcs({ planName, schedule, examSummary, customEvents = [] }: IcsOptions): string {
+export function generatePlanIcs({
+  planName,
+  schedule,
+  examSummary,
+  customEvents = [],
+  customEventsDirty = false,
+}: IcsOptions): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -90,6 +97,12 @@ export function generatePlanIcs({ planName, schedule, examSummary, customEvents 
   }
 
   for (const event of eventsFromSchedule(schedule)) {
+    if (
+      customEventsDirty &&
+      (event.courseNumber === 'CUSTOM' || event.slotType === 'custom' || event.slotType === 'personal')
+    ) {
+      continue
+    }
     const startHour = Math.floor(event.startMinutes / 60)
     const startMin = event.startMinutes % 60
     const endHour = Math.floor(event.endMinutes / 60)
@@ -118,12 +131,16 @@ export function generatePlanIcs({ planName, schedule, examSummary, customEvents 
     )
   }
 
-  for (const block of customEvents) {
-    const [sh, sm] = block.startTime.split(':').map(Number)
-    const [eh, em] = block.endTime.split(':').map(Number)
-    const start = nextDateForDay(block.day, sh, sm)
-    const end = nextDateForDay(block.day, eh, em)
-    addEvent(block.title, start, end, block.notes)
+  const includeSeparateCustom =
+    customEventsDirty || !scheduleIncludesCustomBlocks(schedule)
+  if (includeSeparateCustom) {
+    for (const block of customEvents) {
+      const [sh, sm] = block.startTime.split(':').map(Number)
+      const [eh, em] = block.endTime.split(':').map(Number)
+      const start = nextDateForDay(block.day, sh, sm)
+      const end = nextDateForDay(block.day, eh, em)
+      addEvent(block.title, start, end, block.notes)
+    }
   }
 
   lines.push('END:VCALENDAR')

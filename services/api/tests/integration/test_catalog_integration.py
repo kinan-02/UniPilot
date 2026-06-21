@@ -3,11 +3,15 @@
 import pytest
 
 from tests.fixtures.catalog_production_fixtures import (
+    ADVISORY_COUNTS_BY_PROGRAM,
     ADVISORY_RULE_ID,
+    ALL_PROGRAMS,
     EXCLUDED_COURSE,
     HARD_REQUIREMENT_ID,
     KNOWN_COURSE,
     KNOWN_PROGRAM,
+    TOTAL_ADVISORY_RULES,
+    TOTAL_HARD_REQUIREMENTS,
     seed_catalog_production_fixtures,
 )
 
@@ -42,7 +46,7 @@ async def test_list_courses_pagination(auth_client, mongo_database):
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
-    assert body["data"]["total"] == 2
+    assert body["data"]["total"] == 3
     assert len(body["data"]["items"]) == 1
     assert body["data"]["limit"] == 1
 
@@ -162,7 +166,7 @@ async def test_list_degree_programs(auth_client, mongo_database):
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["total"] == 1
+    assert response.json()["data"]["total"] == len(ALL_PROGRAMS)
 
 
 @pytest.mark.asyncio
@@ -206,7 +210,7 @@ async def test_hard_requirements_exclude_advisory_rules(auth_client, mongo_datab
 
     assert response.status_code == 200
     requirements = response.json()["data"]["requirements"]
-    assert len(requirements) == 1
+    assert len(requirements) == 6
     assert requirements[0]["requirementGroupId"] == HARD_REQUIREMENT_ID
     assert requirements[0]["requirementEnforcement"] == "hard"
     assert all(item["requirementGroupId"] != ADVISORY_RULE_ID for item in requirements)
@@ -224,11 +228,11 @@ async def test_advisory_rules_are_non_enforced(auth_client, mongo_database):
 
     assert response.status_code == 200
     rules = response.json()["data"]["advisoryRules"]
-    assert len(rules) == 1
-    assert rules[0]["requirementGroupId"] == ADVISORY_RULE_ID
-    assert rules[0]["advisoryOnly"] is True
-    assert rules[0]["enforceInGraduationProgress"] is False
-    assert rules[0]["notHardRequirement"] is True
+    assert len(rules) == ADVISORY_COUNTS_BY_PROGRAM[KNOWN_PROGRAM]
+    assert any(rule["requirementGroupId"] == ADVISORY_RULE_ID for rule in rules)
+    assert all(rule["advisoryOnly"] is True for rule in rules)
+    assert all(rule["enforceInGraduationProgress"] is False for rule in rules)
+    assert all(rule["notHardRequirement"] is True for rule in rules)
 
 
 @pytest.mark.asyncio
@@ -243,8 +247,8 @@ async def test_catalog_summary_separates_hard_and_advisory(auth_client, mongo_da
 
     assert response.status_code == 200
     summary = response.json()["data"]["catalogSummary"]
-    assert summary["counts"]["hardRequirements"] == 1
-    assert summary["counts"]["advisoryRules"] == 1
+    assert summary["counts"]["hardRequirements"] == 6
+    assert summary["counts"]["advisoryRules"] == ADVISORY_COUNTS_BY_PROGRAM[KNOWN_PROGRAM]
     assert summary["hardRequirements"][0]["requirementEnforcement"] == "hard"
     assert summary["advisoryRules"][0]["notHardRequirement"] is True
 
@@ -303,3 +307,56 @@ async def test_semester_filter_requires_both_params(auth_client, mongo_database)
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_batch_catalog_offerings(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-batch-offerings@example.com")
+
+    response = await auth_client.get(
+        f"/catalog/offerings?courseNumbers={KNOWN_COURSE}&academicYear=2025&semesterCode=201",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["totalCourses"] == 1
+    assert KNOWN_COURSE in body["offeringsByCourseNumber"]
+    assert len(body["offeringsByCourseNumber"][KNOWN_COURSE]) == 1
+
+
+@pytest.mark.asyncio
+async def test_vault_like_advisory_rule_totals(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-advisory-totals@example.com")
+
+    total_advisory = 0
+    for program_code in ALL_PROGRAMS:
+        response = await auth_client.get(
+            f"/catalog/degree-programs/{program_code}/advisory-rules",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        count = response.json()["data"]["total"]
+        assert count == ADVISORY_COUNTS_BY_PROGRAM[program_code]
+        total_advisory += count
+
+    assert total_advisory == TOTAL_ADVISORY_RULES
+
+
+@pytest.mark.asyncio
+async def test_vault_like_hard_requirement_totals(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-hard-totals@example.com")
+
+    total_hard = 0
+    for program_code in ALL_PROGRAMS:
+        response = await auth_client.get(
+            f"/catalog/degree-programs/{program_code}/requirements",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        total_hard += response.json()["data"]["total"]
+
+    assert total_hard == TOTAL_HARD_REQUIREMENTS

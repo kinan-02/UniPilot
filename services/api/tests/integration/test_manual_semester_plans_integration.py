@@ -66,6 +66,186 @@ async def test_create_manual_semester_plan(auth_client, mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_create_manual_plan_persists_maybe_courses(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "manual-plan-maybe@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Plan With Maybe",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+            "maybeCourses": [{"courseId": fixtures["courseCId"]}],
+        },
+    )
+
+    assert response.status_code == 201
+    plan = response.json()["data"]["semesterPlan"]
+    semester = plan["semesters"][0]
+    assert len(semester["plannedCourses"]) == 1
+    assert len(semester["maybeCourses"]) == 1
+    assert semester["maybeCourses"][0]["courseId"] == fixtures["courseCId"]
+    assert semester["maybeCourses"][0]["courseNumber"]
+
+    get_response = await auth_client.get(
+        f"/semester-plans/{plan['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    reloaded = get_response.json()["data"]["semesterPlan"]["semesters"][0]
+    assert len(reloaded["maybeCourses"]) == 1
+    assert reloaded["maybeCourses"][0]["courseId"] == fixtures["courseCId"]
+
+
+@pytest.mark.asyncio
+async def test_update_manual_plan_rejects_course_in_both_lists(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "manual-plan-overlap@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Overlap Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+
+    update_response = await auth_client.put(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesters": [
+                {
+                    "semesterCode": "2025-2",
+                    "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+                    "maybeCourses": [{"courseId": fixtures["courseAId"]}],
+                }
+            ]
+        },
+    )
+
+    assert update_response.status_code == 400
+    assert "maybeCourses" in update_response.text or "plannedCourses" in update_response.text
+
+
+@pytest.mark.asyncio
+async def test_update_manual_plan_moves_all_courses_to_maybe(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "manual-plan-all-maybe@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Move To Maybe Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+
+    update_response = await auth_client.put(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesters": [
+                {
+                    "semesterCode": "2025-2",
+                    "plannedCourses": [],
+                    "maybeCourses": [{"courseId": fixtures["courseAId"]}],
+                }
+            ]
+        },
+    )
+    assert update_response.status_code == 200, update_response.text
+    updated = update_response.json()["data"]["semesterPlan"]["semesters"][0]
+    assert updated["plannedCourses"] == []
+    assert len(updated["maybeCourses"]) == 1
+    assert updated["maybeCourses"][0]["courseId"] == fixtures["courseAId"]
+
+    get_response = await auth_client.get(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    reloaded = get_response.json()["data"]["semesterPlan"]["semesters"][0]
+    assert reloaded["plannedCourses"] == []
+    assert len(reloaded["maybeCourses"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_patch_maybe_courses_without_recomputing_insights(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "manual-plan-maybe-patch@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Maybe Patch Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan = create_response.json()["data"]["semesterPlan"]
+    plan_id = plan["id"]
+    original_insights = plan.get("plannerInsights")
+    assert original_insights is not None
+
+    patch_response = await auth_client.patch(
+        f"/semester-plans/{plan_id}/maybe-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"maybeCourses": [{"courseId": fixtures["courseCId"]}]},
+    )
+    assert patch_response.status_code == 200
+    patched = patch_response.json()["data"]["semesterPlan"]
+    assert len(patched["semesters"][0]["maybeCourses"]) == 1
+    assert patched.get("plannerInsights") == original_insights
+
+
+@pytest.mark.asyncio
+async def test_get_plan_uses_persisted_insights_snapshot(auth_client, mongo_database):
+    from app.config import get_settings
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "manual-plan-insights-snapshot@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Snapshot Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+
+    settings = get_settings()
+    stored = await mongo_database[settings.semester_plans_collection].find_one(
+        {"_id": __import__("bson").ObjectId(plan_id)}
+    )
+    assert stored.get("plannerInsights") is not None
+
+    get_response = await auth_client.get(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    assert get_response.json()["data"]["semesterPlan"].get("plannerInsights") is not None
+
+
+@pytest.mark.asyncio
 async def test_update_manual_semester_plan_adds_weekly_schedule(auth_client, mongo_database):
     fixtures = await seed_graduation_progress_fixtures(mongo_database)
     await seed_course_offerings(
@@ -98,8 +278,14 @@ async def test_update_manual_semester_plan_adds_weekly_schedule(auth_client, mon
                 {
                     "semesterCode": "2025-2",
                     "plannedCourses": [
-                        {"courseId": fixtures["courseAId"]},
-                        {"courseId": fixtures["courseBId"]},
+                        {
+                            "courseId": fixtures["courseAId"],
+                            "selectedGroups": {"lecture": 0, "tutorial": None, "lab": None, "project": None},
+                        },
+                        {
+                            "courseId": fixtures["courseBId"],
+                            "selectedGroups": {"lecture": 0, "tutorial": None, "lab": None, "project": None},
+                        },
                     ],
                     "weeklySchedule": {
                         "entries": [
@@ -183,7 +369,12 @@ async def test_manual_weekly_schedule_resolves_nearest_catalog_year(auth_client,
         json={
             "name": "Spring with calendar-year mismatch",
             "semesterCode": "2026-2",
-            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+            "plannedCourses": [
+                {
+                    "courseId": fixtures["courseAId"],
+                    "selectedGroups": {"lecture": 0, "tutorial": None, "lab": None, "project": None},
+                }
+            ],
             "weeklySchedule": {
                 "entries": [
                     {

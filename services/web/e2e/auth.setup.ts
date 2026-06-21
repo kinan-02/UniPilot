@@ -13,5 +13,15 @@ setup('prepare authenticated session', async ({ page }) => {
   await page.getByRole('button', { name: /יצירת חשבון|Create account/i }).click()
   await registerResponse
   await page.waitForURL('**/onboarding', { timeout: 15_000 })
+
+  const degreeSelect = page.locator('#degree-program')
+  await expect(degreeSelect.locator('option')).not.toHaveCount(1, { timeout: 15_000 })
+  const programId = await degreeSelect.locator('option').nth(1).getAttribute('value')
+  if (programId) {
+    await degreeSelect.selectOption(programId)
+    await page.getByRole('button', { name: /המשך ללוח הבקרה|Continue to dashboard/i }).click()
+    await page.waitForURL('**/', { timeout: 15_000 })
+  }
+
   await page.context().storageState({ path: 'e2e/.auth/user.json' })
 })

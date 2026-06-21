@@ -639,11 +639,21 @@ Calculate graduation progress for the authenticated user.
 
 Updates `name`, `status` (`draft`/`active`), and/or full `semesters` array (planned courses + weekly schedule). Increments `version`. Archived plans return `400`.
 
-Planned courses support `isActive`, `selectedGroups`, and `notes`. Semesters may include `customEvents`.
+Planned courses support `isActive`, `selectedLessonEvents`, legacy `selectedGroups`, and `notes`. Semesters may include `customEvents`.
+
+Adding a course does **not** place it on the weekly grid until lesson events are selected. The grid and conflict detection use **selected lesson events only** from **active** courses. Credits and exam summary remain course-level.
 
 ### PATCH /semester-plans/:planId/courses/:course_number
 
-Update a single planned course (`isActive`, `selectedGroups`, `notes`). Rebuilds schedule for active courses.
+Update a single planned course (`isActive`, `selectedGroups`, `selectedLessonEvents`, `notes`). Rebuilds schedule for active courses with selected lessons.
+
+### PATCH /semester-plans/:planId/courses/:course_number/lesson-selection
+
+**Body:** `{ "selectedLessonEvents": [{ "eventId": "...", "type": "lecture", "group": "10" }] }`
+
+Updates lesson/group selection for one planned course. Validates each `eventId` against published offering data for the plan semester. Empty array clears selection. Does not mutate catalog data. Returns enriched plan with `plannerInsights.lessonSelectionWarnings` when selection is missing, stale, or incomplete.
+
+CheeseFork-inspired UX only — no CheeseFork code or GPL content in this repository.
 
 ### PUT /semester-plans/:planId/courses/order
 

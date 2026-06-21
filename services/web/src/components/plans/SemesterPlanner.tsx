@@ -1,16 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, BookPlus, CalendarDays, Download, Info, Plus, Redo2, Save, Undo2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { catalogApi, plansApi, profileApi } from '../../api/endpoints'
 import { isAuthError } from '../../auth/AuthContext'
+import { useClientSchedulePreview } from '../../hooks/useClientSchedulePreview'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { usePlannerHistory } from '../../hooks/usePlannerHistory'
 import { useTranslation } from '../../i18n'
 import { downloadIcs, generatePlanIcs } from '../../lib/icsExport'
 import { ensurePlanningProfile, courseTitle } from '../../lib/planning'
-import { courseNumbersInConflict, formatSlotTypes, parseTimeRange } from '../../lib/planner'
-import { hasPartialGroupSelection, groupOptionsFromOffering, selectedGroupsSummary } from '../../lib/scheduleGroups'
+import { courseNumbersInConflict } from '../../lib/planner'
+import {
+  extractLessonOptions,
+  hasLessonSelection,
+  lessonSelectionSummary,
+  toggleLessonSelection,
+} from '../../lib/lessonEvents'
+import { buildScheduleGridEvents } from '../../lib/scheduleGridEvents'
 import {
   defaultSemesterCode,
   parseSemesterCode,
@@ -25,41 +31,62 @@ import type {
   CustomEvent,
   PlannedCourse,
   PlannerInsights,
-  SelectedGroups,
+  SelectedLessonEvent,
   SemesterPlan,
   WeeklySchedule,
 } from '../../types/api'
-import { formatCredits } from '../../lib/utils'
-import { Button } from '../ui/Button'
 import { Card, Spinner } from '../ui/Card'
-import { Input } from '../ui/Input'
-import { CourseDetailModal } from './CourseDetailModal'
-import { CourseGroupSelector } from './CourseGroupSelector'
+import { buildPlanChanges } from '../../lib/plannerChanges'
+import {
+  addMaybeCourseToSnapshot,
+  filterSearchItemsForPlanner,
+  buildMaybePersistSignature,
+  buildSelectedPersistSignature,
+  draftCoursesFromPlanned,
+  hydratePlannerFromServer,
+  isCourseInPlannerLists,
+  moveMaybeToSelectedSnapshot,
+  moveSelectedToMaybeSnapshot,
+  plannedCoursesForSave,
+  removeMaybeCourseFromSnapshot,
+  updateMaybeCourseLessons,
+} from '../../lib/plannerMaybeCourses'
+import {
+  emptyPlannerFilters,
+  type DraftCourse,
+  type PlannerFilters,
+  type PlannerSnapshot,
+} from '../../types/planner'
+import { ChangesDialog } from './ChangesDialog'
+import { PlannerCourseSearch } from './PlannerCourseSearch'
+import { PlannerTopBar } from './PlannerTopBar'
 import { CustomEventsPanel } from './CustomEventsPanel'
 import { ExamSummaryPanel } from './ExamSummaryPanel'
 import { PlannerSummaryBar } from './PlannerSummaryBar'
-import { SelectedCourseRow, warningForCourse } from './SelectedCourseRow'
-import { SemesterPicker } from './SemesterPicker'
+import { MaybeCoursesPanel } from './MaybeCoursesPanel'
+import { SelectedCourseListItem } from './SelectedCourseListItem'
+import { SelectedCoursesPanel } from './SelectedCoursesPanel'
 import { SharePlanPanel } from './SharePlanPanel'
+import { CourseDetailModal } from './CourseDetailModal'
 import { WeeklyScheduleGrid } from './WeeklyScheduleGrid'
 
-export type DraftCourse = {
-  courseId: string
-  courseNumber: string
-  courseTitle: string
-  credits: number
-  isActive: boolean
-  selectedGroups?: SelectedGroups
-  groupSummary?: string
-  notes?: string
-}
+export type { DraftCourse } from '../../types/planner'
 
-type PlannerSnapshot = {
-  courses: DraftCourse[]
-  customEvents: CustomEvent[]
-}
+const emptyPlannerSnapshot = (): PlannerSnapshot => ({
+  courses: [],
+  maybeCourses: [],
+  customEvents: [],
+})
 
-const emptyPlannerSnapshot = (): PlannerSnapshot => ({ courses: [], customEvents: [] })
+function draftFromCourseSummary(course: CourseSummary, locale: 'he' | 'en'): DraftCourse {
+  return {
+    courseId: course.id!,
+    courseNumber: course.courseNumber,
+    courseTitle: courseTitle(course, locale),
+    credits: course.credits ?? 0,
+    isActive: true,
+  }
+}
 
 type SemesterPlannerProps = {
   planId?: string
@@ -70,15 +97,8 @@ function mapPlanToDraft(plan: SemesterPlan) {
   return {
     name: plan.name ?? '',
     semesterCode: semester?.semesterCode ?? defaultSemesterCode(),
-    courses: (semester?.plannedCourses ?? []).map((course) => ({
-      courseId: course.courseId,
-      courseNumber: course.courseNumber ?? '',
-      courseTitle: course.courseTitle ?? '',
-      credits: course.credits ?? 0,
-      isActive: course.isActive !== false,
-      selectedGroups: course.selectedGroups,
-      notes: course.notes,
-    })),
+    courses: draftCoursesFromPlanned(semester?.plannedCourses ?? []),
+    maybeCourses: draftCoursesFromPlanned(semester?.maybeCourses ?? []),
     weeklySchedule: semester?.weeklySchedule,
     customEvents: semester?.customEvents ?? semester?.weeklySchedule?.customEvents ?? [],
     plannerInsights: plan.plannerInsights,
@@ -116,6 +136,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     canRedo,
   } = usePlannerHistory<PlannerSnapshot>(emptyPlannerSnapshot())
   const courses = plannerState.courses
+  const maybeCourses = plannerState.maybeCourses
   const customEvents = plannerState.customEvents
   const setCourses = (
     updater: DraftCourse[] | ((prev: DraftCourse[]) => DraftCourse[]),
@@ -137,15 +158,21 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule | undefined>()
   const [plannerInsights, setPlannerInsights] = useState<PlannerInsights | undefined>()
   const [searchQuery, setSearchQuery] = useState('')
-  const [facultyFilter, setFacultyFilter] = useState('')
-  const [minCredits, setMinCredits] = useState('')
-  const [maxCredits, setMaxCredits] = useState('')
-  const [slotTypeFilter, setSlotTypeFilter] = useState('')
+  const [filters, setFilters] = useState<PlannerFilters>(emptyPlannerFilters())
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const [highlightedCourseNumber, setHighlightedCourseNumber] = useState<string | null>(null)
+  const [conflictHighlightNumbers, setConflictHighlightNumbers] = useState<Set<string> | null>(null)
+  const [showChangesDialog, setShowChangesDialog] = useState(false)
+  const [focusedCourseNumber, setFocusedCourseNumber] = useState<string | null>(null)
+  const [hoveredLessonEventId, setHoveredLessonEventId] = useState<string | null>(null)
   const [detailCourseNumber, setDetailCourseNumber] = useState<string | null>(null)
-  const [previewCourseNumber, setPreviewCourseNumber] = useState<string | null>(null)
-  const [groupSelectorCourse, setGroupSelectorCourse] = useState<DraftCourse | null>(null)
-  const [hideSelectedInSearch, setHideSelectedInSearch] = useState(true)
-  const [scheduleRevealed, setScheduleRevealed] = useState(false)
+  const [persistedCourseIds, setPersistedCourseIds] = useState<Set<string>>(() => new Set())
+  const [persistedSelectedSignature, setPersistedSelectedSignature] = useState('')
+  const [persistedMaybeSignature, setPersistedMaybeSignature] = useState('')
+  const skipAutoInsightsRef = useRef(true)
+  const lessonPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const maybeLessonPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hydratedPlanIdRef = useRef<string | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
@@ -154,15 +181,34 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   const semesterSelected = Boolean(parsedSemester)
 
   useEffect(() => {
+    if (!planId) {
+      hydratedPlanIdRef.current = null
+      return
+    }
     if (!planQuery.data?.semesterPlan) return
+    if (hydratedPlanIdRef.current === planId) return
+
+    hydratedPlanIdRef.current = planId
     const draft = mapPlanToDraft(planQuery.data.semesterPlan)
     setName(draft.name)
     setNameTouched(true)
     setSemesterCode(draft.semesterCode)
-    resetPlanner({ courses: draft.courses, customEvents: draft.customEvents })
+    resetPlanner({
+      courses: draft.courses,
+      maybeCourses: draft.maybeCourses,
+      customEvents: draft.customEvents,
+    })
     setWeeklySchedule(draft.weeklySchedule)
     setPlannerInsights(draft.plannerInsights)
-  }, [planQuery.data])
+    setPersistedCourseIds(new Set(draft.courses.map((course) => course.courseId)))
+    setPersistedSelectedSignature(buildSelectedPersistSignature(draft.courses))
+    setPersistedMaybeSignature(buildMaybePersistSignature(draft.maybeCourses))
+    setCustomEventsDirty(false)
+    skipAutoInsightsRef.current = true
+    queueMicrotask(() => {
+      skipAutoInsightsRef.current = false
+    })
+  }, [planId, planQuery.data?.semesterPlan, resetPlanner])
 
   useEffect(() => {
     if (nameTouched) return
@@ -174,25 +220,77 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     [courses],
   )
 
+  const selectedPersistSignature = useMemo(
+    () => buildSelectedPersistSignature(courses),
+    [courses],
+  )
+
+  const maybePersistSignature = useMemo(
+    () => buildMaybePersistSignature(maybeCourses),
+    [maybeCourses],
+  )
+
+  const selectedPersistSignatureRef = useRef(selectedPersistSignature)
+  selectedPersistSignatureRef.current = selectedPersistSignature
+
+  const maybePersistSignatureRef = useRef(maybePersistSignature)
+  maybePersistSignatureRef.current = maybePersistSignature
+
+  const activeMaybeCourses = useMemo(
+    () => maybeCourses.filter((course) => course.isActive !== false),
+    [maybeCourses],
+  )
+
+  const previewCourses = useMemo(
+    () =>
+      [...activeCourses, ...activeMaybeCourses].map((course) => ({
+        courseNumber: course.courseNumber,
+        courseTitle: course.courseTitle,
+        isActive: course.isActive,
+        selectedGroups: course.selectedGroups,
+        selectedLessonEvents: course.selectedLessonEvents,
+      })),
+    [activeCourses, activeMaybeCourses],
+  )
+
+  const clientPreviewQuery = useClientSchedulePreview({
+    courses: previewCourses,
+    academicYear: parsedSemester?.academicYear,
+    semesterCode: parsedSemester?.semesterCode,
+    customEvents,
+  })
+
+  const displaySchedule = useMemo(() => {
+    // CheeseFork-style: live grid always follows current draft selections.
+    if (activeCourses.length && clientPreviewQuery.data?.schedule) {
+      return clientPreviewQuery.data.schedule
+    }
+    if (weeklySchedule?.weekView?.length) return weeklySchedule
+    return clientPreviewQuery.data?.schedule
+  }, [activeCourses.length, clientPreviewQuery.data?.schedule, weeklySchedule])
+
   const totalCredits = useMemo(
     () => activeCourses.reduce((sum, course) => sum + (course.credits || 0), 0),
     [activeCourses],
   )
 
   const conflictNumbers = useMemo(
-    () => courseNumbersInConflict(weeklySchedule),
-    [weeklySchedule],
+    () => courseNumbersInConflict(displaySchedule),
+    [displaySchedule],
   )
 
   const examCount = plannerInsights?.examSummary?.totalExams ?? plannerInsights?.examSummary?.exams?.length ?? 0
-  const conflictCount = plannerInsights?.scheduleConflicts?.length ?? weeklySchedule?.conflicts?.length ?? 0
+  const conflictCount =
+    displaySchedule?.conflicts?.length ?? plannerInsights?.scheduleConflicts?.length ?? 0
 
   const maxCreditsPref =
     plannerInsights?.maxCreditsPerSemester ??
     profileQuery.data?.profile.preferences?.maxCreditsPerSemester
 
+  const searchMinLength = /^0\d*$/.test(debouncedSearch) ? 1 : 2
+
   const searchParams = useMemo(() => {
-    if (!parsedSemester || debouncedSearch.length < 2) return null
+    if (!parsedSemester || debouncedSearch.length < searchMinLength) return null
     const params: Record<string, string | number | boolean> = {
       q: debouncedSearch,
       limit: 20,
@@ -201,11 +299,11 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       semesterCode: parsedSemester.semesterCode,
     }
     if (/^0\d{7}$/.test(debouncedSearch)) params.courseNumber = debouncedSearch
-    if (facultyFilter.trim()) params.faculty = facultyFilter.trim()
-    if (minCredits) params.minCredits = Number(minCredits)
-    if (maxCredits) params.maxCredits = Number(maxCredits)
+    if (filters.faculty.trim()) params.faculty = filters.faculty.trim()
+    if (filters.minCredits) params.minCredits = Number(filters.minCredits)
+    if (filters.maxCredits) params.maxCredits = Number(filters.maxCredits)
     return params
-  }, [debouncedSearch, parsedSemester, facultyFilter, minCredits, maxCredits])
+  }, [debouncedSearch, searchMinLength, parsedSemester, filters])
 
   const searchResultsQuery = useQuery({
     queryKey: ['planner-search', searchParams],
@@ -213,117 +311,205 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     enabled: Boolean(searchParams),
   })
 
-  const patchCourseMutation = useMutation({
+  const syncFromSavedPlan = (plan: SemesterPlan) => {
+    const semester = plan.semesters[0]
+    const savedCourses = draftCoursesFromPlanned(semester?.plannedCourses ?? [])
+    const savedMaybeCourses = draftCoursesFromPlanned(semester?.maybeCourses ?? [])
+    resetPlanner(
+      hydratePlannerFromServer(
+        {
+          courses: [],
+          maybeCourses: [],
+          customEvents: semester?.customEvents ?? semester?.weeklySchedule?.customEvents ?? [],
+        },
+        savedCourses,
+        savedMaybeCourses,
+      ),
+    )
+    setWeeklySchedule(semester?.weeklySchedule)
+    setPlannerInsights(plan.plannerInsights)
+    setPersistedCourseIds(new Set(savedCourses.map((course) => course.courseId)))
+    setPersistedSelectedSignature(buildSelectedPersistSignature(savedCourses))
+    setPersistedMaybeSignature(buildMaybePersistSignature(savedMaybeCourses))
+    setCustomEventsDirty(false)
+    skipAutoInsightsRef.current = true
+    queueMicrotask(() => {
+      skipAutoInsightsRef.current = false
+    })
+  }
+
+  const handlePlannerMutationError = (err: unknown) => {
+    setErrors([isAuthError(err) ? err.message : t('common.errorGeneric')])
+  }
+
+  const lessonSelectionMutation = useMutation({
     mutationFn: (body: {
       courseNumber: string
-      isActive?: boolean
-      selectedGroups?: SelectedGroups
+      selectedLessonEvents: SelectedLessonEvent[]
     }) =>
-      plansApi.patchCourse(planId!, body.courseNumber, {
-        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
-        ...(body.selectedGroups !== undefined ? { selectedGroups: body.selectedGroups } : {}),
+      plansApi.patchLessonSelection(planId!, body.courseNumber, {
+        selectedLessonEvents: body.selectedLessonEvents,
       }),
     onSuccess: (data) => {
-      setWeeklySchedule(data.semesterPlan.semesters[0]?.weeklySchedule)
-      setPlannerInsights(data.semesterPlan.plannerInsights)
-      queryClient.invalidateQueries({ queryKey: ['plan', planId] })
+      const semester = data.semesterPlan.semesters[0]
+      setWeeklySchedule(semester?.weeklySchedule)
+      queryClient.setQueryData(['plan', planId], data)
     },
+    onError: handlePlannerMutationError,
   })
 
-  const reorderMutation = useMutation({
-    mutationFn: (courseIds: string[]) => plansApi.reorderCourses(planId!, courseIds),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['plan', planId] }),
-  })
+  const isCourseInPlanner = (courseId: string) =>
+    isCourseInPlannerLists(courses, maybeCourses, courseId)
 
   const addCourse = (course: CourseSummary) => {
     if (!course.id) return
-    if (courses.some((item) => item.courseId === course.id)) {
+    if (isCourseInPlanner(course.id)) {
       setErrors([t('validation.duplicateCourse')])
       return
     }
     setErrors([])
-    setCourses((prev) => [
-      ...prev,
-      {
-        courseId: course.id!,
-        courseNumber: course.courseNumber,
-        courseTitle: courseTitle(course, locale),
-        credits: course.credits ?? 0,
-        isActive: true,
-      },
-    ])
+    setSearchQuery('')
+    setCourses((prev) => [...prev, draftFromCourseSummary(course, locale)])
+    setFocusedCourseNumber(course.courseNumber)
   }
 
-  const toggleCourseActive = (courseId: string) => {
-    setCourses((prev) => {
-      const next = prev.map((course) =>
-        course.courseId === courseId ? { ...course, isActive: !course.isActive } : course,
-      )
-      const target = next.find((course) => course.courseId === courseId)
-      if (planId && target) {
-        patchCourseMutation.mutate({
-          courseNumber: target.courseNumber,
-          isActive: target.isActive,
-        })
-      }
-      return next
-    })
-  }
-
-  const moveCourse = (courseId: string, direction: -1 | 1) => {
-    setCourses((prev) => {
-      const index = prev.findIndex((course) => course.courseId === courseId)
-      if (index < 0) return prev
-      const nextIndex = index + direction
-      if (nextIndex < 0 || nextIndex >= prev.length) return prev
-      const copy = [...prev]
-      const [item] = copy.splice(index, 1)
-      copy.splice(nextIndex, 0, item)
-      if (planId) {
-        reorderMutation.mutate(copy.map((course) => course.courseId))
-      }
-      return copy
-    })
+  const addMaybeCourse = (course: CourseSummary) => {
+    if (!course.id) return
+    if (isCourseInPlanner(course.id)) {
+      setErrors([t('validation.duplicateCourse')])
+      return
+    }
+    setErrors([])
+    setSearchQuery('')
+    setPlannerState((prev) =>
+      addMaybeCourseToSnapshot(prev, draftFromCourseSummary(course, locale)),
+    )
+    setFocusedCourseNumber(course.courseNumber)
   }
 
   const removeCourse = (courseId: string) => {
+    const removed = courses.find((course) => course.courseId === courseId)
     setCourses((prev) => prev.filter((course) => course.courseId !== courseId))
+    if (removed?.courseNumber === focusedCourseNumber) {
+      setFocusedCourseNumber(null)
+    }
   }
 
-  const saveSelectedGroups = async (courseNumber: string, selectedGroups: SelectedGroups) => {
-    let groupSummary = ''
-    if (parsedSemester && hasPartialGroupSelection(selectedGroups)) {
-      try {
-        const offeringData = await catalogApi.offerings(courseNumber, {
-          academicYear: parsedSemester.academicYear,
-          semesterCode: parsedSemester.semesterCode,
-        })
-        const options = groupOptionsFromOffering(offeringData.offerings?.[0]?.scheduleGroups ?? [])
-        groupSummary = selectedGroupsSummary(selectedGroups, options)
-      } catch {
-        groupSummary = t('planner.customGroupsSet')
-      }
+  const removeMaybeCourse = (courseId: string) => {
+    const removed = maybeCourses.find((course) => course.courseId === courseId)
+    setPlannerState((prev) => removeMaybeCourseFromSnapshot(prev, courseId))
+    if (removed?.courseNumber === focusedCourseNumber) {
+      setFocusedCourseNumber(null)
     }
+  }
 
-    setCourses((prev) =>
-      prev.map((course) =>
+  const moveSelectedToMaybe = (courseId: string) => {
+    setPlannerState((prev) => moveSelectedToMaybeSnapshot(prev, courseId))
+    const moved = courses.find((item) => item.courseId === courseId)
+    if (moved) setFocusedCourseNumber(moved.courseNumber)
+  }
+
+  const moveMaybeToSelected = (courseId: string) => {
+    setPlannerState((prev) => moveMaybeToSelectedSnapshot(prev, courseId))
+    const moved = maybeCourses.find((item) => item.courseId === courseId)
+    if (moved) setFocusedCourseNumber(moved.courseNumber)
+  }
+
+  const saveSelectedLessons = (
+    courseNumber: string,
+    selectedLessonEvents: SelectedLessonEvent[],
+  ) => {
+    const offering = clientPreviewQuery.data?.offeringsByCourse?.[courseNumber]
+    const options = extractLessonOptions(offering, courseNumber)
+    const groupSummary = selectedLessonEvents.length
+      ? lessonSelectionSummary(options, selectedLessonEvents, t)
+      : ''
+
+    setCourses((prev) => {
+      const nextCourses = prev.map((course) =>
         course.courseNumber === courseNumber
-          ? { ...course, selectedGroups, groupSummary: groupSummary || undefined }
+          ? { ...course, selectedLessonEvents, groupSummary: groupSummary || undefined }
           : course,
+      )
+
+      if (planId) {
+        const course = nextCourses.find((item) => item.courseNumber === courseNumber)
+        if (course && persistedCourseIds.has(course.courseId)) {
+          if (lessonPatchTimerRef.current) {
+            clearTimeout(lessonPatchTimerRef.current)
+          }
+          lessonPatchTimerRef.current = setTimeout(() => {
+            lessonSelectionMutation.mutate({ courseNumber, selectedLessonEvents })
+          }, 500)
+        }
+      }
+
+      return nextCourses
+    })
+  }
+
+  const saveMaybeLessons = (courseNumber: string, selectedLessonEvents: SelectedLessonEvent[]) => {
+    const offering = clientPreviewQuery.data?.offeringsByCourse?.[courseNumber]
+    const options = extractLessonOptions(offering, courseNumber)
+    const groupSummary = selectedLessonEvents.length
+      ? lessonSelectionSummary(options, selectedLessonEvents, t)
+      : ''
+
+    setPlannerState((prev) =>
+      updateMaybeCourseLessons(
+        prev,
+        courseNumber,
+        selectedLessonEvents,
+        groupSummary || undefined,
       ),
     )
+
     if (planId) {
-      patchCourseMutation.mutate({ courseNumber, selectedGroups })
+      const course = maybeCourses.find((item) => item.courseNumber === courseNumber)
+      if (course) {
+        if (maybeLessonPatchTimerRef.current) {
+          clearTimeout(maybeLessonPatchTimerRef.current)
+        }
+        maybeLessonPatchTimerRef.current = setTimeout(() => {
+          maybeLessonSelectionMutation.mutate({ courseNumber, selectedLessonEvents })
+        }, 500)
+      }
     }
-    setGroupSelectorCourse(null)
+  }
+
+  const handleLessonGridClick = (eventId: string, courseNumber: string) => {
+    const offering = clientPreviewQuery.data?.offeringsByCourse?.[courseNumber]
+    const options = extractLessonOptions(offering, courseNumber)
+    const option = options.find((item) => item.eventId === eventId)
+    if (!option) return
+
+    const selectedCourse = courses.find((item) => item.courseNumber === courseNumber)
+    if (selectedCourse) {
+      const nextEvents = toggleLessonSelection(
+        selectedCourse.selectedLessonEvents ?? [],
+        option,
+        options,
+      )
+      saveSelectedLessons(courseNumber, nextEvents)
+      setFocusedCourseNumber(courseNumber)
+      return
+    }
+
+    const maybeCourse = maybeCourses.find((item) => item.courseNumber === courseNumber)
+    if (!maybeCourse) return
+
+    const nextEvents = toggleLessonSelection(maybeCourse.selectedLessonEvents ?? [], option, options)
+    saveMaybeLessons(courseNumber, nextEvents)
+    setFocusedCourseNumber(courseNumber)
   }
 
   const exportIcs = () => {
     const content = generatePlanIcs({
       planName: name.trim() || t('plans.newPlan'),
-      schedule: weeklySchedule,
+      schedule: displaySchedule ?? weeklySchedule,
       examSummary: plannerInsights?.examSummary,
       customEvents,
+      customEventsDirty,
     })
     const safeName = (name.trim() || 'semester-plan').replace(/[^\w-]+/g, '-').slice(0, 40)
     downloadIcs(content, `${safeName}.ics`)
@@ -344,18 +530,13 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   }
 
   const buildPayload = (includeSchedule: boolean) => {
-    const plannedCourses: PlannedCourse[] = courses.map((course) => ({
-      courseId: course.courseId,
-      category: 'manual',
-      isActive: course.isActive,
-      selectedGroups: course.selectedGroups,
-      notes: course.notes,
-    }))
+    const plannedCourses: PlannedCourse[] = plannedCoursesForSave(courses)
 
     const semesterPayload: Record<string, unknown> = {
       semesterCode,
       goalCredits: totalCredits,
       plannedCourses,
+      maybeCourses: plannedCoursesForSave(maybeCourses),
       customEvents,
     }
 
@@ -376,33 +557,83 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     }
   }
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!validateForm()) throw new Error('validation')
+  const ensurePlanningProfileReady = async () => {
+    await ensurePlanningProfile(
+      semesterCode,
+      async () => {
+        try {
+          return await profileApi.get()
+        } catch (err) {
+          if (isAuthError(err) && err.status === 404) return null
+          throw err
+        }
+      },
+      (body) => profileApi.create(body),
+    )
+  }
 
-      await ensurePlanningProfile(
-        semesterCode,
-        async () => {
-          try {
-            return await profileApi.get()
-          } catch (err) {
-            if (isAuthError(err) && err.status === 404) return null
-            throw err
-          }
-        },
-        (body) => profileApi.create(body),
-      )
+  const persistPlanWithSchedule = async () => {
+    if (!validateForm()) throw new Error('validation')
+    await ensurePlanningProfileReady()
+    const payload = buildPayload(true)
+    if (planId) return plansApi.update(planId, payload)
+    return plansApi.create(payload)
+  }
 
-      const payload = buildPayload(true)
-      if (isEdit && planId) return plansApi.update(planId, payload)
-      return plansApi.create(payload)
+  const persistPlanForInsights = async () => {
+    const nameResult = validatePlanName(name)
+    const semesterResult = validateSemesterCode(semesterCode)
+    if (!nameResult.ok || !semesterResult.ok) throw new Error('validation')
+    await ensurePlanningProfileReady()
+    const payload = buildPayload(true)
+    return plansApi.update(planId!, payload)
+  }
+
+  const maybeLessonSelectionMutation = useMutation({
+    mutationFn: ({
+      courseNumber,
+      selectedLessonEvents,
+    }: {
+      courseNumber: string
+      selectedLessonEvents: SelectedLessonEvent[]
+    }) =>
+      plansApi.patchMaybeLessonSelection(planId!, courseNumber, { selectedLessonEvents }),
+    onSuccess: (data) => {
+      const semester = data.semesterPlan.semesters[0]
+      const savedMaybeCourses = draftCoursesFromPlanned(semester?.maybeCourses ?? [])
+      setPlannerState((prev) => ({ ...prev, maybeCourses: savedMaybeCourses }))
+      setPersistedMaybeSignature(buildMaybePersistSignature(savedMaybeCourses))
+      queryClient.setQueryData(['plan', planId], data)
     },
+    onError: handlePlannerMutationError,
+  })
+
+  const maybePersistMutation = useMutation({
+    mutationFn: () =>
+      plansApi.patchMaybeCourses(planId!, plannedCoursesForSave(maybeCourses) as Record<string, unknown>[]),
+    onSuccess: (data) => {
+      const semester = data.semesterPlan.semesters[0]
+      const savedMaybeCourses = draftCoursesFromPlanned(semester?.maybeCourses ?? [])
+      setPlannerState((prev) => ({ ...prev, maybeCourses: savedMaybeCourses }))
+      setPersistedMaybeSignature(buildMaybePersistSignature(savedMaybeCourses))
+      queryClient.setQueryData(['plan', planId], data)
+    },
+    onError: (err) => {
+      if (err instanceof Error && err.message === 'validation') return
+      handlePlannerMutationError(err)
+    },
+  })
+
+  const saveMutation = useMutation({
+    mutationFn: persistPlanWithSchedule,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['plans'] })
-      const saved = data.semesterPlan
-      setWeeklySchedule(saved.semesters[0]?.weeklySchedule)
-      setPlannerInsights(saved.plannerInsights)
-      navigate(`/plans/${saved.id}`)
+      syncFromSavedPlan(data.semesterPlan)
+      if (!planId) {
+        navigate(`/plans/${data.semesterPlan.id}/edit`, { replace: true })
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['plan', planId] })
+      }
     },
     onError: (err) => {
       if (err instanceof Error && err.message === 'validation') return
@@ -410,28 +641,91 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     },
   })
 
-  const refreshScheduleMutation = useMutation({
-    mutationFn: async () => {
-      if (!validateForm()) throw new Error('validation')
-      const payload = buildPayload(true)
-      if (isEdit && planId) return plansApi.update(planId, payload)
-      return plansApi.create(payload)
-    },
+  const insightsRefreshMutation = useMutation({
+    mutationFn: persistPlanForInsights,
     onSuccess: (data) => {
-      setWeeklySchedule(data.semesterPlan.semesters[0]?.weeklySchedule)
-      setPlannerInsights(data.semesterPlan.plannerInsights)
-      setScheduleRevealed(true)
-      setCustomEventsDirty(false)
-      if (!isEdit && data.semesterPlan.id) {
-        navigate(`/plans/${data.semesterPlan.id}/edit`, { replace: true })
-      }
+      const plan = data.semesterPlan
+      const semester = plan.semesters[0]
+      setPlannerInsights(plan.plannerInsights)
+      setWeeklySchedule(semester?.weeklySchedule)
+      setPersistedCourseIds(
+        new Set(
+          (semester?.plannedCourses ?? [])
+            .map((course) => course.courseId)
+            .filter((courseId): courseId is string => Boolean(courseId)),
+        ),
+      )
+      setPersistedSelectedSignature(selectedPersistSignatureRef.current)
+      setPersistedMaybeSignature(maybePersistSignatureRef.current)
+      setErrors([])
+      queryClient.setQueryData(['plan', planId], data)
+      queryClient.invalidateQueries({ queryKey: ['plans'] })
+    },
+    onError: (err) => {
+      if (err instanceof Error && err.message === 'validation') return
+      handlePlannerMutationError(err)
     },
   })
 
-  const handleBuildSchedule = () => {
-    if (!activeCourses.length) return
-    refreshScheduleMutation.mutate()
-  }
+  useEffect(() => {
+    if (skipAutoInsightsRef.current) return
+    if (!planId) return
+    if (selectedPersistSignature === persistedSelectedSignature) return
+
+    const timer = setTimeout(() => {
+      insightsRefreshMutation.mutate()
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [selectedPersistSignature, persistedSelectedSignature, planId])
+
+  useEffect(() => {
+    if (skipAutoInsightsRef.current) return
+    if (!planId) return
+    if (maybePersistSignature === persistedMaybeSignature) return
+    if (selectedPersistSignature !== persistedSelectedSignature) return
+
+    const timer = setTimeout(() => {
+      maybePersistMutation.mutate()
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [
+    maybePersistSignature,
+    persistedMaybeSignature,
+    selectedPersistSignature,
+    persistedSelectedSignature,
+    planId,
+  ])
+
+  const planChanges = useMemo(() => buildPlanChanges(plannerInsights), [plannerInsights])
+  const missingLessonCount = useMemo(() => {
+    const localMissing = activeCourses.filter(
+      (course) => !hasLessonSelection(course.selectedLessonEvents, course.selectedGroups),
+    ).length
+    const insightMissing =
+      plannerInsights?.lessonSelectionWarnings?.filter((w) => w.type === 'no_lesson_selected').length ?? 0
+    return Math.max(localMissing, insightMissing)
+  }, [activeCourses, plannerInsights])
+
+  const gridEmptyMessage = useMemo(() => {
+    if (!activeCourses.length && !activeMaybeCourses.length) return t('planner.scheduleEmptyHint')
+    if (activeCourses.length && missingLessonCount > 0) return t('planner.gridChooseLessonsHint')
+    if (clientPreviewQuery.isLoading) return undefined
+    return t('plans.scheduleEmpty')
+  }, [
+    activeCourses.length,
+    activeMaybeCourses.length,
+    missingLessonCount,
+    clientPreviewQuery.isLoading,
+    t,
+  ])
+
+  const showScheduleGrid =
+    semesterSelected &&
+    (activeCourses.length > 0 ||
+      activeMaybeCourses.length > 0 ||
+      Boolean(displaySchedule?.weekView?.length))
 
   const slotTypeMatches = (slotTypes: string[] | undefined, filter: string) => {
     if (!filter) return true
@@ -447,98 +741,113 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
 
   const searchItems = useMemo(() => {
     let items = searchResultsQuery.data?.items ?? []
-    if (hideSelectedInSearch) {
-      items = items.filter(
-        (course) => course.id && !courses.some((selected) => selected.courseId === course.id),
+    if (filters.hideSelected) {
+      items = filterSearchItemsForPlanner(items, { courses, maybeCourses, customEvents }, true)
+    }
+    if (filters.slotType) {
+      items = items.filter((course) =>
+        slotTypeMatches(course.semesterOfferingSummary?.slotTypes, filters.slotType),
       )
     }
-    if (slotTypeFilter) {
-      items = items.filter((course) =>
-        slotTypeMatches(course.semesterOfferingSummary?.slotTypes, slotTypeFilter),
-      )
+    const includeList = filters.includeOnly
+      .split(/[,\s]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+    if (includeList.length) {
+      items = items.filter((course) => includeList.includes(course.courseNumber))
+    }
+    const excludeList = filters.exclude
+      .split(/[,\s]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+    if (excludeList.length) {
+      items = items.filter((course) => !excludeList.includes(course.courseNumber))
     }
     return items
-  }, [searchResultsQuery.data?.items, hideSelectedInSearch, courses, slotTypeFilter])
+  }, [searchResultsQuery.data?.items, filters, courses, maybeCourses])
 
-  const previewOfferingQuery = useQuery({
-    queryKey: ['preview-offering', previewCourseNumber, parsedSemester?.academicYear, parsedSemester?.semesterCode],
-    queryFn: () =>
-      catalogApi.offerings(previewCourseNumber!, {
-        academicYear: parsedSemester!.academicYear,
-        semesterCode: parsedSemester!.semesterCode,
-      }),
-    enabled: Boolean(previewCourseNumber && parsedSemester && scheduleRevealed),
-  })
-
-  const previewEvents = useMemo(() => {
-    if (!previewCourseNumber || !previewOfferingQuery.data?.offerings?.length) return []
-    const offering = previewOfferingQuery.data.offerings[0]
-    const title =
-      searchItems.find((item) => item.courseNumber === previewCourseNumber)?.titleHebrew ??
-      previewCourseNumber
-    return (offering.scheduleGroups ?? []).flatMap((group) => {
-      const day = group.day || group.יום || ''
-      const time = group.time || group.שעה || ''
-      const parsed = parseTimeRange(time.replace(/[–—]/g, '-'))
-      if (!day || !parsed) return []
-      return [
-        {
-          day,
-          timeRange: time,
-          slotType: group.type || group.סוג,
-          courseNumber: previewCourseNumber,
-          courseTitle: `${title} (${t('planner.preview')})`,
-          startMinutes: parsed.start,
-          endMinutes: parsed.end,
-        },
-      ]
+  const scheduleGridEvents = useMemo(() => {
+    if (!clientPreviewQuery.data?.offeringsByCourse) return []
+    const toClientCourse = (course: DraftCourse) => ({
+      courseNumber: course.courseNumber,
+      courseTitle: course.courseTitle,
+      isActive: course.isActive,
+      selectedGroups: course.selectedGroups,
+      selectedLessonEvents: course.selectedLessonEvents,
     })
-  }, [previewCourseNumber, previewOfferingQuery.data, searchItems, t])
+    return buildScheduleGridEvents({
+      courses: activeCourses.map(toClientCourse),
+      maybeCourses: activeMaybeCourses.map(toClientCourse),
+      offeringsByCourse: clientPreviewQuery.data.offeringsByCourse,
+      hoveredLessonEventId,
+      customEvents,
+    })
+  }, [
+    activeCourses,
+    activeMaybeCourses,
+    clientPreviewQuery.data?.offeringsByCourse,
+    hoveredLessonEventId,
+    customEvents,
+  ])
 
-  if (isEdit && planQuery.isLoading) {
+  const selectedCourseNumbers = useMemo(
+    () => new Set(courses.map((course) => course.courseNumber)),
+    [courses],
+  )
+
+  const maybeCourseNumbers = useMemo(
+    () => new Set(maybeCourses.map((course) => course.courseNumber)),
+    [maybeCourses],
+  )
+
+  if (isEdit && planQuery.isLoading && !planQuery.data) {
     return (
-      <div className="flex justify-center py-24">
+      <div className="flex flex-col items-center justify-center gap-4 py-24">
         <Spinner />
+        <p className="text-sm text-[var(--color-text-muted)]">{t('common.loading')}</p>
       </div>
     )
   }
 
+  const handleCourseHover = (courseNumber: string | null) => {
+    setConflictHighlightNumbers(null)
+    setHighlightedCourseNumber(courseNumber)
+  }
+
+  const handleLessonHover = (eventId: string | null, courseNumber: string | null) => {
+    setConflictHighlightNumbers(null)
+    setHoveredLessonEventId(eventId)
+    setHighlightedCourseNumber(courseNumber)
+  }
+
+  const handleConflictHover = (courseNumbers: string[] | null) => {
+    setHighlightedCourseNumber(null)
+    setConflictHighlightNumbers(courseNumbers ? new Set(courseNumbers) : null)
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--color-border)] bg-white px-4 py-3 shadow-[var(--shadow-soft)]">
-        <div className="min-w-0 flex-1">
-          <SemesterPicker
-            compact
-            value={semesterCode}
-            onChange={setSemesterCode}
-            error={fieldErrors.semesterCode}
-          />
-        </div>
-        <Input
-          label={t('plans.planName')}
-          value={name}
-          onChange={(e) => {
-            setNameTouched(true)
-            setName(e.target.value)
-          }}
-          error={fieldErrors.name}
-          required
-          className="h-9 max-w-[220px] text-sm"
-        />
-        <div className="flex gap-1">
-          <Button variant="ghost" size="sm" disabled={!canUndo} onClick={undoPlanner} aria-label={t('planner.undo')}>
-            <Undo2 className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" disabled={!canRedo} onClick={redoPlanner} aria-label={t('planner.redo')}>
-            <Redo2 className="h-4 w-4" />
-          </Button>
-          {scheduleRevealed ? (
-            <Button variant="ghost" size="sm" onClick={exportIcs} aria-label={t('planner.exportIcs')}>
-              <Download className="h-4 w-4" />
-            </Button>
-          ) : null}
-        </div>
-      </div>
+    <div className="space-y-3 planner-workspace print:space-y-2">
+      <PlannerTopBar
+        semesterCode={semesterCode}
+        onSemesterChange={setSemesterCode}
+        semesterError={fieldErrors.semesterCode}
+        planName={name}
+        onPlanNameChange={(value) => {
+          setNameTouched(true)
+          setName(value)
+        }}
+        planNameError={fieldErrors.name}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undoPlanner}
+        onRedo={redoPlanner}
+        onExportIcs={activeCourses.length ? exportIcs : undefined}
+        exportDisabled={!displaySchedule?.weekView?.length}
+        onSave={() => saveMutation.mutate()}
+        saving={saveMutation.isPending}
+        onShowChanges={() => setShowChangesDialog(true)}
+        changesCount={planChanges.length}
+      />
 
       <PlannerSummaryBar
         activeCount={activeCourses.length}
@@ -547,279 +856,110 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
         conflictCount={conflictCount}
         examCount={examCount}
         maxCredits={maxCreditsPref}
+        missingLessonCount={missingLessonCount}
+        changesCount={planChanges.length}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
-          <Card>
-            <h2 className="text-base font-semibold">{t('planner.searchTitle')}</h2>
-            <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t('planner.searchHint')}</p>
+      {errors.length ? (
+        <div className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 px-4 py-3 text-sm text-[var(--color-danger)] print:hidden">
+          {errors.join(' · ')}
+        </div>
+      ) : null}
+
+      <PlannerCourseSearch
+        locale={locale}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        semesterSelected={semesterSelected}
+        searchMinLength={searchMinLength}
+        debouncedSearch={debouncedSearch}
+        loading={searchResultsQuery.isLoading}
+        error={searchResultsQuery.isError}
+        items={searchItems}
+        selectedCourseNumbers={selectedCourseNumbers}
+        maybeCourseNumbers={maybeCourseNumbers}
+        onAdd={addCourse}
+        onAddMaybe={addMaybeCourse}
+        onInfo={setDetailCourseNumber}
+        filters={filters}
+        onFiltersChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+        filtersExpanded={filtersExpanded}
+        onToggleFilters={() => setFiltersExpanded((value) => !value)}
+      />
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px] xl:items-start">
+        <div className="order-2 min-w-0 space-y-3 xl:order-1">
+          <Card className="print:border-0 print:shadow-none">
+            <div className="mb-2 print:hidden">
+              <h3 className="text-base font-semibold">{t('plans.weeklySchedule')}</h3>
+              <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">{t('planner.liveScheduleHint')}</p>
+            </div>
 
             {!semesterSelected ? (
-              <p className="mt-6 rounded-xl border border-dashed border-[var(--color-border)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
+              <p className="rounded-xl border border-dashed border-[var(--color-border)] px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">
                 {t('planner.selectSemesterFirst')}
               </p>
-            ) : (
-              <>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <Input
-                    label={t('common.search')}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t('plans.searchCourse')}
-                  />
-                  <Input
-                    label={t('catalog.faculty')}
-                    value={facultyFilter}
-                    onChange={(e) => setFacultyFilter(e.target.value)}
-                    placeholder={t('catalog.allFaculties')}
-                  />
-                  <Input
-                    label={t('planner.minCredits')}
-                    type="number"
-                    step="0.5"
-                    value={minCredits}
-                    onChange={(e) => setMinCredits(e.target.value)}
-                  />
-                  <Input
-                    label={t('planner.maxCreditsFilter')}
-                    type="number"
-                    step="0.5"
-                    value={maxCredits}
-                    onChange={(e) => setMaxCredits(e.target.value)}
-                  />
-                </div>
-
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1.5">
-                    <span className="text-sm font-medium">{t('planner.slotTypeFilter')}</span>
-                    <select
-                      className="h-11 w-full rounded-xl border border-[var(--color-border)] bg-white px-3 text-sm"
-                      value={slotTypeFilter}
-                      onChange={(e) => setSlotTypeFilter(e.target.value)}
-                    >
-                      <option value="">{t('planner.slotTypeAll')}</option>
-                      <option value="lecture">{t('planner.slot.lecture')}</option>
-                      <option value="tutorial">{t('planner.slot.tutorial')}</option>
-                      <option value="lab">{t('planner.slot.lab')}</option>
-                    </select>
-                  </label>
-                  <label className="flex items-end gap-2 pb-2 text-sm text-[var(--color-text-muted)]">
-                    <input
-                      type="checkbox"
-                      checked={hideSelectedInSearch}
-                      onChange={(e) => setHideSelectedInSearch(e.target.checked)}
-                      className="rounded border-[var(--color-border)]"
-                    />
-                    {t('planner.hideSelected')}
-                  </label>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  {searchResultsQuery.isLoading ? (
-                    <div className="flex justify-center py-8">
-                      <Spinner />
-                    </div>
-                  ) : debouncedSearch.length < 2 ? (
-                    <p className="text-sm text-[var(--color-text-muted)]">{t('plans.searchCourseHint')}</p>
-                  ) : searchResultsQuery.isError ? (
-                    <p className="text-sm text-[var(--color-danger)]">{t('common.errorGeneric')}</p>
-                  ) : searchItems.length ? (
-                    searchItems.map((course) => (
-                      <div
-                        key={course.id}
-                        tabIndex={0}
-                        onMouseEnter={() => setPreviewCourseNumber(course.courseNumber)}
-                        onMouseLeave={() => setPreviewCourseNumber(null)}
-                        onFocus={() => setPreviewCourseNumber(course.courseNumber)}
-                        onBlur={() => setPreviewCourseNumber(null)}
-                        className={`flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 transition ${
-                          previewCourseNumber === course.courseNumber
-                            ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5'
-                            : 'border-[var(--color-border)] bg-[var(--color-surface-muted)]'
-                        }`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="font-mono text-xs text-[var(--color-primary)]">{course.courseNumber}</p>
-                          <p className="truncate text-sm font-medium">{courseTitle(course, locale)}</p>
-                          <p className="text-xs text-[var(--color-text-muted)]">
-                            {[course.faculty, course.credits != null ? formatCredits(course.credits) : null]
-                              .filter(Boolean)
-                              .join(' · ')}
-                            {course.semesterOfferingSummary?.slotTypes?.length
-                              ? ` · ${formatSlotTypes(course.semesterOfferingSummary.slotTypes)}`
-                              : ''}
-                          </p>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setDetailCourseNumber(course.courseNumber)}>
-                          <Info className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" onClick={() => addCourse(course)}>
-                          <Plus className="h-4 w-4" />
-                          {t('catalog.addToPlan')}
-                        </Button>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="rounded-xl border border-[var(--color-border)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
-                      {t('planner.noCoursesSemester')}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </Card>
-
-          <Card>
-            {!scheduleRevealed ? (
-              <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <CalendarDays className="h-9 w-9 text-[var(--color-text-muted)]" />
-                <div>
-                  <h3 className="text-sm font-semibold">{t('plans.weeklySchedule')}</h3>
-                  <p className="mt-1 max-w-sm text-xs text-[var(--color-text-muted)]">
-                    {t('planner.scheduleHiddenHint')}
-                  </p>
-                </div>
-                <Button
-                  variant="secondary"
-                  loading={refreshScheduleMutation.isPending}
-                  disabled={!activeCourses.length}
-                  onClick={handleBuildSchedule}
-                >
-                  <CalendarDays className="h-4 w-4" />
-                  {t('plans.buildSchedule')}
-                </Button>
+            ) : !showScheduleGrid ? (
+              <p className="rounded-xl border border-dashed border-[var(--color-border)] px-4 py-16 text-center text-sm text-[var(--color-text-muted)]">
+                {t('planner.scheduleEmptyHint')}
+              </p>
+            ) : clientPreviewQuery.isLoading && !displaySchedule?.weekView?.length ? (
+              <div className="flex justify-center py-16">
+                <Spinner />
               </div>
             ) : (
               <>
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold">{t('plans.weeklySchedule')}</h3>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setScheduleRevealed(false)}
-                    >
-                      {t('planner.hideSchedule')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      loading={refreshScheduleMutation.isPending}
-                      disabled={!activeCourses.length}
-                      onClick={handleBuildSchedule}
-                    >
-                      {t('planner.rebuildSchedule')}
-                    </Button>
-                  </div>
-                </div>
                 <WeeklyScheduleGrid
-                  schedule={weeklySchedule}
-                  previewEvents={previewEvents}
-                  customEvents={customEvents}
+                  schedule={displaySchedule}
+                  lessonEvents={scheduleGridEvents}
+                  highlightedCourseNumber={highlightedCourseNumber}
+                  highlightedCourseNumbers={conflictHighlightNumbers ?? undefined}
+                  conflictCourseNumbers={conflictNumbers}
+                  emptyMessage={gridEmptyMessage}
+                  showEmptyGrid={activeCourses.length > 0 || activeMaybeCourses.length > 0}
+                  onLessonHover={handleLessonHover}
+                  onLessonClick={handleLessonGridClick}
+                  onConflictHover={handleConflictHover}
                 />
+                {insightsRefreshMutation.isPending ? (
+                  <p className="mt-3 flex items-center gap-2 text-xs text-[var(--color-text-muted)] print:hidden">
+                    <Spinner />
+                    {t('planner.updatingInsights')}
+                  </p>
+                ) : null}
+                {!planId && activeCourses.length ? (
+                  <p className="mt-3 text-xs text-[var(--color-text-muted)] print:hidden">
+                    {t('planner.saveForPrereqExams')}
+                  </p>
+                ) : null}
               </>
             )}
           </Card>
 
-          {scheduleRevealed ? (
+          {activeCourses.length ? (
+            <ExamSummaryPanel
+              summary={plannerInsights?.examSummary}
+              highlightedCourseNumber={highlightedCourseNumber}
+              highlightedCourseNumbers={conflictHighlightNumbers ?? undefined}
+              onExamHover={handleCourseHover}
+              className="print:hidden"
+            />
+          ) : null}
+
+          {activeCourses.length ? (
             <CustomEventsPanel
               events={customEvents}
               onChange={(events) => {
                 setCustomEvents(events)
                 setCustomEventsDirty(true)
               }}
+              className="print:hidden"
             />
-          ) : null}
-
-          {scheduleRevealed && customEventsDirty ? (
-            <p className="text-xs text-[var(--color-warning)]">{t('planner.customEventsRebuildHint')}</p>
-          ) : null}
-
-          <ExamSummaryPanel summary={plannerInsights?.examSummary} />
-        </div>
-
-        <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-          <Card>
-            <h3 className="text-sm font-semibold">{t('plans.selectedCourses')}</h3>
-            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-2xl font-semibold text-[var(--color-primary)]">
-                {formatCredits(totalCredits)} {t('common.credits')}
-              </p>
-              {maxCreditsPref != null ? (
-                <p
-                  className={`text-xs ${
-                    totalCredits > maxCreditsPref
-                      ? 'text-[var(--color-warning)]'
-                      : 'text-[var(--color-text-muted)]'
-                  }`}
-                >
-                  {t('planner.maxCreditsPref')}: {maxCreditsPref}
-                </p>
-              ) : null}
-            </div>
-
-            {plannerInsights?.creditsWarning ? (
-              <p className="mt-2 flex items-start gap-2 text-xs text-[var(--color-warning)]">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {plannerInsights.creditsWarning.message}
-              </p>
-            ) : null}
-
-            <div className="mt-4 space-y-2">
-              {courses.length ? (
-                courses.map((course, index) => (
-                  <SelectedCourseRow
-                    key={course.courseId}
-                    course={course}
-                    index={index}
-                    total={courses.length}
-                    conflict={conflictNumbers.has(course.courseNumber)}
-                    prereqWarning={warningForCourse(plannerInsights, course.courseId)}
-                    staleWarning={
-                      plannerInsights?.staleCourseWarnings?.find(
-                        (w) => w.courseNumber === course.courseNumber,
-                      )?.message
-                    }
-                    groupsSummary={
-                      course.groupSummary ||
-                      (hasPartialGroupSelection(course.selectedGroups)
-                        ? t('planner.customGroupsSet')
-                        : undefined)
-                    }
-                    onToggleActive={() => toggleCourseActive(course.courseId)}
-                    onRemove={() => removeCourse(course.courseId)}
-                    onInfo={() => setDetailCourseNumber(course.courseNumber)}
-                    onEditGroups={
-                      semesterSelected
-                        ? () => setGroupSelectorCourse(course)
-                        : undefined
-                    }
-                    onMoveUp={() => moveCourse(course.courseId, -1)}
-                    onMoveDown={() => moveCourse(course.courseId, 1)}
-                  />
-                ))
-              ) : (
-                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--color-border)] px-4 py-10 text-center">
-                  <BookPlus className="h-8 w-8 text-[var(--color-text-muted)]" />
-                  <p className="text-sm font-medium">{t('plans.emptyCoursesTitle')}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">{t('plans.emptyCoursesHint')}</p>
-                </div>
-              )}
-            </div>
-            {fieldErrors.courses ? (
-              <p className="mt-2 text-xs text-[var(--color-danger)]">{fieldErrors.courses}</p>
-            ) : null}
-          </Card>
-
-          {errors.length ? (
-            <div className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 px-4 py-3 text-sm text-[var(--color-danger)]">
-              {errors.join(' · ')}
-            </div>
           ) : null}
 
           {planId ? (
             <SharePlanPanel
+              embedded
               planId={planId}
               plan={{
                 shareEnabled: planQuery.data?.semesterPlan.shareEnabled,
@@ -829,11 +969,57 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
             />
           ) : null}
 
-          <Button className="w-full" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-            <Save className="h-4 w-4" />
-            {t('plans.savePlan')}
-          </Button>
-        </aside>
+          {customEventsDirty ? (
+            <p className="text-xs text-[var(--color-warning)] print:hidden">
+              {t('planner.customEventsRebuildHint')}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="order-1 flex min-h-0 flex-col gap-3 xl:order-2 xl:sticky xl:top-4 xl:max-h-[calc(100vh-10rem)] xl:overflow-hidden">
+          <SelectedCoursesPanel
+            className="xl:min-h-0 xl:flex-1 xl:overflow-hidden"
+            courseCount={courses.length}
+            creditsWarning={plannerInsights?.creditsWarning?.message}
+            coursesError={fieldErrors.courses}
+          >
+            {courses.map((course) => (
+              <SelectedCourseListItem
+                key={course.courseId}
+                course={course}
+                variant="selected"
+                focused={focusedCourseNumber === course.courseNumber}
+                highlighted={
+                  highlightedCourseNumber === course.courseNumber ||
+                  Boolean(conflictHighlightNumbers?.has(course.courseNumber))
+                }
+                onHover={handleCourseHover}
+                onFocus={() => setFocusedCourseNumber(course.courseNumber)}
+                onMoveToOtherList={() => moveSelectedToMaybe(course.courseId)}
+                onRemove={() => removeCourse(course.courseId)}
+              />
+            ))}
+          </SelectedCoursesPanel>
+
+          <MaybeCoursesPanel courseCount={maybeCourses.length} className="xl:shrink-0">
+            {maybeCourses.map((course) => (
+              <SelectedCourseListItem
+                key={course.courseId}
+                course={course}
+                variant="maybe"
+                focused={focusedCourseNumber === course.courseNumber}
+                highlighted={
+                  highlightedCourseNumber === course.courseNumber ||
+                  Boolean(conflictHighlightNumbers?.has(course.courseNumber))
+                }
+                onHover={handleCourseHover}
+                onFocus={() => setFocusedCourseNumber(course.courseNumber)}
+                onMoveToOtherList={() => moveMaybeToSelected(course.courseId)}
+                onRemove={() => removeMaybeCourse(course.courseId)}
+              />
+            ))}
+          </MaybeCoursesPanel>
+        </div>
       </div>
 
       <CourseDetailModal
@@ -843,16 +1029,8 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
         onClose={() => setDetailCourseNumber(null)}
       />
 
-      {groupSelectorCourse && parsedSemester ? (
-        <CourseGroupSelector
-          courseNumber={groupSelectorCourse.courseNumber}
-          courseTitle={groupSelectorCourse.courseTitle}
-          academicYear={parsedSemester.academicYear}
-          semesterCode={parsedSemester.semesterCode}
-          selectedGroups={groupSelectorCourse.selectedGroups}
-          onClose={() => setGroupSelectorCourse(null)}
-          onSave={(groups) => saveSelectedGroups(groupSelectorCourse.courseNumber, groups)}
-        />
+      {showChangesDialog ? (
+        <ChangesDialog changes={planChanges} onClose={() => setShowChangesDialog(false)} />
       ) : null}
     </div>
   )
