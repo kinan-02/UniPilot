@@ -31,6 +31,39 @@ def _resolve_base_url() -> str:
 BASE_URL = _resolve_base_url()
 PASSWORD = "StrongPass123!"
 
+
+def _flush_auth_rate_limits(repo_root: Path) -> None:
+    """Clear Redis auth rate-limit keys so verify can register many users without 429."""
+    import subprocess
+
+    scan = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "redis",
+            "redis-cli",
+            "--scan",
+            "--pattern",
+            "rl:auth:*",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+    )
+    keys = [line.strip() for line in scan.stdout.splitlines() if line.strip()]
+    if not keys:
+        return
+    subprocess.run(
+        ["docker", "compose", "exec", "-T", "redis", "redis-cli", "DEL", *keys],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+        check=False,
+    )
+
+
 MONGO_BOOTSTRAP_EVAL = """
 const out = {};
 const FALLBACK_COURSES = ["00940345", "02340117", "01040031", "00104000"];
@@ -1143,6 +1176,7 @@ async def main() -> int:
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[3]
+    _flush_auth_rate_limits(repo_root)
 
     proc_mongo = subprocess.run(
         [

@@ -420,7 +420,6 @@ def build_promotion_gate_result(
         signedOffBy=catalog_signoff.get("signedOffBy"),
         signedOffAt=catalog_signoff.get("signedOffAt"),
     )
-    promoted_advisory_group_ids: set[str] = set()
 
     for program in programs:
         code = program.get("programCode", "")
@@ -453,7 +452,6 @@ def build_promotion_gate_result(
                 )
             )
         elif _is_advisory_requirement(document, advisory_group_ids):
-            promoted_advisory_group_ids.add(group_id)
             advisory_rule_ids.append(group_id)
             plan.advisoryCatalogRules.append(
                 PromotionPlanItem(
@@ -474,31 +472,6 @@ def build_promotion_gate_result(
                     details={"enforceInGraduationProgress": False},
                 )
             )
-
-    for rule in rules:
-        group_id = rule.get("requirementGroupId", rule.get("stagingKey", ""))
-        if group_id in promoted_advisory_group_ids:
-            plan.skippedItems.append(
-                SkippedPromotionItem(
-                    itemType="catalog_rule",
-                    identifier=group_id,
-                    reason="already-promoted-from-requirement-group",
-                    details={"dedupe": "advisory_requirement_group"},
-                )
-            )
-            continue
-        advisory_rule_ids.append(group_id)
-        plan.advisoryCatalogRules.append(
-            PromotionPlanItem(
-                itemType="catalog_rule",
-                stagingKey=rule.get("stagingKey", group_id),
-                productionCollection=PRODUCTION_TARGET_COLLECTIONS["advisoryCatalogRules"],
-                action="advisory-only",
-                identifier=group_id,
-                enforceInGraduationProgress=False,
-                notes="Staged catalog rule mirrored as advisory-only metadata.",
-            )
-        )
 
     promoted_course_numbers: set[str] = set()
     for course in courses:

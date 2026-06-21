@@ -164,7 +164,8 @@ See `services/data-engineering/README.md` and `docs/data-sources/TECHNION_DDS_SO
 ## Security & ops notes
 
 - `web` and `api` publish host ports; all other services stay internal.
-- Passwords: bcrypt; JWT from env (`JWT_SECRET` required at startup).
+- Passwords: bcrypt; JWT from env (`JWT_SECRET` required at startup — dev default in `.env.example`; production needs a unique 32+ char secret).
+- Auth rate limit: `AUTH_RATE_LIMIT_MAX` defaults to **30** in development (Docker); set **5** for production.
 - Auth rate limiting via Redis.
 - Replace dev secrets in `.env` before non-local deployment.
 - Worker and AI remain internal stubs for a future async AI phase.

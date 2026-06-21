@@ -160,17 +160,6 @@ def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: boo
                 **_staging_doc_flags(),
             }
         )
-        database[settings.staging_catalog_rules_collection].insert_one(
-            {
-                "stagingKey": f"technion-dds:catalog:2025-2026:rule:{group_id}",
-                "sourceName": DDS_CATALOG_SOURCE,
-                "programCode": program_code,
-                "requirementGroupId": group_id,
-                "ruleIsExecutable": False,
-                "treatsCoursesAsMandatory": False,
-                **_staging_doc_flags(),
-            }
-        )
 
     promoted_numbers = ["00940345", "01040031", "02340117"]
     for number in promoted_numbers:
@@ -250,28 +239,12 @@ def test_non_executable_rules_become_advisory(mongo_database) -> None:
     assert not hard_ids.intersection(set(SEED_ADVISORY_GROUP_IDS))
 
 
-def test_catalog_rule_skipped_when_requirement_group_already_promoted(mongo_database) -> None:
+def test_advisory_plan_uses_requirement_groups_only(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     gate = build_promotion_gate_result(mongo_database, allow_warnings=True)
-    skipped = {
-        (item.identifier, item.reason)
-        for item in gate.plannedWrites.skippedItems
-        if item.itemType == "catalog_rule"
-    }
-    assert any(
-        reason == "already-promoted-from-requirement-group" for _, reason in skipped
-    ), f"expected catalog_rule dedupe skip, got {skipped}"
-    catalog_rule_ids = {
-        item.identifier
-        for item in gate.plannedWrites.advisoryCatalogRules
-        if item.itemType == "catalog_rule"
-    }
-    requirement_group_ids = {
-        item.identifier
-        for item in gate.plannedWrites.advisoryCatalogRules
-        if item.itemType == "advisory_requirement_group"
-    }
-    assert not catalog_rule_ids.intersection(requirement_group_ids)
+    advisory_types = {item.itemType for item in gate.plannedWrites.advisoryCatalogRules}
+    assert advisory_types == {"advisory_requirement_group"}
+    assert not any(item.itemType == "catalog_rule" for item in gate.plannedWrites.skippedItems)
 
 
 def test_gate_fails_on_credit_mismatches(mongo_database) -> None:

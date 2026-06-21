@@ -1,7 +1,16 @@
 from functools import lru_cache
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Dev-only default for Docker first-run; rejected when ENVIRONMENT=production.
+DEV_JWT_SECRET = "unipilot_dev_jwt_secret_change_in_production"
+
+JWT_SECRET_PLACEHOLDERS: frozenset[str] = frozenset(
+    {
+        "replace_me_with_secure_jwt_secret",
+        DEV_JWT_SECRET,
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -15,7 +24,7 @@ class Settings(BaseSettings):
     jwt_expires_in: str = "1h"
     bcrypt_salt_rounds: int = 12
     auth_rate_limit_window_ms: int = 60_000
-    auth_rate_limit_max: int = 5
+    auth_rate_limit_max: int = 30
     courses_collection: str = "courses"
     course_offerings_collection: str = "course_offerings"
     degree_programs_collection: str = "degree_programs"
@@ -37,9 +46,21 @@ class Settings(BaseSettings):
     )
 
     def require_jwt_secret(self) -> str:
-        if not self.jwt_secret:
-            raise RuntimeError("JWT_SECRET is required")
-        return self.jwt_secret
+        secret = (self.jwt_secret or "").strip()
+        if not secret:
+            raise RuntimeError(
+                "JWT_SECRET is required. Copy .env.example to .env and set a strong secret."
+            )
+        if self.environment == "production":
+            if secret in JWT_SECRET_PLACEHOLDERS:
+                raise RuntimeError(
+                    "JWT_SECRET must not use the development placeholder in production."
+                )
+            if len(secret) < 32:
+                raise RuntimeError(
+                    "JWT_SECRET must be at least 32 characters in production."
+                )
+        return secret
 
     def resolved_bcrypt_salt_rounds(self) -> int:
         rounds = int(self.bcrypt_salt_rounds)

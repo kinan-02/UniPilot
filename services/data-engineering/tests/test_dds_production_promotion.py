@@ -86,33 +86,12 @@ def test_promotion_writes_expected_collections(mongo_database) -> None:
     assert mongo_database[settings.production_promotion_runs_collection].count_documents({}) == 1
 
 
-def test_promotion_removes_superseded_catalog_rule_duplicates(mongo_database) -> None:
+def test_promotion_writes_advisory_requirement_group_record_type(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()
-    group_id = SEED_ADVISORY_GROUP_IDS[0]
-    mongo_database[settings.production_catalog_rules_collection].insert_one(
-        {
-            "productionKey": f"technion-dds:advisory-rule:catalog:{group_id}:2025-2026",
-            "recordType": "catalog_rule",
-            "requirementGroupId": group_id,
-            "programCode": "009216-1-000",
-            "status": "published",
-            "courseReferences": [],
-        }
-    )
     run_dds_production_promotion(mongo_database, confirm_dangerous=True, allow_warnings=True)
-    assert (
-        mongo_database[settings.production_catalog_rules_collection].count_documents(
-            {"requirementGroupId": group_id, "recordType": "catalog_rule"}
-        )
-        == 0
-    )
-    assert (
-        mongo_database[settings.production_catalog_rules_collection].count_documents(
-            {"requirementGroupId": group_id, "recordType": "advisory_requirement_group"}
-        )
-        == 1
-    )
+    record_types = mongo_database[settings.production_catalog_rules_collection].distinct("recordType")
+    assert record_types == ["advisory_requirement_group"]
 
 
 def test_idempotent_rerun_does_not_duplicate(mongo_database) -> None:

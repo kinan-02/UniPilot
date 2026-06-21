@@ -85,10 +85,6 @@ def production_advisory_requirement_key(group_id: str, catalog_version: str) -> 
     return f"technion-dds:advisory-rule:req:{group_id}:{catalog_version}"
 
 
-def production_advisory_catalog_rule_key(group_id: str, catalog_version: str) -> str:
-    return f"technion-dds:advisory-rule:catalog:{group_id}:{catalog_version}"
-
-
 def production_course_key(course_number: str) -> str:
     return f"technion:course:{course_number}"
 
@@ -256,55 +252,6 @@ def map_staging_advisory_requirement_to_production(
     if linked_credit_bucket_id:
         document["linkedCreditBucketId"] = linked_credit_bucket_id
     _validate_document_safety(document, context=f"advisory_requirement {group_id}")
-    return document
-
-
-def map_staging_catalog_rule_to_production(
-    staging: dict[str, Any],
-    *,
-    promotion_run_id: str,
-    promoted_at: str,
-    catalog_version: str,
-) -> dict[str, Any]:
-    group_id = staging.get("requirementGroupId", "")
-    production_key = production_advisory_catalog_rule_key(group_id, catalog_version)
-    linked_credit_bucket_id = linked_credit_bucket_for_pool(group_id)
-    source_metadata: dict[str, Any] = {
-        "stagingKey": staging.get("stagingKey"),
-        "confidence": staging.get("confidence"),
-        "nonExecutableRulesPolicy": "advisory-only",
-    }
-    if linked_credit_bucket_id:
-        source_metadata["graduationPoolLinkPhase"] = "15.1"
-        source_metadata["linkedCreditBucketId"] = linked_credit_bucket_id
-
-    document = {
-        "productionKey": production_key,
-        "institutionId": staging.get("institutionId", "technion"),
-        "programCode": staging.get("programCode"),
-        "requirementGroupId": group_id,
-        "recordType": "catalog_rule",
-        "ruleExpression": staging.get("ruleExpression"),
-        "notes": staging.get("notes", []),
-        "ruleIsExecutable": False,
-        "advisoryOnly": True,
-        "enforceInGraduationProgress": False,
-        "manualReviewRequired": staging.get("manualReviewRequired", True),
-        "isMandatory": False,
-        "catalogYear": staging.get("catalogYear"),
-        "catalogVersion": catalog_version,
-        "sourceName": DDS_CATALOG_SOURCE,
-        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
-        "sourceMetadata": source_metadata,
-        "sourceRefs": _source_refs(*(staging.get("sourceFiles") or [])),
-        "status": "published",
-        "promotedAt": promoted_at,
-        "promotionRunId": promotion_run_id,
-        "updatedAt": promoted_at,
-    }
-    if linked_credit_bucket_id:
-        document["linkedCreditBucketId"] = linked_credit_bucket_id
-    _validate_document_safety(document, context=f"catalog_rule {group_id}")
     return document
 
 
@@ -483,9 +430,6 @@ def build_production_documents(
     advisory_req_keys = {
         item.stagingKey for item in plan.advisoryCatalogRules if item.itemType == "advisory_requirement_group"
     }
-    advisory_rule_keys = {
-        item.stagingKey for item in plan.advisoryCatalogRules if item.itemType == "catalog_rule"
-    }
     course_keys = {item.stagingKey for item in plan.courses}
     offering_keys = {item.stagingKey for item in plan.courseOfferings}
 
@@ -497,9 +441,6 @@ def build_production_documents(
     )
     advisory_reqs_by_key = _load_staging_by_key(
         database, settings.staging_degree_requirements_collection, advisory_req_keys
-    )
-    advisory_rules_by_key = _load_staging_by_key(
-        database, settings.staging_catalog_rules_collection, advisory_rule_keys
     )
     courses_by_key = _load_staging_by_key(database, settings.staging_courses_collection, course_keys)
     offerings_by_key = _load_staging_by_key(
@@ -544,26 +485,19 @@ def build_production_documents(
         planned_keys[settings.production_degree_requirements_collection].add(doc["productionKey"])
 
     for item in plan.advisoryCatalogRules:
-        if item.itemType == "advisory_requirement_group":
-            staging = advisory_reqs_by_key.get(item.stagingKey)
-            if not staging:
-                raise ProductionPromotionError(f"Missing advisory requirement staging key {item.stagingKey}")
-            doc = map_staging_advisory_requirement_to_production(
-                staging,
-                promotion_run_id=promotion_run_id,
-                promoted_at=promoted_at,
-                catalog_version=catalog_version,
+        if item.itemType != "advisory_requirement_group":
+            raise ProductionPromotionError(
+                f"Unsupported advisory promotion item type: {item.itemType!r}"
             )
-        else:
-            staging = advisory_rules_by_key.get(item.stagingKey)
-            if not staging:
-                raise ProductionPromotionError(f"Missing advisory catalog rule staging key {item.stagingKey}")
-            doc = map_staging_catalog_rule_to_production(
-                staging,
-                promotion_run_id=promotion_run_id,
-                promoted_at=promoted_at,
-                catalog_version=catalog_version,
-            )
+        staging = advisory_reqs_by_key.get(item.stagingKey)
+        if not staging:
+            raise ProductionPromotionError(f"Missing advisory requirement staging key {item.stagingKey}")
+        doc = map_staging_advisory_requirement_to_production(
+            staging,
+            promotion_run_id=promotion_run_id,
+            promoted_at=promoted_at,
+            catalog_version=catalog_version,
+        )
         if doc.get("enforceInGraduationProgress") is not False:
             raise ProductionPromotionError(f"Advisory rule {doc['productionKey']} must not be enforced.")
         documents[settings.production_catalog_rules_collection].append(doc)
@@ -618,23 +552,6 @@ def _upsert_production_documents(
         result = database[collection].bulk_write(operations, ordered=False)
         counts_written[collection] = result.upserted_count + result.modified_count + result.matched_count
     return counts_written
-
-
-def _remove_superseded_catalog_rule_duplicates(
-    database: Database,
-    settings: Settings,
-    requirement_group_ids: set[str],
-) -> int:
-    """Drop legacy catalog_rule rows superseded by advisory_requirement_group promotion."""
-    if not requirement_group_ids:
-        return 0
-    result = database[settings.production_catalog_rules_collection].delete_many(
-        {
-            "recordType": "catalog_rule",
-            "requirementGroupId": {"$in": sorted(requirement_group_ids)},
-        }
-    )
-    return int(result.deleted_count)
 
 
 def _production_counts(database: Database, settings: Settings) -> dict[str, int]:
@@ -838,22 +755,6 @@ def run_dds_production_promotion(
             out_md = md_path or default_production_promotion_md_path()
             write_production_promotion_report(result, json_path=out_json, md_path=out_md)
             return result
-
-        promoted_advisory_group_ids = {
-            str(item.identifier)
-            for item in gate.plannedWrites.advisoryCatalogRules
-            if item.itemType == "advisory_requirement_group" and item.identifier
-        }
-        duplicates_removed = _remove_superseded_catalog_rule_duplicates(
-            database,
-            settings,
-            promoted_advisory_group_ids,
-        )
-        if duplicates_removed:
-            run.rollbackNotes.append(
-                f"Removed {duplicates_removed} superseded catalog_rule duplicate(s) "
-                "before advisory_requirement_group promotion."
-            )
 
         validate_production_collections_for_promotion(
             database,

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-21T21:43:33.116535Z",
+  "generated_at": "2026-06-21T21:48:36.643830Z",
   "base_url": "http://localhost:8000",
   "functional": {
     "passed": 86,
@@ -15,11 +15,11 @@
     "requirements": 16,
     "rules": 35,
     "semesterMatrixRules": 7,
-    "semesterPlans": 74,
-    "completed": 4
+    "semesterPlans": 100,
+    "completed": 6
   },
   "benchmark_context": {
-    "planner_plan_id": "6a385afe5db470ed75bf326c",
+    "planner_plan_id": "6a385c2d5db470ed75bf3296",
     "planner_course_numbers": [
       "00140003",
       "00140004",
@@ -36,11 +36,11 @@
       "status_codes": {
         "200": 100
       },
-      "min_ms": 3.36,
-      "mean_ms": 4.11,
-      "p50_ms": 3.97,
-      "p95_ms": 5.06,
-      "max_ms": 8.15
+      "min_ms": 3.28,
+      "mean_ms": 3.76,
+      "p50_ms": 3.69,
+      "p95_ms": 4.37,
+      "max_ms": 5.05
     },
     {
       "name": "auth_login",
@@ -51,11 +51,11 @@
         "401": 4,
         "429": 46
       },
-      "min_ms": 2.76,
-      "mean_ms": 3.54,
-      "p50_ms": 3.32,
-      "p95_ms": 4.75,
-      "max_ms": 5.79
+      "min_ms": 2.61,
+      "mean_ms": 3.03,
+      "p50_ms": 2.88,
+      "p95_ms": 4.36,
+      "max_ms": 4.83
     },
     {
       "name": "catalog_list_50",
@@ -65,11 +65,11 @@
       "status_codes": {
         "200": 50
       },
-      "min_ms": 13.07,
-      "mean_ms": 13.52,
-      "p50_ms": 13.49,
-      "p95_ms": 14.04,
-      "max_ms": 14.25
+      "min_ms": 12.52,
+      "mean_ms": 13.29,
+      "p50_ms": 13.24,
+      "p95_ms": 13.64,
+      "max_ms": 15.58
     },
     {
       "name": "catalog_list_200",
@@ -79,11 +79,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 21.47,
-      "mean_ms": 22.04,
-      "p50_ms": 21.98,
-      "p95_ms": 22.66,
-      "max_ms": 22.85
+      "min_ms": 18.4,
+      "mean_ms": 22.2,
+      "p50_ms": 22.15,
+      "p95_ms": 24.01,
+      "max_ms": 28.17
     },
     {
       "name": "catalog_search_he",
@@ -93,11 +93,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 22.74,
-      "mean_ms": 24.89,
-      "p50_ms": 25.3,
-      "p95_ms": 26.82,
-      "max_ms": 27.74
+      "min_ms": 22.62,
+      "mean_ms": 25.52,
+      "p50_ms": 23.85,
+      "p95_ms": 26.85,
+      "max_ms": 53.89
     },
     {
       "name": "catalog_summary",
@@ -107,11 +107,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 11.08,
-      "mean_ms": 13.81,
-      "p50_ms": 13.07,
-      "p95_ms": 14.21,
-      "max_ms": 39.39
+      "min_ms": 10.14,
+      "mean_ms": 13.65,
+      "p50_ms": 12.57,
+      "p95_ms": 16.91,
+      "max_ms": 38.06
     },
     {
       "name": "catalog_requirements",
@@ -121,11 +121,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 5.47,
-      "mean_ms": 5.93,
-      "p50_ms": 5.89,
-      "p95_ms": 6.39,
-      "max_ms": 6.86
+      "min_ms": 5.46,
+      "mean_ms": 7.0,
+      "p50_ms": 6.59,
+      "p95_ms": 8.48,
+      "max_ms": 11.36
     },
     {
       "name": "graduation_progress",
@@ -135,11 +135,11 @@
       "status_codes": {
         "200": 50
       },
-      "min_ms": 8.13,
-      "mean_ms": 8.95,
-      "p50_ms": 8.83,
-      "p95_ms": 9.63,
-      "max_ms": 11.3
+      "min_ms": 8.17,
+      "mean_ms": 9.05,
+      "p50_ms": 9.0,
+      "p95_ms": 10.08,
+      "max_ms": 10.7
     },
     {
       "name": "completed_list",
@@ -149,11 +149,11 @@
       "status_codes": {
         "200": 50
       },
-      "min_ms": 4.91,
-      "mean_ms": 5.44,
-      "p50_ms": 5.31,
-      "p95_ms": 6.32,
-      "max_ms": 6.89
+      "min_ms": 4.76,
+      "mean_ms": 5.77,
+      "p50_ms": 5.74,
+      "p95_ms": 7.18,
+      "max_ms": 7.27
     },
     {
       "name": "semester_plan_generate",
@@ -163,11 +163,11 @@
       "status_codes": {
         "201": 20
       },
-      "min_ms": 22.85,
-      "mean_ms": 26.74,
-      "p50_ms": 27.03,
-      "p95_ms": 28.27,
-      "max_ms": 28.59
+      "min_ms": 21.74,
+      "mean_ms": 24.89,
+      "p50_ms": 24.69,
+      "p95_ms": 27.53,
+      "max_ms": 28.47
     },
     {
       "name": "semester_plan_list",
@@ -177,11 +177,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 11.76,
-      "mean_ms": 13.49,
-      "p50_ms": 12.51,
-      "p95_ms": 13.06,
-      "max_ms": 41.93
+      "min_ms": 11.36,
+      "mean_ms": 13.2,
+      "p50_ms": 12.39,
+      "p95_ms": 12.91,
+      "max_ms": 38.07
     },
     {
       "name": "catalog_offerings_batch",
@@ -191,11 +191,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 2.91,
-      "mean_ms": 3.61,
-      "p50_ms": 3.41,
+      "min_ms": 2.68,
+      "mean_ms": 3.4,
+      "p50_ms": 3.21,
       "p95_ms": 4.0,
-      "max_ms": 7.98
+      "max_ms": 7.75
     },
     {
       "name": "semester_plan_get",
@@ -205,11 +205,11 @@
       "status_codes": {
         "200": 30
       },
-      "min_ms": 3.58,
-      "mean_ms": 4.36,
-      "p50_ms": 4.34,
-      "p95_ms": 4.86,
-      "max_ms": 5.0
+      "min_ms": 3.29,
+      "mean_ms": 3.93,
+      "p50_ms": 3.89,
+      "p95_ms": 4.59,
+      "max_ms": 4.8
     },
     {
       "name": "semester_plan_maybe_patch",
@@ -219,11 +219,11 @@
       "status_codes": {
         "200": 20
       },
-      "min_ms": 7.77,
-      "mean_ms": 8.14,
-      "p50_ms": 8.15,
-      "p95_ms": 8.4,
-      "max_ms": 8.7
+      "min_ms": 7.31,
+      "mean_ms": 8.74,
+      "p50_ms": 8.29,
+      "p95_ms": 11.48,
+      "max_ms": 11.71
     },
     {
       "name": "catalog_offerings_sequential_x3",
@@ -233,11 +233,11 @@
       "status_codes": {
         "200": 15
       },
-      "min_ms": 16.42,
-      "mean_ms": 17.12,
-      "p50_ms": 16.92,
-      "p95_ms": 17.83,
-      "max_ms": 18.6
+      "min_ms": 16.63,
+      "mean_ms": 18.71,
+      "p50_ms": 17.7,
+      "p95_ms": 21.71,
+      "max_ms": 24.83
     },
     {
       "name": "catalog_list_50_concurrent_x20",
@@ -247,11 +247,11 @@
       "status_codes": {
         "200": 20
       },
-      "min_ms": 32.56,
-      "mean_ms": 118.43,
-      "p50_ms": 125.76,
-      "p95_ms": 153.1,
-      "max_ms": 155.15
+      "min_ms": 34.79,
+      "mean_ms": 123.28,
+      "p50_ms": 134.9,
+      "p95_ms": 155.44,
+      "max_ms": 161.25
     }
   ]
 }

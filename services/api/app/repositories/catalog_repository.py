@@ -42,20 +42,22 @@ def _strip_internal_fields(document: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in document.items() if key not in INTERNAL_FIELDS}
 
 
+def _advisory_record_rank(document: dict[str, Any]) -> tuple[int, int]:
+    record_type = document.get("recordType", "catalog_rule")
+    type_rank = 2 if record_type == "advisory_requirement_group" else 1 if record_type == "catalog_rule" else 0
+    ref_count = len(document.get("courseReferences") or [])
+    return type_rank, ref_count
+
+
 def _dedupe_catalog_rules_by_group_id(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep one rule per requirementGroupId, preferring the copy with course references."""
+    """Keep one rule per requirementGroupId, preferring vault advisory_requirement_group rows."""
     best_by_group: dict[str, dict[str, Any]] = {}
     for document in documents:
         group_id = str(document.get("requirementGroupId") or "")
         if not group_id:
             continue
         existing = best_by_group.get(group_id)
-        if existing is None:
-            best_by_group[group_id] = document
-            continue
-        existing_refs = len(existing.get("courseReferences") or [])
-        new_refs = len(document.get("courseReferences") or [])
-        if new_refs > existing_refs:
+        if existing is None or _advisory_record_rank(document) > _advisory_record_rank(existing):
             best_by_group[group_id] = document
     return [best_by_group[group_id] for group_id in sorted(best_by_group)]
 

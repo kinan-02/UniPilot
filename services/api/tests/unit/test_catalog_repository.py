@@ -40,6 +40,40 @@ async def test_repository_list_and_get_course(mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_repository_prefers_advisory_requirement_group_over_legacy_catalog_rule(mongo_database):
+    settings = get_settings()
+    group_id = "009216-1-000:semester-1-matrix"
+    await mongo_database[settings.catalog_rules_collection].insert_many(
+        [
+            {
+                "programCode": "009216-1-000",
+                "requirementGroupId": group_id,
+                "recordType": "catalog_rule",
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "advisoryOnly": True,
+                "enforceInGraduationProgress": False,
+                "courseReferences": [{"courseNumber": KNOWN_COURSE, "titleHint": "legacy"}],
+                "status": "published",
+            },
+            {
+                "programCode": "009216-1-000",
+                "requirementGroupId": group_id,
+                "recordType": "advisory_requirement_group",
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "advisoryOnly": True,
+                "enforceInGraduationProgress": False,
+                "courseReferences": [],
+                "status": "published",
+            },
+        ]
+    )
+
+    rules = await catalog_repository.list_advisory_rules_for_program(mongo_database, "009216-1-000")
+    semester_one = [rule for rule in rules if rule["requirementGroupId"] == group_id]
+    assert len(semester_one) == 1
+
+
+@pytest.mark.asyncio
 async def test_repository_dedupes_duplicate_advisory_rules(mongo_database):
     settings = get_settings()
     group_id = "009216-1-000:semester-1-matrix"
