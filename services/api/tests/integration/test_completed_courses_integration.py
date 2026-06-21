@@ -210,3 +210,50 @@ async def test_repository_scopes_list_by_user_id(mongo_database):
 
     assert user_a_records["total"] == 1
     assert user_b_records["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_create_completed_course_with_metadata_notes(auth_client, mongo_database):
+    catalog = await seed_production_course_fixture(mongo_database)
+    access_token = await register_access_token(auth_client, "completed-metadata@example.com")
+
+    response = await auth_client.post(
+        "/completed-courses",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "courseId": catalog["courseId"],
+            "semesterCode": "2024-1",
+            "grade": 90,
+            "creditsEarned": 3.0,
+            "metadata": {"notes": "Studied hard for this one"},
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["success"] is True
+    record = body["data"]["completedCourse"]
+    assert record["metadata"]["notes"] == "Studied hard for this one"
+
+
+@pytest.mark.asyncio
+async def test_update_completed_course_with_metadata(auth_client, mongo_database):
+    catalog = await seed_production_course_fixture(mongo_database)
+    access_token = await register_access_token(auth_client, "completed-update-meta@example.com")
+
+    create_resp = await auth_client.post(
+        "/completed-courses",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json=build_completed_course_payload(catalog["courseId"]),
+    )
+    assert create_resp.status_code == 201
+    record_id = create_resp.json()["data"]["completedCourse"]["id"]
+
+    update_resp = await auth_client.put(
+        f"/completed-courses/{record_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"metadata": {"notes": "Updated note"}},
+    )
+
+    assert update_resp.status_code == 200
+    assert update_resp.json()["data"]["completedCourse"]["metadata"]["notes"] == "Updated note"

@@ -68,3 +68,66 @@ def test_register_request_normalizes_email_to_lowercase():
     )
 
     assert payload.email == "student@example.com"
+
+
+def test_register_request_rejects_password_without_uppercase():
+    with pytest.raises(ValidationError) as exc_info:
+        RegisterRequest(
+            email="student@example.com",
+            password="alllowercase1!",
+        )
+    assert "uppercase" in str(exc_info.value).lower()
+
+
+def test_register_request_rejects_password_without_lowercase():
+    with pytest.raises(ValidationError) as exc_info:
+        RegisterRequest(
+            email="student@example.com",
+            password="ALLUPPERCASE1!",
+        )
+    assert "lowercase" in str(exc_info.value).lower()
+
+
+def test_register_request_rejects_password_without_number():
+    with pytest.raises(ValidationError) as exc_info:
+        RegisterRequest(
+            email="student@example.com",
+            password="NoNumberHere!",
+        )
+    assert "number" in str(exc_info.value).lower()
+
+
+def test_register_request_rejects_password_without_special_character():
+    with pytest.raises(ValidationError) as exc_info:
+        RegisterRequest(
+            email="student@example.com",
+            password="NoSpecial123",
+        )
+    assert "special" in str(exc_info.value).lower()
+
+
+def test_login_request_accepts_any_non_empty_password():
+    payload = LoginRequest(
+        email="student@example.com",
+        password="w",
+    )
+    assert payload.password == "w"
+
+
+def test_login_request_normalizes_email_to_lowercase():
+    payload = LoginRequest(
+        email="Student@Example.COM",
+        password="AnyPass1!",
+    )
+    assert payload.email == "student@example.com"
+
+
+def test_login_request_rejects_unknown_fields():
+    with pytest.raises(ValidationError):
+        LoginRequest.model_validate(
+            {
+                "email": "student@example.com",
+                "password": "AnyPass1!",
+                "role": "admin",
+            }
+        )

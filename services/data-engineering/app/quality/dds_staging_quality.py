@@ -59,6 +59,23 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
+def accumulate_finding_severity(
+    severity: str,
+    message: str,
+    *,
+    warnings: list[str],
+    production_blockers: list[str],
+    api_blockers: list[str],
+) -> None:
+    """Route a finding message into the report bucket for its severity."""
+    if severity == "warning":
+        warnings.append(message)
+    elif severity == "production-blocker":
+        production_blockers.append(message)
+    elif severity == "api-migration-blocker":
+        api_blockers.append(message)
+
+
 def _similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
@@ -194,12 +211,13 @@ def build_dds_staging_quality_report(
                 details=details or {},
             )
         )
-        if severity == "warning":
-            warnings.append(message)
-        elif severity == "production-blocker":
-            production_blockers.append(message)
-        elif severity == "api-migration-blocker":
-            api_blockers.append(message)
+        accumulate_finding_severity(
+            severity,
+            message,
+            warnings=warnings,
+            production_blockers=production_blockers,
+            api_blockers=api_blockers,
+        )
 
     # --- Catalog structure ---
     program_codes = [doc.get("programCode") for doc in programs]

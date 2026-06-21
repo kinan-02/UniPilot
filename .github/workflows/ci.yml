@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run pytest with coverage gate
-        run: pytest --cov=app --cov-fail-under=80
+        run: pytest --cov=app --cov-fail-under=100
 
   data-engineering:
     name: Data engineering (pytest)
@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run pytest with coverage gate
-        run: pytest --cov=app --cov-fail-under=80
+        run: pytest --cov=app --cov-fail-under=100
 
   web:
     name: Web (Vitest + build)

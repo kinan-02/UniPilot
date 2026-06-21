@@ -306,3 +306,196 @@ def test_detects_duplicate_planned_courses():
     )
 
     assert any(risk["riskType"] == "duplicate_planned_course" for risk in analysis["risks"])
+
+
+# ---------------------------------------------------------------------------
+# Missing coverage: course_number/title helpers, is_advanced_course,
+# build_elective_pool_ids, credit overload, unknown/out-of-scope courses,
+# too_many_advanced_courses
+# ---------------------------------------------------------------------------
+
+from app.planning.academic_risk_analyzer import (
+    build_elective_pool_ids,
+    course_number,
+    course_title,
+    is_advanced_course,
+)
+
+
+def test_course_number_returns_none_for_none_input():
+    assert course_number(None) is None
+
+
+def test_course_title_returns_none_for_none_input():
+    assert course_title(None) is None
+
+
+def test_is_advanced_course_returns_false_for_none():
+    assert is_advanced_course(None) is False
+
+
+def test_is_advanced_course_returns_true_for_graduate_level():
+    assert is_advanced_course({"level": "graduate"}) is True
+    assert is_advanced_course({"level": "advanced"}) is True
+
+
+def test_is_advanced_course_returns_true_for_advanced_tag():
+    assert is_advanced_course({"tags": ["advanced", "other"]}) is True
+
+
+def test_is_advanced_course_returns_false_when_no_match():
+    assert is_advanced_course({"level": "introductory", "tags": []}) is False
+
+
+def test_build_elective_pool_ids_skips_reference_with_no_course_number():
+    """courseReferences without courseNumber must be skipped (line 146)."""
+    pool = {"courseReferences": [{"noNumber": True}]}
+    result = build_elective_pool_ids([pool], [])
+    assert result == set()
+
+
+def test_detects_credit_overload_exceeding_max():
+    context = _build_analysis_context()
+    # Use a planned course with explicit credits so total exceeds maxCredits
+    analysis = _analyze(
+        context,
+        {
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {
+                    "courseId": FOUNDATIONS,
+                    "courseNumber": "02340101",
+                    "courseTitle": "Foundations",
+                    "credits": 5,  # explicit credits
+                },
+            ],
+            "maxCredits": 1,   # 5 > 1 → overload
+            "minCredits": 0,
+            "explanation": {},
+        },
+    )
+    assert any(risk["riskType"] == "credit_overload" for risk in analysis["risks"])
+
+
+def test_detects_medium_credit_overload_exceeds_profile_preference():
+    """Line 364: medium severity when credits > profile preference but <= hard limit."""
+    from app.planning.academic_risk_analyzer import analyze_academic_risks
+    from bson import ObjectId
+
+    degree = {"_id": ObjectId(), "programCode": "CS-BSC", "code": "CS-BSC"}
+    profile = {
+        "_id": ObjectId(),
+        "preferences": {"maxCreditsPerSemester": 3},  # profile prefers max 3
+    }
+
+    analysis = analyze_academic_risks(
+        profile=profile,
+        degree=degree,
+        catalog_courses=[],
+        pool_documents=[],
+        graduation_progress={"remainingMandatoryCourses": [], "requirementProgress": []},
+        completed_course_records=[],
+        plan_view={
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {"courseId": str(ObjectId()), "courseNumber": "00940101", "courseTitle": "X", "credits": 5},
+            ],
+            "maxCredits": 18,   # hard limit is 18 (credits 5 <= 18, so no hard overload)
+            "minCredits": 0,
+            "explanation": {},
+        },
+    )
+    # 5 > 3 (profile preference) and 5 <= 18 (hard limit) → medium severity credit_overload
+    assert any(
+        risk["riskType"] == "credit_overload" and risk["severity"] == "medium"
+        for risk in analysis["risks"]
+    )
+
+
+def test_detects_unknown_catalog_course():
+    context = _build_analysis_context()
+    unknown_id = "000000000000000000000099"
+    analysis = _analyze(
+        context,
+        {
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {"courseId": unknown_id, "courseNumber": "09999999", "courseTitle": "Unknown",
+                 "credits": 3},
+            ],
+            "maxCredits": 12,
+            "minCredits": 0,
+            "explanation": {},
+        },
+    )
+    assert any(risk["riskType"] == "unknown_catalog_course" for risk in analysis["risks"])
+
+
+def test_detects_catalog_course_out_of_scope():
+    context = _build_analysis_context()
+    analysis = _analyze(
+        context,
+        {
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {
+                    "courseId": FOUNDATIONS,
+                    "courseNumber": "02340101",
+                    "courseTitle": "Foundations",
+                    "credits": 3,
+                    "catalogScopeValid": False,
+                },
+            ],
+            "maxCredits": 12,
+            "minCredits": 0,
+            "explanation": {},
+        },
+    )
+    assert any(risk["riskType"] == "catalog_course_out_of_scope" for risk in analysis["risks"])
+
+
+def test_detects_too_many_advanced_courses():
+    """3+ advanced courses in plan triggers too_many_advanced_courses risk."""
+    from bson import ObjectId
+    from tests.fixtures.semester_planner_fixtures import build_catalog_course
+
+    adv1 = str(ObjectId())
+    adv2 = str(ObjectId())
+    adv3 = str(ObjectId())
+
+    advanced_courses = [
+        build_catalog_course(adv1, number="09900001", title="Adv 1", credits=3.0),
+        build_catalog_course(adv2, number="09900002", title="Adv 2", credits=3.0),
+        build_catalog_course(adv3, number="09900003", title="Adv 3", credits=3.0),
+    ]
+    # Mark them as advanced via tags
+    for c in advanced_courses:
+        c["tags"] = ["advanced"]
+
+    context = build_seed_like_context()
+    context["poolDocuments"] = []
+    context["catalogCourses"] = context["catalogCourses"] + advanced_courses
+
+    def _build_analysis_adv():
+        return context
+
+    analysis = analyze_academic_risks(
+        profile=context["profile"],
+        degree=context["degree"],
+        catalog_courses=context["catalogCourses"],
+        pool_documents=[],
+        graduation_progress=context["graduationProgress"],
+        completed_course_records=[],
+        plan_view={
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {"courseId": adv1, "courseNumber": "09900001", "courseTitle": "Adv 1", "credits": 3},
+                {"courseId": adv2, "courseNumber": "09900002", "courseTitle": "Adv 2", "credits": 3},
+                {"courseId": adv3, "courseNumber": "09900003", "courseTitle": "Adv 3", "credits": 3},
+            ],
+            "maxCredits": 18,
+            "minCredits": 0,
+            "explanation": {},
+        },
+    )
+    assert any(risk["riskType"] == "too_many_advanced_courses" for risk in analysis["risks"])

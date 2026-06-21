@@ -141,3 +141,62 @@ def test_update_request_rejects_id_field():
 def test_update_request_accepts_partial_payload():
     payload = UpdateCompletedCourseRequest(grade=78)
     assert payload.grade == 78
+
+
+def test_create_request_rejects_credits_below_zero():
+    with pytest.raises(ValidationError) as exc_info:
+        CreateCompletedCourseRequest(
+            courseId=VALID_COURSE_ID,
+            semesterCode="2024-1",
+            grade=80,
+            creditsEarned=-1.0,
+        )
+    assert "at least 0" in str(exc_info.value)
+
+
+def test_create_request_rejects_credits_above_36():
+    with pytest.raises(ValidationError) as exc_info:
+        CreateCompletedCourseRequest(
+            courseId=VALID_COURSE_ID,
+            semesterCode="2024-1",
+            grade=80,
+            creditsEarned=36.5,
+        )
+    assert "at most 36" in str(exc_info.value)
+
+
+def test_update_request_accepts_explicit_none_grade():
+    payload = UpdateCompletedCourseRequest(grade=None, semesterCode="2024-1")
+    assert payload.grade is None
+
+
+def test_update_request_accepts_explicit_none_semester_code():
+    payload = UpdateCompletedCourseRequest(semesterCode=None, grade=85)
+    assert payload.semesterCode is None
+
+
+def test_update_request_accepts_explicit_none_credits_earned():
+    payload = UpdateCompletedCourseRequest(creditsEarned=None, grade=75)
+    assert payload.creditsEarned is None
+
+
+def test_update_request_accepts_valid_credits_earned():
+    payload = UpdateCompletedCourseRequest(creditsEarned=3.5)
+    assert payload.creditsEarned == 3.5
+
+
+def test_update_request_accepts_valid_semester_code():
+    payload = UpdateCompletedCourseRequest(semesterCode="2025-2")
+    assert payload.semesterCode == "2025-2"
+
+
+def test_update_request_rejects_invalid_semester_code():
+    with pytest.raises(ValidationError) as exc_info:
+        UpdateCompletedCourseRequest(semesterCode="Fall-2025")
+    assert "Semester code" in str(exc_info.value)
+
+
+def test_update_request_rejects_credits_not_in_half_increments():
+    with pytest.raises(ValidationError) as exc_info:
+        UpdateCompletedCourseRequest(creditsEarned=2.7)
+    assert "0.5 increments" in str(exc_info.value)

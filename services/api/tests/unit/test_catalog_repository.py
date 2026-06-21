@@ -1,10 +1,268 @@
 """Unit tests for catalog repository (read-only)."""
 
 import pytest
+from bson import ObjectId
 
 from app.config import get_settings
 from app.repositories import catalog_repository
+from app.repositories.catalog_repository import (
+    _advisory_record_rank,
+    _build_course_search_filter,
+    _sanitize_metadata,
+    course_summary_from_document,
+)
 from tests.fixtures.catalog_production_fixtures import KNOWN_COURSE, seed_catalog_production_fixtures
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers — no DB needed
+# ---------------------------------------------------------------------------
+
+def test_advisory_record_rank_advisory_requirement_group():
+    doc = {"recordType": "advisory_requirement_group", "courseReferences": [1, 2]}
+    assert _advisory_record_rank(doc) == (2, 2)
+
+
+def test_advisory_record_rank_catalog_rule():
+    doc = {"recordType": "catalog_rule", "courseReferences": [1]}
+    assert _advisory_record_rank(doc) == (1, 1)
+
+
+def test_advisory_record_rank_unknown_type():
+    doc = {"recordType": "other", "courseReferences": []}
+    assert _advisory_record_rank(doc) == (0, 0)
+
+
+def test_dedupe_catalog_rules_skips_documents_with_no_group_id():
+    from app.repositories.catalog_repository import _dedupe_catalog_rules_by_group_id
+
+    docs = [
+        {"requirementGroupId": "group1", "recordType": "catalog_rule", "courseReferences": []},
+        {"requirementGroupId": "", "recordType": "catalog_rule", "courseReferences": []},  # skipped
+        {"recordType": "catalog_rule", "courseReferences": []},  # also skipped - no group_id
+    ]
+    result = _dedupe_catalog_rules_by_group_id(docs)
+    assert len(result) == 1
+    assert result[0]["requirementGroupId"] == "group1"
+
+
+def test_sanitize_metadata_returns_default_when_none():
+    result = _sanitize_metadata(None)
+    assert result == {"degreeRequirementsInferred": False}
+
+
+def test_sanitize_metadata_overrides_inferred_flag():
+    result = _sanitize_metadata({"degreeRequirementsInferred": True, "extra": "data"})
+    assert result["degreeRequirementsInferred"] is False
+    assert result["extra"] == "data"
+
+
+def test_build_course_search_filter_with_course_numbers_min_max():
+    filt = _build_course_search_filter(
+        q=None,
+        faculty=None,
+        course_number=None,
+        course_numbers=["00940101", "00940201"],
+        min_credits=2.0,
+        max_credits=5.0,
+    )
+    assert "$and" in filt
+    conditions = filt["$and"]
+    has_course_numbers = any("courseNumber" in c and "$in" in c.get("courseNumber", {}) for c in conditions)
+    has_min = any("credits" in c and "$gte" in c.get("credits", {}) for c in conditions)
+    has_max = any("credits" in c and "$lte" in c.get("credits", {}) for c in conditions)
+    assert has_course_numbers
+    assert has_min
+    assert has_max
+
+
+def test_build_course_search_filter_with_faculty():
+    filt = _build_course_search_filter(
+        q=None,
+        faculty="Computer Science",
+        course_number=None,
+    )
+    assert "$and" in filt
+    conditions = filt["$and"]
+    has_faculty = any("faculty" in c for c in conditions)
+    assert has_faculty
+
+
+def test_course_summary_from_document_returns_none_for_falsy_doc():
+    assert course_summary_from_document(None) is None
+    assert course_summary_from_document({}) is None
+
+
+def test_course_summary_from_document_returns_none_when_number_and_title_both_none():
+    doc = {"someField": "x"}  # no courseNumber, no number, no title, no titleHebrew
+    assert course_summary_from_document(doc) is None
+
+
+def test_course_summary_from_document_returns_summary_with_number_and_title():
+    doc = {"courseNumber": "00940101", "title": "Algebra"}
+    result = course_summary_from_document(doc)
+    assert result is not None
+    assert result["number"] == "00940101"
+    assert result["title"] == "Algebra"
+
+
+# ---------------------------------------------------------------------------
+# DB-backed tests for uncovered branches
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_list_course_numbers_fallback_when_no_exact_match(mongo_database):
+    """When no exact academic_year match, falls back to same semesterCode."""
+    settings = get_settings()
+    await mongo_database[settings.course_offerings_collection].insert_one({
+        "courseNumber": "00940101",
+        "status": "published",
+        "academicYear": 2020,
+        "semesterCode": 201,
+    })
+    numbers = await catalog_repository.list_course_numbers_with_semester_offerings(
+        mongo_database,
+        academic_year=2025,  # no exact match
+        semester_code=201,
+        settings=settings,
+    )
+    assert "00940101" in numbers
+
+
+@pytest.mark.asyncio
+async def test_list_offerings_for_courses_in_semester_empty_course_numbers(mongo_database):
+    result = await catalog_repository.list_offerings_for_courses_in_semester(
+        mongo_database,
+        [],
+        academic_year=2025,
+        semester_code=201,
+    )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_list_offerings_for_courses_in_semester_no_best_when_offerings_empty(mongo_database):
+    """When pick_best_offering returns None, course should not appear in summaries."""
+    settings = get_settings()
+    await mongo_database[settings.course_offerings_collection].insert_one({
+        "courseNumber": "00940199",
+        "status": "published",
+        "academicYear": 2025,
+        "semesterCode": 201,
+        "scheduleGroups": [],
+    })
+    from unittest.mock import patch
+    with patch(
+        "app.planning.semester_codes.pick_best_offering",
+        return_value=None,
+    ):
+        result = await catalog_repository.list_offerings_for_courses_in_semester(
+            mongo_database,
+            ["00940199"],
+            academic_year=2025,
+            semester_code=201,
+            settings=settings,
+        )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_list_courses_returns_empty_when_no_semester_offerings(mongo_database):
+    """academic_year + semester_code with no matching offerings returns empty list."""
+    settings = get_settings()
+    result_items, total = await catalog_repository.list_courses(
+        mongo_database,
+        academic_year=9999,
+        semester_code=201,
+        settings=settings,
+    )
+    assert result_items == []
+    assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_find_course_by_number_calls_get_settings_when_none(mongo_database, monkeypatch):
+    """When settings=None, find_course_by_number calls get_settings()."""
+    settings = get_settings()
+    # Seed a course
+    await mongo_database[settings.courses_collection].insert_one({
+        "courseNumber": "00940777",
+        "status": "published",
+    })
+    # Ensure settings=None path is exercised
+    result = await catalog_repository.find_course_by_number(
+        mongo_database,
+        "00940777",
+        settings=None,  # triggers get_settings()
+    )
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_find_course_by_id_returns_none_for_invalid_id(mongo_database):
+    result = await catalog_repository.find_course_by_id(mongo_database, "not-an-object-id")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_list_offerings_grouped_returns_empty_for_empty_course_numbers(mongo_database):
+    result = await catalog_repository.list_offerings_grouped_for_courses(
+        mongo_database,
+        [],
+    )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_list_offerings_grouped_returns_empty_for_all_falsy_course_numbers(mongo_database):
+    """course_numbers with only empty strings produces empty unique_numbers → {}."""
+    result = await catalog_repository.list_offerings_grouped_for_courses(
+        mongo_database,
+        ["", None],  # type: ignore[list-item]
+    )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_find_courses_by_numbers_returns_empty_for_empty_list(mongo_database):
+    result = await catalog_repository.find_courses_by_numbers(mongo_database, [])
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_find_courses_by_numbers_returns_empty_for_all_falsy(mongo_database):
+    result = await catalog_repository.find_courses_by_numbers(mongo_database, ["", None])  # type: ignore[list-item]
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_find_degree_program_by_id_returns_none_for_invalid_id(mongo_database):
+    result = await catalog_repository.find_degree_program_by_id(mongo_database, "not-an-object-id")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_list_courses_by_number_prefixes_returns_empty_for_empty_prefixes(mongo_database):
+    result = await catalog_repository.list_courses_by_number_prefixes(mongo_database, [])
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_find_courses_by_ids_skips_invalid_object_ids(mongo_database):
+    """Invalid ObjectId strings should be silently skipped."""
+    settings = get_settings()
+    valid_id = ObjectId()
+    await mongo_database[settings.courses_collection].insert_one({
+        "_id": valid_id,
+        "courseNumber": "00940888",
+        "status": "published",
+    })
+    result = await catalog_repository.find_courses_by_ids(
+        mongo_database,
+        ["not-an-oid", str(valid_id), "also-invalid"],
+    )
+    ids = [str(doc["_id"]) for doc in result]
+    assert str(valid_id) in ids
 
 
 @pytest.mark.asyncio

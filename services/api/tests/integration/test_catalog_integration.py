@@ -360,3 +360,274 @@ async def test_vault_like_hard_requirement_totals(auth_client, mongo_database):
         total_hard += response.json()["data"]["total"]
 
     assert total_hard == TOTAL_HARD_REQUIREMENTS
+
+
+@pytest.mark.asyncio
+async def test_get_course_returns_400_for_invalid_course_number(auth_client):
+    token = await register_access_token(auth_client, "catalog-bad-number@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses/NOTANUMBER",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "8-digit" in response.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_course_returns_404_when_course_not_found(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-404-course@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses/09999999",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_course_offerings_returns_400_for_invalid_course_number(auth_client):
+    token = await register_access_token(auth_client, "catalog-offerings-bad@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses/BADNUMBER/offerings",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_course_offerings_returns_400_for_invalid_semester_code(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-offerings-bad-sem@example.com")
+
+    response = await auth_client.get(
+        f"/catalog/courses/{KNOWN_COURSE}/offerings?semesterCode=999",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "semesterCode" in response.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_course_offerings_returns_404_when_course_not_found(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-offerings-404@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses/09999998/offerings",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_batch_offerings_returns_400_for_empty_course_numbers(auth_client):
+    token = await register_access_token(auth_client, "catalog-batch-empty@example.com")
+
+    response = await auth_client.get(
+        "/catalog/offerings?courseNumbers=,,,",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "at least one" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_batch_offerings_returns_400_for_invalid_semester_code(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-batch-bad-sem@example.com")
+
+    response = await auth_client.get(
+        f"/catalog/offerings?courseNumbers={KNOWN_COURSE}&semesterCode=999",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "semesterCode" in response.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_degree_program_returns_404_when_not_found(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-degree-404@example.com")
+
+    response = await auth_client.get(
+        "/catalog/degree-programs/999999-9-999",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_get_degree_program_returns_400_for_invalid_program_code(auth_client):
+    token = await register_access_token(auth_client, "catalog-program-bad-code@example.com")
+
+    response = await auth_client.get(
+        "/catalog/degree-programs/BADCODE",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_hard_requirements_returns_404_when_program_not_found(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-req-404@example.com")
+
+    response = await auth_client.get(
+        "/catalog/degree-programs/999999-9-999/requirements",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_advisory_rules_returns_404_when_program_not_found(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-advisory-404@example.com")
+
+    response = await auth_client.get(
+        "/catalog/degree-programs/999999-9-999/advisory-rules",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_courses_with_offerings_included(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-include-offerings@example.com")
+
+    response = await auth_client.get(
+        "/catalog/courses?includeOfferings=true&limit=2",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert "items" in body["data"]
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_summary_returns_404_when_program_not_found(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-summary-404@example.com")
+
+    response = await auth_client.get(
+        "/catalog/degree-programs/999999-9-999/catalog-summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_batch_offerings_with_year_and_semester_returns_best_offering(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-batch-year-sem@example.com")
+
+    response = await auth_client.get(
+        f"/catalog/offerings?courseNumbers={KNOWN_COURSE}&academicYear=2025&semesterCode=200",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert "offeringsByCourseNumber" in body["data"]
+
+
+@pytest.mark.asyncio
+async def test_get_course_returns_cached_response_on_second_call(auth_client, mongo_database):
+    """Cache hit path in get_catalog_course (line 153)."""
+    from unittest.mock import AsyncMock, patch
+
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-cache-course@example.com")
+
+    cached_data = {
+        "courseNumber": KNOWN_COURSE,
+        "title": "Cached Course",
+        "credits": 3.0,
+    }
+
+    with patch("app.routes.catalog.get_cached_json", new_callable=AsyncMock, return_value=cached_data):
+        response = await auth_client.get(
+            f"/catalog/courses/{KNOWN_COURSE}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["course"]["courseNumber"] == KNOWN_COURSE
+
+
+@pytest.mark.asyncio
+async def test_batch_offerings_returns_cached_response(auth_client, mongo_database):
+    """Cache hit path in batch_catalog_offerings (line 233)."""
+    from unittest.mock import AsyncMock, patch
+
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-cache-batch@example.com")
+
+    cached_data = {"offeringsByCourseNumber": {KNOWN_COURSE: []}, "totalCourses": 1}
+
+    with patch("app.routes.catalog.get_cached_json", new_callable=AsyncMock, return_value=cached_data):
+        response = await auth_client.get(
+            f"/catalog/offerings?courseNumbers={KNOWN_COURSE}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["totalCourses"] == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_offerings_without_year_or_semester_uses_grouped(auth_client, mongo_database):
+    """Else branch in batch_catalog_offerings (lines 248-254) — no academicYear/semesterCode."""
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-batch-no-year@example.com")
+
+    response = await auth_client.get(
+        f"/catalog/offerings?courseNumbers={KNOWN_COURSE}",  # no academicYear or semesterCode
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "offeringsByCourseNumber" in body["data"]
+
+
+@pytest.mark.asyncio
+async def test_list_degree_programs_returns_cached(auth_client, mongo_database):
+    """Cache hit path in list_catalog_degree_programs (line 276)."""
+    from unittest.mock import AsyncMock, patch
+
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-cache-programs@example.com")
+
+    cached_data = {"items": [], "total": 0}
+
+    with patch("app.routes.catalog.get_cached_json", new_callable=AsyncMock, return_value=cached_data):
+        response = await auth_client.get(
+            "/catalog/degree-programs",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["total"] == 0

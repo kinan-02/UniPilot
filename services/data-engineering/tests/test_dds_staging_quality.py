@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.importers.dds_catalog_staging_importer import SOURCE_NAME as DDS_CATALOG_SOURCE
 from app.models.quality_report import DdsStagingQualityReport
 from app.quality.dds_staging_quality import (
+    accumulate_finding_severity,
     build_dds_staging_quality_report,
     find_ocr_suspect_neighbors,
     render_quality_report_markdown,
@@ -222,3 +223,56 @@ def test_run_writes_local_reports_without_production_writes(mongo_database, tmp_
     assert md_path.exists()
     assert report.productionSafetySummary["thisCommandWritesProduction"] is False
     assert mongo_database.degree_programs.count_documents({}) == 0
+
+
+@pytest.mark.parametrize(
+    ("severity", "bucket"),
+    [
+        ("warning", "warnings"),
+        ("production-blocker", "production_blockers"),
+        ("api-migration-blocker", "api_blockers"),
+    ],
+)
+def test_accumulate_finding_severity_routes_message_to_bucket(
+    severity: str,
+    bucket: str,
+) -> None:
+    warnings: list[str] = []
+    production_blockers: list[str] = []
+    api_blockers: list[str] = []
+
+    accumulate_finding_severity(
+        severity,
+        f"{severity} message",
+        warnings=warnings,
+        production_blockers=production_blockers,
+        api_blockers=api_blockers,
+    )
+
+    buckets = {
+        "warnings": warnings,
+        "production_blockers": production_blockers,
+        "api_blockers": api_blockers,
+    }
+    assert buckets[bucket] == [f"{severity} message"]
+    for name, values in buckets.items():
+        if name != bucket:
+            assert values == []
+
+
+def test_accumulate_finding_severity_ignores_unknown_severity() -> None:
+    warnings: list[str] = []
+    production_blockers: list[str] = []
+    api_blockers: list[str] = []
+
+    accumulate_finding_severity(
+        "info",
+        "informational only",
+        warnings=warnings,
+        production_blockers=production_blockers,
+        api_blockers=api_blockers,
+    )
+
+    assert warnings == []
+    assert production_blockers == []
+    assert api_blockers == []

@@ -66,3 +66,24 @@ def test_is_passing_grade_prefers_grade_points():
 def test_resolve_record_numeric_grade():
     assert resolve_record_numeric_grade({"grade": 70}) == 70.0
     assert resolve_record_numeric_grade({"gradePoints": 88}) == 88.0
+
+
+def test_parse_numeric_grade_returns_none_for_bool():
+    assert parse_numeric_grade(True) is None
+    assert parse_numeric_grade(False) is None
+
+
+def test_parse_numeric_grade_returns_none_for_non_numeric_type():
+    assert parse_numeric_grade([1, 2]) is None
+
+
+def test_is_passing_grade_non_dict_with_grade_points():
+    # When record is not a dict, uses grade_points param path
+    assert is_passing_grade(82, grade_points=None) is True  # record itself is numeric
+    assert is_passing_grade(50, grade_points=None) is False
+
+
+def test_is_passing_grade_non_dict_uses_grade_points_first():
+    assert is_passing_grade("80", grade_points=80) is True
+    assert is_passing_grade(None, grade_points=90) is True
+    assert is_passing_grade(None, grade_points=None) is False

@@ -2,7 +2,7 @@
 
 **Project:** UniPilot AI  
 **Date:** 2026-06-21  
-**Commit / tag:** `16cb178` (+ uncommitted AI rate limit, CI, runbook)  
+**Commit / tag:** `fa6e15d` (+ uncommitted 100% coverage push)  
 **Run by:** Automated verification session (Cursor agent)  
 **Environment:** Docker Compose on macOS — Python 3.12/3.13, Node/Vitest, Playwright Chromium
 
@@ -12,14 +12,11 @@
 # Full stack
 docker compose up -d --build
 
-# Backend (API)
+# Backend (API) — pytest.ini enforces 100% line coverage
 cd services/api && source .venv/bin/activate && pytest
 
-# Backend coverage gate (≥80%)
-cd services/api && pytest --cov=app --cov-fail-under=80
-
-# Data engineering
-cd services/data-engineering && source .venv/bin/activate && pytest --cov=app --cov-fail-under=80
+# Data engineering — pytest.ini enforces 100% line coverage
+cd services/data-engineering && source .venv/bin/activate && pytest
 
 # Live Docker E2E + benchmarks (stack must be running)
 cd services/api && python scripts/verify_and_benchmark.py
@@ -42,21 +39,29 @@ docker compose run --rm data-engineering python -m app.main verify-vault-product
 
 | Suite | Tests | Passed | Failed | Skipped | Notes |
 |-------|-------|--------|--------|---------|-------|
-| Data engineering (pytest) | 120 | 120 | 0 | 0 | Vault pipeline, promotion dedupe |
-| API **total** | **356** | **356** | 0 | 0 | + AI rate limit security test |
+| Data engineering (pytest) | 539 | 539 | 0 | 0 | **100% line coverage** |
+| API **total** | **1064** | **1064** | 0 | 0 | **100% line coverage** |
 | Web Vitest | 97 | 97 | 0 | 0 | Planner libs, catalog UI |
 | Playwright E2E | 14 | 14 | 0 | 0 | Live vault catalog flows |
 | Live verify script | 86 | 86 | 0 | 0 | Auth, catalog, plans, graduation, risks |
 | Edge-case verify | 17 | 17 | 0 | 0 | Boundary + validation checks |
 | Vault production parity | 51 | 51 | 0 | 0 | 16 hard + 35 advisory groups |
-| **Total automated (pytest + vitest + e2e)** | **587** | **587** | 0 | 0 | Excludes live verify scripts |
+| **Total automated (pytest + vitest + e2e)** | **1714** | **1714** | 0 | 0 | Excludes live verify scripts |
 
 ## 3. Coverage
 
 | Service | Lines | Target | Pass? |
 |---------|-------|--------|-------|
-| `services/api` | **87.88%** | ≥ 80% | Yes |
-| `services/data-engineering` | **≥ 86%** | ≥ 80% | Yes |
+| `services/api` | **100%** | 100% | Yes |
+| `services/data-engineering` | **100%** | 100% | Yes |
+
+CI (`.github/workflows/ci.yml`) and local `pytest.ini` both enforce `--cov-fail-under=100`.
+
+## 3b. Test quality principles
+
+- **Behavior over lines:** tests assert outcomes (status codes, error messages, deduped counts), not just execution.
+- **Layered suites:** unit (pure logic), integration (mongomock/HTTP), security (401/403/429), stress (verify script), E2E (Playwright).
+- **No silent gaps:** 100% line coverage is required; new code must ship with tests that fail if behavior regresses.
 
 ## 4. Security Test Results
 

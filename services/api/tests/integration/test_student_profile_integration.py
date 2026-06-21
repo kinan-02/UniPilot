@@ -194,3 +194,82 @@ async def test_create_profile_accepts_valid_degree_id(auth_client, mongo_databas
 
     assert response.status_code == 201
     assert response.json()["data"]["profile"]["degreeId"] == fixtures["programId"]
+
+
+@pytest.mark.asyncio
+async def test_create_profile_returns_400_for_nonexistent_degree_id(auth_client):
+    access_token = await register_access_token(auth_client, "profile-bad-degree@example.com")
+
+    response = await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            **PROFILE_PAYLOAD,
+            "degreeId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "degree program" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_update_profile_returns_400_for_nonexistent_degree_id(auth_client):
+    access_token = await register_access_token(auth_client, "profile-update-bad-degree@example.com")
+
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json=PROFILE_PAYLOAD,
+    )
+
+    response = await auth_client.put(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"degreeId": "aaaaaaaaaaaaaaaaaaaaaaaa"},
+    )
+
+    assert response.status_code == 400
+    assert "degree program" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_update_profile_rejects_invalid_request_body(auth_client):
+    access_token = await register_access_token(auth_client, "profile-update-invalid@example.com")
+
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json=PROFILE_PAYLOAD,
+    )
+
+    response = await auth_client.put(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"currentSemesterCode": "not-valid-format"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_profile_duplicate_key_error_returns_409(auth_client, monkeypatch):
+    """Simulate a race condition where create_student_profile raises DuplicateKeyError."""
+    from unittest.mock import AsyncMock, patch
+    from pymongo.errors import DuplicateKeyError as MongoDuplicateKeyError
+
+    access_token = await register_access_token(auth_client, "profile-race@example.com")
+
+    with patch(
+        "app.routes.student_profile.create_student_profile",
+        new_callable=AsyncMock,
+        side_effect=MongoDuplicateKeyError(""),
+    ):
+        response = await auth_client.post(
+            "/student-profile",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=PROFILE_PAYLOAD,
+        )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json()["error"]

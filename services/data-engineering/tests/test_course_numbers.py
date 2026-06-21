@@ -33,3 +33,12 @@ def test_extract_course_title_pairs_from_inline_text() -> None:
     numbers = {item["courseNumber"] for item in pairs}
     assert "00940345" in numbers
     assert "00941310" in numbers
+
+
+def test_extract_course_title_pairs_skips_blocked_inline_titles() -> None:
+    """Inline titles that normalize to credit markers must not become title hints."""
+    # "01040031 קנ \n" → clean_cell_text reverses Hebrew fragment to "נק" (blocked).
+    text = "01040031 קנ \n"
+    pairs = extract_course_title_pairs(text)
+    the_pair = next(p for p in pairs if p["courseNumber"] == "01040031")
+    assert the_pair["titleHint"] is None

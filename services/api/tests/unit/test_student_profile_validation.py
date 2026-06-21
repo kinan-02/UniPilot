@@ -118,3 +118,61 @@ def test_preferences_reject_out_of_range_max_credits():
             currentSemesterCode="2025-1",
             preferences={"maxCreditsPerSemester": 37},
         )
+
+
+def test_create_request_rejects_whitespace_only_institution_id():
+    with pytest.raises(ValidationError) as exc_info:
+        CreateStudentProfileRequest(
+            institutionId="   ",
+            programType="BSc",
+            catalogYear=2025,
+            currentSemesterCode="2025-1",
+        )
+    assert "empty" in str(exc_info.value).lower()
+
+
+def test_create_request_accepts_none_degree_id_validator():
+    payload = CreateStudentProfileRequest(
+        institutionId="uni-main",
+        programType="BSc",
+        catalogYear=2025,
+        currentSemesterCode="2025-1",
+        degreeId=None,
+    )
+    assert payload.degreeId is None
+
+
+def test_update_request_accepts_none_degree_id():
+    payload = UpdateStudentProfileRequest(institutionId="uni-main", degreeId=None)
+    assert payload.degreeId is None
+
+
+def test_update_request_accepts_valid_degree_id():
+    payload = UpdateStudentProfileRequest(degreeId=VALID_DEGREE_ID)
+    assert payload.degreeId == VALID_DEGREE_ID
+
+
+def test_update_request_rejects_invalid_degree_id():
+    with pytest.raises(ValidationError) as exc_info:
+        UpdateStudentProfileRequest(degreeId="bad-id")
+    assert "valid ObjectId" in str(exc_info.value)
+
+
+def test_update_request_accepts_explicit_none_semester_code():
+    payload = UpdateStudentProfileRequest(institutionId="uni-main", currentSemesterCode=None)
+    assert payload.currentSemesterCode is None
+
+
+def test_update_request_accepts_valid_semester_code():
+    payload = UpdateStudentProfileRequest(currentSemesterCode="2026-2")
+    assert payload.currentSemesterCode == "2026-2"
+
+
+def test_strip_optional_string_handles_none():
+    from app.schemas.student_profile import strip_optional_string
+    assert strip_optional_string(None) is None
+
+
+def test_strip_optional_string_strips_whitespace():
+    from app.schemas.student_profile import strip_optional_string
+    assert strip_optional_string("  hello  ") == "hello"

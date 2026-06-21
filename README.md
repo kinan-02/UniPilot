@@ -68,6 +68,8 @@ Vite dev server runs at [http://localhost:5173](http://localhost:5173) and proxi
 
 ### Backend (pytest)
 
+`pytest.ini` in each Python service enforces **100% line coverage** (`--cov-fail-under=100`).
+
 ```bash
 cd services/api
 python3 -m venv .venv && source .venv/bin/activate

@@ -48,6 +48,40 @@ async def test_graduation_progress_requires_degree(auth_client, mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_graduation_progress_returns_400_when_degree_not_found(auth_client, mongo_database):
+    """A profile with a degreeId pointing to a non-existent degree should return 400."""
+    from bson import ObjectId
+    from app.security.jwt import create_access_token
+    from datetime import datetime, timezone
+
+    ghost_user_oid = ObjectId()
+    ghost_user_id = str(ghost_user_oid)
+    ghost_degree_id = ObjectId()
+
+    await mongo_database["student_profiles"].insert_one({
+        "userId": ghost_user_oid,
+        "institutionId": "technion",
+        "programType": "BSc",
+        "catalogYear": 2025,
+        "currentSemesterCode": "2025-1",
+        "degreeId": ghost_degree_id,
+        "preferences": {},
+        "revision": 1,
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
+    })
+
+    token = create_access_token(user_id=ghost_user_id, email="ghost-degree@example.com")
+
+    response = await auth_client.get(
+        "/graduation-progress",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+    assert "degree" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
 async def test_graduation_progress_not_started_without_completed_courses(
     auth_client,
     mongo_database,

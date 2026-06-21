@@ -206,10 +206,50 @@ async def test_analyze_returns_404_when_profile_missing(auth_client, mongo_datab
     )
 
     assert response.status_code == 404
+    # end of file - additional edge-case tests follow
 
 
 @pytest.mark.asyncio
-async def test_analyze_returns_400_when_degree_not_selected(auth_client, mongo_database):
+async def test_get_analysis_returns_400_for_invalid_analysis_id(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-bad-id@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.get(
+        "/academic-risks/not-a-valid-object-id",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "valid ObjectId" in response.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_analysis_returns_404_when_analysis_does_not_exist(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-missing@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.get(
+        "/academic-risks/665f2b0f2a3f7b2a1a9a7aaa",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_list_analyses_returns_400_for_unknown_query_param(auth_client, mongo_database):
+    token = await register_access_token(auth_client, "academic-risk-bad-param@example.com")
+
+    response = await auth_client.get(
+        "/academic-risks?unknownParam=value",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "Unknown query parameter" in response.json()["error"]
     await seed_graduation_progress_fixtures(mongo_database)
     token = await register_access_token(auth_client, "academic-risk-no-degree@example.com")
     await create_profile(auth_client, token, degree_id=None)

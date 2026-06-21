@@ -128,3 +128,78 @@ async def test_me_returns_current_user_for_valid_token(auth_client):
 
     assert response.status_code == 200
     assert response.json()["data"]["user"]["email"] == "me-route@example.com"
+
+
+@pytest.mark.asyncio
+async def test_login_rejects_email_that_does_not_exist(auth_client):
+    response = await auth_client.post(
+        "/auth/login",
+        json={
+            "email": "ghost@example.com",
+            "password": VALID_PASSWORD,
+        },
+    )
+    assert response.status_code == 401
+    assert "Invalid email or password" in response.json()["error"]
+
+
+@pytest.mark.asyncio
+async def test_me_returns_401_for_token_with_deleted_user(auth_client, monkeypatch):
+    """A valid JWT for a non-existent user_id should return 401 on /me."""
+    from app.security.jwt import create_access_token
+
+    token = create_access_token(
+        user_id="deadbeefdeadbeefdeadbeef",
+        email="ghost@example.com",
+    )
+
+    response = await auth_client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert "invalid or expired" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_weak_password(auth_client):
+    response = await auth_client.post(
+        "/auth/register",
+        json={
+            "email": "weak-pass@example.com",
+            "password": "weak",
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_me_returns_401_without_token(auth_client):
+    response = await auth_client.get("/auth/me")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_key_error_returns_409(auth_client, monkeypatch):
+    """Simulate a race condition where create_user raises DuplicateKeyError."""
+    from unittest.mock import AsyncMock, patch
+    from pymongo.errors import DuplicateKeyError as MongoDuplicateKeyError
+
+    await auth_client.post(
+        "/auth/register",
+        json={"email": "first-register@example.com", "password": VALID_PASSWORD},
+    )
+
+    with patch(
+        "app.routes.auth.create_user",
+        new_callable=AsyncMock,
+        side_effect=MongoDuplicateKeyError(""),
+    ):
+        response = await auth_client.post(
+            "/auth/register",
+            json={"email": "race-condition@example.com", "password": VALID_PASSWORD},
+        )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json()["error"]
