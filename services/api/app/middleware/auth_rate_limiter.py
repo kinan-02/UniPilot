@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.db.redis_client import get_redis_client
 
 RATE_LIMIT_PREFIX = "rl:auth:"
+AI_RATE_LIMIT_PREFIX = "rl:ai:"
 
 
 class RateLimitStore(Protocol):
@@ -82,19 +83,40 @@ def build_rate_limit_key(request: Request) -> str:
     return f"{RATE_LIMIT_PREFIX}{client_host}:{request.url.path}"
 
 
-async def enforce_auth_rate_limit(request: Request) -> None:
-    settings = get_settings()
+async def _enforce_rate_limit(
+    *,
+    key: str,
+    window_ms: int,
+    max_requests: int,
+    detail: str,
+) -> None:
     store = resolve_rate_limit_store()
-    key = build_rate_limit_key(request)
-
     allowed = await store.is_allowed(
         key,
+        window_ms=window_ms,
+        max_requests=max_requests,
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail=detail)
+
+
+async def enforce_auth_rate_limit(request: Request) -> None:
+    settings = get_settings()
+    await _enforce_rate_limit(
+        key=build_rate_limit_key(request),
         window_ms=settings.auth_rate_limit_window_ms,
         max_requests=settings.auth_rate_limit_max,
+        detail="Too many authentication requests. Please try again later.",
     )
 
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many authentication requests. Please try again later.",
-        )
+
+async def enforce_ai_rate_limit(request: Request, user_id: str) -> None:
+    settings = get_settings()
+    path = request.url.path
+    key = f"{AI_RATE_LIMIT_PREFIX}{user_id}:{path}"
+    await _enforce_rate_limit(
+        key=key,
+        window_ms=settings.ai_rate_limit_window_ms,
+        max_requests=settings.ai_rate_limit_max,
+        detail="Too many AI analysis requests. Please try again later.",
+    )

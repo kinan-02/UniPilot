@@ -131,3 +131,18 @@ async def test_analyze_rejects_user_id_in_request_body(auth_client, mongo_databa
         },
     )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_analyze_enforces_ai_rate_limit_with_429(ai_security_client, mongo_database):
+    token, plan_id, _ = await setup_user_with_plan(
+        ai_security_client,
+        mongo_database,
+        "risk-rate-limit@example.com",
+    )
+    second = await ai_security_client.post(
+        "/academic-risks/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"planId": plan_id},
+    )
+    assert second.status_code == 429

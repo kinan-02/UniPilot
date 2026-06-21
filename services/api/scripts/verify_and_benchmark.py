@@ -52,7 +52,24 @@ def _flush_auth_rate_limits(repo_root: Path) -> None:
         text=True,
         cwd=str(repo_root),
     )
-    keys = [line.strip() for line in scan.stdout.splitlines() if line.strip()]
+    auth_keys = [line.strip() for line in scan.stdout.splitlines() if line.strip()]
+    scan_ai = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "redis",
+            "redis-cli",
+            "--scan",
+            "--pattern",
+            "rl:ai:*",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+    )
+    keys = auth_keys + [line.strip() for line in scan_ai.stdout.splitlines() if line.strip()]
     if not keys:
         return
     subprocess.run(

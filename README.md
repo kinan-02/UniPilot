@@ -95,6 +95,14 @@ cd services/api && python scripts/edge_case_verify.py   # boundary + validation 
 
 Writes `services/api/scripts/verify_report.json`. Covers auth, catalog, completed courses, graduation progress, semester plans (generate + manual + versioning), and academic risks against live MongoDB.
 
+### Production readiness audit
+
+```bash
+python scripts/production_audit.py
+```
+
+See also `docs/operations/PRODUCTION_DEPLOYMENT.md` and `docs/reports/PRODUCTION_AUDIT.md`.
+
 ### Frontend (Vitest + Playwright)
 
 Unit/component tests:

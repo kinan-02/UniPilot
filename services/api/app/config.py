@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     bcrypt_salt_rounds: int = 12
     auth_rate_limit_window_ms: int = 60_000
     auth_rate_limit_max: int = 30
+    ai_rate_limit_window_ms: int = 60_000
+    ai_rate_limit_max: int = 10
     courses_collection: str = "courses"
     course_offerings_collection: str = "course_offerings"
     degree_programs_collection: str = "degree_programs"

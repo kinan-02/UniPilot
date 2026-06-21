@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.dependencies.auth import AuthContext, require_auth
+from app.middleware.auth_rate_limiter import enforce_ai_rate_limit
 from app.db.mongo import get_database
 from app.repositories.academic_risk_repository import (
     ensure_academic_risk_indexes,
@@ -83,9 +84,11 @@ def validate_analysis_id_param(analysis_id: str) -> str:
 
 @router.post("/analyze", status_code=201)
 async def analyze_academic_risks_route(
+    request: Request,
     payload: AnalyzeAcademicRiskRequest,
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    await enforce_ai_rate_limit(request, auth.user_id)
     await _ensure_academic_risk_indexes_once()
     database = await get_database()
 
