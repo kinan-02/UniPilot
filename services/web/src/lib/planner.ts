@@ -90,23 +90,23 @@ export function formatMinutes(total: number): string {
 }
 
 export function eventsFromCustomBlocks(customEvents: CustomEvent[] = []): GridEvent[] {
-  return customEvents
-    .map((block) => {
-      const startParts = block.startTime.split(':').map(Number)
-      const endParts = block.endTime.split(':').map(Number)
-      if (startParts.length < 2 || endParts.length < 2) return null
-      const startMinutes = startParts[0] * 60 + startParts[1]
-      const endMinutes = endParts[0] * 60 + endParts[1]
-      if (endMinutes <= startMinutes) return null
-      return {
-        day: block.day,
-        timeRange: `${block.startTime}-${block.endTime}`,
-        slotType: 'personal',
-        courseNumber: '●',
-        courseTitle: block.title,
-        startMinutes,
-        endMinutes,
-      }
+  const events: GridEvent[] = []
+  for (const block of customEvents) {
+    const startParts = block.startTime.split(':').map(Number)
+    const endParts = block.endTime.split(':').map(Number)
+    if (startParts.length < 2 || endParts.length < 2) continue
+    const startMinutes = startParts[0] * 60 + startParts[1]
+    const endMinutes = endParts[0] * 60 + endParts[1]
+    if (endMinutes <= startMinutes) continue
+    events.push({
+      day: block.day,
+      timeRange: `${block.startTime}-${block.endTime}`,
+      slotType: 'personal',
+      courseNumber: '●',
+      courseTitle: block.title,
+      startMinutes,
+      endMinutes,
     })
-    .filter((event): event is GridEvent => event != null)
+  }
+  return events
 }

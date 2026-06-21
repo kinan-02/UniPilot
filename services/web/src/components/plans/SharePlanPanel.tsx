@@ -3,13 +3,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { plansApi } from '../../api/endpoints'
 import { useTranslation } from '../../i18n'
-import type { SemesterPlan } from '../../types/api'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 
 type SharePlanPanelProps = {
   planId: string
-  plan?: Pick<SemesterPlan, 'shareEnabled' | 'shareToken' | 'status'>
+  plan?: {
+    shareEnabled?: boolean
+    shareToken?: string | null
+    status?: string
+  }
 }
 
 export function buildShareUrl(shareToken: string): string {
