@@ -1,4 +1,6 @@
-/** Map API semester code YYYY-1/2/3 to catalog offering semesterCode 200/201/202 */
+/** Map API semester code YYYY-1/2/3 to catalog offering semesterCode 200/201/202.
+ *  YYYY is the Technion academic-year start (e.g. 2025-2 = spring of 2025-2026). */
+
 export function parseSemesterCode(code: string): {
   academicYear: number
   semesterCode: number
@@ -15,15 +17,29 @@ export function parseSemesterCode(code: string): {
   }
 }
 
-export function defaultSemesterCode(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth() + 1
-  const term = month >= 3 && month <= 8 ? 2 : 1
-  return `${year}-${term}`
+/** Academic year start year for a calendar date (Technion: year begins ~October). */
+export function academicYearStartFromDate(date: Date): number {
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1
+  return month >= 9 ? year : year - 1
 }
 
-/** Upcoming semester codes for quick-pick UI (e.g. 2025-2, 2025-3, 2026-1). */
+/** Current term index: 1=fall/winter, 2=spring, 3=summer. */
+export function currentTermIndex(date: Date): 1 | 2 | 3 {
+  const month = date.getMonth() + 1
+  if (month >= 9 || month <= 2) return 1
+  if (month >= 3 && month <= 6) return 2
+  return 3
+}
+
+export function defaultSemesterCode(): string {
+  const now = new Date()
+  const academicYear = academicYearStartFromDate(now)
+  const term = currentTermIndex(now)
+  return `${academicYear}-${term}`
+}
+
+/** Upcoming semester quick-pick options from the current academic term. */
 export function upcomingSemesterCodes(count = 4): string[] {
   const parsed = parseSemesterCode(defaultSemesterCode())
   if (!parsed) return [defaultSemesterCode()]
@@ -52,10 +68,11 @@ export function suggestedPlanName(code: string, locale: 'he' | 'en'): string {
 export function semesterLabel(code: string, locale: 'he' | 'en'): string {
   const parsed = parseSemesterCode(code)
   if (!parsed) return code
+  const yearRange = `${parsed.academicYear}-${parsed.academicYear + 1}`
   if (locale === 'he') {
-    const terms = ['סמסטר א׳', 'סמסטר ב׳', 'סמסטר קיץ']
-    return `${parsed.academicYear} · ${terms[parsed.termIndex - 1] ?? code}`
+    const terms = ['סמסטר א׳', 'סמסטר ב׳ (אביב)', 'סמסטר קיץ']
+    return `${yearRange} · ${terms[parsed.termIndex - 1] ?? code}`
   }
-  const terms = ['Semester A', 'Semester B', 'Summer semester']
-  return `${parsed.academicYear} · ${terms[parsed.termIndex - 1] ?? code}`
+  const terms = ['Semester A', 'Spring semester', 'Summer semester']
+  return `${yearRange} · ${terms[parsed.termIndex - 1] ?? code}`
 }

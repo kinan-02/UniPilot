@@ -14,6 +14,7 @@ import { PlanDetailPage } from './pages/PlanDetailPage'
 import { PlanBuilderPage } from './pages/PlanBuilderPage'
 import { RisksPage } from './pages/RisksPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { SharedPlanPage } from './pages/SharedPlanPage'
 import { ProtectedRoute, PublicOnlyRoute, ProfileGuard } from './routes/Guards'
 
 const queryClient = new QueryClient({
@@ -36,6 +37,8 @@ export default function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
               </Route>
+
+              <Route path="/shared/plans/:token" element={<SharedPlanPage />} />
 
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />

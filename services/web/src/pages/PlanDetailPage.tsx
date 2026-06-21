@@ -2,7 +2,9 @@ import { useParams, Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import { plansApi } from '../api/endpoints'
-import { WeeklyScheduleView } from '../components/plans/WeeklyScheduleView'
+import { ExamSummaryPanel } from '../components/plans/ExamSummaryPanel'
+import { SharePlanPanel } from '../components/plans/SharePlanPanel'
+import { WeeklyScheduleGrid } from '../components/plans/WeeklyScheduleGrid'
 import { Button } from '../components/ui/Button'
 import { Badge, Card, PageHeader, Spinner } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
@@ -83,6 +85,14 @@ export function PlanDetailPage() {
         </Badge>
       </div>
 
+      {plan.plannerInsights?.creditsWarning ? (
+        <Card className="border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5">
+          <p className="text-sm text-[var(--color-warning)]">{plan.plannerInsights.creditsWarning.message}</p>
+        </Card>
+      ) : null}
+
+      <SharePlanPanel planId={plan.id} plan={plan} />
+
       {plan.semesters.map((semester) => (
         <Card key={semester.semesterCode}>
           <h2 className="mb-4 text-sm font-semibold">
@@ -116,10 +126,15 @@ export function PlanDetailPage() {
 
           <div className="mt-6 border-t border-[var(--color-border)] pt-6">
             <h3 className="mb-3 text-sm font-semibold">{t('plans.weeklySchedule')}</h3>
-            <WeeklyScheduleView schedule={semester.weeklySchedule} />
+            <WeeklyScheduleGrid
+              schedule={semester.weeklySchedule}
+              customEvents={semester.customEvents ?? semester.weeklySchedule?.customEvents}
+            />
           </div>
         </Card>
       ))}
+
+      <ExamSummaryPanel summary={plan.plannerInsights?.examSummary} />
     </div>
   )
 }

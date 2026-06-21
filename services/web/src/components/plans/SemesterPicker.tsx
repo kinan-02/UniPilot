@@ -6,11 +6,59 @@ type SemesterPickerProps = {
   value: string
   onChange: (code: string) => void
   error?: string
+  compact?: boolean
 }
 
-export function SemesterPicker({ value, onChange, error }: SemesterPickerProps) {
+export function SemesterPicker({ value, onChange, error, compact = false }: SemesterPickerProps) {
   const { t, locale } = useTranslation()
   const options = upcomingSemesterCodes(4)
+
+  if (compact) {
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-medium text-[var(--color-text-muted)]">{t('common.semester')}:</span>
+          {options.map((code) => {
+            const selected = value === code
+            return (
+              <button
+                key={code}
+                type="button"
+                title={code}
+                onClick={() => onChange(code)}
+                className={cn(
+                  'rounded-lg border px-2.5 py-1 text-xs font-medium transition',
+                  selected
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                    : 'border-[var(--color-border)] bg-white text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/30',
+                )}
+              >
+                {semesterLabel(code, locale)}
+              </button>
+            )
+          })}
+          <details className="relative">
+            <summary className="cursor-pointer list-none rounded-lg border border-dashed border-[var(--color-border)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/30 [&::-webkit-details-marker]:hidden">
+              {t('plans.customSemesterCode')}
+            </summary>
+            <div className="absolute start-0 top-full z-10 mt-1 min-w-[140px] rounded-lg border border-[var(--color-border)] bg-white p-2 shadow-md">
+              <input
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder="2025-2"
+                className={cn(
+                  'h-8 w-full rounded-md border bg-white px-2 font-mono text-xs',
+                  'focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]/15',
+                  error ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]',
+                )}
+              />
+            </div>
+          </details>
+        </div>
+        {error ? <p className="text-xs text-[var(--color-danger)]">{error}</p> : null}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">
@@ -50,6 +98,7 @@ export function SemesterPicker({ value, onChange, error }: SemesterPickerProps) 
         />
       </label>
       {error ? <p className="text-xs text-[var(--color-danger)]">{error}</p> : null}
+      <p className="text-xs text-[var(--color-text-muted)]">{t('plans.semesterAcademicYearHint')}</p>
     </div>
   )
 }

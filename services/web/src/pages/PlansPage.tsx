@@ -4,7 +4,7 @@ import { Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { plansApi } from '../api/endpoints'
 import { isAuthError } from '../auth/AuthContext'
-import { ManualPlanBuilder } from '../components/plans/ManualPlanBuilder'
+import { SemesterPlanner } from '../components/plans/SemesterPlanner'
 import { Button } from '../components/ui/Button'
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
@@ -145,7 +145,7 @@ export function PlansPage() {
         </>
       ) : null}
 
-      {tab === 'build' ? <ManualPlanBuilder /> : null}
+      {tab === 'build' ? <SemesterPlanner /> : null}
 
       {tab === 'generate' ? (
         <Card>

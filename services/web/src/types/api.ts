@@ -29,6 +29,12 @@ export type CourseSummary = {
   titleHebrew?: string
   faculty?: string
   credits?: number
+  semesterOfferingSummary?: {
+    academicYear: number
+    semesterCode: number
+    slotTypes?: string[]
+    instructors?: string
+  }
 }
 
 export type PaginatedCourses = {
@@ -84,11 +90,88 @@ export type CourseOffering = {
   semesterName?: string
   scheduleGroups: Array<Record<string, string>>
   instructors?: string
+  examDates?: Record<string, string | null>
 }
 
 export type CourseDetail = CourseSummary & {
   institutionId?: string
+  syllabus?: string
+  prerequisitesText?: string
+  corequisitesText?: string
+  noAdditionalCreditText?: string
+  instructors?: string
+  notes?: string
   offerings?: CourseOffering[]
+}
+
+export type SelectedGroups = {
+  lecture?: number | null
+  tutorial?: number | null
+  lab?: number | null
+  project?: number | null
+}
+
+export type CustomEvent = {
+  id?: string
+  title: string
+  day: string
+  startTime: string
+  endTime: string
+  notes?: string
+  color?: string
+}
+
+export type ExamSummaryItem = {
+  courseNumber: string
+  courseName?: string
+  moed?: string | null
+  date?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  raw?: string | null
+  isMissing?: boolean
+}
+
+export type ExamSummary = {
+  exams: ExamSummaryItem[]
+  warnings?: Array<{
+    type?: string
+    date?: string
+    courseNumbers?: string[]
+    courseNumber?: string
+    message?: string
+  }>
+  totalExams?: number
+  missingCount?: number
+}
+export type PlannerInsights = {
+  totalCredits?: number
+  activeCourseCount?: number
+  totalCourseCount?: number
+  maxCreditsPerSemester?: number
+  creditsWarning?: {
+    status?: string
+    message?: string
+    totalCredits?: number
+    maxCreditsPerSemester?: number
+  }
+  courseWarnings?: Array<{
+    courseId?: string
+    courseNumber?: string
+    status?: string
+    message?: string
+    prerequisitesText?: string
+    missingPrerequisiteNumbers?: string[]
+  }>
+  scheduleConflicts?: WeeklySchedule['conflicts']
+  scheduleStatus?: string
+  examSummary?: ExamSummary
+  staleCourseWarnings?: Array<{
+    courseNumber?: string
+    courseId?: string
+    status?: string
+    message?: string
+  }>
 }
 
 export type ScheduleSlot = {
@@ -117,6 +200,7 @@ export type WeeklySchedule = {
   }>
   weekView?: Array<{ day: string; slots: ScheduleSlot[] }>
   summary?: string
+  customEvents?: CustomEvent[]
 }
 
 export type PlannedCourse = {
@@ -126,6 +210,9 @@ export type PlannedCourse = {
   credits?: number
   category?: string
   reason?: string
+  isActive?: boolean
+  selectedGroups?: SelectedGroups
+  notes?: string
 }
 
 export type SemesterPlan = {
@@ -139,6 +226,7 @@ export type SemesterPlan = {
     goalCredits?: number
     plannedCourses: PlannedCourse[]
     weeklySchedule?: WeeklySchedule
+    customEvents?: CustomEvent[]
   }>
   explanation?: {
     summary?: string
@@ -146,6 +234,10 @@ export type SemesterPlan = {
     emptyPlan?: boolean
     totalRecommendedCredits?: number
   }
+  plannerInsights?: PlannerInsights
+  shareEnabled?: boolean
+  shareToken?: string | null
+  readOnly?: boolean
 }
 
 export type AcademicRiskAnalysis = {

@@ -120,6 +120,25 @@ export const plansApi = {
       method: 'POST',
       body: name ? { name } : {},
     }),
+  patchCourse: (planId: string, courseNumber: string, body: Record<string, unknown>) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(
+      `/semester-plans/${planId}/courses/${courseNumber}`,
+      { method: 'PATCH', body },
+    ),
+  reorderCourses: (planId: string, courseIds: string[]) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(`/semester-plans/${planId}/courses/order`, {
+      method: 'PUT',
+      body: { courseIds },
+    }),
+  updateShare: (planId: string, shareEnabled: boolean) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(`/semester-plans/${planId}/share`, {
+      method: 'PATCH',
+      body: { shareEnabled },
+    }),
+  getShared: (shareToken: string) =>
+    apiRequest<{ semesterPlan: SemesterPlan }>(`/semester-plans/shared/${shareToken}`, {
+      token: null,
+    }),
 }
 
 export const risksApi = {

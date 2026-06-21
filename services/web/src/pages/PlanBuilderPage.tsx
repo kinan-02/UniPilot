@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { ManualPlanBuilder } from '../components/plans/ManualPlanBuilder'
+import { SemesterPlanner } from '../components/plans/SemesterPlanner'
 import { PageHeader } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
 
@@ -10,7 +10,7 @@ export function PlanBuilderPage() {
   return (
     <div className="animate-fade-in space-y-6">
       <PageHeader title={id ? t('plans.editPlan') : t('plans.newPlan')} />
-      <ManualPlanBuilder planId={id} />
+      <SemesterPlanner planId={id} />
     </div>
   )
 }

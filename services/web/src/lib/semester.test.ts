@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  academicYearStartFromDate,
+  currentTermIndex,
+  defaultSemesterCode,
   parseSemesterCode,
   semesterLabel,
   suggestedPlanName,
@@ -20,9 +23,15 @@ describe('semester helpers', () => {
     })
   })
 
-  it('labels semesters per locale', () => {
-    expect(semesterLabel('2025-2', 'en')).toContain('2025')
-    expect(semesterLabel('2025-2', 'he')).toContain('2025')
+  it('labels semesters with academic year range', () => {
+    expect(semesterLabel('2025-2', 'en')).toContain('2025-2026')
+    expect(semesterLabel('2025-2', 'he')).toContain('2025-2026')
+  })
+
+  it('uses academic year start for spring calendar dates', () => {
+    expect(academicYearStartFromDate(new Date('2026-06-15'))).toBe(2025)
+    expect(currentTermIndex(new Date('2026-06-15'))).toBe(2)
+    expect(defaultSemesterCode()).toMatch(/^\d{4}-[123]$/)
   })
 
   it('returns consecutive semester quick-pick options', () => {
