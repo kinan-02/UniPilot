@@ -394,6 +394,8 @@ export const en: TranslationTree = {
         catalogText: 'Catalog prerequisite',
         corequisite: 'Corequisite',
         external: 'External prerequisite',
+        incomingHover: 'Incoming (on hover)',
+        outgoingHover: 'Outgoing (on hover)',
       },
       status: {
         completed: 'Completed',

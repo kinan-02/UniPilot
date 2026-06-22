@@ -4,6 +4,8 @@ import {
   clampOffset,
   clampZoom,
   closestSides,
+  connectedNeighborhood,
+  directionalNeighborhood,
   edgeVisualStyle,
   orderNodesWithinSemester,
   panOverscrollPx,
@@ -118,5 +120,67 @@ describe('curriculumGraphLayout', () => {
     expect(
       edgeVisualStyle({ requirementType: 'corequisite', kind: 'corequisite' }).strokeDasharray,
     ).toBeTruthy()
+  })
+
+  it('collects direct graph neighbors for hover highlighting', () => {
+    const edges: CurriculumGraphEdge[] = [
+      { from: 'A', to: 'B', kind: 'prerequisite', requirementType: 'hard' },
+      { from: 'B', to: 'C', kind: 'prerequisite', requirementType: 'catalog_text' },
+      { from: 'X', to: 'Y', kind: 'prerequisite', requirementType: 'external' },
+    ]
+
+    const neighborhood = connectedNeighborhood('B', edges)
+    expect([...neighborhood.nodeIds].sort()).toEqual(['A', 'B', 'C'])
+    expect([...neighborhood.edgeIds].sort()).toEqual([
+      'A->B:prerequisite',
+      'B->C:prerequisite',
+    ])
+  })
+
+  it('splits hover neighborhood into incoming and outgoing directions', () => {
+    const edges: CurriculumGraphEdge[] = [
+      { from: 'A', to: 'B', kind: 'prerequisite', requirementType: 'hard' },
+      { from: 'B', to: 'C', kind: 'prerequisite', requirementType: 'catalog_text' },
+      { from: 'B', to: 'D', kind: 'corequisite', requirementType: 'corequisite' },
+    ]
+
+    const neighborhood = directionalNeighborhood('B', edges)
+    expect([...neighborhood.incomingNodeIds]).toEqual(['A'])
+    expect([...neighborhood.outgoingNodeIds].sort()).toEqual(['C', 'D'])
+    expect([...neighborhood.incomingEdgeIds]).toEqual(['A->B:prerequisite'])
+    expect([...neighborhood.outgoingEdgeIds].sort()).toEqual([
+      'B->C:prerequisite',
+      'B->D:corequisite',
+    ])
+  })
+
+  it('emphasizes incoming and outgoing edges with distinct colors', () => {
+    const incoming = edgeVisualStyle(
+      { requirementType: 'catalog_text', kind: 'prerequisite' },
+      'incoming',
+    )
+    const outgoing = edgeVisualStyle(
+      { requirementType: 'catalog_text', kind: 'prerequisite' },
+      'outgoing',
+    )
+
+    expect(incoming.stroke).toBe('#0d9488')
+    expect(outgoing.stroke).toBe('#7c3aed')
+    expect(incoming.markerId).toBe('curriculum-arrow-incoming')
+    expect(outgoing.markerId).toBe('curriculum-arrow-outgoing')
+  })
+
+  it('keeps requirement-type dash styles when direction is highlighted', () => {
+    const incomingCoreq = edgeVisualStyle(
+      { requirementType: 'corequisite', kind: 'corequisite' },
+      'incoming',
+    )
+    const outgoingExternal = edgeVisualStyle(
+      { requirementType: 'external', kind: 'external_prerequisite' },
+      'outgoing',
+    )
+
+    expect(incomingCoreq.strokeDasharray).toBeTruthy()
+    expect(outgoingExternal.strokeDasharray).toBeTruthy()
   })
 })

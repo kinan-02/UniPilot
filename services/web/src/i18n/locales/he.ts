@@ -394,6 +394,8 @@ export const he = {
         catalogText: 'דרישת קדם מהקטלוג',
         corequisite: 'דרישת צמוד',
         external: 'דרישת קדם חיצונית',
+        incomingHover: 'נכנס (בריחוף)',
+        outgoingHover: 'יוצא (בריחוף)',
       },
       status: {
         completed: 'הושלם',

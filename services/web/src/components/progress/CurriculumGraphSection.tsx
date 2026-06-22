@@ -5,6 +5,7 @@ import {
   clampOffset,
   clampZoom,
   computePrerequisiteEdgePaths,
+  directionalNeighborhood,
   edgeVisualStyle,
   type EdgePath,
   initialMindMapOffset,
@@ -33,22 +34,37 @@ function displayNodeStatus(
   return node.status
 }
 
+type NodeHighlightRole = 'none' | 'active' | 'incoming' | 'outgoing' | 'dimmed'
+
 function NodeCard({
   node,
   t,
   compact = false,
+  highlightRole = 'none',
 }: {
   node: CurriculumGraphNode
   t: (key: string) => string
   compact?: boolean
+  highlightRole?: NodeHighlightRole
 }) {
   const status = displayNodeStatus(node, compact)
   const statusKey = `progress.curriculum.status.${status}` as const
   const statusLabel = t(statusKey) !== statusKey ? t(statusKey) : status
 
+  const highlightClass =
+    highlightRole === 'active'
+      ? 'z-20 border-stone-900 bg-white shadow-lg ring-2 ring-stone-900'
+      : highlightRole === 'incoming'
+        ? 'z-10 border-teal-600 bg-teal-50/90 shadow-md ring-2 ring-teal-500'
+        : highlightRole === 'outgoing'
+          ? 'z-10 border-violet-600 bg-violet-50/90 shadow-md ring-2 ring-violet-500'
+          : highlightRole === 'dimmed'
+            ? 'opacity-25 saturate-50'
+            : 'border-[var(--color-border)] bg-white shadow-sm'
+
   return (
     <article
-      className="w-[11rem] shrink-0 rounded-xl border border-[var(--color-border)] bg-white p-3 shadow-sm"
+      className={`w-[11rem] shrink-0 rounded-xl border p-3 transition-[opacity,box-shadow,background-color] duration-150 ${highlightClass}`}
       aria-label={`${node.title ?? node.courseNumber} — ${statusLabel}`}
       data-testid={`curriculum-node-${node.courseNumber}`}
     >
@@ -91,6 +107,50 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
   const [contentSize, setContentSize] = useState(contentSizeRef.current)
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
   const hasInitializedView = useRef(false)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  const hoverNeighborhood = useMemo(
+    () => directionalNeighborhood(hoveredNodeId, graph.edges),
+    [hoveredNodeId, graph.edges],
+  )
+
+  const getNodeHighlightRole = useCallback(
+    (nodeId: string): NodeHighlightRole => {
+      if (!hoveredNodeId) return 'none'
+      if (nodeId === hoveredNodeId) return 'active'
+      if (hoverNeighborhood.incomingNodeIds.has(nodeId)) return 'incoming'
+      if (hoverNeighborhood.outgoingNodeIds.has(nodeId)) return 'outgoing'
+      return 'dimmed'
+    },
+    [hoveredNodeId, hoverNeighborhood.incomingNodeIds, hoverNeighborhood.outgoingNodeIds],
+  )
+
+  const getEdgeEmphasis = useCallback(
+    (path: EdgePath) => {
+      if (!hoveredNodeId) return 'default' as const
+      if (hoverNeighborhood.incomingEdgeIds.has(path.id)) return 'incoming' as const
+      if (hoverNeighborhood.outgoingEdgeIds.has(path.id)) return 'outgoing' as const
+      return 'dimmed' as const
+    },
+    [hoveredNodeId, hoverNeighborhood.incomingEdgeIds, hoverNeighborhood.outgoingEdgeIds],
+  )
+
+  const sortedEdgePaths = useMemo(() => {
+    if (!hoveredNodeId) return edgePaths
+    const dimmed = edgePaths.filter(
+      (path) =>
+        !hoverNeighborhood.incomingEdgeIds.has(path.id) &&
+        !hoverNeighborhood.outgoingEdgeIds.has(path.id),
+    )
+    const incoming = edgePaths.filter((path) => hoverNeighborhood.incomingEdgeIds.has(path.id))
+    const outgoing = edgePaths.filter((path) => hoverNeighborhood.outgoingEdgeIds.has(path.id))
+    return [...dimmed, ...incoming, ...outgoing]
+  }, [
+    edgePaths,
+    hoveredNodeId,
+    hoverNeighborhood.incomingEdgeIds,
+    hoverNeighborhood.outgoingEdgeIds,
+  ])
 
   const semesterRows = useMemo(() => {
     const grouped = new Map<number, CurriculumGraphNode[]>()
@@ -247,6 +307,15 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
     dragRef.current = null
   }, [])
 
+  const clearHover = useCallback((event?: React.MouseEvent) => {
+    if (dragRef.current) return
+    const nextTarget = event?.relatedTarget
+    if (nextTarget instanceof HTMLElement && nextTarget.closest('[data-curriculum-node]')) {
+      return
+    }
+    setHoveredNodeId(null)
+  }, [])
+
   const adjustZoom = (delta: number) => {
     const viewport = viewportRef.current
     if (!viewport) return
@@ -276,6 +345,8 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
     { type: 'catalog_text', label: t('progress.curriculum.edgeLegend.catalogText') },
     { type: 'corequisite', label: t('progress.curriculum.edgeLegend.corequisite') },
     { type: 'external', label: t('progress.curriculum.edgeLegend.external') },
+    { type: 'incoming', label: t('progress.curriculum.edgeLegend.incomingHover') },
+    { type: 'outgoing', label: t('progress.curriculum.edgeLegend.outgoingHover') },
   ]
 
   return (
@@ -286,10 +357,21 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
 
       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--color-text-muted)]">
         {edgeLegend.map((item) => {
-          const style = edgeVisualStyle({
-            requirementType: item.type as EdgePath['requirementType'],
-            kind: item.type === 'corequisite' ? 'corequisite' : 'prerequisite',
-          })
+          const style =
+            item.type === 'incoming'
+              ? edgeVisualStyle(
+                  { requirementType: 'catalog_text', kind: 'prerequisite' },
+                  'incoming',
+                )
+              : item.type === 'outgoing'
+                ? edgeVisualStyle(
+                    { requirementType: 'catalog_text', kind: 'prerequisite' },
+                    'outgoing',
+                  )
+                : edgeVisualStyle({
+                    requirementType: item.type as EdgePath['requirementType'],
+                    kind: item.type === 'corequisite' ? 'corequisite' : 'prerequisite',
+                  })
           return (
             <span key={item.type} className="inline-flex items-center gap-2">
               <svg width="28" height="10" aria-hidden>
@@ -344,7 +426,11 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
+        onPointerLeave={() => {
+          onPointerUp()
+          clearHover()
+        }}
+        onMouseLeave={clearHover}
         role="img"
         aria-label={t('progress.curriculum.mindMapAria')}
       >
@@ -378,9 +464,15 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
                 <marker id="curriculum-arrow-bottleneck" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
                   <path d="M0,0 L10,5 L0,10 Z" fill="#c2410c" />
                 </marker>
+                <marker id="curriculum-arrow-incoming" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#0d9488" />
+                </marker>
+                <marker id="curriculum-arrow-outgoing" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#7c3aed" />
+                </marker>
               </defs>
-              {edgePaths.map((path) => {
-                const style = edgeVisualStyle(path)
+              {sortedEdgePaths.map((path) => {
+                const style = edgeVisualStyle(path, getEdgeEmphasis(path))
                 return (
                   <path
                     key={path.id}
@@ -415,8 +507,16 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: (key: string) =>
                         key={node.nodeId}
                         ref={registerNode(node.nodeId)}
                         data-curriculum-node={node.nodeId}
+                        className="relative transition-opacity duration-150"
+                        onMouseEnter={() => setHoveredNodeId(node.nodeId)}
+                        onMouseLeave={(event) => clearHover(event)}
                       >
-                        <NodeCard node={node} t={t} compact />
+                        <NodeCard
+                          node={node}
+                          t={t}
+                          compact
+                          highlightRole={getNodeHighlightRole(node.nodeId)}
+                        />
                       </div>
                     ))}
                   </div>

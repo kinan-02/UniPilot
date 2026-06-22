@@ -4,10 +4,21 @@ export type PrerequisiteRequirementType = 'hard' | 'catalog_text' | 'external' |
 
 export type EdgePath = {
   id: string
+  from: string
+  to: string
   d: string
   requirementType: PrerequisiteRequirementType
   kind: CurriculumGraphEdge['kind']
   highlight?: string
+}
+
+export type EdgeEmphasis = 'default' | 'dimmed' | 'incoming' | 'outgoing'
+
+export type DirectionalNeighborhood = {
+  incomingNodeIds: Set<string>
+  outgoingNodeIds: Set<string>
+  incomingEdgeIds: Set<string>
+  outgoingEdgeIds: Set<string>
 }
 
 export type EdgeVisualStyle = {
@@ -218,7 +229,63 @@ function distributeSideSlots(drafts: EdgeDraft[]): Map<string, { slot: number; c
   return slotLookup
 }
 
-export function edgeVisualStyle(
+export function edgePathId(edge: Pick<CurriculumGraphEdge, 'from' | 'to' | 'kind'>): string {
+  return `${edge.from}->${edge.to}:${edge.kind}`
+}
+
+const DRAWABLE_EDGE_KINDS = new Set<CurriculumGraphEdge['kind']>([
+  'prerequisite',
+  'corequisite',
+  'external_prerequisite',
+])
+
+export function connectedNeighborhood(
+  nodeId: string | null,
+  edges: CurriculumGraphEdge[],
+): { nodeIds: Set<string>; edgeIds: Set<string> } {
+  const directional = directionalNeighborhood(nodeId, edges)
+  const nodeIds = new Set<string>([
+    ...directional.incomingNodeIds,
+    ...directional.outgoingNodeIds,
+  ])
+  if (nodeId) nodeIds.add(nodeId)
+  const edgeIds = new Set<string>([
+    ...directional.incomingEdgeIds,
+    ...directional.outgoingEdgeIds,
+  ])
+  return { nodeIds, edgeIds }
+}
+
+export function directionalNeighborhood(
+  nodeId: string | null,
+  edges: CurriculumGraphEdge[],
+): DirectionalNeighborhood {
+  const neighborhood: DirectionalNeighborhood = {
+    incomingNodeIds: new Set<string>(),
+    outgoingNodeIds: new Set<string>(),
+    incomingEdgeIds: new Set<string>(),
+    outgoingEdgeIds: new Set<string>(),
+  }
+
+  if (!nodeId) return neighborhood
+
+  for (const edge of edges) {
+    if (!DRAWABLE_EDGE_KINDS.has(edge.kind)) continue
+    const id = edgePathId(edge)
+    if (edge.to === nodeId) {
+      neighborhood.incomingEdgeIds.add(id)
+      neighborhood.incomingNodeIds.add(edge.from)
+    }
+    if (edge.from === nodeId) {
+      neighborhood.outgoingEdgeIds.add(id)
+      neighborhood.outgoingNodeIds.add(edge.to)
+    }
+  }
+
+  return neighborhood
+}
+
+function baseEdgeTypeStyle(
   edge: Pick<CurriculumGraphEdge, 'requirementType' | 'kind' | 'highlight'>,
 ): EdgeVisualStyle {
   if (edge.highlight === 'bottleneck') {
@@ -267,6 +334,66 @@ export function edgeVisualStyle(
   }
 }
 
+function directionalEdgeStroke(
+  edge: Pick<CurriculumGraphEdge, 'requirementType' | 'kind' | 'highlight'>,
+  direction: 'incoming' | 'outgoing',
+): string {
+  if (edge.highlight === 'bottleneck') {
+    return direction === 'incoming' ? '#9a3412' : '#ea580c'
+  }
+
+  if (edge.kind === 'corequisite' || edge.requirementType === 'corequisite') {
+    return direction === 'incoming' ? '#0e7490' : '#6d28d9'
+  }
+
+  if (edge.requirementType === 'hard') {
+    return direction === 'incoming' ? '#115e59' : '#5b21b6'
+  }
+
+  if (edge.requirementType === 'external') {
+    return direction === 'incoming' ? '#14b8a6' : '#a78bfa'
+  }
+
+  return direction === 'incoming' ? '#0d9488' : '#7c3aed'
+}
+
+export function edgeVisualStyle(
+  edge: Pick<CurriculumGraphEdge, 'requirementType' | 'kind' | 'highlight'>,
+  emphasis: EdgeEmphasis = 'default',
+): EdgeVisualStyle {
+  const style = baseEdgeTypeStyle(edge)
+
+  if (emphasis === 'dimmed') {
+    return {
+      ...style,
+      opacity: 0.12,
+      strokeWidth: Math.max(1, style.strokeWidth - 0.75),
+    }
+  }
+
+  if (emphasis === 'incoming') {
+    return {
+      ...style,
+      stroke: directionalEdgeStroke(edge, 'incoming'),
+      strokeWidth: style.strokeWidth + 1.5,
+      opacity: 1,
+      markerId: 'curriculum-arrow-incoming',
+    }
+  }
+
+  if (emphasis === 'outgoing') {
+    return {
+      ...style,
+      stroke: directionalEdgeStroke(edge, 'outgoing'),
+      strokeWidth: style.strokeWidth + 1.5,
+      opacity: 1,
+      markerId: 'curriculum-arrow-outgoing',
+    }
+  }
+
+  return style
+}
+
 export function computePrerequisiteEdgePaths(
   container: HTMLElement,
   edges: CurriculumGraph['edges'],
@@ -310,7 +437,9 @@ export function computePrerequisiteEdgePaths(
     if (!curve) continue
 
     paths.push({
-      id: `${draft.edge.from}->${draft.edge.to}:${draft.edge.kind}`,
+      id: edgePathId(draft.edge),
+      from: draft.edge.from,
+      to: draft.edge.to,
       d: curve,
       requirementType: draft.edge.requirementType ?? 'catalog_text',
       kind: draft.edge.kind,
