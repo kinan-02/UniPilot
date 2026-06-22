@@ -2,17 +2,22 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { catalogApi, profileApi } from '../api/endpoints'
 import { isAuthError } from '../auth/AuthContext'
+import { AcademicPathFields } from '../components/profile/AcademicPathFields'
 import { Button } from '../components/ui/Button'
 import { Card, PageHeader, Spinner } from '../components/ui/Card'
 import { Input, Select } from '../components/ui/Input'
+import { buildAcademicPathForProgram, trackSlugFromProgram } from '../lib/academicPath'
+import { useTranslation } from '../i18n'
 
 export function ProfilePage() {
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
   const [programType, setProgramType] = useState('BSc')
   const [degreeId, setDegreeId] = useState('')
   const [catalogYear, setCatalogYear] = useState('2025')
   const [semesterCode, setSemesterCode] = useState('2025-1')
   const [maxCredits, setMaxCredits] = useState('18')
+  const [trackSlug, setTrackSlug] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -35,29 +40,46 @@ export function ProfilePage() {
     setCatalogYear(String(profile.catalogYear))
     setSemesterCode(profile.currentSemesterCode)
     setMaxCredits(String(profile.preferences?.maxCreditsPerSemester ?? 18))
+    setTrackSlug(profile.academicPath?.trackSlug ?? '')
   }, [profileQuery.data])
 
+  const programs = (programsQuery.data?.items ?? []).filter((program) => Boolean(program.id))
+  const selectedProgram = programs.find((program) => program.id === degreeId)
+
+  useEffect(() => {
+    if (trackSlug) return
+    const suggested = trackSlugFromProgram(selectedProgram)
+    if (suggested) setTrackSlug(suggested)
+  }, [selectedProgram?.id, trackSlug])
+
   const saveMutation = useMutation({
-    mutationFn: () =>
-      profileQuery.data?.profile
-        ? profileApi.update({
-            programType,
-            degreeId: degreeId || undefined,
-            catalogYear: Number(catalogYear),
-            currentSemesterCode: semesterCode,
-            preferences: { maxCreditsPerSemester: Number(maxCredits) },
-          })
+    mutationFn: () => {
+      const academicPath = buildAcademicPathForProgram(selectedProgram, {
+        trackSlug,
+        minors: profileQuery.data?.profile?.academicPath?.minors,
+        specialPrograms: profileQuery.data?.profile?.academicPath?.specialPrograms,
+        graduatePrograms: profileQuery.data?.profile?.academicPath?.graduatePrograms,
+        specializations: profileQuery.data?.profile?.academicPath?.specializations,
+      })
+      const body = {
+        programType,
+        degreeId: degreeId || undefined,
+        catalogYear: Number(catalogYear),
+        currentSemesterCode: semesterCode,
+        preferences: { maxCreditsPerSemester: Number(maxCredits) },
+        ...(academicPath ? { academicPath } : {}),
+      }
+      return profileQuery.data?.profile
+        ? profileApi.update(body)
         : profileApi.create({
             institutionId: 'technion',
-            programType,
-            degreeId: degreeId || undefined,
-            catalogYear: Number(catalogYear),
-            currentSemesterCode: semesterCode,
-            preferences: { maxCreditsPerSemester: Number(maxCredits) },
-          }),
+            ...body,
+          })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
       setMessage('Profile saved')
       setError('')
     },
@@ -75,7 +97,6 @@ export function ProfilePage() {
     )
   }
 
-  const programs = (programsQuery.data?.items ?? []).filter((program) => Boolean(program.id))
   const programsLoading = programsQuery.isLoading
   const programsLoadError = programsQuery.isError
   const programsEmpty = !programsLoading && !programsLoadError && programs.length === 0
@@ -118,6 +139,13 @@ export function ProfilePage() {
           {programsEmpty ? (
             <p className="text-sm text-[var(--color-danger)]">No degree programs are available yet.</p>
           ) : null}
+          <AcademicPathFields
+            programs={programs}
+            degreeId={degreeId}
+            trackSlug={trackSlug}
+            onTrackSlugChange={setTrackSlug}
+            t={t}
+          />
           <Input
             label="Catalog year"
             type="number"

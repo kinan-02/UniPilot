@@ -1,13 +1,46 @@
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { BookOpen } from 'lucide-react'
 import { progressApi } from '../api/endpoints'
 import { isAuthError } from '../auth/AuthContext'
+import {
+  CourseChipList,
+  ProgressAlertCard,
+  ProgressEmptyTranscriptHint,
+  RequirementBucketRow,
+} from '../components/progress/ProgressSections'
+import { CurriculumGraphSection } from '../components/progress/CurriculumGraphSection'
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui/Card'
+import { useTranslation } from '../i18n'
+import {
+  partitionRequirementBuckets,
+  progressCatalogSubtitle,
+  statusBadgeTone,
+} from '../lib/graduationProgress'
 import { formatCredits, formatPercent } from '../lib/utils'
 
+function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <Card className="p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-[var(--color-text-muted)]">{hint}</p> : null}
+    </Card>
+  )
+}
+
 export function ProgressPage() {
+  const { t } = useTranslation()
   const progressQuery = useQuery({
     queryKey: ['progress'],
     queryFn: progressApi.get,
+    retry: false,
+  })
+  const curriculumQuery = useQuery({
+    queryKey: ['curriculum-graph'],
+    queryFn: progressApi.curriculumGraph,
     retry: false,
   })
 
@@ -20,92 +53,216 @@ export function ProgressPage() {
   }
 
   if (progressQuery.isError) {
-    const message =
+    const isNoDegree =
       isAuthError(progressQuery.error) && progressQuery.error.status === 400
-        ? 'Select a degree program in your profile to calculate graduation progress.'
-        : 'Unable to load graduation progress.'
+    const isNoProfile =
+      isAuthError(progressQuery.error) && progressQuery.error.status === 404
+    const message = isNoDegree
+      ? t('progress.noDegree')
+      : isNoProfile
+        ? t('dashboard.completeProfileHint')
+        : t('progress.loadFailed')
+
     return (
-      <EmptyState title="Progress unavailable" description={message} action={null} />
+      <EmptyState
+        title={t('progress.unavailable')}
+        description={message}
+        action={
+          isNoProfile || isNoDegree ? (
+            <Link
+              to={isNoProfile ? '/onboarding' : '/profile'}
+              className="text-sm font-medium text-[var(--color-primary)]"
+            >
+              {t('progress.setupProfile')}
+            </Link>
+          ) : null
+        }
+      />
     )
   }
 
   const progress = progressQuery.data?.graduationProgress
   if (!progress) return null
 
+  const statusKey = `progress.statusSummary.${progress.statusSummary}` as const
+  const statusLabel =
+    t(statusKey) !== statusKey
+      ? t(statusKey)
+      : progress.statusSummary.replace(/_/g, ' ')
+
+  const { mandatory, elective } = partitionRequirementBuckets(progress.requirementProgress)
+  const subtitle =
+    progressCatalogSubtitle(progress) || t('progress.subtitleFallback')
+  const showTranscriptHint =
+    progress.statusSummary === 'not_started' || progress.completedCredits <= 0
+
   return (
     <div className="animate-fade-in space-y-6">
       <PageHeader
-        title="Graduation progress"
-        description={progress.degreeName ?? progress.degreeCode ?? 'Your degree track'}
+        title={t('progress.title')}
+        description={subtitle}
+        action={
+          <Link
+            to="/transcript"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-medium transition hover:bg-[var(--color-surface-muted)]"
+          >
+            <BookOpen className="h-4 w-4" />
+            {t('progress.updateTranscript')}
+          </Link>
+        }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <div className="mb-4 flex items-end justify-between">
-            <div>
-              <p className="text-sm text-[var(--color-text-muted)]">Overall completion</p>
-              <p className="text-4xl font-semibold tracking-tight">
-                {formatPercent(progress.completionPercentage)}
-              </p>
-            </div>
-            <Badge tone={progress.statusSummary === 'complete' ? 'success' : 'primary'}>
-              {progress.statusSummary.replace(/_/g, ' ')}
-            </Badge>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-stone-100">
-            <div
-              className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
-              style={{ width: `${Math.min(progress.completionPercentage, 100)}%` }}
-            />
-          </div>
-          <p className="mt-3 text-sm text-[var(--color-text-muted)]">
-            {formatCredits(progress.completedCredits)} completed ·{' '}
-            {formatCredits(progress.creditsRemaining)} remaining ·{' '}
-            {formatCredits(progress.totalRequiredCredits)} required
-          </p>
-        </Card>
-        <Card>
-          <p className="text-sm font-medium">Quick stats</p>
-          <dl className="mt-4 space-y-3 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-[var(--color-text-muted)]">Degree ID</dt>
-              <dd className="font-mono text-xs">{progress.degreeId.slice(-8)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-[var(--color-text-muted)]">Status</dt>
-              <dd>{progress.statusSummary.replace(/_/g, ' ')}</dd>
-            </div>
-          </dl>
-        </Card>
+      {showTranscriptHint ? <ProgressEmptyTranscriptHint t={t} /> : null}
+
+      {curriculumQuery.data?.curriculumGraph ? (
+        <CurriculumGraphSection graph={curriculumQuery.data.curriculumGraph} t={t} />
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label={t('progress.overallCompletion')}
+          value={formatPercent(progress.completionPercentage)}
+          hint={`${formatCredits(progress.completedCredits)} / ${formatCredits(progress.totalRequiredCredits)}`}
+        />
+        <StatTile
+          label={t('progress.creditsRemaining')}
+          value={formatCredits(progress.creditsRemaining)}
+        />
+        <StatTile
+          label={t('progress.electiveProgress')}
+          value={formatCredits(progress.completedElectiveCredits ?? 0)}
+          hint={
+            progress.remainingElectiveCredits
+              ? `${t('progress.electiveRemaining')}: ${formatCredits(progress.remainingElectiveCredits)}`
+              : undefined
+          }
+        />
+        <StatTile
+          label={t('progress.status')}
+          value={statusLabel}
+          hint={
+            progress.remainingMandatoryCourses?.length
+              ? `${t('progress.mandatoryRemaining')}: ${progress.remainingMandatoryCourses.length}`
+              : undefined
+          }
+        />
       </div>
 
-      {progress.requirementProgress?.length ? (
-        <Card>
-          <h2 className="mb-4 text-sm font-semibold">Requirement buckets</h2>
-          <div className="space-y-4">
-            {progress.requirementProgress.map((bucket) => (
-              <div key={bucket.requirementGroupId}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span>{bucket.title ?? bucket.requirementGroupId}</span>
-                  <span className="text-[var(--color-text-muted)]">
-                    {formatCredits(bucket.completedCredits)} / {formatCredits(bucket.requiredCredits)}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
-                  <div
-                    className="h-full rounded-full bg-[var(--color-accent)]"
-                    style={{
-                      width: `${Math.min(
-                        (bucket.completedCredits / Math.max(bucket.requiredCredits, 1)) * 100,
-                        100,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
+      <Card>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm text-[var(--color-text-muted)]">{t('progress.overallCompletion')}</p>
+            <p className="text-4xl font-semibold tracking-tight">
+              {formatPercent(progress.completionPercentage)}
+            </p>
+          </div>
+          <Badge tone={statusBadgeTone(progress.statusSummary)}>{statusLabel}</Badge>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+          <div
+            className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
+            style={{ width: `${Math.min(progress.completionPercentage, 100)}%` }}
+          />
+        </div>
+        <p className="mt-3 text-sm text-[var(--color-text-muted)]">
+          {formatCredits(progress.completedCredits)} {t('progress.creditsCompleted').toLowerCase()} ·{' '}
+          {formatCredits(progress.creditsRemaining)} {t('progress.creditsRemaining').toLowerCase()} ·{' '}
+          {formatCredits(progress.totalRequiredCredits)} {t('progress.totalRequired').toLowerCase()}
+        </p>
+      </Card>
+
+      {progress.ineligibleCredits?.length ? (
+        <ProgressAlertCard
+          tone="warning"
+          title={t('progress.ineligibleCredits')}
+          description={t('progress.ineligibleCreditsHint')}
+        >
+          <ul className="space-y-2 text-sm">
+            {progress.ineligibleCredits.map((entry) => (
+              <li key={`${entry.courseId}-${entry.bucketSuffix ?? entry.reason}`}>
+                <span className="font-mono text-[var(--color-primary)]">
+                  {entry.courseNumber ?? entry.courseId.slice(-8)}
+                </span>
+                {' · '}
+                {formatCredits(entry.creditsEarned)} {t('common.credits')}
+              </li>
             ))}
+          </ul>
+        </ProgressAlertCard>
+      ) : null}
+
+      {progress.missingRequirements?.length ? (
+        <ProgressAlertCard
+          tone="warning"
+          title={t('progress.missingRequirements')}
+          description={t('progress.missingRequirementsHint')}
+        >
+          <ul className="mt-1 space-y-2">
+            {progress.missingRequirements.map((item) => (
+              <li
+                key={item.requirementGroupId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm"
+              >
+                <span>{item.title ?? item.requirementGroupId}</span>
+                <span className="text-[var(--color-text-muted)]">
+                  {formatCredits(item.creditsCompleted)} / {formatCredits(item.creditsRequired)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </ProgressAlertCard>
+      ) : null}
+
+      {progress.remainingMandatoryCourses?.length ? (
+        <Card>
+          <h2 className="text-sm font-semibold">{t('progress.remainingMandatory')}</h2>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            {t('progress.remainingMandatoryHint')}
+          </p>
+          <div className="mt-4">
+            <CourseChipList courses={progress.remainingMandatoryCourses} />
           </div>
         </Card>
+      ) : null}
+
+      {mandatory.length || elective.length ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          {mandatory.length ? (
+            <Card>
+              <h2 className="mb-4 text-sm font-semibold">{t('progress.mandatoryBuckets')}</h2>
+              <div className="space-y-3">
+                {mandatory.map((bucket) => (
+                  <RequirementBucketRow key={bucket.requirementGroupId} bucket={bucket} t={t} />
+                ))}
+              </div>
+            </Card>
+          ) : null}
+          {elective.length ? (
+            <Card>
+              <h2 className="mb-4 text-sm font-semibold">{t('progress.electiveBuckets')}</h2>
+              <div className="space-y-3">
+                {elective.map((bucket) => (
+                  <RequirementBucketRow key={bucket.requirementGroupId} bucket={bucket} t={t} />
+                ))}
+              </div>
+            </Card>
+          ) : null}
+        </div>
+      ) : (
+        <Card>
+          <p className="text-sm text-[var(--color-text-muted)]">{t('progress.noBuckets')}</p>
+        </Card>
+      )}
+
+      {progress.assumptions?.length ? (
+        <details className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
+          <summary className="cursor-pointer text-sm font-medium">{t('progress.assumptions')}</summary>
+          <ul className="mt-3 list-disc space-y-2 ps-5 text-sm text-[var(--color-text-muted)]">
+            {progress.assumptions.map((assumption) => (
+              <li key={assumption}>{assumption}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
     </div>
   )

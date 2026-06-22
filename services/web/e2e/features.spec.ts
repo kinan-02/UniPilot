@@ -1,5 +1,17 @@
 import { expect, test } from '@playwright/test'
 
+test.describe('Graduation progress', () => {
+  test('loads progress page for onboarded user', async ({ page }) => {
+    await page.goto('/progress')
+    await expect(
+      page.getByRole('heading', { name: /התקדמות לתואר|Graduation progress/i }),
+    ).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.getByRole('link', { name: /עדכון גיליון ציונים|Update transcript/i }),
+    ).toBeVisible()
+  })
+})
+
 test.describe('Catalog', () => {
   test('search returns results and opens course detail', async ({ page }) => {
     await page.goto('/catalog')

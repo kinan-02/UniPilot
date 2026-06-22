@@ -44,6 +44,7 @@ def build_profile_document(user_id: str, profile_data: dict[str, Any]) -> dict[s
         "degreeId": parse_object_id(degree_id) if degree_id else None,
         "catalogYear": profile_data["catalogYear"],
         "currentSemesterCode": profile_data["currentSemesterCode"],
+        "academicPath": profile_data.get("academicPath") or {},
         "preferences": profile_data.get("preferences") or {},
         "revision": 1,
         "createdAt": now,
@@ -99,6 +100,8 @@ async def update_student_profile_by_user_id(
         update_document["catalogYear"] = updates["catalogYear"]
     if "currentSemesterCode" in updates:
         update_document["currentSemesterCode"] = updates["currentSemesterCode"]
+    if "academicPath" in updates:
+        update_document["academicPath"] = updates["academicPath"]
     if "preferences" in updates:
         update_document["preferences"] = updates["preferences"]
 
@@ -148,6 +151,7 @@ def to_public_student_profile(profile_document: dict[str, Any] | None) -> dict[s
         "degreeId": str(degree_id) if degree_id else None,
         "catalogYear": profile_document["catalogYear"],
         "currentSemesterCode": profile_document["currentSemesterCode"],
+        "academicPath": profile_document.get("academicPath") or {},
         "preferences": profile_document.get("preferences") or {},
         "revision": profile_document["revision"],
         "createdAt": _format_datetime(profile_document["createdAt"]),

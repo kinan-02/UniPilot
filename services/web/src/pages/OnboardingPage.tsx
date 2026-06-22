@@ -7,7 +7,9 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Input, Select } from '../components/ui/Input'
 import { PageHeader, Spinner } from '../components/ui/Card'
+import { AcademicPathFields } from '../components/profile/AcademicPathFields'
 import { useTranslation } from '../i18n'
+import { buildAcademicPathForProgram, trackSlugFromProgram } from '../lib/academicPath'
 import { validateSemesterCode } from '../lib/validation'
 
 export function OnboardingPage() {
@@ -18,6 +20,7 @@ export function OnboardingPage() {
   const [degreeId, setDegreeId] = useState('')
   const [catalogYear, setCatalogYear] = useState('2025')
   const [semesterCode, setSemesterCode] = useState('2025-1')
+  const [trackSlug, setTrackSlug] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -45,6 +48,12 @@ export function OnboardingPage() {
   }, [profileQuery.data, navigate])
 
   const programs = (programsQuery.data?.items ?? []).filter((program) => Boolean(program.id))
+  const selectedProgram = programs.find((program) => program.id === degreeId)
+
+  useEffect(() => {
+    const suggested = trackSlugFromProgram(selectedProgram)
+    if (suggested) setTrackSlug(suggested)
+  }, [selectedProgram?.id])
   const programsLoading = programsQuery.isLoading
   const programsLoadError = programsQuery.isError
   const programsEmpty = !programsLoading && !programsLoadError && programs.length === 0
@@ -71,6 +80,7 @@ export function OnboardingPage() {
         degreeId: degreeId || undefined,
         catalogYear: Number(catalogYear),
         currentSemesterCode: semesterCode,
+        academicPath: buildAcademicPathForProgram(selectedProgram, { trackSlug }),
       })
       await queryClient.invalidateQueries({ queryKey: ['profile'] })
       navigate('/')
@@ -115,6 +125,13 @@ export function OnboardingPage() {
               </option>
             ))}
           </Select>
+          <AcademicPathFields
+            programs={programs}
+            degreeId={degreeId}
+            trackSlug={trackSlug}
+            onTrackSlugChange={setTrackSlug}
+            t={t}
+          />
           {programsLoading ? (
             <p className="text-sm text-[var(--color-muted)]">{t('onboarding.programsLoading')}</p>
           ) : null}

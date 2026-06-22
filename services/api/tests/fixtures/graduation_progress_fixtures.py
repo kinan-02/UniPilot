@@ -24,6 +24,7 @@ async def seed_graduation_progress_fixtures(database) -> dict[str, str]:
             "totalCredits": TOTAL_CREDITS,
             "catalogYear": 2025,
             "catalogVersion": "2025-2026",
+            "metadata": {"wikiPage": "track-data-information-engineering", "faculty": "dds"},
             "status": "published",
         }
     )

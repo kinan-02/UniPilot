@@ -15,7 +15,13 @@ async def register_access_token(client, email: str) -> str:
     return response.json()["data"]["accessToken"]
 
 
-async def create_profile(client, token: str, *, degree_id: str | None = None) -> None:
+async def create_profile(
+    client,
+    token: str,
+    *,
+    degree_id: str | None = None,
+    extra: dict | None = None,
+) -> None:
     payload = {
         "institutionId": "technion",
         "programType": "BSc",
@@ -24,6 +30,8 @@ async def create_profile(client, token: str, *, degree_id: str | None = None) ->
     }
     if degree_id is not None:
         payload["degreeId"] = degree_id
+    if extra:
+        payload.update(extra)
     response = await client.post(
         "/student-profile",
         headers={"Authorization": f"Bearer {token}"},

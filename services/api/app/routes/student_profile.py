@@ -13,7 +13,10 @@ from app.repositories.student_profile_repository import (
     to_public_student_profile,
     update_student_profile_by_user_id,
 )
-from app.services.student_profile_validation import validate_degree_id_for_profile
+from app.services.student_profile_validation import (
+    validate_academic_path_for_profile,
+    validate_degree_id_for_profile,
+)
 from app.schemas.student_profile import (
     CreateStudentProfileRequest,
     UpdateStudentProfileRequest,
@@ -52,6 +55,8 @@ def profile_payload_from_create_request(payload: CreateStudentProfileRequest) ->
     data = payload.model_dump(exclude_none=True)
     if payload.preferences is not None:
         data["preferences"] = payload.preferences.model_dump(exclude_none=True)
+    if payload.academicPath is not None:
+        data["academicPath"] = payload.academicPath.model_dump(exclude_none=True)
     return data
 
 
@@ -59,6 +64,8 @@ def profile_payload_from_update_request(payload: UpdateStudentProfileRequest) ->
     data = payload.model_dump(exclude_none=True)
     if payload.preferences is not None:
         data["preferences"] = payload.preferences.model_dump(exclude_none=True)
+    if payload.academicPath is not None:
+        data["academicPath"] = payload.academicPath.model_dump(exclude_none=True)
     return data
 
 
@@ -78,6 +85,12 @@ async def create_profile(
         )
 
     await validate_degree_id_for_profile(database, payload.degreeId)
+    if payload.academicPath is not None:
+        await validate_academic_path_for_profile(
+            database,
+            payload.degreeId,
+            payload.academicPath.model_dump(exclude_none=True),
+        )
 
     try:
         profile = await create_student_profile(
@@ -116,8 +129,17 @@ async def update_profile(
     if not existing_profile:
         raise HTTPException(status_code=404, detail="Student profile not found")
 
+    degree_id = payload.degreeId if payload.degreeId is not None else (
+        str(existing_profile["degreeId"]) if existing_profile.get("degreeId") else None
+    )
     if payload.degreeId is not None:
         await validate_degree_id_for_profile(database, payload.degreeId)
+    if payload.academicPath is not None:
+        await validate_academic_path_for_profile(
+            database,
+            degree_id,
+            payload.academicPath.model_dump(exclude_none=True),
+        )
 
     updated_profile = await update_student_profile_by_user_id(
         database,

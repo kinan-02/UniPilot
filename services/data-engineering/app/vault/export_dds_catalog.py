@@ -148,6 +148,7 @@ def build_course_reference(
     *,
     title_hint: str | None = None,
     credits_hint: float | None = None,
+    credits_hint_raw: str | None = None,
     source_page: Path | None = None,
     notes: list[str] | None = None,
 ) -> dict[str, Any] | None:
@@ -159,10 +160,32 @@ def build_course_reference(
     if source_page is not None:
         evidence.append(f"wiki:{_relative_vault_path(source_page)}")
 
-    return {
+    note_list = list(notes or [])
+    notes_text = " ".join(note_list)
+    alternatives: list[str] = []
+    alt_pattern = re.compile(r"Alt:\s*(\d{6,8})", re.IGNORECASE)
+    for match in alt_pattern.finditer(notes_text):
+        alt_number = normalize_course_number(match.group(1))
+        if alt_number and alt_number not in alternatives:
+            alternatives.append(alt_number)
+
+    credits_range = None
+    if credits_hint_raw:
+        range_match = re.match(
+            r"^(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)",
+            credits_hint_raw.replace("≈", "").strip(),
+        )
+        if range_match:
+            low = float(range_match.group(1))
+            high = float(range_match.group(2))
+            credits_range = {"min": low, "max": high}
+
+    ref: dict[str, Any] = {
         "courseNumber": course_number,
         "titleHint": title_hint,
         "creditsHint": credits_hint,
+        "creditsHintRaw": credits_hint_raw,
+        "creditsRange": credits_range,
         "facultyHint": None,
         "semestersOffered": [],
         "prerequisitesText": None,
@@ -171,13 +194,15 @@ def build_course_reference(
         "footnoteMarkers": [],
         "pageNumbers": [],
         "sourceEvidence": evidence,
-        "notes": notes or [],
-        "manualReviewRequired": True,
+        "notes": note_list,
+        "alternatives": alternatives,
+        "manualReviewRequired": bool(alternatives or credits_range),
         "confidence": "medium" if title_hint else "low",
         "offeringMetadataNote": (
             "Semester offering JSON reference only; not the full canonical catalog."
         ),
     }
+    return ref
 
 
 def enrich_course_reference(ref: dict[str, Any], offering_index: dict[str, Any]) -> dict[str, Any]:
@@ -271,6 +296,7 @@ def _semester_matrix_groups(page: WikiPage, program_code: str) -> list[dict[str,
                     row["code"] or "",
                     title_hint=row.get("name"),
                     credits_hint=parse_credits_value(row.get("credits")),
+                    credits_hint_raw=row.get("credits"),
                     source_page=page.path,
                     notes=[row["notes"]] if row.get("notes") else [],
                 )
@@ -342,6 +368,7 @@ def _table_course_refs(page: WikiPage, table: MarkdownTable) -> list[dict[str, A
             row["code"] or "",
             title_hint=row.get("name"),
             credits_hint=parse_credits_value(row.get("credits")),
+            credits_hint_raw=row.get("credits"),
             source_page=page.path,
         )
         if ref is not None:

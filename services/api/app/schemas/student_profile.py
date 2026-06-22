@@ -25,6 +25,9 @@ def strip_optional_string(value: str | None) -> str | None:
     return str(value).strip()
 
 
+from app.schemas.academic_path import StudentAcademicPath
+
+
 class StudentProfilePreferences(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -39,6 +42,7 @@ class CreateStudentProfileRequest(BaseModel):
     degreeId: str | None = None
     catalogYear: int = Field(ge=1990, le=2100)
     currentSemesterCode: str
+    academicPath: StudentAcademicPath | None = None
     preferences: StudentProfilePreferences | None = None
 
     @field_validator("institutionId", "programType", mode="before")
@@ -70,6 +74,7 @@ class UpdateStudentProfileRequest(BaseModel):
     degreeId: str | None = None
     catalogYear: int | None = Field(default=None, ge=1990, le=2100)
     currentSemesterCode: str | None = None
+    academicPath: StudentAcademicPath | None = None
     preferences: StudentProfilePreferences | None = None
 
     @field_validator("institutionId", "programType", mode="before")

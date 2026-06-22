@@ -7,6 +7,7 @@ import type {
   CourseOffering,
   DegreeProgram,
   GraduationProgress,
+  CurriculumGraph,
   PaginatedCourses,
   SemesterPlan,
   StudentProfile,
@@ -101,6 +102,10 @@ export const transcriptApi = {
 export const progressApi = {
   get: () =>
     apiRequest<{ graduationProgress: GraduationProgress }>('/graduation-progress'),
+  curriculumGraph: () =>
+    apiRequest<{ curriculumGraph: CurriculumGraph }>(
+      '/graduation-progress/curriculum-graph',
+    ),
 }
 
 export const plansApi = {

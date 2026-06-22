@@ -17,9 +17,25 @@ export type StudentProfile = {
   degreeId: string | null
   catalogYear: number
   currentSemesterCode: string
+  academicPath?: StudentAcademicPath
   preferences?: {
     maxCreditsPerSemester?: number
   }
+}
+
+export type AcademicPathSelection = {
+  kind: 'bsc_track' | 'minor' | 'special_program' | 'graduate_program' | 'dne_specialization'
+  trackSlug?: string | null
+  programCode?: string | null
+  label?: string | null
+}
+
+export type StudentAcademicPath = {
+  trackSlug?: string | null
+  minors?: AcademicPathSelection[]
+  specialPrograms?: AcademicPathSelection[]
+  graduatePrograms?: AcademicPathSelection[]
+  specializations?: AcademicPathSelection[]
 }
 
 export type CourseSummary = {
@@ -51,6 +67,10 @@ export type DegreeProgram = {
   nameHebrew?: string
   nameEn?: string
   totalCredits?: number
+  metadata?: {
+    wikiPage?: string
+    faculty?: string
+  }
 }
 
 export type CompletedCourse = {
@@ -65,22 +85,144 @@ export type CompletedCourse = {
   source: string
 }
 
+export type CourseProgressEntry = {
+  courseId: string
+  courseNumber?: string
+  courseTitle?: string
+  catalogCredits?: number
+  creditsEarned?: number
+  grade?: string | number
+  semesterCode?: string
+}
+
+export type RequirementProgressEntry = {
+  requirementId?: string
+  requirementGroupId: string
+  title?: string
+  requirementType?: string
+  isMandatory?: boolean
+  requirementEnforcement?: string
+  eligibilityEnforcement?: 'strict_pool' | 'credit_bucket_only' | string
+  linkedPoolGroupId?: string | null
+  status: string
+  minCredits: number
+  creditsCompleted: number
+  creditsRemaining: number
+  completedCourses?: CourseProgressEntry[]
+  remainingCourses?: CourseProgressEntry[]
+}
+
+export type MissingRequirementEntry = {
+  requirementId?: string
+  requirementGroupId: string
+  title?: string
+  requirementType?: string
+  isMandatory?: boolean
+  status: string
+  creditsCompleted: number
+  creditsRequired: number
+  creditsRemaining: number
+  remainingCourseCount?: number
+  eligibilityEnforcement?: string
+}
+
+export type IneligibleCreditEntry = {
+  courseId: string
+  courseNumber?: string
+  creditsEarned: number
+  reason?: string
+  linkedPoolGroupId?: string
+  bucketSuffix?: string
+}
+
 export type GraduationProgress = {
   degreeId: string
   degreeCode?: string
   degreeName?: string
+  catalogYear?: number
+  catalogVersion?: string
   completedCredits: number
   totalRequiredCredits: number
   creditsRemaining: number
   completionPercentage: number
+  completedMandatoryCourses?: CourseProgressEntry[]
+  remainingMandatoryCourses?: CourseProgressEntry[]
+  completedElectiveCredits?: number
+  remainingElectiveCredits?: number
+  requirementProgress?: RequirementProgressEntry[]
+  missingRequirements?: MissingRequirementEntry[]
+  ineligibleCredits?: IneligibleCreditEntry[]
+  assumptions?: string[]
   statusSummary: string
-  requirementProgress?: Array<{
-    requirementGroupId: string
-    title?: string
-    completedCredits: number
-    requiredCredits: number
-    status: string
+}
+
+export type CurriculumCreditsDisplay = {
+  display: string
+  value: number | null
+  uncertain: boolean
+  range?: { min: number; max: number } | null
+}
+
+export type CurriculumDataQuality = {
+  manualReviewRequired: boolean
+  confidence: string
+  hasAlternatives: boolean
+  creditsUncertain: boolean
+  verifyWithRegistrar: boolean
+  sourceNotes?: string[]
+}
+
+export type CurriculumGraphNode = {
+  nodeId: string
+  courseNumber: string
+  title?: string
+  semester: number
+  credits: CurriculumCreditsDisplay
+  alternatives: string[]
+  dataQuality: CurriculumDataQuality
+  prerequisiteNumbers: string[]
+  status:
+    | 'completed'
+    | 'failed'
+    | 'in_progress'
+    | 'available'
+    | 'blocked'
+    | 'verify_with_registrar'
+  missingPrerequisites: string[]
+  isBottleneck: boolean
+}
+
+export type CurriculumGraphEdge = {
+  from: string
+  to: string
+  kind: 'prerequisite' | 'corequisite' | 'external_prerequisite'
+  requirementType?: 'hard' | 'catalog_text' | 'external' | 'corequisite'
+  highlight?: string
+}
+
+export type CurriculumGraph = {
+  trackSlug: string
+  programCode: string
+  catalogYear: number
+  catalogVersion: string
+  viewDefault: 'semester_swimlanes' | 'mind_map'
+  semesterLanes: Array<{
+    semester: number
+    title: string
+    nodeIds: string[]
+    collapsedByDefault: boolean
+    advisoryOnly?: boolean
   }>
+  nodes: CurriculumGraphNode[]
+  edges: CurriculumGraphEdge[]
+  electiveBuckets?: Array<Record<string, unknown>>
+  advisories?: Array<{ code: string; severity: string; message: string }>
+  bottlenecks: Array<{ courseNumber: string; blockedBy: string[]; reason: string }>
+  transcriptSummary?: {
+    completedCount: number
+    failedCount: number
+    inProgressCount: number
+  }
 }
 
 export type CourseOffering = {
