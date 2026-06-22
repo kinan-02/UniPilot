@@ -6,6 +6,17 @@ from __future__ import annotations
 GRADUATION_LINKED_POOL_TO_CREDIT_BUCKET: dict[str, str] = {
     "009216-1-000:elective-ds-pool": "009216-1-000:elective-ds",
     "009216-1-000:elective-faculty-pool": "009216-1-000:elective-faculty",
+    "009009-1-000:ie-statistics-elective-chain": "009009-1-000:elective-faculty",
+    "009009-1-000:ie-behavior-science-chain": "009009-1-000:elective-faculty",
+    "009009-1-000:ie-focus-chain-game-theory": "009009-1-000:elective-faculty",
+    "009009-1-000:ie-focus-chain-advanced-industry": "009009-1-000:elective-faculty",
+    "009009-1-000:ie-focus-chain-operations-research": "009009-1-000:elective-faculty",
+    "009009-1-000:ie-additional-faculty-electives": "009009-1-000:elective-faculty",
+    "009118-1-000:is-behavior-science-chain": "009118-1-000:elective-faculty",
+    "009118-1-000:is-focus-chain-performance": "009118-1-000:elective-faculty",
+    "009118-1-000:is-focus-chain-ml": "009118-1-000:elective-faculty",
+    "009118-1-000:is-focus-chain-game-theory": "009118-1-000:elective-faculty",
+    "009118-1-000:is-additional-faculty-electives": "009118-1-000:elective-faculty",
 }
 
 

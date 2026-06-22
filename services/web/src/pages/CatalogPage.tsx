@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { catalogApi } from '../api/endpoints'
@@ -15,11 +16,18 @@ const PAGE_SIZE = 30
 
 export function CatalogPage() {
   const { t, locale } = useTranslation()
-  const [query, setQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [faculty, setFaculty] = useState('')
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState<CourseSummary | null>(null)
   const debouncedQuery = useDebouncedValue(query.trim(), 350)
+
+  useEffect(() => {
+    const nextQuery = searchParams.get('q') ?? ''
+    setQuery((current) => (current === nextQuery ? current : nextQuery))
+    setOffset(0)
+  }, [searchParams])
 
   const coursesQuery = useQuery({
     queryKey: ['catalog-courses', debouncedQuery, faculty, offset],

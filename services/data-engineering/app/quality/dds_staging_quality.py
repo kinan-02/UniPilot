@@ -26,6 +26,7 @@ from app.models.quality_report import (
 )
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
 from app.paths import service_root
+from app.vault.elective_chain_contract import validate_staging_requirement_group
 
 DDS_CATALOG_SOURCE = "technion-dds-catalog"
 QUALITY_SOURCE_NAME = "technion-dds-staging-quality"
@@ -561,19 +562,31 @@ def build_dds_staging_quality_report(
         treats_as_mandatory = document.get("treatsCoursesAsMandatory") is True
         if is_chain and treats_as_mandatory:
             chain_violations.append(group_id)
-        if (
-            not is_track_pool
-            and (is_chain or rule.get("operator") == "choose_n")
-            and group.get("courseReferences")
-        ):
-            if treats_as_mandatory or rule.get("operator") == "choose_n":
-                chain_violations.append(f"{group_id}:flattened_courses")
+        if not is_track_pool and group.get("courseReferences") and treats_as_mandatory:
+            chain_violations.append(f"{group_id}:flattened_courses")
     non_executable_catalog_rules = sum(1 for rule in rules if not rule.get("ruleIsExecutable"))
     executable_count += sum(1 for rule in rules if rule.get("ruleIsExecutable"))
     non_executable_count = len(non_executable_requirement_groups) + non_executable_catalog_rules
     for rule in rules:
         if rule.get("treatsCoursesAsMandatory"):
             chain_violations.append(rule.get("requirementGroupId", rule.get("stagingKey", "")))
+
+    contract_violations: list[str] = []
+    for document in requirements:
+        contract_violations.extend(validate_staging_requirement_group(document))
+    chain_violations.extend(contract_violations)
+
+    checks.append(
+        QualityCheckResult(
+            checkId="elective_chain.contract",
+            passed=not contract_violations,
+            severity="production-blocker" if contract_violations else "info",
+            message="Elective chain pools satisfy shared explorer contract."
+            if not contract_violations
+            else f"{len(contract_violations)} elective chain contract violation(s).",
+            details={"violations": contract_violations[:20]},
+        )
+    )
 
     checks.append(
         QualityCheckResult(

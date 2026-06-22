@@ -5,11 +5,14 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY app ./app
+COPY tests ./tests
+COPY pytest.ini ./
 COPY data/curated ./data/curated
+COPY data/contracts ./data/contracts
 
 RUN mkdir -p data/reports/technion \
     && addgroup --system appgroup \

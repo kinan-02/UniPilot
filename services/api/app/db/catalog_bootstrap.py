@@ -24,11 +24,11 @@ ALL_PROGRAMS = (
 )
 
 TOTAL_HARD_REQUIREMENTS = 16
-TOTAL_ADVISORY_RULES = 35
+TOTAL_ADVISORY_RULES = 36
 
 ADVISORY_COUNTS_BY_PROGRAM: dict[str, int] = {
     "009216-1-000": 11,
-    "009009-1-000": 12,
+    "009009-1-000": 13,
     "009118-1-000": 12,
 }
 
@@ -100,7 +100,9 @@ IEM_ADVISORY_GROUP_IDS = (
     "009009-1-000:semester-8-matrix",
     "009009-1-000:ie-statistics-elective-chain",
     "009009-1-000:ie-behavior-science-chain",
-    "009009-1-000:ie-focus-chain",
+    "009009-1-000:ie-focus-chain-game-theory",
+    "009009-1-000:ie-focus-chain-advanced-industry",
+    "009009-1-000:ie-focus-chain-operations-research",
     "009009-1-000:ie-additional-faculty-electives",
 )
 

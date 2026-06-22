@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProgressPage } from './ProgressPage'
@@ -8,7 +9,7 @@ import { ApiError } from '../lib/api'
 import { I18nProvider } from '../i18n'
 
 vi.mock('../api/endpoints', () => ({
-  progressApi: { get: vi.fn() },
+  progressApi: { get: vi.fn(), curriculumGraph: vi.fn() },
 }))
 
 function renderProgress(locale: 'en' | 'he' = 'en') {
@@ -90,14 +91,68 @@ describe('ProgressPage', () => {
     vi.mocked(endpoints.progressApi.get).mockResolvedValue({
       graduationProgress: baseProgress,
     })
+    vi.mocked(endpoints.progressApi.curriculumGraph).mockResolvedValue({
+      curriculumGraph: {
+        trackSlug: 'track-industrial-engineering-management',
+        programCode: '006',
+        catalogYear: 2025,
+        catalogVersion: '2025-2026',
+        viewDefault: 'semester_swimlanes',
+        semesterLanes: [],
+        nodes: [],
+        edges: [],
+        bottlenecks: [],
+        electiveBuckets: [],
+      },
+    })
     renderProgress()
     expect(
       await screen.findByRole('heading', { name: /graduation progress|התקדמות לתואר/i }),
     ).toBeInTheDocument()
-    expect(screen.getAllByText('Data Science electives').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Data science electives').length).toBeGreaterThan(0)
     expect(screen.getAllByText(/3\.5\s*\/\s*6/).length).toBeGreaterThan(0)
     expect(screen.getByText('00940345')).toBeInTheDocument()
     expect(screen.getByText(/still needed|עדיין חסר/i)).toBeInTheDocument()
+  })
+
+  it('expands elective pool inline from bucket row', async () => {
+    const user = userEvent.setup()
+    vi.mocked(endpoints.progressApi.get).mockResolvedValue({
+      graduationProgress: baseProgress,
+    })
+    vi.mocked(endpoints.progressApi.curriculumGraph).mockResolvedValue({
+      curriculumGraph: {
+        trackSlug: 'track-data-information-engineering',
+        programCode: '006',
+        catalogYear: 2025,
+        catalogVersion: '2025-2026',
+        viewDefault: 'semester_swimlanes',
+        semesterLanes: [],
+        nodes: [],
+        edges: [],
+        bottlenecks: [],
+        electiveBuckets: [
+          {
+            groupId: '006:elective-ds-pool',
+            title: 'DS elective pool',
+            linkedCreditBucketId: '006:elective-ds',
+            rule: { type: 'course_pool', operator: 'choose_credits' },
+            courses: [
+              { courseNumber: '00940345', title: 'Sample course', credits: 3.5 },
+            ],
+            courseCount: 1,
+            explorerReady: true,
+          },
+        ],
+      },
+    })
+    renderProgress('he')
+    const exploreButton = await screen.findByTestId('explore-pool-006:elective-ds-006:elective-ds-pool')
+    await user.click(exploreButton)
+    const detail = await screen.findByTestId('elective-pool-detail-006:elective-ds-pool')
+    expect(detail).toBeInTheDocument()
+    expect(screen.getByText('בריכת בחירה במדעי הנתונים')).toBeInTheDocument()
+    expect(detail).toHaveTextContent('00940345')
   })
 
   it('shows transcript hint when progress has not started', async () => {

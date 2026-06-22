@@ -226,14 +226,6 @@ def validate_catalog_structure(document: ReviewedCuratedCatalogDocument) -> None
                     f"{program.programCode}: requirement group missing groupId.",
                 )
             rule_expression = group.ruleExpression
-            if (
-                rule_expression.get("type") == "course_pool"
-                and rule_expression.get("operator") == "choose_n"
-                and group.courseReferences
-            ):
-                raise CatalogStagingImportError(
-                    f"{group.groupId}: choose-N chain rule must not flatten mandatory courses.",
-                )
             for ref in group.courseReferences:
                 if not COURSE_NUMBER_PATTERN.fullmatch(ref.courseNumber):
                     raise CatalogStagingImportError(
@@ -448,6 +440,32 @@ def _upsert_documents(
     return len(documents)
 
 
+def _remove_stale_dds_staging_records(
+    database: Database,
+    *,
+    settings: Settings,
+    catalog_version: str,
+    active_staging_keys: set[str],
+) -> int:
+    """Drop superseded DDS catalog staging rows (e.g. renamed requirement groups)."""
+    prefix = f"technion-dds:catalog:{catalog_version}:"
+    removed = 0
+    for collection_name in (
+        settings.staging_degree_requirements_collection,
+        settings.staging_catalog_rules_collection,
+    ):
+        collection = database[collection_name]
+        stale_keys = [
+            str(document.get("stagingKey"))
+            for document in collection.find({"stagingKey": {"$regex": f"^{prefix}"}}, {"stagingKey": 1})
+            if document.get("stagingKey") not in active_staging_keys
+        ]
+        if stale_keys:
+            result = collection.delete_many({"stagingKey": {"$in": stale_keys}})
+            removed += int(result.deleted_count)
+    return removed
+
+
 def import_dds_catalog_to_staging(
     database: Database | None,
     *,
@@ -515,6 +533,21 @@ def import_dds_catalog_to_staging(
         settings.staging_catalog_rules_collection,
         plan.rule_documents,
     )
+
+    active_staging_keys = {
+        str(document["stagingKey"])
+        for document in (
+            plan.program_documents + plan.requirement_documents + plan.rule_documents
+        )
+    }
+    stale_removed = _remove_stale_dds_staging_records(
+        database,
+        settings=settings,
+        catalog_version=document.source.catalogVersion,
+        active_staging_keys=active_staging_keys,
+    )
+    if stale_removed:
+        logger.info("dds_catalog_staging_removed_stale_records count=%s", stale_removed)
 
     run = run.model_copy(
         update={

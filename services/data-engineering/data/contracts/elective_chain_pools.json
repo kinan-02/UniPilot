@@ -1,0 +1,94 @@
+{
+  "version": 2,
+  "institutionId": "technion",
+  "description": "Per-faculty elective chain pool invariants for vault export, staging quality, and /progress UI.",
+  "faculties": {
+    "dds": {
+      "deprecatedPoolSuffixes": ["ie-focus-chain"],
+      "pools": [
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-statistics-elective-chain",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-behavior-science-chain",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-game-theory",
+          "operator": "choose_chain",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-advanced-industry",
+          "operator": "choose_chain",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-operations-research",
+          "operator": "choose_chain",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009118-1-000",
+          "trackSlug": "track-information-systems-engineering",
+          "suffix": "is-behavior-science-chain",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009118-1-000",
+          "trackSlug": "track-information-systems-engineering",
+          "suffix": "is-focus-chain-performance",
+          "operator": "choose_chain",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009118-1-000",
+          "trackSlug": "track-information-systems-engineering",
+          "suffix": "is-focus-chain-ml",
+          "operator": "choose_chain",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 25,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["0970209", "0970215"]
+        },
+        {
+          "programCode": "009118-1-000",
+          "trackSlug": "track-information-systems-engineering",
+          "suffix": "is-focus-chain-game-theory",
+          "operator": "choose_chain",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        }
+      ]
+    }
+  }
+}

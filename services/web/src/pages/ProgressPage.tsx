@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BookOpen } from 'lucide-react'
 import { progressApi } from '../api/endpoints'
@@ -10,14 +11,25 @@ import {
   RequirementBucketRow,
 } from '../components/progress/ProgressSections'
 import { CurriculumGraphSection } from '../components/progress/CurriculumGraphSection'
+import { ElectivePoolsPanel } from '../components/progress/ElectivePoolsPanel'
+import { ElectivePoolsPanelSkeleton } from '../components/progress/ElectivePoolsPanelSkeleton'
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
+import {
+  buildRequiredCurriculumCourseNumbers,
+  buildTranscriptCourseNumbers,
+  findPoolsForBucket,
+  localizedBucketTitle,
+} from '../lib/electivePools'
 import {
   partitionRequirementBuckets,
   progressCatalogSubtitle,
   statusBadgeTone,
 } from '../lib/graduationProgress'
 import { formatCredits, formatPercent } from '../lib/utils'
+import type { ElectiveBucket, RequirementProgressEntry } from '../types/api'
+
+const CURRICULUM_GRAPH_STALE_MS = 5 * 60 * 1000
 
 function StatTile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -33,6 +45,7 @@ function StatTile({ label, value, hint }: { label: string; value: string; hint?:
 
 export function ProgressPage() {
   const { t } = useTranslation()
+  const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null)
   const progressQuery = useQuery({
     queryKey: ['progress'],
     queryFn: progressApi.get,
@@ -42,7 +55,53 @@ export function ProgressPage() {
     queryKey: ['curriculum-graph'],
     queryFn: progressApi.curriculumGraph,
     retry: false,
+    staleTime: CURRICULUM_GRAPH_STALE_MS,
   })
+  const electivePools = curriculumQuery.data?.curriculumGraph?.electiveBuckets ?? []
+  const requirementProgress = progressQuery.data?.graduationProgress?.requirementProgress ?? []
+  const transcriptNumbers = useMemo(
+    () => buildTranscriptCourseNumbers(requirementProgress),
+    [requirementProgress],
+  )
+  const requiredCurriculumNumbers = useMemo(
+    () =>
+      buildRequiredCurriculumCourseNumbers(requirementProgress, {
+        curriculumGraph: curriculumQuery.data?.curriculumGraph,
+        remainingMandatory: progressQuery.data?.graduationProgress?.remainingMandatoryCourses,
+      }),
+    [
+      curriculumQuery.data?.curriculumGraph,
+      progressQuery.data?.graduationProgress?.remainingMandatoryCourses,
+      requirementProgress,
+    ],
+  )
+  const poolsByBucketId = useMemo(() => {
+    if (!requirementProgress.length) return new Map<string, ElectiveBucket[]>()
+    const entries = new Map<string, ElectiveBucket[]>()
+    for (const bucket of requirementProgress) {
+      const pools = findPoolsForBucket(bucket, electivePools)
+      if (pools.length) entries.set(bucket.requirementGroupId, pools)
+    }
+    return entries
+  }, [requirementProgress, electivePools])
+
+  const handleExplorePool = useCallback(
+    (_selectedBucket: RequirementProgressEntry, pool: ElectiveBucket) => {
+      setExpandedPoolId(pool.groupId)
+      requestAnimationFrame(() => {
+        const panel = document.getElementById('elective-pools-panel')
+        panel?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+      })
+    },
+    [],
+  )
+
+  const handleExpandedPoolChange = useCallback(
+    (_bucket: RequirementProgressEntry, pool: ElectiveBucket | null) => {
+      setExpandedPoolId(pool?.groupId ?? null)
+    },
+    [],
+  )
 
   if (progressQuery.isLoading) {
     return (
@@ -116,6 +175,26 @@ export function ProgressPage() {
 
       {curriculumQuery.data?.curriculumGraph ? (
         <CurriculumGraphSection graph={curriculumQuery.data.curriculumGraph} t={t} />
+      ) : null}
+
+      {curriculumQuery.isLoading && !curriculumQuery.data ? (
+        <ElectivePoolsPanelSkeleton />
+      ) : electivePools.length ? (
+        <ElectivePoolsPanel
+          pools={electivePools}
+          requirementBuckets={requirementProgress}
+          requiredCurriculumNumbers={requiredCurriculumNumbers}
+          transcriptNumbers={transcriptNumbers}
+          expandedPoolId={expandedPoolId}
+          t={t}
+          onExpandedPoolChange={handleExpandedPoolChange}
+        />
+      ) : curriculumQuery.isError ? (
+        <Card className="border-dashed">
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {t('progress.electiveExplorer.loadFailed')}
+          </p>
+        </Card>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -203,7 +282,12 @@ export function ProgressPage() {
                 key={item.requirementGroupId}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm"
               >
-                <span>{item.title ?? item.requirementGroupId}</span>
+                <span>
+                  {localizedBucketTitle(
+                    { requirementGroupId: item.requirementGroupId, title: item.title },
+                    t,
+                  )}
+                </span>
                 <span className="text-[var(--color-text-muted)]">
                   {formatCredits(item.creditsCompleted)} / {formatCredits(item.creditsRequired)}
                 </span>
@@ -225,27 +309,43 @@ export function ProgressPage() {
         </Card>
       ) : null}
 
-      {mandatory.length || elective.length ? (
-        <div className="grid gap-6 xl:grid-cols-2">
-          {mandatory.length ? (
-            <Card>
-              <h2 className="mb-4 text-sm font-semibold">{t('progress.mandatoryBuckets')}</h2>
-              <div className="space-y-3">
-                {mandatory.map((bucket) => (
-                  <RequirementBucketRow key={bucket.requirementGroupId} bucket={bucket} t={t} />
-                ))}
-              </div>
-            </Card>
-          ) : null}
-          {elective.length ? (
-            <Card>
-              <h2 className="mb-4 text-sm font-semibold">{t('progress.electiveBuckets')}</h2>
-              <div className="space-y-3">
-                {elective.map((bucket) => (
-                  <RequirementBucketRow key={bucket.requirementGroupId} bucket={bucket} t={t} />
-                ))}
-              </div>
-            </Card>
+      {mandatory.length || elective.length || electivePools.length ? (
+        <div className="space-y-6">
+          {mandatory.length || elective.length ? (
+            <div className="grid gap-6 xl:grid-cols-2">
+              {mandatory.length ? (
+                <Card>
+                  <h2 className="mb-4 text-sm font-semibold">{t('progress.mandatoryBuckets')}</h2>
+                  <div className="space-y-3">
+                    {mandatory.map((bucket) => (
+                      <RequirementBucketRow
+                        key={bucket.requirementGroupId}
+                        bucket={bucket}
+                        t={t}
+                        linkedPools={poolsByBucketId.get(bucket.requirementGroupId) ?? []}
+                        onExplorePool={handleExplorePool}
+                      />
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+              {elective.length ? (
+                <Card>
+                  <h2 className="mb-4 text-sm font-semibold">{t('progress.electiveBuckets')}</h2>
+                  <div className="space-y-3">
+                    {elective.map((bucket) => (
+                      <RequirementBucketRow
+                        key={bucket.requirementGroupId}
+                        bucket={bucket}
+                        t={t}
+                        linkedPools={poolsByBucketId.get(bucket.requirementGroupId) ?? []}
+                        onExplorePool={handleExplorePool}
+                      />
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : (

@@ -14,6 +14,12 @@ class CuratedCatalogSource(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     institutionId: str = Field(min_length=1, max_length=100)
+    facultyId: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description="Technion faculty slug (e.g. dds) when export is faculty-scoped.",
+    )
     sourceType: str = Field(min_length=1, max_length=100)
     catalogYear: int = Field(ge=1990, le=2100)
     catalogVersion: str = Field(min_length=1, max_length=50)
@@ -58,6 +64,7 @@ class CatalogRequirementGroup(BaseModel):
     pageNumbers: list[int] = Field(default_factory=list)
     wikiSourceRefs: list[dict[str, str]] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    catalogDescription: str | None = None
     manualReviewRequired: bool = True
     confidence: ConfidenceLevel = "low"
 

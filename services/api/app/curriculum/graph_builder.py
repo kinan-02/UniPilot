@@ -11,6 +11,7 @@ from app.curriculum.data_quality import (
     parse_credits_range,
 )
 from app.curriculum.rule_dsl import parse_rule_expression, summarize_elective_bucket
+from app.services.graduation_requirement_links import credit_bucket_id_for_pool
 from app.planning.academic_risk_analyzer import normalize_course_id
 from app.planning.prerequisite_resolver import (
     canonical_course_number,
@@ -235,7 +236,15 @@ def build_base_curriculum_graph(
             )
 
     elective_buckets = [
-        summarize_elective_bucket(pool_doc)
+        summarize_elective_bucket(
+            pool_doc,
+            program_code=program_code,
+            courses_by_number=courses_by_number,
+            linked_credit_bucket_id=credit_bucket_id_for_pool(
+                program_code=program_code,
+                pool_document=pool_doc,
+            ),
+        )
         for pool_doc in pool_documents
         if (pool_doc.get("ruleExpression") or {}).get("type") != "semester_matrix"
     ]

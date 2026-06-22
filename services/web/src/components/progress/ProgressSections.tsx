@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom'
+import { ChevronRight, Layers } from 'lucide-react'
 import { AlertTriangle, BookOpen, ClipboardList } from 'lucide-react'
 import { Badge, Card } from '../ui/Card'
+import { Button } from '../ui/Button'
 import { bucketCompletionPercent, statusBadgeTone } from '../../lib/graduationProgress'
+import { localizedBucketTitle, localizedPoolTitle } from '../../lib/electivePools'
 import { formatCredits } from '../../lib/utils'
-import type { CourseProgressEntry, RequirementProgressEntry } from '../../types/api'
+import type { CourseProgressEntry, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 import type { useTranslation } from '../../i18n'
 
 type TFn = ReturnType<typeof useTranslation>['t']
@@ -11,9 +14,13 @@ type TFn = ReturnType<typeof useTranslation>['t']
 export function RequirementBucketRow({
   bucket,
   t,
+  linkedPools = [],
+  onExplorePool,
 }: {
   bucket: RequirementProgressEntry
   t: TFn
+  linkedPools?: ElectiveBucket[]
+  onExplorePool?: (bucket: RequirementProgressEntry, pool: ElectiveBucket) => void
 }) {
   const percent = bucketCompletionPercent(bucket.creditsCompleted, bucket.minCredits)
   const statusKey = `progress.bucketStatus.${bucket.status}` as const
@@ -25,7 +32,7 @@ export function RequirementBucketRow({
     <div className="rounded-xl border border-[var(--color-border)] bg-white/70 px-4 py-3">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium">{bucket.title ?? bucket.requirementGroupId}</p>
+          <p className="text-sm font-medium">{localizedBucketTitle(bucket, t)}</p>
           <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
             {bucket.eligibilityEnforcement === 'strict_pool'
               ? t('progress.strictPool')
@@ -45,6 +52,41 @@ export function RequirementBucketRow({
           style={{ width: `${percent}%` }}
         />
       </div>
+      {linkedPools.length && onExplorePool ? (
+        <div className="mt-3 rounded-lg border border-dashed border-[var(--color-primary)]/20 bg-[var(--color-surface-muted)]/50 px-3 py-2.5">
+          <p className="mb-2 text-xs font-medium text-[var(--color-text-muted)]">
+            {linkedPools.length === 1
+              ? t('progress.electiveExplorer.linkedPoolSingular')
+              : t('progress.electiveExplorer.linkedPoolPlural')}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {linkedPools.map((pool) => (
+              <Button
+                key={pool.groupId}
+                type="button"
+                variant="secondary"
+                size="sm"
+                data-testid={`explore-pool-${bucket.requirementGroupId}-${pool.groupId}`}
+                onClick={() => onExplorePool(bucket, pool)}
+                className="max-w-full border-[var(--color-primary)]/15 bg-white hover:border-[var(--color-primary)]/35"
+              >
+                <Layers className="h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
+                <span className="truncate">
+                  {linkedPools.length > 1
+                    ? localizedPoolTitle(pool, t)
+                    : t('progress.electiveExplorer.open')}
+                </span>
+                {(pool.courseCount ?? pool.courses.length) > 0 ? (
+                  <span className="rounded-full bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-text-muted)]">
+                    {pool.courseCount ?? pool.courses.length}
+                  </span>
+                ) : null}
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" />
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {bucket.completedCourses?.length ? (
         <div className="mt-3">
           <p className="mb-1.5 text-xs font-medium text-[var(--color-text-muted)]">

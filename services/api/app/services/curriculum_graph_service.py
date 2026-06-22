@@ -8,6 +8,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.curriculum.graph_builder import build_base_curriculum_graph
 from app.curriculum.graph_overlay import enrich_completed_records, overlay_transcript_on_graph
+from app.curriculum.pool_course_enrichment import (
+    EXPLORER_PREFIX_QUERY_LIMIT,
+    enrich_pool_documents_for_explorer,
+    map_prefix_catalog_courses_to_pools,
+    pools_needing_prefix_enrichment,
+)
 from app.curriculum.track_registry import (
     program_code_for_track_slug,
     resolve_track_slug_from_program,
@@ -24,13 +30,25 @@ def curriculum_graph_cache_key(
     program_code: str,
     catalog_version: str,
 ) -> str:
-    return f"curriculum-graph:base:v3:{program_code}:{catalog_version}"
+    return f"curriculum-graph:base:v9:{program_code}:{catalog_version}"
 
 
 def _matrix_course_numbers(semester_matrix_documents: list[dict[str, Any]]) -> list[str]:
     numbers: list[str] = []
     seen: set[str] = set()
     for document in semester_matrix_documents:
+        for reference in document.get("courseReferences") or []:
+            number = reference.get("courseNumber")
+            if number and number not in seen:
+                seen.add(number)
+                numbers.append(number)
+    return numbers
+
+
+def _pool_course_numbers(pool_documents: list[dict[str, Any]]) -> list[str]:
+    numbers: list[str] = []
+    seen: set[str] = set()
+    for document in pool_documents:
         for reference in document.get("courseReferences") or []:
             number = reference.get("courseNumber")
             if number and number not in seen:
@@ -67,11 +85,56 @@ async def _load_base_graph(
     if not semester_matrix_documents:
         return None
 
-    course_numbers = _matrix_course_numbers(semester_matrix_documents)
+    pool_prefixes = pools_needing_prefix_enrichment(
+        pool_documents,
+        program_code=program_code,
+    )
+    prefix_catalog_courses: list[dict[str, Any]] = []
+    courses_truncated = False
+    if pool_prefixes:
+        unique_prefixes = sorted(
+            {
+                prefix
+                for prefixes in pool_prefixes.values()
+                for prefix in prefixes
+            }
+        )
+        prefix_catalog_courses = await catalog_repository.list_courses_by_number_prefixes(
+            database,
+            unique_prefixes,
+            limit=EXPLORER_PREFIX_QUERY_LIMIT,
+        )
+        courses_truncated = len(prefix_catalog_courses) >= EXPLORER_PREFIX_QUERY_LIMIT
+
+    prefix_courses_by_pool = map_prefix_catalog_courses_to_pools(
+        pool_prefixes=pool_prefixes,
+        catalog_courses=prefix_catalog_courses,
+    )
+    enriched_pool_documents = enrich_pool_documents_for_explorer(
+        pool_documents,
+        program_code=program_code,
+        prefix_courses_by_pool=prefix_courses_by_pool,
+        courses_truncated=courses_truncated,
+    )
+
+    course_numbers = list(
+        dict.fromkeys(
+            _matrix_course_numbers(semester_matrix_documents)
+            + _pool_course_numbers(enriched_pool_documents)
+        )
+    )
     catalog_courses = await catalog_repository.find_courses_by_numbers(
         database,
         course_numbers,
     )
+    catalog_courses_by_number = {
+        str(course.get("courseNumber")): course for course in catalog_courses
+    }
+    for course in prefix_catalog_courses:
+        number = str(course.get("courseNumber") or "")
+        if number and number not in catalog_courses_by_number:
+            catalog_courses.append(course)
+            catalog_courses_by_number[number] = course
 
     base_graph = build_base_curriculum_graph(
         track_slug=track_slug,
@@ -79,7 +142,7 @@ async def _load_base_graph(
         catalog_year=catalog_year,
         catalog_version=catalog_version,
         semester_matrix_documents=semester_matrix_documents,
-        pool_documents=pool_documents,
+        pool_documents=enriched_pool_documents,
         catalog_courses=catalog_courses,
     )
     await set_cached_json(cache_key, base_graph)

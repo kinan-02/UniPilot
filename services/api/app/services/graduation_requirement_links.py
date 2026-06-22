@@ -4,8 +4,24 @@ from __future__ import annotations
 
 from typing import Any
 
+# Pool suffix → credit-bucket suffix for explorer / progress linking.
+EXPLORER_POOL_CREDIT_BUCKET_SUFFIX: dict[str, str] = {
+    "elective-ds-pool": "elective-ds",
+    "elective-faculty-pool": "elective-faculty",
+    "ie-statistics-elective-chain": "elective-faculty",
+    "ie-behavior-science-chain": "elective-faculty",
+    "ie-focus-chain-game-theory": "elective-faculty",
+    "ie-focus-chain-advanced-industry": "elective-faculty",
+    "ie-focus-chain-operations-research": "elective-faculty",
+    "ie-additional-faculty-electives": "elective-faculty",
+    "is-behavior-science-chain": "elective-faculty",
+    "is-focus-chain-performance": "elective-faculty",
+    "is-focus-chain-ml": "elective-faculty",
+    "is-focus-chain-game-theory": "elective-faculty",
+    "is-additional-faculty-electives": "elective-faculty",
+}
+
 # Maps credit-bucket suffix (after programCode) to course_pool group suffix.
-# Phase 15.0 fallback when linkedCreditBucketId is absent on promoted pool docs.
 ENFORCED_BUCKET_POOL_SUFFIXES: dict[str, str] = {
     "elective-ds": "elective-ds-pool",
     "elective-faculty": "elective-faculty-pool",
@@ -53,6 +69,33 @@ def index_pools_by_linked_bucket(
         if linked_bucket_id:
             indexed[str(linked_bucket_id)] = document
     return indexed
+
+
+def credit_bucket_id_for_pool(
+    *,
+    program_code: str,
+    pool_document: dict[str, Any],
+) -> str | None:
+    """Map a course_pool document to its linked credit-bucket requirementGroupId."""
+    explicit = pool_document.get("linkedCreditBucketId")
+    if explicit:
+        return str(explicit)
+
+    group_id = str(pool_document.get("requirementGroupId") or "")
+    prefix = f"{program_code}:"
+    if not group_id.startswith(prefix):
+        return None
+
+    suffix = group_id[len(prefix) :]
+    explorer_bucket_suffix = EXPLORER_POOL_CREDIT_BUCKET_SUFFIX.get(suffix)
+    if explorer_bucket_suffix:
+        return bucket_group_id(program_code, explorer_bucket_suffix)
+
+    if suffix.endswith("-pool"):
+        bucket_suffix = suffix[: -len("-pool")]
+        if bucket_suffix in ENFORCED_BUCKET_POOL_SUFFIXES:
+            return bucket_group_id(program_code, bucket_suffix)
+    return None
 
 
 def resolve_pool_for_bucket(

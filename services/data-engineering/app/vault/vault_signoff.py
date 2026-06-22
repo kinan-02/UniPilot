@@ -253,7 +253,49 @@ def apply_vault_signoff_to_catalog(
     if limitation not in known:
         known.append(limitation)
 
+    finalize_export_quality_metadata(document)
+
     return vault_signoff
+
+
+def finalize_export_quality_metadata(document: dict[str, Any]) -> None:
+    """Recompute curation warnings from the post-signoff document (titles enriched)."""
+    from app.vault.export_dds_catalog import count_export_stats
+
+    vault = document.get("curationReport", {}).get("vaultSignoff", {})
+    signed_groups = set(vault.get("signedOffNonExecutableRuleGroupIds") or [])
+
+    for program in document.get("programs", []):
+        for group in program.get("requirementGroups", []):
+            if group.get("groupId") in signed_groups:
+                group["manualReviewRequired"] = False
+            for ref in group.get("courseReferences", []):
+                if ref.get("titleHint"):
+                    ref["manualReviewRequired"] = False
+
+    counts = count_export_stats(document)
+    preserved: list[str] = []
+    for item in document.get("curationMetadata", {}).get("unresolvedIssues") or []:
+        if "titleHint" in item:
+            continue
+        preserved.append(item)
+
+    unresolved = list(preserved)
+    if counts["missingTitleHints"]:
+        unresolved.append(f"{counts['missingTitleHints']} course references lack titleHint.")
+
+    curation = document.setdefault("curationMetadata", {})
+    curation["unresolvedIssues"] = unresolved
+    curation["countsAfter"] = counts
+
+    report = document.setdefault("curationReport", {})
+    chain_warnings = [
+        item for item in report.get("warnings") or [] if "titleHint" not in item
+    ]
+    report["warnings"] = [*chain_warnings, *unresolved]
+
+    signoff = document.setdefault("signoffReview", {})
+    signoff["unresolvedItems"] = unresolved
 
 
 def build_readiness_after_vault_signoff(document: dict[str, Any]) -> dict[str, Any]:

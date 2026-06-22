@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.models.catalog import ReviewedCuratedCatalogDocument
+from app.models.catalog import CatalogCourseReference, ReviewedCuratedCatalogDocument
 from app.models.staging_catalog import Phase8ReadinessCheck
 from app.paths import (
     catalog_vault_root,
@@ -75,6 +75,35 @@ SEMESTER_HEADING_PATTERN = re.compile(
     re.MULTILINE | re.IGNORECASE,
 )
 COURSE_NUMBER_INLINE_PATTERN = re.compile(r"(?<!\d)(0\d{6,8}|\d{7,8})(?!\d)")
+
+# DNE electives marked * in the vault wiki (data-intensive project courses).
+DNE_STARRED_COURSE_NUMBERS: tuple[str, ...] = (
+    "0960222",
+    "0960231",
+    "0960235",
+    "0960262",
+    "0960324",
+    "0960693",
+    "0970135",
+    "0970200",
+    "0970215",
+    "0970216",
+    "0970222",
+    "0970247",
+    "0970248",
+    "0970272",
+    "0970400",
+)
+
+IS_BEHAVIOR_SCIENCE_CATALOG_DESCRIPTION = (
+    "Group 1 — Behavioral sciences: choose at least one of the two listed courses."
+)
+IE_STATISTICS_CATALOG_DESCRIPTION = (
+    "Group 1 — Statistics: choose at least one course from the statistics elective list."
+)
+IE_BEHAVIOR_SCIENCE_CATALOG_DESCRIPTION = (
+    "Group 2 — Behavioral sciences: choose at least one course from the listed options."
+)
 
 
 def _utc_now_iso() -> str:
@@ -143,6 +172,13 @@ def _table_course_rows(table: MarkdownTable) -> list[dict[str, str | None]]:
     return rows
 
 
+def _to_catalog_course_reference(ref: dict[str, Any]) -> dict[str, Any]:
+    """Keep only fields allowed by CatalogCourseReference (Pydantic export schema)."""
+    allowed = CatalogCourseReference.model_fields.keys()
+    payload = {key: ref[key] for key in allowed if key in ref}
+    return CatalogCourseReference.model_validate(payload).model_dump(mode="json")
+
+
 def build_course_reference(
     code: str,
     *,
@@ -184,8 +220,6 @@ def build_course_reference(
         "courseNumber": course_number,
         "titleHint": title_hint,
         "creditsHint": credits_hint,
-        "creditsHintRaw": credits_hint_raw,
-        "creditsRange": credits_range,
         "facultyHint": None,
         "semestersOffered": [],
         "prerequisitesText": None,
@@ -195,14 +229,21 @@ def build_course_reference(
         "pageNumbers": [],
         "sourceEvidence": evidence,
         "notes": note_list,
-        "alternatives": alternatives,
         "manualReviewRequired": bool(alternatives or credits_range),
         "confidence": "medium" if title_hint else "low",
         "offeringMetadataNote": (
             "Semester offering JSON reference only; not the full canonical catalog."
         ),
     }
-    return ref
+    if credits_hint_raw and credits_range:
+        note_list = list(ref["notes"])
+        note_list.append(f"Credits range: {credits_hint_raw}")
+        ref["notes"] = note_list
+    if alternatives:
+        note_list = list(ref["notes"])
+        note_list.append(f"Alternatives: {', '.join(alternatives)}")
+        ref["notes"] = note_list
+    return _to_catalog_course_reference(ref)
 
 
 def enrich_course_reference(ref: dict[str, Any], offering_index: dict[str, Any]) -> dict[str, Any]:
@@ -334,8 +375,9 @@ def _course_pool_group(
     rule_expression: dict[str, Any],
     min_credits: float | None = None,
     notes: list[str] | None = None,
+    catalog_description: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    group = {
         "groupId": f"{program_code}:{group_suffix}",
         "title": title,
         "requirementType": "elective",
@@ -347,6 +389,65 @@ def _course_pool_group(
         "manualReviewRequired": True,
         "confidence": "medium" if course_refs else "low",
     }
+    if catalog_description:
+        group["catalogDescription"] = catalog_description
+    return group
+
+
+def _merge_unique_course_refs(*reference_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for references in reference_lists:
+        for reference in references:
+            number = reference.get("courseNumber")
+            if not number or str(number) in seen:
+                continue
+            seen.add(str(number))
+            merged.append(reference)
+    return merged
+
+
+def _row_is_dne_starred(row: dict[str, str | None]) -> bool:
+    notes = row.get("notes") or ""
+    name = row.get("name") or ""
+    return "*" in notes or "*" in name
+
+
+def _dne_starred_course_refs(pages: dict[str, WikiPage]) -> list[dict[str, Any]]:
+    dne = pages.get("track-data-information-engineering")
+    if dne is None:
+        return [
+            ref
+            for number in DNE_STARRED_COURSE_NUMBERS
+            if (ref := build_course_reference(number, source_page=None)) is not None
+        ]
+
+    english = dne.english_body
+    elective_start = english.find("## DNE Elective Course List")
+    if elective_start < 0:
+        return []
+
+    refs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for table in parse_markdown_tables(english[elective_start:]):
+        for row in _table_course_rows(table):
+            if not _row_is_dne_starred(row):
+                continue
+            ref = build_course_reference(
+                row["code"] or "",
+                title_hint=row.get("name"),
+                credits_hint=parse_credits_value(row.get("credits")),
+                credits_hint_raw=row.get("credits"),
+                source_page=dne.path,
+            )
+            if ref is None:
+                continue
+            number = str(ref.get("courseNumber") or "")
+            if number in seen:
+                continue
+            seen.add(number)
+            refs.append(ref)
+    return refs
 
 
 def _collect_course_numbers(text: str) -> list[str]:
@@ -359,6 +460,25 @@ def _collect_course_numbers(text: str) -> list[str]:
         seen.add(normalized)
         numbers.append(normalized)
     return numbers
+
+
+def _focus_chain_section_end(
+    section: str,
+    start: int,
+    *,
+    other_chain_labels: tuple[str, ...],
+    next_group_markers: tuple[str, ...],
+) -> int:
+    end_candidates = [
+        section.find(other, start + 1)
+        for other in other_chain_labels
+        if section.find(other, start + 1) >= 0
+    ]
+    for marker in next_group_markers:
+        marker_pos = section.find(marker, start + 1)
+        if marker_pos >= 0:
+            end_candidates.append(marker_pos)
+    return min(end_candidates) if end_candidates else len(section)
 
 
 def _table_course_refs(page: WikiPage, table: MarkdownTable) -> list[dict[str, Any]]:
@@ -413,6 +533,18 @@ def _dne_specialization_groups(pages: dict[str, WikiPage], program_code: str) ->
     return groups
 
 
+FACULTY_PREFIX_RULE: dict[str, Any] = {
+    "type": "course_pool",
+    "operator": "min_credits",
+    "allowedPrefixes": ["0094", "0095", "0096", "0097"],
+}
+
+FACULTY_ADDITIONAL_RULE: dict[str, Any] = {
+    **FACULTY_PREFIX_RULE,
+    "alwaysIncludeCourseNumbers": ["2160035"],
+}
+
+
 def _dne_elective_groups(page: WikiPage, program_code: str, config: dict[str, Any]) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     heading = config.get("electivePoolHeading")
@@ -442,7 +574,10 @@ def _dne_elective_groups(page: WikiPage, program_code: str, config: dict[str, An
                     title="Faculty elective pool",
                     course_refs=[],
                     min_credits=10.5,
-                    rule_expression={"type": "course_pool", "operator": "min_credits"},
+                    rule_expression={
+                        **FACULTY_PREFIX_RULE,
+                        "includesPoolSuffix": "elective-ds-pool",
+                    },
                     notes=["Any DNE elective or faculty course with prefix 094/095/096/097."],
                 )
             )
@@ -455,12 +590,13 @@ def _iem_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, An
 
     stats_table = find_table_with_header(english[english.find("Group 1") :], "Code")
     if stats_table is not None:
+        stats_refs = _table_course_refs(page, stats_table)
         groups.append(
             _course_pool_group(
                 program_code=program_code,
                 group_suffix="ie-statistics-elective-chain",
                 title="IE statistics elective chain",
-                course_refs=[],
+                course_refs=stats_refs,
                 rule_expression={
                     "type": "course_pool",
                     "operator": "choose_n",
@@ -468,43 +604,61 @@ def _iem_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, An
                     "chain": "statistics",
                 },
                 notes=["Choose-N chain; not flattened mandatory list."],
+                catalog_description=IE_STATISTICS_CATALOG_DESCRIPTION,
             )
         )
 
     behavior_table = find_table_with_header(english[english.find("Group 2") :], "Code")
     if behavior_table is not None:
+        behavior_refs = _table_course_refs(page, behavior_table)
         groups.append(
             _course_pool_group(
                 program_code=program_code,
                 group_suffix="ie-behavior-science-chain",
                 title="IE behavioral sciences chain",
-                course_refs=[],
+                course_refs=behavior_refs,
                 rule_expression={
                     "type": "course_pool",
                     "operator": "choose_n",
                     "chooseCount": 1,
                     "chain": "behavior_science",
                 },
+                catalog_description=IE_BEHAVIOR_SCIENCE_CATALOG_DESCRIPTION,
             )
         )
 
     focus_section = english[english.find("Group 3") :] if "Group 3" in english else ""
-    focus_numbers = _collect_course_numbers(focus_section.split("Group 4")[0] if "Group 4" in focus_section else focus_section)
-    focus_refs = [
-        ref
-        for number in focus_numbers
-        if (ref := build_course_reference(number, source_page=page.path)) is not None
-    ]
-    groups.append(
-        _course_pool_group(
-            program_code=program_code,
-            group_suffix="ie-focus-chain",
-            title="IE focus chain",
-            course_refs=focus_refs,
-            rule_expression={"type": "course_pool", "operator": "choose_chain", "chooseCount": 3},
-            notes=["Complete one 3-course focus chain from the wiki source."],
+    chain_map = {
+        "Chain A": "ie-focus-chain-game-theory",
+        "Chain B": "ie-focus-chain-advanced-industry",
+        "Chain C": "ie-focus-chain-operations-research",
+    }
+    for label, suffix in chain_map.items():
+        start = focus_section.find(label)
+        if start < 0:
+            continue
+        end = _focus_chain_section_end(
+            focus_section,
+            start,
+            other_chain_labels=tuple(other for other in chain_map if other != label),
+            next_group_markers=("Group 4", "### Group 4"),
         )
-    )
+        chain_text = focus_section[start:end]
+        refs = [
+            ref
+            for number in _collect_course_numbers(chain_text)
+            if (ref := build_course_reference(number, source_page=page.path)) is not None
+        ]
+        groups.append(
+            _course_pool_group(
+                program_code=program_code,
+                group_suffix=suffix,
+                title=f"IE focus chain ({label})",
+                course_refs=refs,
+                rule_expression={"type": "course_pool", "operator": "choose_chain", "chooseCount": 3},
+                catalog_description=_iem_focus_chain_description(label),
+            )
+        )
 
     additional_section = english[english.find("Group 4") :] if "Group 4" in english else ""
     additional_numbers = _collect_course_numbers(additional_section)
@@ -519,30 +673,83 @@ def _iem_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, An
             group_suffix="ie-additional-faculty-electives",
             title="IE additional faculty electives",
             course_refs=additional_refs,
-            rule_expression={"type": "course_pool", "operator": "min_credits"},
+            rule_expression=FACULTY_ADDITIONAL_RULE,
+            notes=["Remaining faculty electives: any course with prefix 094–097 plus 2160035."],
         )
     )
     return groups
 
 
-def _is_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, Any]]:
+def _iem_focus_chain_description(label: str) -> str:
+    descriptions = {
+        "Chain A": (
+            "Group 3 — Game theory & economic behavior focus chain. Complete all 3 parts: "
+            "Part 1: one of 0960226, 0960570, 0960578, 0970317. "
+            "Part 2: one of 0960606, 0960617, 0960690. "
+            "Part 3: one more from Part 1 or 2, or 0960211."
+        ),
+        "Chain B": (
+            "Group 3 — Advanced industry focus chain. Complete all 3 parts: "
+            "Part 1 (required): 0960411 Computational learning 1. "
+            "Part 2: one of 0940222, 0950111, 0960210, 0970247. "
+            "Part 3: one from Part 2 list or 0960208, 0960266, 0960625, 0970139, 0960135, 0970244."
+        ),
+        "Chain C": (
+            "Group 3 — Operations research focus chain. Complete all 3 parts: "
+            "Part 1 (required): 0960327 Nonlinear models in operations research. "
+            "Part 2 (required): 0960570 Game theory and economic behavior (0980413 may substitute). "
+            "Part 3: one of 0960311, 0960335."
+        ),
+    }
+    return descriptions.get(label, "Complete one 3-course focus chain from the catalog.")
+
+
+def _is_focus_chain_description(label: str) -> str:
+    descriptions = {
+        "Chain A": (
+            "Part 1 (required): 0960327 Nonlinear models in operations research. "
+            "Part 2 (required): 0960324 Service systems engineering (0980413 may substitute). "
+            "Part 3: one of 0960311, 0960335, 0960351, 0970135, 0970280, 0970325, 0970334."
+        ),
+        "Chain B": (
+            "Part 1 (required): 0970209 Computational learning 2. "
+            "Part 2: one of 0960212, 0960327, 0970414. "
+            "Part 3: one course marked * from the DNE elective list."
+        ),
+        "Chain C": (
+            "Part 1: one of 0960226, 0960578, 0970317. "
+            "Part 2: one of 0960606, 0960617, 0960690. "
+            "Part 3: one more from Part 1 or Part 2."
+        ),
+    }
+    return descriptions.get(label, "Complete one 3-course focus chain from the catalog.")
+
+
+def _is_elective_groups(
+    page: WikiPage,
+    program_code: str,
+    pages: dict[str, WikiPage] | None = None,
+) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     english = page.english_body
+    wiki_pages = pages or {}
 
     behavior_table = find_table_with_header(english[english.find("Group 1") :], "Code")
     if behavior_table is not None:
+        behavior_refs = _table_course_refs(page, behavior_table)
         groups.append(
             _course_pool_group(
                 program_code=program_code,
                 group_suffix="is-behavior-science-chain",
                 title="IS behavioral sciences chain",
-                course_refs=[],
+                course_refs=behavior_refs,
                 rule_expression={
                     "type": "course_pool",
                     "operator": "choose_n",
                     "chooseCount": 1,
                     "chain": "behavior_science",
                 },
+                catalog_description=IS_BEHAVIOR_SCIENCE_CATALOG_DESCRIPTION,
             )
         )
 
@@ -552,18 +759,25 @@ def _is_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, Any
         "Chain B": "is-focus-chain-ml",
         "Chain C": "is-focus-chain-game-theory",
     }
+    dne_starred_refs = _dne_starred_course_refs(wiki_pages)
     for label, suffix in chain_map.items():
         start = focus_section.find(label)
         if start < 0:
             continue
-        end_candidates = [focus_section.find(other, start + 1) for other in chain_map if other != label]
-        end = min(value for value in end_candidates if value >= 0) if any(v >= 0 for v in end_candidates) else len(focus_section)
+        end = _focus_chain_section_end(
+            focus_section,
+            start,
+            other_chain_labels=tuple(other for other in chain_map if other != label),
+            next_group_markers=("Group 3", "### Group 3"),
+        )
         chain_text = focus_section[start:end]
         refs = [
             ref
             for number in _collect_course_numbers(chain_text)
             if (ref := build_course_reference(number, source_page=page.path)) is not None
         ]
+        if suffix == "is-focus-chain-ml":
+            refs = _merge_unique_course_refs(refs, dne_starred_refs)
         groups.append(
             _course_pool_group(
                 program_code=program_code,
@@ -571,6 +785,7 @@ def _is_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, Any
                 title=f"IS focus chain ({label})",
                 course_refs=refs,
                 rule_expression={"type": "course_pool", "operator": "choose_chain", "chooseCount": 3},
+                catalog_description=_is_focus_chain_description(label),
             )
         )
 
@@ -586,7 +801,10 @@ def _is_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, Any
             group_suffix="is-additional-faculty-electives",
             title="IS additional faculty electives",
             course_refs=additional_refs,
-            rule_expression={"type": "course_pool", "operator": "min_credits"},
+            rule_expression=FACULTY_ADDITIONAL_RULE,
+            notes=[
+                "Remaining faculty electives: prefix 094–097 plus 2160035; see IE track for examples.",
+            ],
         )
     )
     return groups
@@ -606,7 +824,7 @@ def build_program(page: WikiPage, config: dict[str, Any], pages: dict[str, WikiP
     elif page.slug == "track-industrial-engineering-management":
         requirement_groups.extend(_iem_elective_groups(page, program_code))
     elif page.slug == "track-information-systems-engineering":
-        requirement_groups.extend(_is_elective_groups(page, program_code))
+        requirement_groups.extend(_is_elective_groups(page, program_code, pages))
 
     return {
         "institutionId": INSTITUTION_ID,
@@ -675,7 +893,11 @@ def count_export_stats(document: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def build_readiness_check(document: dict[str, Any]) -> dict[str, Any]:
+def build_readiness_check(
+    document: dict[str, Any],
+    *,
+    expected_program_codes: frozenset[str] | None = None,
+) -> dict[str, Any]:
     counts = count_export_stats(document)
     warnings: list[str] = []
     blocking_staging: list[str] = []
@@ -683,7 +905,9 @@ def build_readiness_check(document: dict[str, Any]) -> dict[str, Any]:
         "Production promotion gate must pass staging quality checks.",
     ]
 
-    expected_codes = {"009216-1-000", "009009-1-000", "009118-1-000"}
+    expected_codes = expected_program_codes or frozenset(
+        {"009216-1-000", "009009-1-000", "009118-1-000"}
+    )
     exported_codes = {program["programCode"] for program in document.get("programs") or []}
     missing_codes = sorted(expected_codes - exported_codes)
     if missing_codes:
@@ -710,15 +934,12 @@ def build_readiness_check(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def export_vault_catalog(
+def export_dds_vault_catalog(
     *,
     vault_path: Path | None = None,
-    faculty: str = "dds",
     course_json_paths: list[Path] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if faculty.lower() != "dds":
-        raise ValueError(f"Unsupported faculty export: {faculty}")
-
+    faculty = "dds"
     root = wiki_root(vault_path or catalog_vault_root())
     pages = load_pages_by_slug(root)
 
@@ -754,6 +975,7 @@ def export_vault_catalog(
     document: dict[str, Any] = {
         "source": {
             "institutionId": INSTITUTION_ID,
+            "facultyId": faculty,
             "sourceType": "dds_catalog_curated_reviewed",
             "catalogYear": CATALOG_YEAR,
             "catalogVersion": CATALOG_VERSION,
@@ -791,6 +1013,7 @@ def export_vault_catalog(
                 "credit_buckets_present",
                 "semester_matrices_parsed",
                 "course_numbers_normalized",
+                "elective_chain_contract",
             ],
             "verifiedItems": [
                 f"Exported {len(programs)} DDS programs from wiki track pages.",
@@ -812,6 +1035,22 @@ def export_vault_catalog(
     ReviewedCuratedCatalogDocument.model_validate(document)
     Phase8ReadinessCheck.model_validate(readiness)
     return document, readiness
+
+
+def export_vault_catalog(
+    *,
+    vault_path: Path | None = None,
+    faculty: str = "dds",
+    course_json_paths: list[Path] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Backward-compatible facade — routes through the multi-faculty export registry."""
+    from app.vault.vault_export_registry import export_vault_catalog as registry_export
+
+    return registry_export(
+        vault_path=vault_path,
+        faculty=faculty,
+        course_json_paths=course_json_paths,
+    )
 
 
 def write_vault_catalog_export(

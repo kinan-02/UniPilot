@@ -232,6 +232,7 @@ def map_staging_advisory_requirement_to_production(
         "title": group.get("title"),
         "requirementType": group.get("requirementType"),
         "courseReferences": group.get("courseReferences", []),
+        "catalogDescription": group.get("catalogDescription"),
         "ruleExpression": group.get("ruleExpression"),
         "ruleIsExecutable": False,
         "advisoryOnly": True,
@@ -412,6 +413,26 @@ def validate_production_collections_for_promotion(
                 f"Production collection `{collection}` has conflicting catalogVersion/sourceName "
                 "for planned production keys."
             )
+
+
+def _retire_superseded_catalog_rules(
+    database: Database,
+    *,
+    settings: Settings,
+    planned_production_keys: set[str],
+    catalog_version: str,
+) -> int:
+    """Remove retired DDS advisory rules (e.g. renamed pool group ids) before re-promotion."""
+    if not planned_production_keys:
+        return 0
+    result = database[settings.production_catalog_rules_collection].delete_many(
+        {
+            "catalogVersion": catalog_version,
+            "sourceName": DDS_CATALOG_SOURCE,
+            "productionKey": {"$nin": list(planned_production_keys)},
+        }
+    )
+    return int(result.deleted_count)
 
 
 def build_production_documents(
@@ -755,6 +776,13 @@ def run_dds_production_promotion(
             out_md = md_path or default_production_promotion_md_path()
             write_production_promotion_report(result, json_path=out_json, md_path=out_md)
             return result
+
+        _retire_superseded_catalog_rules(
+            database,
+            settings=settings,
+            planned_production_keys=planned_keys.get(settings.production_catalog_rules_collection, set()),
+            catalog_version=gate.catalogVersion or "2025-2026",
+        )
 
         validate_production_collections_for_promotion(
             database,

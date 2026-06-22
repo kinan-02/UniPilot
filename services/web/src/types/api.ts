@@ -200,6 +200,49 @@ export type CurriculumGraphEdge = {
   highlight?: string
 }
 
+export type ElectiveBucketRule = {
+  type: string
+  operator?: string | null
+  chooseCount?: number | null
+  chain?: string | null
+  minCredits?: number | null
+  allowedPrefixes?: string[]
+}
+
+export type ElectivePoolCourse = {
+  courseNumber: string
+  title?: string
+  titleHe?: string
+  credits?: number | null
+  notes?: string[]
+}
+
+export type PoolProgressDisplay =
+  | 'chain_steps'
+  | 'dedicated_bucket_credits'
+  | 'shared_bucket_credits'
+  | 'none'
+
+export type ElectiveBucket = {
+  groupId: string
+  title?: string
+  requirementType?: string
+  minCredits?: number | null
+  linkedCreditBucketId?: string | null
+  rule: ElectiveBucketRule
+  allowedPrefixes?: string[]
+  courses: ElectivePoolCourse[]
+  courseCount: number
+  courseListSource?: 'explicit' | 'prefix_catalog' | 'vault_union' | 'empty'
+  progressDisplay?: PoolProgressDisplay
+  coursesTruncated?: boolean
+  advisoryOnly?: boolean
+  manualReviewRequired?: boolean
+  notes?: string[]
+  catalogDescription?: string | null
+  explorerReady?: boolean
+}
+
 export type CurriculumGraph = {
   trackSlug: string
   programCode: string
@@ -215,7 +258,7 @@ export type CurriculumGraph = {
   }>
   nodes: CurriculumGraphNode[]
   edges: CurriculumGraphEdge[]
-  electiveBuckets?: Array<Record<string, unknown>>
+  electiveBuckets?: ElectiveBucket[]
   advisories?: Array<{ code: string; severity: string; message: string }>
   bottlenecks: Array<{ courseNumber: string; blockedBy: string[]; reason: string }>
   transcriptSummary?: {

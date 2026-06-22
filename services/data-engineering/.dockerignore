@@ -3,6 +3,3 @@ __pycache__
 .pytest_cache
 .venv
 venv
-tests
-requirements-dev.txt
-pytest.ini
