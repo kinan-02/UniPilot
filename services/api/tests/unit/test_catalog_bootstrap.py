@@ -18,7 +18,7 @@ async def test_ensure_development_catalog_seeds_when_empty(mongo_database) -> No
     resolved = get_settings()
     assert (
         await mongo_database[resolved.catalog_rules_collection].count_documents({})
-        == 35
+        == 37
     )
 
 

@@ -16,6 +16,7 @@ from app.quality.dds_staging_quality import (
     write_staging_quality_audit,
 )
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
+from tests.helpers.elective_chain_seed import build_advisory_requirement_group_fields
 
 EXPECTED_PROGRAMS = ["009216-1-000", "009009-1-000", "009118-1-000"]
 
@@ -35,19 +36,20 @@ def _seed_minimal_staging(database, settings) -> None:
             }
         )
 
+    statistics_chain_id = "009009-1-000:ie-statistics-elective-chain"
+    chain_fields = build_advisory_requirement_group_fields(statistics_chain_id)
     database[settings.staging_degree_requirements_collection].insert_one(
         {
-            "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-statistics-elective-chain",
+            "stagingKey": f"technion-dds:catalog:2025-2026:requirement:{statistics_chain_id}",
             "sourceName": DDS_CATALOG_SOURCE,
             "programCode": "009009-1-000",
             "treatsCoursesAsMandatory": False,
             "manualReviewRequired": True,
             "requirementGroup": {
-                "groupId": "009009-1-000:ie-statistics-elective-chain",
+                "groupId": statistics_chain_id,
                 "requirementType": "elective",
                 "manualReviewRequired": True,
-                "courseReferences": [],
-                "ruleExpression": {"type": "course_pool", "operator": "choose_n", "chooseCount": 1},
+                **chain_fields,
             },
         }
     )

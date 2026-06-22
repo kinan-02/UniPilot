@@ -13,12 +13,14 @@ from app.importers.dds_catalog_staging_importer import PRODUCTION_COLLECTION_NAM
 from app.main import run_plan_dds_production_promotion, run_promote_dds_to_production
 from app.promotion.dds_promotion_gate import (
     EXCLUDED_COURSE_SKIP_REASON,
+    _collect_course_refs_from_requirements,
     build_promotion_gate_result,
     render_promotion_plan_markdown,
     run_promotion_gate_plan,
 )
 from app.models.promotion import PromotionReport
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
+from tests.helpers.elective_chain_seed import build_advisory_requirement_group_fields
 
 EXPECTED_PROGRAMS = ["009216-1-000", "009009-1-000", "009118-1-000"]
 SEED_ADVISORY_GROUP_IDS = (
@@ -97,29 +99,12 @@ def _build_seed_catalog_signoff(*, excluded_numbers: list[str]) -> dict[str, obj
 
 def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: bool = True) -> None:
     settings = get_settings()
-    excluded_in_catalog = [PRODUCTION_EXCLUDED_COURSE_NUMBERS[0]]
-    catalog_signoff = _build_seed_catalog_signoff(excluded_numbers=excluded_in_catalog)
-
-    for code in EXPECTED_PROGRAMS:
-        program_doc = {
-            "stagingKey": f"technion-dds:catalog:2025-2026:program:{code}",
-            "sourceName": DDS_CATALOG_SOURCE,
-            "programCode": code,
-            "catalogYear": 2025,
-            "catalogVersion": "2025-2026",
-            "totalCredits": 155.0,
-            "manualReviewRequired": True,
-            "curationStatus": "ready-for-staging-with-review-flags",
-            "signoffReview": {"reviewStatus": "ready-for-staging-with-review-flags"},
-            **_staging_doc_flags(),
-        }
-        if include_catalog_signoff:
-            program_doc["curationReport"] = {"vaultSignoff": catalog_signoff}
-        database[settings.staging_degree_programs_collection].insert_one(program_doc)
+    flags = _staging_doc_flags()
+    requirement_docs: list[dict[str, object]] = []
 
     for group_id in HARD_GROUP_IDS:
         program_code = group_id.split(":")[0]
-        database[settings.staging_degree_requirements_collection].insert_one(
+        requirement_docs.append(
             {
                 "stagingKey": f"technion-dds:catalog:2025-2026:requirement:{group_id}",
                 "sourceName": DDS_CATALOG_SOURCE,
@@ -132,21 +117,24 @@ def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: boo
                     "courseReferences": [],
                     "ruleExpression": {"type": "credit_bucket", "operator": "min_credits"},
                 },
-                **_staging_doc_flags(),
+                **flags,
             }
         )
 
     for group_id in SEED_ADVISORY_GROUP_IDS:
         program_code = group_id.split(":")[0]
-        refs: list[dict[str, object]] = []
+        chain_fields = build_advisory_requirement_group_fields(group_id)
         if group_id.endswith("elective-ds-pool"):
-            refs = [
-                {
-                    "courseNumber": PRODUCTION_EXCLUDED_COURSE_NUMBERS[0],
-                    "titleHint": "Excluded ref",
-                }
-            ]
-        database[settings.staging_degree_requirements_collection].insert_one(
+            chain_fields = {
+                **chain_fields,
+                "courseReferences": [
+                    {
+                        "courseNumber": PRODUCTION_EXCLUDED_COURSE_NUMBERS[0],
+                        "titleHint": "Excluded ref",
+                    }
+                ],
+            }
+        requirement_docs.append(
             {
                 "stagingKey": f"technion-dds:catalog:2025-2026:requirement:{group_id}",
                 "sourceName": DDS_CATALOG_SOURCE,
@@ -156,15 +144,42 @@ def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: boo
                 "requirementGroup": {
                     "groupId": group_id,
                     "requirementType": "elective",
-                    "courseReferences": refs,
-                    "ruleExpression": {"type": "semester_matrix", "operator": "all_of"},
+                    **chain_fields,
                 },
-                **_staging_doc_flags(),
+                **flags,
             }
         )
 
+    catalog_refs = _collect_course_refs_from_requirements(requirement_docs)
     promoted_numbers = ["00940345", "01040031", "02340117"]
-    for number in promoted_numbers:
+    staging_numbers = set(promoted_numbers)
+    for number in catalog_refs:
+        if number not in PRODUCTION_EXCLUDED_COURSE_NUMBERS:
+            staging_numbers.add(number)
+    expected_excluded = sorted(catalog_refs - staging_numbers)
+    catalog_signoff = _build_seed_catalog_signoff(excluded_numbers=expected_excluded)
+
+    for code in EXPECTED_PROGRAMS:
+        program_doc = {
+            "stagingKey": f"technion-dds:catalog:2025-2026:program:{code}",
+            "sourceName": DDS_CATALOG_SOURCE,
+            "programCode": code,
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "totalCredits": 155.0,
+            "manualReviewRequired": True,
+            "curationStatus": "ready-for-staging-with-review-flags",
+            "signoffReview": {"reviewStatus": "ready-for-staging-with-review-flags"},
+            **flags,
+        }
+        if include_catalog_signoff:
+            program_doc["curationReport"] = {"vaultSignoff": catalog_signoff}
+        database[settings.staging_degree_programs_collection].insert_one(program_doc)
+
+    for document in requirement_docs:
+        database[settings.staging_degree_requirements_collection].insert_one(document)
+
+    for number in sorted(staging_numbers):
         database[settings.staging_courses_collection].insert_one(
             {
                 "stagingKey": f"technion:course:{number}",
@@ -173,7 +188,7 @@ def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: boo
                 "titleHebrew": f"Course {number}",
                 "credits": 4.0,
                 "metadata": {"degreeRequirementsInferred": False},
-                **_staging_doc_flags(),
+                **flags,
             }
         )
         database[settings.staging_course_offerings_collection].insert_one(
@@ -181,7 +196,7 @@ def _seed_signed_off_promotion_staging(database, *, include_catalog_signoff: boo
                 "stagingKey": f"technion:course-offering:{number}:2025:201",
                 "sourceName": COURSE_JSON_SOURCE,
                 "courseNumber": number,
-                **_staging_doc_flags(),
+                **flags,
             }
         )
 

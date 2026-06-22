@@ -81,8 +81,13 @@ def test_promotion_writes_expected_collections(mongo_database) -> None:
         mongo_database[settings.production_catalog_rules_collection].distinct("requirementGroupId")
     )
     assert unique_groups == mongo_database[settings.production_catalog_rules_collection].count_documents({})
-    assert mongo_database[settings.production_courses_collection].count_documents({}) == 3
-    assert mongo_database[settings.production_course_offerings_collection].count_documents({}) == 3
+    staged_courses = mongo_database[settings.staging_courses_collection].count_documents({})
+    staged_offerings = mongo_database[settings.staging_course_offerings_collection].count_documents({})
+    assert mongo_database[settings.production_courses_collection].count_documents({}) == staged_courses
+    assert (
+        mongo_database[settings.production_course_offerings_collection].count_documents({})
+        == staged_offerings
+    )
     assert mongo_database[settings.production_promotion_runs_collection].count_documents({}) == 1
 
 
