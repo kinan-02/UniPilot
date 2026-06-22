@@ -1,7 +1,7 @@
 # Catalog Vault Wiki — Integration Plan
 
-Last updated: 2026-06-21  
-Status: **Phase A + B implemented for DDS** — vault export with automatic wiki sign-off; multi-faculty and RAG deferred.
+Last updated: 2026-06-22  
+Status: **Phase A + B implemented for DDS** — vault export with automatic wiki sign-off; **Phase D partially started** (faculty export registry + per-faculty elective chain contract); RAG deferred.
 
 Related: `services/data-engineering/data/catalog_valut/CLAUDE.md`, `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`, `docs/DATA_INGESTION_ARCHITECTURE.md`
 
@@ -93,7 +93,20 @@ courses_2025_*.json → import-technion-courses-staging → staging_courses / st
 | B.3 Vault sign-off | Done — applied automatically in `export-vault-catalog` (no `record-dds-human-signoff` step) |
 | B.4 Blocker cleanup refresh | Done — title enrichment from wiki course pages |
 
-**Deferred (later):** Phase D multi-faculty export, RAG indexing.
+**Deferred (later):** Phase D.4 RAG indexing; additional faculty exporters beyond DDS.
+
+### Phase D — Multi-faculty expansion (partially started)
+
+| Task | Status | Details |
+|------|--------|---------|
+| D.1 Faculty export registry | Done | `vault_export_registry.py` routes `export-vault-catalog --faculty <id>`; DDS registered; unsupported faculties fail with supported list |
+| D.2 Per-faculty elective chain contract | Done | `data/contracts/elective_chain_pools.json` (v2, `institutionId: technion`, `faculties.<id>.pools`); validated at export, staging quality, API/web regression |
+| D.3 Ops verification | Done | `scripts/verify_elective_chains.py` (+ CI + `production_audit.py`); `--faculty dds` or `--faculty all` |
+| D.4 Incremental faculty ingest | Todo | Add wiki batch + `export_<faculty>_vault_catalog()` + register spec when onboarding next faculty |
+| D.5 API catalog scope | Todo | Extend `/catalog/degree-programs` filters when non-DDS programs are promoted |
+| D.6 RAG index | Todo | Chunk `wiki/` pages for future AI advisor; cite `[[source]]` links |
+
+**Onboarding a new faculty:** (1) expand `catalog_valut/wiki/`, (2) implement exporter + register in `vault_export_registry.py`, (3) add `faculties.<id>` contract block if chain pools exist, (4) export → import → quality → promote.
 
 ### Phase C — Staging & production (complete)
 
@@ -137,15 +150,6 @@ Vault sign-off (`vaultSignoff.signedOffBy=vault-wiki`) is stored on production p
 | `GET /catalog/courses` | 2,068 courses |
 | `verify_and_benchmark.py` | 86 passed, 0 failed, 0 warnings |
 
-### Phase D — Multi-faculty expansion (deferred)
-
-| Task | Details |
-|------|---------|
-| D.1 Faculty filter | `--faculty` flag on export; map `faculty-<slug>.md` entities |
-| D.2 Incremental ingest | Process one faculty batch at a time; merge into export JSON |
-| D.3 API scope | Extend `/catalog/degree-programs` filters when non-DDS programs are promoted |
-| D.4 RAG index | Chunk `wiki/` pages for future AI advisor; cite `[[source]]` links |
-
 ### Phase E — Docker & ops (partial)
 
 | Task | Status |
@@ -153,6 +157,7 @@ Vault sign-off (`vaultSignoff.signedOffBy=vault-wiki`) is stored on production p
 | E.1 Mount vault in data-engineering container | Done — `catalog_valut/` and `data/generated/` mounted |
 | E.2 README / `.env.example` | Done — export → import → promote flow documented |
 | E.3 CI fixture | Done — minimal wiki subset under `tests/fixtures/catalog_vault/` |
+| E.4 Elective chain contract CI gate | Done — `verify_elective_chains.py` in data-engineering job + `production_audit.py` |
 
 ## 5) Schema mapping (wiki → MongoDB)
 

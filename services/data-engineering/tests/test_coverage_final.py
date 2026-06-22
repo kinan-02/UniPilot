@@ -870,7 +870,7 @@ class TestStagingQualityGaps:
         assert report is not None
 
     def test_build_quality_report_chain_violation_choose_n(self, mongo_database):
-        """Lines 551-552: choose_n chain violation for flattened courses."""
+        """choose_n eligible pools with courseReferences are allowed when not mandatory."""
         from app.quality.dds_staging_quality import build_dds_staging_quality_report
         from app.config import get_settings
         settings = get_settings()
@@ -883,12 +883,14 @@ class TestStagingQualityGaps:
                 "courseReferences": [{"courseNumber": "01234567"}],
             },
             "ruleIsExecutable": True,
+            "treatsCoursesAsMandatory": False,
         })
         report = build_dds_staging_quality_report(mongo_database, settings=settings)
         chain_check = next(
             (c for c in report.checks if c.checkId == "rules.non_executable_preserved"), None
         )
         assert chain_check is not None
+        assert chain_check.passed is True
 
     def test_build_quality_report_catalog_rule_treats_mandatory(self, mongo_database):
         """Line 558: treatsCoursesAsMandatory on catalog rule adds chain violation."""
@@ -2022,9 +2024,10 @@ class TestDdsCatalogImporterAdditional:
             validate_catalog_structure(doc3)
 
     def test_validate_catalog_structure_choose_n_with_refs(self):
-        """Lines 234-236: raises for choose_n group with courseReferences."""
+        """choose_n groups may list eligible courses without treating them as mandatory."""
         from app.importers.dds_catalog_staging_importer import (
-            validate_catalog_structure, CatalogStagingImportError, EXPECTED_PROGRAM_CODES,
+            validate_catalog_structure,
+            EXPECTED_PROGRAM_CODES,
         )
         ref = MagicMock()
         ref.courseNumber = "01234567"
@@ -2039,8 +2042,7 @@ class TestDdsCatalogImporterAdditional:
         for p in progs:
             p.requirementGroups = [group]
         doc = self._make_doc(progs)
-        with pytest.raises(CatalogStagingImportError, match="choose-N chain rule"):
-            validate_catalog_structure(doc)
+        validate_catalog_structure(doc)
 
     def test_validate_catalog_structure_invalid_course_number(self):
         """Lines 239-241: raises for invalid course number in ref."""
@@ -2487,21 +2489,21 @@ class TestQualityAdditionalGaps:
         assert report is not None
 
     def test_chain_violation_choose_n_path(self, mongo_database):
-        """Lines 551-552: choose_n with chain in group_id triggers flattened_courses violation."""
+        """choose_n eligible course lists do not violate non-executable preservation."""
         from app.quality.dds_staging_quality import build_dds_staging_quality_report
         from app.config import get_settings
         settings = get_settings()
 
-        # Insert a requirement with chain in groupId and choose_n rule
         mongo_database[settings.staging_degree_requirements_collection].insert_one({
             "stagingKey": "req-chain-choose",
             "sourceName": "technion-dds-catalog",
             "requirementGroup": {
-                "groupId": "chain-focus:choose-n",  # contains "chain"
+                "groupId": "chain-focus:choose-n",
                 "ruleExpression": {"type": "course_pool", "operator": "choose_n"},
                 "courseReferences": [{"courseNumber": "01234567"}],
             },
             "ruleIsExecutable": True,
+            "treatsCoursesAsMandatory": False,
             "isStaging": True,
             "productionEligible": False,
         })
@@ -2510,6 +2512,7 @@ class TestQualityAdditionalGaps:
             (c for c in report.checks if c.checkId == "rules.non_executable_preserved"), None
         )
         assert chain_check is not None
+        assert chain_check.passed is True
 
     def test_catalog_rule_treats_mandatory(self, mongo_database):
         """Line 558: treatsCoursesAsMandatory on catalog rule."""

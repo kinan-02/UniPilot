@@ -63,6 +63,35 @@ def test_export_includes_dne_semester_and_elective_groups():
     assert "009216-1-000:cognition-track:requirements" in group_ids
 
 
+def test_export_includes_ie_is_choose_n_eligible_courses():
+    from app.vault.export_dds_catalog import _iem_elective_groups, _is_elective_groups
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root())
+    iem = pages["track-industrial-engineering-management"]
+    ise = pages["track-information-systems-engineering"]
+
+    iem_groups = {g["groupId"].split(":")[-1]: g for g in _iem_elective_groups(iem, "009009-1-000")}
+    assert len(iem_groups["ie-statistics-elective-chain"]["courseReferences"]) == 8
+    assert len(iem_groups["ie-behavior-science-chain"]["courseReferences"]) == 2
+    assert iem_groups["ie-statistics-elective-chain"].get("catalogDescription")
+    assert iem_groups["ie-behavior-science-chain"].get("catalogDescription")
+    assert "ie-focus-chain-game-theory" in iem_groups
+    assert "ie-focus-chain-advanced-industry" in iem_groups
+    assert "ie-focus-chain-operations-research" in iem_groups
+    assert iem_groups["ie-focus-chain-game-theory"].get("catalogDescription")
+    assert len(iem_groups["ie-focus-chain-operations-research"]["courseReferences"]) <= 6
+
+    ise_groups = {g["groupId"].split(":")[-1]: g for g in _is_elective_groups(ise, "009118-1-000", pages)}
+    assert len(ise_groups["is-behavior-science-chain"]["courseReferences"]) == 2
+    numbers = {ref["courseNumber"] for ref in ise_groups["is-behavior-science-chain"]["courseReferences"]}
+    assert numbers == {"00960600", "00960620"}
+    assert ise_groups["is-behavior-science-chain"].get("catalogDescription")
+    ml_refs = {ref["courseNumber"] for ref in ise_groups["is-focus-chain-ml"]["courseReferences"]}
+    assert len(ml_refs) > 4
+    assert "00970215" in ml_refs
+
+
 def test_export_passes_staging_import_dry_run(tmp_path: Path):
     output = tmp_path / "catalog_reviewed.json"
     readiness_path = tmp_path / "readiness.json"
@@ -85,5 +114,7 @@ def test_export_passes_staging_import_dry_run(tmp_path: Path):
 
 
 def test_unsupported_faculty_raises():
+    from app.vault.vault_export_registry import export_vault_catalog as registry_export
+
     with pytest.raises(ValueError, match="Unsupported faculty"):
-        export_vault_catalog(vault_path=VAULT_ROOT, faculty="civil")
+        registry_export(vault_path=VAULT_ROOT, faculty="civil")

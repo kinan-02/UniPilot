@@ -63,6 +63,8 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Run pytest with coverage gate
         run: pytest
+      - name: Verify elective chain contract (vault export)
+        run: python ../../scripts/verify_elective_chains.py --faculty dds
 
   web:
     name: Web (Vitest + build)

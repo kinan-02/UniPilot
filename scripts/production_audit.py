@@ -247,6 +247,25 @@ def check_docker_health(audit: AuditResult) -> None:
         audit.note(f"Live API env: {env.stdout.strip().replace(chr(10), ', ')}")
 
 
+def check_elective_chain_contract(audit: AuditResult) -> None:
+    script = REPO_ROOT / "scripts" / "verify_elective_chains.py"
+    if not script.is_file():
+        audit.deduct(10, "verify_elective_chains.py missing", blocker=True)
+        return
+    result = subprocess.run(
+        [sys.executable, str(script), "--faculty", "dds"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        audit.deduct(15, "Elective chain contract verification failed", blocker=True)
+        if result.stdout.strip():
+            audit.note(result.stdout.strip()[:500])
+        return
+    audit.note("Elective chain contract verification passed (verify_elective_chains.py)")
+
+
 def main() -> int:
     audit = AuditResult()
     check_env_example(audit)
@@ -260,6 +279,7 @@ def main() -> int:
     check_production_audit_report(audit)
     check_ai_security_test(audit)
     check_no_obvious_secrets(audit)
+    check_elective_chain_contract(audit)
     check_local_tests(audit)
     check_docker_health(audit)
 

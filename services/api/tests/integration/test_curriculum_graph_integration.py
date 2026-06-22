@@ -38,3 +38,11 @@ async def test_curriculum_graph_returns_semester_lanes(auth_client, mongo_databa
     assert len(graph["semesterLanes"]) >= 1
     assert len(graph["nodes"]) >= 1
     assert graph["viewDefault"] == "semester_swimlanes"
+    assert len(graph["electiveBuckets"]) >= 1
+    ds_pool = next(
+        bucket
+        for bucket in graph["electiveBuckets"]
+        if bucket.get("groupId", "").endswith(":elective-ds-pool")
+    )
+    assert ds_pool["explorerReady"] is True
+    assert ds_pool["linkedCreditBucketId"] == "009216-1-000:elective-ds"

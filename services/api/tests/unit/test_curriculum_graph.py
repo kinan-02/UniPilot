@@ -152,6 +152,7 @@ def test_build_base_graph_includes_semester_lanes_and_alternatives():
     assert node["alternatives"] == ["1040016"]
     assert node["dataQuality"]["hasAlternatives"] is True
     assert graph["electiveBuckets"][0]["explorerReady"] is True
+    assert graph["electiveBuckets"][0]["rule"]["operator"] == "choose_chain"
     assert graph["advisories"][0]["code"] == "semester_matrix_planning_only"
 
 
