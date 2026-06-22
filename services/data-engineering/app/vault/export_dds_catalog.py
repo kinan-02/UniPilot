@@ -544,6 +544,71 @@ FACULTY_ADDITIONAL_RULE: dict[str, Any] = {
     "alwaysIncludeCourseNumbers": ["2160035"],
 }
 
+ENRICHMENT_POOL_RULE: dict[str, Any] = {
+    "type": "course_pool",
+    "operator": "min_credits",
+    "allowedPrefixes": ["039405"],
+}
+
+PHYSICAL_EDUCATION_POOL_RULE: dict[str, Any] = {
+    "type": "course_pool",
+    "operator": "min_credits",
+    "allowedPrefixes": ["039408", "039409"],
+}
+
+FREE_ELECTIVE_POOL_RULE: dict[str, Any] = {
+    "type": "course_pool",
+    "operator": "min_credits",
+}
+
+GENERAL_TECHNION_ENRICHMENT_DESCRIPTION = (
+    "University enrichment (CHE / קורסי העשרה): at least 6 credits from Technion-wide "
+    "enrichment courses approved by the Center for Humanistic Education."
+)
+GENERAL_TECHNION_FREE_ELECTIVE_DESCRIPTION = (
+    "Free electives: Technion course credits not already applied to faculty or mandatory "
+    "requirements (typically 4 credits in DDS tracks)."
+)
+GENERAL_TECHNION_PHYSICAL_EDUCATION_DESCRIPTION = (
+    "Physical education (חינוך גופני): 2 credits required; maximum 1.5 credits per semester."
+)
+
+
+def _general_technion_elective_groups(program_code: str) -> list[dict[str, Any]]:
+    """Advisory pools linked to enrichment / free-elective / physical-education credit buckets."""
+    return [
+        _course_pool_group(
+            program_code=program_code,
+            group_suffix="enrichment-pool",
+            title="University enrichment pool",
+            course_refs=[],
+            min_credits=6.0,
+            rule_expression=ENRICHMENT_POOL_RULE,
+            catalog_description=GENERAL_TECHNION_ENRICHMENT_DESCRIPTION,
+            notes=["Eligible courses use catalog prefix 039405 (CHE enrichment)."],
+        ),
+        _course_pool_group(
+            program_code=program_code,
+            group_suffix="free-elective-pool",
+            title="Free electives pool",
+            course_refs=[],
+            min_credits=4.0,
+            rule_expression=FREE_ELECTIVE_POOL_RULE,
+            catalog_description=GENERAL_TECHNION_FREE_ELECTIVE_DESCRIPTION,
+            notes=["No fixed course list; progress uses remaining eligible transcript credits."],
+        ),
+        _course_pool_group(
+            program_code=program_code,
+            group_suffix="physical-education-pool",
+            title="Physical education pool",
+            course_refs=[],
+            min_credits=2.0,
+            rule_expression=PHYSICAL_EDUCATION_POOL_RULE,
+            catalog_description=GENERAL_TECHNION_PHYSICAL_EDUCATION_DESCRIPTION,
+            notes=["Eligible courses use catalog prefixes 039408 or 039409."],
+        ),
+    ]
+
 
 def _dne_elective_groups(page: WikiPage, program_code: str, config: dict[str, Any]) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
@@ -825,6 +890,8 @@ def build_program(page: WikiPage, config: dict[str, Any], pages: dict[str, WikiP
         requirement_groups.extend(_iem_elective_groups(page, program_code))
     elif page.slug == "track-information-systems-engineering":
         requirement_groups.extend(_is_elective_groups(page, program_code, pages))
+
+    requirement_groups.extend(_general_technion_elective_groups(program_code))
 
     return {
         "institutionId": INSTITUTION_ID,

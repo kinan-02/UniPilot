@@ -6,7 +6,13 @@ import type {
   RequirementProgressEntry,
 } from '../types/api'
 
-export type PoolCategory = 'credit_pool' | 'focus_chain' | 'choose_n' | 'faculty_list' | 'other'
+export type PoolCategory =
+  | 'credit_pool'
+  | 'focus_chain'
+  | 'choose_n'
+  | 'faculty_list'
+  | 'general_elective'
+  | 'other'
 
 export type PoolProgressDisplay =
   | 'chain_steps'
@@ -37,6 +43,14 @@ export function interpolateTemplate(
 
 export function classifyPool(pool: ElectiveBucket): PoolCategory {
   const operator = pool.rule.operator
+  const suffix = groupSuffix(pool.groupId)
+  if (
+    suffix === 'enrichment-pool' ||
+    suffix === 'free-elective-pool' ||
+    suffix === 'physical-education-pool'
+  ) {
+    return 'general_elective'
+  }
   if (operator === 'choose_chain') return 'focus_chain'
   if (operator === 'choose_n') return 'choose_n'
   if (
@@ -57,7 +71,14 @@ export function poolCategoryTranslationKey(category: PoolCategory): string {
 export function groupPoolsByCategory(
   pools: ElectiveBucket[],
 ): Array<{ category: PoolCategory; pools: ElectiveBucket[] }> {
-  const order: PoolCategory[] = ['credit_pool', 'focus_chain', 'choose_n', 'faculty_list', 'other']
+  const order: PoolCategory[] = [
+    'credit_pool',
+    'general_elective',
+    'focus_chain',
+    'choose_n',
+    'faculty_list',
+    'other',
+  ]
   const grouped = new Map<PoolCategory, ElectiveBucket[]>()
 
   for (const pool of pools.filter((entry) => entry.explorerReady)) {
@@ -203,6 +224,13 @@ export function resolvePoolProgressDisplay(
   const suffix = groupSuffix(pool.groupId)
   if (suffix === 'elective-ds-pool' || suffix === 'elective-faculty-pool') {
     return 'dedicated_bucket_credits'
+  }
+  if (
+    suffix === 'enrichment-pool' ||
+    suffix === 'physical-education-pool' ||
+    suffix === 'free-elective-pool'
+  ) {
+    return suffix === 'free-elective-pool' ? 'none' : 'dedicated_bucket_credits'
   }
   if (suffix.includes('additional')) return 'shared_bucket_credits'
   const linkedId = pool.linkedCreditBucketId
@@ -434,6 +462,8 @@ export function categoryAccentClass(category: PoolCategory): string {
       return 'border-s-amber-500'
     case 'faculty_list':
       return 'border-s-sky-500'
+    case 'general_elective':
+      return 'border-s-emerald-500'
     default:
       return 'border-s-stone-400'
   }
@@ -449,6 +479,8 @@ export function categorySurfaceClass(category: PoolCategory): string {
       return 'bg-amber-50 text-amber-800'
     case 'faculty_list':
       return 'bg-sky-50 text-sky-700'
+    case 'general_elective':
+      return 'bg-emerald-50 text-emerald-800'
     default:
       return 'bg-stone-100 text-stone-700'
   }

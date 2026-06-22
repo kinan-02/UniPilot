@@ -1,5 +1,20 @@
 import type { GraduationProgress, RequirementProgressEntry } from '../types/api'
 
+export const GENERAL_TECHNION_BUCKET_SUFFIXES = new Set([
+  'enrichment',
+  'free-elective',
+  'physical-education',
+])
+
+export function isGeneralTechnionBucket(
+  bucket: Pick<RequirementProgressEntry, 'requirementGroupId'>,
+): boolean {
+  const separator = bucket.requirementGroupId.indexOf(':')
+  const suffix =
+    separator >= 0 ? bucket.requirementGroupId.slice(separator + 1) : bucket.requirementGroupId
+  return GENERAL_TECHNION_BUCKET_SUFFIXES.has(suffix)
+}
+
 export function bucketCompletionPercent(
   creditsCompleted: number,
   minCredits: number,
@@ -26,9 +41,11 @@ export function statusBadgeTone(
 }
 
 export function partitionRequirementBuckets(requirementProgress: RequirementProgressEntry[] = []) {
-  const mandatory = requirementProgress.filter((entry) => entry.isMandatory !== false)
-  const elective = requirementProgress.filter((entry) => entry.isMandatory === false)
-  return { mandatory, elective }
+  const generalTechnion = requirementProgress.filter(isGeneralTechnionBucket)
+  const remaining = requirementProgress.filter((entry) => !isGeneralTechnionBucket(entry))
+  const mandatory = remaining.filter((entry) => entry.isMandatory !== false)
+  const elective = remaining.filter((entry) => entry.isMandatory === false)
+  return { mandatory, elective, generalTechnion }
 }
 
 export function progressCatalogSubtitle(progress: GraduationProgress): string {

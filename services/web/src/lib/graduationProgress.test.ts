@@ -31,14 +31,17 @@ describe('graduationProgress helpers', () => {
     expect(statusBadgeTone('not_started')).toBe('neutral')
   })
 
-  it('partitions mandatory and elective buckets', () => {
+  it('partitions mandatory, elective, and general technion buckets', () => {
     const buckets = [
-      sampleBucket({ requirementGroupId: 'a', isMandatory: true }),
-      sampleBucket({ requirementGroupId: 'b', isMandatory: false }),
+      sampleBucket({ requirementGroupId: '009216-1-000:core-mandatory', isMandatory: true }),
+      sampleBucket({ requirementGroupId: '009216-1-000:elective-ds', isMandatory: true }),
+      sampleBucket({ requirementGroupId: '009216-1-000:enrichment', isMandatory: false }),
+      sampleBucket({ requirementGroupId: '009216-1-000:free-elective', isMandatory: false }),
     ]
-    const { mandatory, elective } = partitionRequirementBuckets(buckets)
-    expect(mandatory).toHaveLength(1)
-    expect(elective).toHaveLength(1)
+    const { mandatory, elective, generalTechnion } = partitionRequirementBuckets(buckets)
+    expect(mandatory).toHaveLength(2)
+    expect(elective).toHaveLength(0)
+    expect(generalTechnion).toHaveLength(2)
   })
 
   it('builds catalog subtitle from degree metadata', () => {

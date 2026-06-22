@@ -32,6 +32,8 @@ DEDICATED_BUCKET_POOL_SUFFIXES = frozenset(
     {
         "elective-ds-pool",
         "elective-faculty-pool",
+        "enrichment-pool",
+        "physical-education-pool",
     }
 )
 

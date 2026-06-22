@@ -24,12 +24,26 @@ ALL_PROGRAMS = (
 )
 
 TOTAL_HARD_REQUIREMENTS = 16
-TOTAL_ADVISORY_RULES = 37
+TOTAL_ADVISORY_RULES = 46
 
 ADVISORY_COUNTS_BY_PROGRAM: dict[str, int] = {
-    "009216-1-000": 11,
-    "009009-1-000": 14,
-    "009118-1-000": 12,
+    "009216-1-000": 14,
+    "009009-1-000": 17,
+    "009118-1-000": 15,
+}
+
+GENERAL_ADVISORY_POOL_SUFFIXES = (
+    "enrichment-pool",
+    "free-elective-pool",
+    "physical-education-pool",
+)
+
+LINKED_CREDIT_BUCKET_BY_POOL_SUFFIX: dict[str, str] = {
+    "elective-ds-pool": "elective-ds",
+    "elective-faculty-pool": "elective-faculty",
+    "enrichment-pool": "enrichment",
+    "free-elective-pool": "free-elective",
+    "physical-education-pool": "physical-education",
 }
 
 HARD_REQUIREMENT_SLUGS_BY_PROGRAM: dict[str, list[tuple[str, str, float]]] = {
@@ -87,6 +101,9 @@ DNE_ADVISORY_GROUP_IDS = (
     "009216-1-000:elective-faculty-pool",
     "009216-1-000:cognition-track:requirements",
     "009216-1-000:math-analytics-track:requirements",
+    "009216-1-000:enrichment-pool",
+    "009216-1-000:free-elective-pool",
+    "009216-1-000:physical-education-pool",
 )
 
 IEM_ADVISORY_GROUP_IDS = (
@@ -104,6 +121,9 @@ IEM_ADVISORY_GROUP_IDS = (
     "009009-1-000:ie-focus-chain-advanced-industry",
     "009009-1-000:ie-focus-chain-operations-research",
     "009009-1-000:ie-additional-faculty-electives",
+    "009009-1-000:enrichment-pool",
+    "009009-1-000:free-elective-pool",
+    "009009-1-000:physical-education-pool",
 )
 
 ISE_ADVISORY_GROUP_IDS = (
@@ -119,6 +139,9 @@ ISE_ADVISORY_GROUP_IDS = (
     "009118-1-000:is-focus-chain-ml",
     "009118-1-000:is-focus-chain-game-theory",
     "009118-1-000:is-additional-faculty-electives",
+    "009118-1-000:enrichment-pool",
+    "009118-1-000:free-elective-pool",
+    "009118-1-000:physical-education-pool",
 )
 
 ADVISORY_GROUP_IDS_BY_PROGRAM: dict[str, tuple[str, ...]] = {
@@ -258,7 +281,8 @@ def _hard_requirement_doc(
 
 def _advisory_rule_doc(requirement_group_id: str) -> dict[str, Any]:
     program_code = requirement_group_id.split(":", 1)[0]
-    title = requirement_group_id.split(":", 1)[1].replace("-", " ").replace(":", " ")
+    pool_suffix = requirement_group_id.split(":", 1)[1]
+    title = pool_suffix.replace("-", " ").replace(":", " ")
     course_refs: list[dict[str, Any]] = []
     if requirement_group_id == ADVISORY_RULE_ID:
         course_refs = [{"courseNumber": KNOWN_COURSE, "titleHint": "מתמטיקה דיסקרטית"}]
@@ -269,8 +293,20 @@ def _advisory_rule_doc(requirement_group_id: str) -> dict[str, Any]:
         if rule_type == "semester_matrix"
         else {"type": "course_pool", "operator": "min_credits"}
     )
+    if pool_suffix == "enrichment-pool":
+        rule_expression = {
+            "type": "course_pool",
+            "operator": "min_credits",
+            "allowedPrefixes": ["039405"],
+        }
+    elif pool_suffix == "physical-education-pool":
+        rule_expression = {
+            "type": "course_pool",
+            "operator": "min_credits",
+            "allowedPrefixes": ["039408", "039409"],
+        }
 
-    return {
+    document: dict[str, Any] = {
         "productionKey": f"technion-dds:advisory:{requirement_group_id}:2025-2026",
         "institutionId": "technion",
         "programCode": program_code,
@@ -289,6 +325,10 @@ def _advisory_rule_doc(requirement_group_id: str) -> dict[str, Any]:
         "catalogVersion": "2025-2026",
         "status": "published",
     }
+    linked_bucket_suffix = LINKED_CREDIT_BUCKET_BY_POOL_SUFFIX.get(pool_suffix)
+    if linked_bucket_suffix:
+        document["linkedCreditBucketId"] = f"{program_code}:{linked_bucket_suffix}"
+    return document
 
 
 def _course_doc(course_number: str, title_hebrew: str) -> dict[str, Any]:

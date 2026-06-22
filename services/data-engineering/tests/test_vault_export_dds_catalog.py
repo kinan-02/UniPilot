@@ -54,6 +54,24 @@ def test_export_vault_catalog_builds_three_programs():
     assert document["signoffReview"]["reviewStatus"] == "vault-signed-ready-for-staging"
 
 
+def test_export_includes_general_technion_elective_pools():
+    document, _ = export_vault_catalog(vault_path=VAULT_ROOT, faculty="dds")
+    for program_code in ("009216-1-000", "009009-1-000", "009118-1-000"):
+        program = next(item for item in document["programs"] if item["programCode"] == program_code)
+        group_ids = {group["groupId"] for group in program["requirementGroups"]}
+        assert f"{program_code}:enrichment-pool" in group_ids
+        assert f"{program_code}:free-elective-pool" in group_ids
+        assert f"{program_code}:physical-education-pool" in group_ids
+
+    enrichment = next(
+        group
+        for group in document["programs"][0]["requirementGroups"]
+        if group["groupId"] == "009216-1-000:enrichment-pool"
+    )
+    assert enrichment["ruleExpression"]["allowedPrefixes"] == ["039405"]
+    assert enrichment.get("catalogDescription")
+
+
 def test_export_includes_dne_semester_and_elective_groups():
     document, _ = export_vault_catalog(vault_path=VAULT_ROOT, faculty="dds")
     dne = next(item for item in document["programs"] if item["programCode"] == "009216-1-000")

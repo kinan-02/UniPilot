@@ -19,8 +19,8 @@ BUCKET_EVALUATION_ORDER = (
     "elective-faculty",
     "elective-general",
     "enrichment",
-    "free-elective",
     "physical-education",
+    "free-elective",
     "core-mandatory",
 )
 

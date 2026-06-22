@@ -25,6 +25,8 @@ EXPLORER_POOL_CREDIT_BUCKET_SUFFIX: dict[str, str] = {
 ENFORCED_BUCKET_POOL_SUFFIXES: dict[str, str] = {
     "elective-ds": "elective-ds-pool",
     "elective-faculty": "elective-faculty-pool",
+    "enrichment": "enrichment-pool",
+    "physical-education": "physical-education-pool",
 }
 
 # course_pool groups enforced for graduation eligibility in Phase 15.

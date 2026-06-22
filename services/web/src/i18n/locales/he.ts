@@ -346,6 +346,8 @@ export const he = {
     requirementBuckets: 'דלי דרישות',
     mandatoryBuckets: 'דרישות חובה',
     electiveBuckets: 'דרישות בחירה',
+    generalTechnionBuckets: 'דרישות כלל-טכניוניות',
+    generalTechnionBucketsHint: 'העשרה אוניברסיטאית, בחירה חופשית וחינוך גופני.',
     missingRequirements: 'עדיין חסר',
     missingRequirementsHint: 'דלי דרישות שעדיין לא הושלמו',
     remainingMandatory: 'קורסי חובה שנותרו',
@@ -391,10 +393,16 @@ export const he = {
         'is-focus-chain-ml': 'שרשרת התמחות — למידת מכונה',
         'is-focus-chain-game-theory': 'שרשרת התמחות — תורת משחקים',
         'is-additional-faculty-electives': 'בחירות פקולטיות נוספות (מערכות מידע)',
+        'enrichment-pool': 'העשרה אוניברסיטאית (ות"ת)',
+        'free-elective-pool': 'בחירה חופשית',
+        'physical-education-pool': 'חינוך גופני',
       },
       buckets: {
         'elective-ds': 'בחירות במדעי הנתונים',
         'elective-faculty': 'בחירות פקולטיות',
+        enrichment: 'העשרה אוניברסיטאית',
+        'free-elective': 'בחירה חופשית',
+        'physical-education': 'חינוך גופני',
       },
       chains: {
         statistics: 'סטטיסטיקה',
@@ -430,6 +438,12 @@ export const he = {
           'קבוצה 2 — שרשרת מיקוד בתורת המשחקים והתנהגות כלכלית. יש להשלים את כל 3 החלקים:\nחלק 1: לבחור אחד מ-0960226, 0960578 או 0970317.\nחלק 2: לבחור אחד מ-0960606, 0960617 או 0960690.\nחלק 3: עוד קורס אחד מרשימות חלק 1 או 2.',
         'is-additional-faculty-electives':
           'קבוצה 3 — בחירות פקולטיות נוספות: כל קורס עם קידומת 094–097, ובנוסף קורס 2160035. נספר לתוך 35.5 נק״ז הבחירה המשותפות יחד עם השרשראות למעלה.',
+        'enrichment-pool':
+          'לפחות 6 נק״ז מקורסי העשרה אוניברסיטאיים (ות"ת / CHE). קורסים זכאים בדרך כלל עם קידומת 039405.',
+        'free-elective-pool':
+          'בחירה חופשית: נקודות זכות טכניוניות שלא נספרו לדלי דרישות אחר (בדרך כלל 4 נק״ז).',
+        'physical-education-pool':
+          '2 נק״ז חינוך גופני (מקסימום 1.5 נק״ז לסמסטר). קורסים זכאים עם קידומות 039408 או 039409.',
       },
       catalogRuleHeading: 'דרישה מהקטלוג',
       overviewCourses: 'קורסים ברשימה',
@@ -494,6 +508,7 @@ export const he = {
       },
       categories: {
         credit_pool: 'בריכות נק״ז',
+        general_elective: 'בחירה כלל-טכניונית',
         focus_chain: 'שרשראות התמחות',
         choose_n: 'שרשראות בחר-N',
         faculty_list: 'רשימות פקולטה',

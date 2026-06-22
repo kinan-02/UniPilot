@@ -149,7 +149,7 @@ export function ProgressPage() {
       ? t(statusKey)
       : progress.statusSummary.replace(/_/g, ' ')
 
-  const { mandatory, elective } = partitionRequirementBuckets(progress.requirementProgress)
+  const { mandatory, elective, generalTechnion } = partitionRequirementBuckets(progress.requirementProgress)
   const subtitle =
     progressCatalogSubtitle(progress) || t('progress.subtitleFallback')
   const showTranscriptHint =
@@ -309,8 +309,27 @@ export function ProgressPage() {
         </Card>
       ) : null}
 
-      {mandatory.length || elective.length || electivePools.length ? (
+      {mandatory.length || elective.length || generalTechnion.length || electivePools.length ? (
         <div className="space-y-6">
+          {generalTechnion.length ? (
+            <Card>
+              <h2 className="mb-1 text-sm font-semibold">{t('progress.generalTechnionBuckets')}</h2>
+              <p className="mb-4 text-sm text-[var(--color-text-muted)]">
+                {t('progress.generalTechnionBucketsHint')}
+              </p>
+              <div className="space-y-3">
+                {generalTechnion.map((bucket) => (
+                  <RequirementBucketRow
+                    key={bucket.requirementGroupId}
+                    bucket={bucket}
+                    t={t}
+                    linkedPools={poolsByBucketId.get(bucket.requirementGroupId) ?? []}
+                    onExplorePool={handleExplorePool}
+                  />
+                ))}
+              </div>
+            </Card>
+          ) : null}
           {mandatory.length || elective.length ? (
             <div className="grid gap-6 xl:grid-cols-2">
               {mandatory.length ? (

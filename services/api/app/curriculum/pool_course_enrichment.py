@@ -12,6 +12,8 @@ KNOWN_POOL_PREFIXES_BY_SUFFIX: dict[str, tuple[str, ...]] = {
     "elective-faculty-pool": FACULTY_ELECTIVE_PREFIXES,
     "ie-additional-faculty-electives": FACULTY_ELECTIVE_PREFIXES,
     "is-additional-faculty-electives": FACULTY_ELECTIVE_PREFIXES,
+    "enrichment-pool": ("039405",),
+    "physical-education-pool": ("039408", "039409"),
 }
 
 # Vault: faculty electives include the full DNE elective list plus prefix courses.

@@ -346,6 +346,9 @@ export const en: TranslationTree = {
     requirementBuckets: 'Requirement buckets',
     mandatoryBuckets: 'Mandatory requirements',
     electiveBuckets: 'Elective requirements',
+    generalTechnionBuckets: 'General Technion requirements',
+    generalTechnionBucketsHint:
+      'University-wide enrichment, free electives, and physical education credits (כלל-טכניוניים).',
     missingRequirements: 'Still needed',
     missingRequirementsHint: 'Buckets that are not fully satisfied yet',
     remainingMandatory: 'Remaining mandatory courses',
@@ -391,10 +394,16 @@ export const en: TranslationTree = {
         'is-focus-chain-ml': 'IS machine learning focus chain',
         'is-focus-chain-game-theory': 'IS game theory focus chain',
         'is-additional-faculty-electives': 'IS additional faculty electives',
+        'enrichment-pool': 'University enrichment (CHE)',
+        'free-elective-pool': 'Free electives',
+        'physical-education-pool': 'Physical education',
       },
       buckets: {
         'elective-ds': 'Data science electives',
         'elective-faculty': 'Faculty electives',
+        enrichment: 'University enrichment',
+        'free-elective': 'Free electives',
+        'physical-education': 'Physical education',
       },
       chains: {
         statistics: 'Statistics',
@@ -430,6 +439,12 @@ export const en: TranslationTree = {
           'Group 2 — Game theory & economic behavior focus chain. Complete all 3 parts:\nPart 1: Choose one from 0960226, 0960578, or 0970317.\nPart 2: Choose one from 0960606, 0960617, or 0960690.\nPart 3: One additional course from Part 1 or Part 2 lists.',
         'is-additional-faculty-electives':
           'Group 3 — Additional faculty electives: any course with prefix 094–097, plus course 2160035. Counts toward the shared 35.5 elective credits together with the chains above.',
+        'enrichment-pool':
+          'At least 6 credits from Technion-wide enrichment courses (CHE / קורסי העשרה). Eligible courses typically use catalog prefix 039405.',
+        'free-elective-pool':
+          'Free electives: remaining Technion credits not applied to other degree buckets (typically 4 credits).',
+        'physical-education-pool':
+          '2 physical education credits required (max 1.5 per semester). Eligible courses use prefixes 039408 or 039409.',
       },
       catalogRuleHeading: 'Catalog requirement',
       overviewCourses: 'Listed courses',
@@ -494,6 +509,7 @@ export const en: TranslationTree = {
       },
       categories: {
         credit_pool: 'Credit pools',
+        general_elective: 'General Technion electives',
         focus_chain: 'Focus chains',
         choose_n: 'Choose-N chains',
         faculty_list: 'Faculty lists',

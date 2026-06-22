@@ -52,6 +52,19 @@ STAGING_FIELDS_TO_STRIP = frozenset(
     }
 )
 
+GENERAL_TECHNION_HARD_BUCKET_SUFFIXES = frozenset(
+    {"enrichment", "free-elective", "physical-education"}
+)
+
+
+def _hard_requirement_is_mandatory(group_id: str) -> bool:
+    suffix = group_id.split(":")[-1] if ":" in group_id else group_id
+    if suffix == "core-mandatory":
+        return True
+    if suffix in GENERAL_TECHNION_HARD_BUCKET_SUFFIXES:
+        return False
+    return True
+
 
 class ProductionPromotionError(Exception):
     """Raised when promotion must abort before writing production data."""
@@ -182,7 +195,7 @@ def map_staging_requirement_to_production(
         "courseReferences": group.get("courseReferences", []),
         "ruleExpression": group.get("ruleExpression"),
         "ruleIsExecutable": True,
-        "isMandatory": True,
+        "isMandatory": _hard_requirement_is_mandatory(str(group_id)),
         "enforceInGraduationProgress": True,
         "advisoryOnly": False,
         "catalogYear": staging.get("catalogYear"),
