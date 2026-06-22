@@ -166,6 +166,40 @@ class TestExportDdsCatalogGaps:
         result = enrich_course_reference(ref, {})
         assert result is ref
 
+    def test_enrich_course_reference_applies_offering_metadata(self):
+        """Lines 203-222: title/credits hints and offering text fields."""
+        from app.vault.export_dds_catalog import enrich_course_reference
+
+        ref = {
+            "courseNumber": "00940345",
+            "titleHint": "Wiki Title",
+            "creditsHint": 4.0,
+            "notes": [],
+        }
+        offering = {
+            "titleHebrew": "JSON Title",
+            "credits": 3.0,
+            "faculty": "מדעי המחשב",
+            "prerequisitesText": "דרישות",
+            "corequisitesText": "ליווי",
+            "noAdditionalCreditText": "ללא נוסף",
+            "semestersOffered": [201, 202],
+            "sourceFiles": ["/data/courses_2025_201.json"],
+        }
+
+        enriched = enrich_course_reference(ref, {"00940345": offering})
+
+        assert enriched["titleHint"] == "Wiki Title"
+        assert any("Wiki title" in note for note in enriched["notes"])
+        assert enriched["creditsHint"] == 3.0
+        assert any("creditsHint" in note for note in enriched["notes"])
+        assert enriched["facultyHint"] == "מדעי המחשב"
+        assert enriched["prerequisitesText"] == "דרישות"
+        assert enriched["corequisitesText"] == "ליווי"
+        assert enriched["noAdditionalCreditText"] == "ללא נוסף"
+        assert enriched["semestersOffered"] == [201, 202]
+        assert enriched["sourceEvidence"]
+
     def test_build_readiness_check_missing_program_codes(self):
         """Lines 652-669: missing_codes leads to blocking_staging."""
         from app.vault.export_dds_catalog import build_readiness_check
@@ -1031,6 +1065,42 @@ class TestCourseJsonIndexGaps:
         index = build_course_index_from_paths([f1, f2])
         assert index  # index should have the course
 
+    def test_build_course_index_from_paths_records_title_conflicts(self, tmp_path):
+        """Lines 184-186: conflicting titles append to titleConflicts."""
+        from app.sources.technion_course_json_index import build_course_index_from_paths
+
+        f1 = tmp_path / "courses_2025_200.json"
+        f1.write_text(json.dumps([{
+            "general": {
+                "מספר מקצוע": "9407002",
+                "שם מקצוע": "כותרת א",
+                "נקודות": "3.0",
+            }
+        }]), encoding="utf-8")
+        f2 = tmp_path / "courses_2025_201.json"
+        f2.write_text(json.dumps([{
+            "general": {
+                "מספר מקצוע": "9407002",
+                "שם מקצוע": "כותרת ב",
+                "נקודות": "3.0",
+            }
+        }]), encoding="utf-8")
+
+        index = build_course_index_from_paths([f1, f2])
+        record = index.get("00940700") or index.get("09407002")
+        assert record is not None
+        assert record.titleConflicts
+        assert any("כותרת ב" in conflict for conflict in record.titleConflicts)
+
+    def test_truncate_returns_ellipsis_for_long_text(self):
+        """Line 97: long strings are truncated with an ellipsis suffix."""
+        from app.sources.technion_course_json_index import _truncate
+
+        result = _truncate("a" * 200, 50)
+        assert result is not None
+        assert len(result) == 50
+        assert result.endswith("...")
+
     def test_build_course_index_returns_empty_when_no_files(self, tmp_path):
         """Line 213: returns {} when no existing paths."""
         from app.sources.technion_course_json_index import build_course_index
@@ -1731,6 +1801,14 @@ class TestCourseNumbersGaps:
         """Line 33: returns [] for empty digits string."""
         from app.utils.course_numbers import _candidate_normalized_values
         assert _candidate_normalized_values("") == []
+
+    def test_candidate_normalized_values_trailing_zero_non_course_id(self):
+        """Line 43: 8-digit values ending in 0 may produce truncated candidates."""
+        from app.utils.course_numbers import _candidate_normalized_values
+
+        candidates = _candidate_normalized_values("12345670")
+        assert "01234567" in candidates
+        assert "02345670" in candidates
 
     def test_extract_course_title_pairs_duplicate_number_skipped(self):
         """Line 93: duplicate course number in inline pattern is skipped."""
