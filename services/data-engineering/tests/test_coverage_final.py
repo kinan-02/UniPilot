@@ -200,6 +200,19 @@ class TestExportDdsCatalogGaps:
         assert enriched["semestersOffered"] == [201, 202]
         assert enriched["sourceEvidence"]
 
+    def test_enrich_course_reference_sets_title_hint_from_offering(self):
+        """Line 204: missing wiki titleHint is filled from offering JSON."""
+        from app.vault.export_dds_catalog import enrich_course_reference
+
+        ref = {"courseNumber": "00940345", "notes": []}
+        offering = {
+            "titleHebrew": "JSON Title",
+            "sourceFiles": ["courses_2025_201.json"],
+        }
+
+        enriched = enrich_course_reference(ref, {"00940345": offering})
+        assert enriched["titleHint"] == "JSON Title"
+
     def test_build_readiness_check_missing_program_codes(self):
         """Lines 652-669: missing_codes leads to blocking_staging."""
         from app.vault.export_dds_catalog import build_readiness_check
