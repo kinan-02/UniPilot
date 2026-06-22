@@ -1,19 +1,21 @@
 const TOKEN_KEY = 'unipilot_access_token'
 
-export function getApiBaseUrl(): string {
-  return import.meta.env.VITE_API_URL ?? '/api'
-}
-
+/** @deprecated Tokens are stored in httpOnly cookies; kept for backward-compatible tests. */
 export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
 
+/** @deprecated Tokens are stored in httpOnly cookies; kept for backward-compatible tests. */
 export function setStoredToken(token: string | null): void {
   if (token) {
     localStorage.setItem(TOKEN_KEY, token)
   } else {
     localStorage.removeItem(TOKEN_KEY)
   }
+}
+
+export function getApiBaseUrl(): string {
+  return import.meta.env.VITE_API_URL ?? '/api'
 }
 
 export type ApiEnvelope<T> = {
@@ -46,9 +48,8 @@ export async function apiRequest<T>(
     Accept: 'application/json',
   }
 
-  const authToken = token ?? getStoredToken()
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
 
   if (body !== undefined) {
@@ -60,6 +61,7 @@ export async function apiRequest<T>(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
+    credentials: 'include',
   })
 
   let payload: ApiEnvelope<T> | null = null
@@ -79,4 +81,15 @@ export async function apiRequest<T>(
   }
 
   return payload.data as T
+}
+
+export async function logoutRequest(): Promise<void> {
+  await apiRequest<{ loggedOut: boolean }>('/auth/logout', { method: 'POST', token: null })
+}
+
+export async function refreshSessionRequest(): Promise<void> {
+  await apiRequest<{ accessToken: string; user: unknown }>('/auth/refresh', {
+    method: 'POST',
+    token: null,
+  })
 }

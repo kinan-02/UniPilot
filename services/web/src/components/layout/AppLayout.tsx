@@ -32,8 +32,8 @@ export function AppLayout() {
     { to: '/profile', label: t('nav.profile'), icon: UserCircle },
   ]
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate('/login')
   }
 

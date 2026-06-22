@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import defaultdict
 from typing import Protocol
@@ -6,6 +7,8 @@ from fastapi import HTTPException, Request
 
 from app.config import get_settings
 from app.db.redis_client import get_redis_client
+
+logger = logging.getLogger(__name__)
 
 RATE_LIMIT_PREFIX = "rl:auth:"
 AI_RATE_LIMIT_PREFIX = "rl:ai:"
@@ -37,13 +40,18 @@ class InMemoryRateLimitStore:
 
 
 class RedisRateLimitStore:
-    def __init__(self, redis_url: str) -> None:
+    def __init__(self, redis_url: str, *, fail_closed: bool = True) -> None:
         self._redis_url = redis_url
+        self._fail_closed = fail_closed
 
     async def is_allowed(self, key: str, *, window_ms: int, max_requests: int) -> bool:
         client = get_redis_client()
         if client is None:
-            return True
+            return await _fallback_store().is_allowed(
+                key,
+                window_ms=window_ms,
+                max_requests=max_requests,
+            )
 
         try:
             count = await client.incr(key)
@@ -51,11 +59,22 @@ class RedisRateLimitStore:
                 await client.pexpire(key, window_ms)
             return count <= max_requests
         except Exception:
-            return True
+            logger.warning("Redis rate limit failed for key %s; using fallback", key)
+            if self._fail_closed:
+                return await _fallback_store().is_allowed(
+                    key,
+                    window_ms=window_ms,
+                    max_requests=max_requests,
+                )
+            return False
 
 
 _in_memory_store = InMemoryRateLimitStore()
 _store_override: RateLimitStore | None = None
+
+
+def _fallback_store() -> InMemoryRateLimitStore:
+    return _in_memory_store
 
 
 def set_rate_limit_store(store: RateLimitStore | None) -> None:
@@ -75,12 +94,17 @@ def resolve_rate_limit_store() -> RateLimitStore:
     if settings.environment == "test" or not settings.redis_url:
         return _in_memory_store
 
-    return RedisRateLimitStore(settings.redis_url)
+    return RedisRateLimitStore(settings.redis_url, fail_closed=True)
 
 
 def build_rate_limit_key(request: Request) -> str:
     client_host = request.client.host if request.client else "unknown"
-    return f"{RATE_LIMIT_PREFIX}{client_host}:{request.url.path}"
+    return f"{RATE_LIMIT_PREFIX}ip:{client_host}:{request.url.path}"
+
+
+def build_email_rate_limit_key(*, email: str, path: str) -> str:
+    normalized_email = str(email).strip().lower()
+    return f"{RATE_LIMIT_PREFIX}email:{normalized_email}:{path}"
 
 
 async def _enforce_rate_limit(
@@ -100,14 +124,22 @@ async def _enforce_rate_limit(
         raise HTTPException(status_code=429, detail=detail)
 
 
-async def enforce_auth_rate_limit(request: Request) -> None:
+async def enforce_auth_rate_limits(request: Request, *, email: str | None = None) -> None:
     settings = get_settings()
+    detail = "Too many authentication requests. Please try again later."
     await _enforce_rate_limit(
         key=build_rate_limit_key(request),
         window_ms=settings.auth_rate_limit_window_ms,
         max_requests=settings.auth_rate_limit_max,
-        detail="Too many authentication requests. Please try again later.",
+        detail=detail,
     )
+    if email:
+        await _enforce_rate_limit(
+            key=build_email_rate_limit_key(email=email, path=request.url.path),
+            window_ms=settings.auth_rate_limit_window_ms,
+            max_requests=settings.auth_rate_limit_max,
+            detail=detail,
+        )
 
 
 async def enforce_ai_rate_limit(request: Request, user_id: str) -> None:

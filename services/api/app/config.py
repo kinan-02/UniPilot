@@ -1,15 +1,32 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Dev-only default for Docker first-run; rejected when ENVIRONMENT=production.
 DEV_JWT_SECRET = "unipilot_dev_jwt_secret_change_in_production"
+DEV_MONGO_PASSWORD = "unipilot_dev_password"
 
 JWT_SECRET_PLACEHOLDERS: frozenset[str] = frozenset(
     {
         "replace_me_with_secure_jwt_secret",
         DEV_JWT_SECRET,
     }
+)
+
+MONGO_PASSWORD_PLACEHOLDERS: frozenset[str] = frozenset(
+    {
+        DEV_MONGO_PASSWORD,
+        "password",
+        "changeme",
+    }
+)
+
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
 )
 
 
@@ -19,6 +36,7 @@ class Settings(BaseSettings):
     auto_seed_catalog: bool = False
     api_port: int = 8000
     mongo_uri: str | None = None
+    mongo_root_password: str | None = None
     redis_url: str | None = None
     jwt_secret: str | None = None
     jwt_expires_in: str = "1h"
@@ -27,6 +45,8 @@ class Settings(BaseSettings):
     auth_rate_limit_max: int = 30
     ai_rate_limit_window_ms: int = 60_000
     ai_rate_limit_max: int = 10
+    cors_allowed_origins: str = ",".join(DEFAULT_CORS_ORIGINS)
+    internal_service_token: str | None = None
     courses_collection: str = "courses"
     course_offerings_collection: str = "course_offerings"
     degree_programs_collection: str = "degree_programs"
@@ -69,6 +89,50 @@ class Settings(BaseSettings):
         if rounds < 10:
             return 12
         return rounds
+
+    def resolved_cors_origins(self) -> list[str]:
+        origins = [
+            origin.strip()
+            for origin in str(self.cors_allowed_origins).split(",")
+            if origin.strip()
+        ]
+        return origins or list(DEFAULT_CORS_ORIGINS)
+
+    @field_validator("mongo_root_password", mode="before")
+    @classmethod
+    def normalize_mongo_root_password(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        return stripped or None
+
+    def validate_production_settings(self) -> None:
+        self.require_jwt_secret()
+
+        if self.environment != "production":
+            return
+
+        mongo_password = (self.mongo_root_password or "").strip()
+        if not mongo_password or mongo_password in MONGO_PASSWORD_PLACEHOLDERS:
+            raise RuntimeError(
+                "MONGO_ROOT_PASSWORD must be a strong, unique value in production."
+            )
+
+        if self.auth_rate_limit_max > 10:
+            raise RuntimeError(
+                "AUTH_RATE_LIMIT_MAX must be <= 10 in production (recommended: 5)."
+            )
+
+        if self.ai_rate_limit_max > 10:
+            raise RuntimeError(
+                "AI_RATE_LIMIT_MAX must be <= 10 in production (recommended: 5)."
+            )
+
+        internal_token = (self.internal_service_token or "").strip()
+        if not internal_token or len(internal_token) < 32:
+            raise RuntimeError(
+                "INTERNAL_SERVICE_TOKEN must be at least 32 characters in production."
+            )
 
 
 @lru_cache

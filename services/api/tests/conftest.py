@@ -5,6 +5,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.config import get_settings
 from app.db.mongo import close_mongo_client, set_test_database
 from app.middleware.auth_rate_limiter import reset_in_memory_rate_limit_store
+from app.security.refresh_tokens import reset_in_memory_refresh_token_store
 from app.main import create_app
 from app.routes.auth import reset_user_indexes_state
 from app.routes.completed_courses import reset_completed_course_indexes_state
@@ -26,6 +27,7 @@ def reset_runtime_state(monkeypatch):
     reset_semester_plan_indexes_state()
     reset_academic_risk_indexes_state()
     reset_in_memory_rate_limit_store()
+    reset_in_memory_refresh_token_store()
     yield
     get_settings.cache_clear()
     set_test_database(None)
@@ -36,6 +38,7 @@ def reset_runtime_state(monkeypatch):
     reset_semester_plan_indexes_state()
     reset_academic_risk_indexes_state()
     reset_in_memory_rate_limit_store()
+    reset_in_memory_refresh_token_store()
 
 
 @pytest.fixture

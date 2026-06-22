@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 
-from fastapi import Depends, HTTPException
+from fastapi import Cookie, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.security.cookies import ACCESS_TOKEN_COOKIE
 from app.security.jwt import verify_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -22,10 +23,27 @@ def get_bearer_token(
     return credentials.credentials
 
 
+def resolve_access_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None,
+    access_token_cookie: str | None,
+) -> str | None:
+    bearer_token = get_bearer_token(credentials)
+    if bearer_token:
+        return bearer_token
+
+    if access_token_cookie:
+        return access_token_cookie
+
+    return request.cookies.get(ACCESS_TOKEN_COOKIE)
+
+
 async def require_auth(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    access_token_cookie: str | None = Cookie(default=None, alias=ACCESS_TOKEN_COOKIE),
 ) -> AuthContext:
-    token = get_bearer_token(credentials)
+    token = resolve_access_token(request, credentials, access_token_cookie)
     if not token:
         raise HTTPException(
             status_code=401,

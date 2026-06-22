@@ -1,0 +1,8 @@
+# Production override: use with
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Removes direct API host exposure; traffic should enter via the web/nginx proxy only.
+
+services:
+  api:
+    ports: !reset []

@@ -61,7 +61,9 @@ async def test_register_rejects_duplicate_email_with_different_casing(auth_clien
     )
 
     assert response.status_code == 409
-    assert response.json()["error"] == "A user with this email already exists"
+    assert response.json()["error"] == (
+        "Registration could not be completed. Try signing in or use a different email."
+    )
 
 
 @pytest.mark.asyncio
@@ -202,4 +204,4 @@ async def test_register_duplicate_key_error_returns_409(auth_client, monkeypatch
         )
 
     assert response.status_code == 409
-    assert "already exists" in response.json()["error"]
+    assert "Registration could not be completed" in response.json()["error"]

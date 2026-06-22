@@ -5,7 +5,7 @@ import { useAuth, isAuthError } from '../auth/AuthContext'
 import { Spinner } from '../components/ui/Card'
 
 export function ProtectedRoute() {
-  const { token, isLoading } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -16,7 +16,7 @@ export function ProtectedRoute() {
     )
   }
 
-  if (!token) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
@@ -24,7 +24,7 @@ export function ProtectedRoute() {
 }
 
 export function PublicOnlyRoute() {
-  const { token, isLoading } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
 
   if (isLoading) {
     return (
@@ -34,7 +34,7 @@ export function PublicOnlyRoute() {
     )
   }
 
-  if (token) {
+  if (isAuthenticated) {
     return <Navigate to="/" replace />
   }
 

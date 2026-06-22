@@ -7,6 +7,27 @@ on:
     branches: [master, main]
 
 jobs:
+  security:
+    name: Security scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install API tooling
+        run: pip install bandit pip-audit
+      - name: Bandit (API)
+        run: bandit -q -r services/api/app -x services/api/tests
+      - name: pip-audit (API)
+        run: pip-audit -r services/api/requirements.txt
+      - name: npm audit (web)
+        working-directory: services/web
+        run: npm ci && npm audit --audit-level=high
+
   api:
     name: API (pytest)
     runs-on: ubuntu-latest

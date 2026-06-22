@@ -18,10 +18,11 @@ from app.middleware.auth_rate_limiter import (
     _enforce_rate_limit,
     build_rate_limit_key,
     enforce_ai_rate_limit,
-    enforce_auth_rate_limit,
+    enforce_auth_rate_limits,
     reset_in_memory_rate_limit_store,
     resolve_rate_limit_store,
     set_rate_limit_store,
+    build_email_rate_limit_key,
 )
 
 
@@ -93,7 +94,7 @@ def test_in_memory_store_reset_clears_all_hits() -> None:
 
 
 @pytest.mark.asyncio
-async def test_redis_store_returns_true_when_client_is_none(monkeypatch) -> None:
+async def test_redis_store_uses_in_memory_fallback_when_client_is_none(monkeypatch) -> None:
     monkeypatch.setattr(rl_module, "get_redis_client", lambda: None)
     store = RedisRateLimitStore("redis://localhost")
     result = await store.is_allowed("key", window_ms=60_000, max_requests=10)
@@ -141,15 +142,28 @@ async def test_redis_store_returns_false_when_count_exceeds_max(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_redis_store_returns_true_on_redis_exception(monkeypatch) -> None:
+async def test_redis_store_uses_in_memory_fallback_on_redis_exception(monkeypatch) -> None:
+    fake_client = AsyncMock()
+    fake_client.incr = AsyncMock(side_effect=ConnectionError("redis down"))
+    monkeypatch.setattr(rl_module, "get_redis_client", lambda: fake_client)
+    reset_in_memory_rate_limit_store()
+
+    store = RedisRateLimitStore("redis://localhost", fail_closed=True)
+    result = await store.is_allowed("key", window_ms=60_000, max_requests=10)
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_redis_store_returns_false_when_fail_open_disabled(monkeypatch) -> None:
     fake_client = AsyncMock()
     fake_client.incr = AsyncMock(side_effect=ConnectionError("redis down"))
     monkeypatch.setattr(rl_module, "get_redis_client", lambda: fake_client)
 
-    store = RedisRateLimitStore("redis://localhost")
+    store = RedisRateLimitStore("redis://localhost", fail_closed=False)
     result = await store.is_allowed("key", window_ms=60_000, max_requests=10)
 
-    assert result is True  # fail open
+    assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +237,7 @@ def test_reset_in_memory_rate_limit_store_clears_hits() -> None:
 def test_build_rate_limit_key_uses_client_host_and_path() -> None:
     req = _fake_request(host="10.0.0.1", path="/auth/register")
     key = build_rate_limit_key(req)
-    assert key == f"{RATE_LIMIT_PREFIX}10.0.0.1:/auth/register"
+    assert key == f"{RATE_LIMIT_PREFIX}ip:10.0.0.1:/auth/register"
 
 
 def test_build_rate_limit_key_handles_missing_client() -> None:
@@ -273,12 +287,12 @@ async def test_enforce_rate_limit_passes_when_allowed(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# enforce_auth_rate_limit / enforce_ai_rate_limit
+# enforce_auth_rate_limits / enforce_ai_rate_limit
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_enforce_auth_rate_limit_passes_on_first_request(monkeypatch) -> None:
+async def test_enforce_auth_rate_limits_passes_on_first_request(monkeypatch) -> None:
     monkeypatch.setattr(rl_module, "_store_override", None)
     monkeypatch.setattr(
         rl_module, "get_settings",
@@ -286,11 +300,11 @@ async def test_enforce_auth_rate_limit_passes_on_first_request(monkeypatch) -> N
     )
     reset_in_memory_rate_limit_store()
     req = _fake_request()
-    await enforce_auth_rate_limit(req)  # should not raise
+    await enforce_auth_rate_limits(req, email="user@example.com")
 
 
 @pytest.mark.asyncio
-async def test_enforce_auth_rate_limit_raises_429_after_exceeding_max(monkeypatch) -> None:
+async def test_enforce_auth_rate_limits_raises_429_after_exceeding_max(monkeypatch) -> None:
     monkeypatch.setattr(rl_module, "_store_override", None)
     monkeypatch.setattr(
         rl_module, "get_settings",
@@ -304,12 +318,17 @@ async def test_enforce_auth_rate_limit_raises_429_after_exceeding_max(monkeypatc
     reset_in_memory_rate_limit_store()
     req = _fake_request()
 
-    await enforce_auth_rate_limit(req)
-    await enforce_auth_rate_limit(req)
+    await enforce_auth_rate_limits(req, email="user@example.com")
+    await enforce_auth_rate_limits(req, email="user@example.com")
 
     with pytest.raises(HTTPException) as exc_info:
-        await enforce_auth_rate_limit(req)
+        await enforce_auth_rate_limits(req, email="user@example.com")
     assert exc_info.value.status_code == 429
+
+
+def test_build_email_rate_limit_key_normalizes_email() -> None:
+    key = build_email_rate_limit_key(email="User@Example.com", path="/auth/login")
+    assert key == f"{RATE_LIMIT_PREFIX}email:user@example.com:/auth/login"
 
 
 @pytest.mark.asyncio

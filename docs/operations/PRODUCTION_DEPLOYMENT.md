@@ -16,11 +16,28 @@ This document describes how to deploy UniPilot AI beyond local Docker Compose de
 2. Set `ENVIRONMENT=production`.
 3. Set a unique `JWT_SECRET` (≥ 32 characters; not the dev placeholder).
 4. Set strong `MONGO_ROOT_PASSWORD` and restrict MongoDB to the internal network.
-5. Tune rate limits for production traffic:
+5. Set strong `REDIS_PASSWORD` (used by Redis `requirepass` and `REDIS_URL`).
+6. Set `INTERNAL_SERVICE_TOKEN` (≥ 32 characters) for worker → AI calls.
+7. Set `CORS_ALLOWED_ORIGINS` to your public HTTPS web origin(s) only.
+8. Tune rate limits for production traffic:
    - `AUTH_RATE_LIMIT_MAX=5` (login/register)
    - `AI_RATE_LIMIT_MAX=5` (`POST /academic-risks/analyze`)
-6. Keep `AUTO_SEED_CATALOG=false`; promote catalog via `data-engineering` CLI.
-7. Confirm CI is green on the release commit (`.github/workflows/ci.yml`).
+9. Keep `AUTO_SEED_CATALOG=false`; promote catalog via `data-engineering` CLI.
+10. Confirm CI is green on the release commit (`.github/workflows/ci.yml`).
+
+## Compose profiles
+
+Development (default — exposes API port for direct testing):
+
+```bash
+docker compose up --build -d
+```
+
+Production (API reachable only via the web/nginx proxy):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
 
 ## TLS / HTTPS
 

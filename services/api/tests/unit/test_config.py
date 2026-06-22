@@ -1,6 +1,6 @@
 import pytest
 
-from app.config import DEV_JWT_SECRET, JWT_SECRET_PLACEHOLDERS, Settings, get_settings
+from app.config import DEV_JWT_SECRET, DEV_MONGO_PASSWORD, JWT_SECRET_PLACEHOLDERS, Settings, get_settings
 
 
 def test_require_jwt_secret_accepts_dev_default_in_development() -> None:
@@ -87,3 +87,67 @@ def test_get_settings_returns_same_cached_instance(monkeypatch) -> None:
     second = get_settings()
     assert first is second
     get_settings.cache_clear()
+
+
+def test_resolved_cors_origins_splits_env_value() -> None:
+    settings = Settings(
+        environment="development",
+        jwt_secret="s",
+        cors_allowed_origins="https://app.example.com, https://admin.example.com",
+    )
+    assert settings.resolved_cors_origins() == [
+        "https://app.example.com",
+        "https://admin.example.com",
+    ]
+
+
+def test_validate_production_settings_rejects_weak_mongo_password() -> None:
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 32,
+        mongo_root_password=DEV_MONGO_PASSWORD,
+        internal_service_token="y" * 32,
+        auth_rate_limit_max=5,
+        ai_rate_limit_max=5,
+    )
+    with pytest.raises(RuntimeError, match="MONGO_ROOT_PASSWORD"):
+        settings.validate_production_settings()
+
+
+def test_validate_production_settings_rejects_high_auth_rate_limit() -> None:
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 32,
+        mongo_root_password="strong-production-mongo-password",
+        internal_service_token="y" * 32,
+        auth_rate_limit_max=30,
+        ai_rate_limit_max=5,
+    )
+    with pytest.raises(RuntimeError, match="AUTH_RATE_LIMIT_MAX"):
+        settings.validate_production_settings()
+
+
+def test_validate_production_settings_rejects_high_ai_rate_limit() -> None:
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 32,
+        mongo_root_password="strong-production-mongo-password",
+        internal_service_token="y" * 32,
+        auth_rate_limit_max=5,
+        ai_rate_limit_max=30,
+    )
+    with pytest.raises(RuntimeError, match="AI_RATE_LIMIT_MAX"):
+        settings.validate_production_settings()
+
+
+def test_validate_production_settings_requires_internal_service_token() -> None:
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 32,
+        mongo_root_password="strong-production-mongo-password",
+        internal_service_token="short",
+        auth_rate_limit_max=5,
+        ai_rate_limit_max=5,
+    )
+    with pytest.raises(RuntimeError, match="INTERNAL_SERVICE_TOKEN"):
+        settings.validate_production_settings()

@@ -19,6 +19,9 @@ REQUIRED_ENV_KEYS = frozenset(
         "MONGO_ROOT_PASSWORD",
         "AUTH_RATE_LIMIT_MAX",
         "AI_RATE_LIMIT_MAX",
+        "REDIS_PASSWORD",
+        "INTERNAL_SERVICE_TOKEN",
+        "CORS_ALLOWED_ORIGINS",
     }
 )
 
@@ -76,7 +79,7 @@ def check_rate_limits_in_code(audit: AuditResult) -> None:
     limiter = read_text(REPO_ROOT / "services/api/app/middleware/auth_rate_limiter.py")
     routes = read_text(REPO_ROOT / "services/api/app/routes/academic_risks.py")
     audit.note("Verified auth + AI rate limit middleware")
-    if "enforce_auth_rate_limit" not in limiter:
+    if "enforce_auth_rate_limits" not in limiter:
         audit.deduct(10, "Auth rate limit middleware missing", blocker=True)
     if "enforce_ai_rate_limit" not in limiter or "enforce_ai_rate_limit" not in routes:
         audit.deduct(10, "AI rate limit not wired to /academic-risks/analyze", blocker=True)

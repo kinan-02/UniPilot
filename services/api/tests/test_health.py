@@ -1,6 +1,8 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.config import get_settings
+from app.db.mongo import close_mongo_client
 from app.main import create_app
 from app.routes.health import resolve_service_status
 
@@ -35,6 +37,8 @@ async def test_health_returns_service_payload_without_dependencies(app, monkeypa
 async def test_health_reports_degraded_when_mongo_is_configured_but_unreachable(app, monkeypatch):
     monkeypatch.setenv("MONGO_URI", "mongodb://invalid:27017/unipilot_python?authSource=admin")
     monkeypatch.delenv("REDIS_URL", raising=False)
+    close_mongo_client()
+    get_settings.cache_clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -42,6 +46,8 @@ async def test_health_reports_degraded_when_mongo_is_configured_but_unreachable(
     ) as client:
         response = await client.get("/health")
 
+    close_mongo_client()
+    get_settings.cache_clear()
     assert response.status_code == 503
     body = response.json()
     assert body["dependencies"]["mongo"] == "disconnected"
@@ -53,6 +59,7 @@ async def test_health_uses_environment_name_from_env(app, monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.delenv("MONGO_URI", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
+    get_settings.cache_clear()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -62,6 +69,30 @@ async def test_health_uses_environment_name_from_env(app, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["environment"] == "test"
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_health_omits_environment_in_production(app, monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET", "x" * 32)
+    monkeypatch.setenv("MONGO_ROOT_PASSWORD", "strong-production-mongo-password")
+    monkeypatch.setenv("INTERNAL_SERVICE_TOKEN", "y" * 32)
+    monkeypatch.setenv("AUTH_RATE_LIMIT_MAX", "5")
+    monkeypatch.setenv("AI_RATE_LIMIT_MAX", "5")
+    monkeypatch.delenv("MONGO_URI", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    get_settings.cache_clear()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert "environment" not in response.json()
+    get_settings.cache_clear()
 
 
 class TestResolveServiceStatus:

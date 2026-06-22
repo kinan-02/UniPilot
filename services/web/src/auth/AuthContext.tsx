@@ -8,43 +8,34 @@ import {
   type ReactNode,
 } from 'react'
 import { authApi } from '../api/endpoints'
-import { ApiError, setStoredToken, getStoredToken } from '../lib/api'
+import { ApiError, logoutRequest } from '../lib/api'
 import type { User } from '../types/api'
 
 type AuthContextValue = {
   user: User | null
-  token: string | null
+  isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(() => getStoredToken())
-  const [isLoading, setIsLoading] = useState(Boolean(getStoredToken()))
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!token) {
-      setIsLoading(false)
-      return
-    }
-
     let cancelled = false
+
     authApi
       .me()
       .then((data) => {
         if (!cancelled) setUser(data.user)
       })
       .catch(() => {
-        if (!cancelled) {
-          setStoredToken(null)
-          setToken(null)
-          setUser(null)
-        }
+        if (!cancelled) setUser(null)
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)
@@ -53,18 +44,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [])
 
-  const applyAuth = useCallback((accessToken: string, nextUser: User) => {
-    setStoredToken(accessToken)
-    setToken(accessToken)
+  const applyAuth = useCallback((nextUser: User) => {
     setUser(nextUser)
   }, [])
 
   const login = useCallback(
     async (email: string, password: string) => {
       const data = await authApi.login(email, password)
-      applyAuth(data.accessToken, data.user)
+      applyAuth(data.user)
     },
     [applyAuth],
   )
@@ -72,20 +61,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async (email: string, password: string) => {
       const data = await authApi.register(email, password)
-      applyAuth(data.accessToken, data.user)
+      applyAuth(data.user)
     },
     [applyAuth],
   )
 
-  const logout = useCallback(() => {
-    setStoredToken(null)
-    setToken(null)
-    setUser(null)
+  const logout = useCallback(async () => {
+    try {
+      await logoutRequest()
+    } finally {
+      setUser(null)
+    }
   }, [])
 
   const value = useMemo(
-    () => ({ user, token, isLoading, login, register, logout }),
-    [user, token, isLoading, login, register, logout],
+    () => ({
+      user,
+      isAuthenticated: Boolean(user),
+      isLoading,
+      login,
+      register,
+      logout,
+    }),
+    [user, isLoading, login, register, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

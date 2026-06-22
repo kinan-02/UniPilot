@@ -50,7 +50,6 @@ describe('ProtectedRoute', () => {
 describe('ProfileGuard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    localStorage.setItem('unipilot_access_token', 'test-token')
     vi.mocked(endpoints.authApi.me).mockResolvedValue({
       user: { id: '1', email: 'demo@example.com', status: 'active' },
     })

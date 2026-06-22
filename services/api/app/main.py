@@ -27,7 +27,7 @@ from app.config import get_settings
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
-    settings.require_jwt_secret()
+    settings.validate_production_settings()
     database = await get_database()
     await ensure_development_catalog(database, settings)
     await ensure_catalog_indexes(database, settings=settings)
@@ -37,20 +37,20 @@ async def lifespan(_app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
+    is_production = settings.environment == "production"
     app = FastAPI(
         title="UniPilot API",
         description="FastAPI backend for UniPilot AI — academic decision support",
         version="1.0.0",
         lifespan=lifespan,
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000",
-        ],
+        allow_origins=settings.resolved_cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

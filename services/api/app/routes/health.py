@@ -36,13 +36,15 @@ async def get_health() -> JSONResponse:
     payload = {
         "service": settings.service_name,
         "status": service_status,
-        "environment": settings.environment,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dependencies": {
             "mongo": mongo_status,
             "redis": redis_status,
         },
     }
+
+    if settings.environment != "production":
+        payload["environment"] = settings.environment
 
     status_code = 200 if service_status == "ok" else 503
 
