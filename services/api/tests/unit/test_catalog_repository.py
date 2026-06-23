@@ -400,3 +400,107 @@ async def test_list_best_offerings_for_courses_batch(mongo_database):
 
     assert KNOWN_COURSE in best
     assert best[KNOWN_COURSE]["courseNumber"] == KNOWN_COURSE
+
+
+@pytest.mark.asyncio
+async def test_to_public_degree_program_maps_name_hebrew_from_metadata(mongo_database):
+    settings = get_settings()
+    program_id = ObjectId()
+    await mongo_database[settings.degree_programs_collection].insert_one(
+        {
+            "_id": program_id,
+            "programCode": "009216-1-000",
+            "status": "published",
+            "metadata": {"nameHe": "הנדסת נתונים ומידע", "facultyId": "faculty-dds"},
+        }
+    )
+    programs = await catalog_repository.list_degree_programs(
+        mongo_database,
+        faculty_id="faculty-dds",
+        settings=settings,
+    )
+    match = next((program for program in programs if program.get("id") == str(program_id)), None)
+    assert match is not None
+    assert match["nameHebrew"] == "הנדסת נתונים ומידע"
+
+
+@pytest.mark.asyncio
+async def test_list_degree_programs_filters_by_study_level(mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    settings = get_settings()
+    await mongo_database[settings.degree_programs_collection].insert_one(
+        {
+            "programCode": "grad-test",
+            "status": "published",
+            "metadata": {"programKind": "graduate_program"},
+        }
+    )
+    graduate_programs = await catalog_repository.list_degree_programs(
+        mongo_database,
+        study_level="MSc",
+        settings=settings,
+    )
+    assert any(program.get("programCode") == "grad-test" for program in graduate_programs)
+    bsc_programs = await catalog_repository.list_degree_programs(
+        mongo_database,
+        study_level="BSc",
+        settings=settings,
+    )
+    assert all(
+        (program.get("metadata") or {}).get("programKind") != "graduate_program"
+        for program in bsc_programs
+    )
+
+
+@pytest.mark.asyncio
+async def test_find_path_option_by_id_rejects_invalid_object_id(mongo_database):
+    result = await catalog_repository.find_path_option_by_id(mongo_database, "not-an-object-id")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_list_catalog_faculties_returns_empty_when_no_path_options_for_level(
+    mongo_database,
+):
+    settings = get_settings()
+    await mongo_database[settings.catalog_faculties_collection].insert_one(
+        {
+            "facultyId": "faculty-dds",
+            "institutionId": "technion",
+            "status": "published",
+            "nameHe": "הנדסת נתונים",
+        }
+    )
+    faculties = await catalog_repository.list_catalog_faculties(
+        mongo_database,
+        study_level="PhD",
+        settings=settings,
+    )
+    assert faculties == []
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_filters_by_kind(mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    settings = get_settings()
+    tracks = await catalog_repository.list_path_options(
+        mongo_database,
+        faculty_id="faculty-dds",
+        kind="bsc_track",
+        settings=settings,
+    )
+    assert tracks
+    assert all(option.get("kind") == "bsc_track" for option in tracks)
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_supports_non_primary_filter(mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    settings = get_settings()
+    supplemental = await catalog_repository.list_path_options(
+        mongo_database,
+        faculty_id="faculty-dds",
+        primary_only=False,
+        settings=settings,
+    )
+    assert any(option.get("selectableAsPrimary") is False for option in supplemental)

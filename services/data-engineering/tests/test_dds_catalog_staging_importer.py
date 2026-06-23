@@ -84,6 +84,52 @@ def test_import_writes_staging_only(mongo_database) -> None:
     assert mongo_database.degrees.count_documents({}) == 0
 
 
+def test_import_writes_path_options_and_faculties(mongo_database, tmp_path) -> None:
+    catalog = json.loads(FIXTURE_CATALOG.read_text(encoding="utf-8"))
+    catalog["faculties"] = [
+        {
+            "facultyId": "faculty-dds",
+            "institutionId": "technion",
+            "wikiSlug": "faculty-dds",
+            "name": "DDS",
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+        }
+    ]
+    catalog["pathOptions"] = [
+        {
+            "optionKey": "technion:dds:track-dne",
+            "institutionId": "technion",
+            "facultyId": "faculty-dds",
+            "wikiSlug": "track-data-information-engineering",
+            "kind": "bsc_track",
+            "name": "DNE",
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "selectableAsPrimary": True,
+        }
+    ]
+    catalog_path = tmp_path / "catalog_with_paths.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    settings = get_settings()
+    summary = import_dds_catalog_to_staging(
+        mongo_database,
+        catalog_path=catalog_path,
+        readiness_path=FIXTURE_READINESS_OK,
+        settings=settings,
+    )
+    assert summary.pathOptionsUpserted == 1
+    assert summary.facultiesUpserted == 1
+    assert mongo_database[settings.staging_catalog_path_options_collection].count_documents({}) == 1
+    assert mongo_database[settings.staging_catalog_faculties_collection].count_documents({}) == 1
+    path_doc = mongo_database[settings.staging_catalog_path_options_collection].find_one({})
+    faculty_doc = mongo_database[settings.staging_catalog_faculties_collection].find_one({})
+    assert path_doc["importRunId"]
+    assert path_doc["importedAt"]
+    assert faculty_doc["importRunId"]
+    assert faculty_doc["importedAt"]
+
+
 def test_import_is_idempotent(mongo_database) -> None:
     settings = get_settings()
     import_dds_catalog_to_staging(

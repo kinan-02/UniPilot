@@ -23,6 +23,7 @@ from app.main import (
     run_validate_dds_staging_quality,
     run_validate_sample,
     run_verify_vault_production_parity,
+    run_verify_vault_path_catalog_parity,
 )
 
 
@@ -653,6 +654,64 @@ class TestRunVerifyVaultProductionParity:
         ):
             code = run_verify_vault_production_parity(None, "dds", None, None)
 
+        assert code == 1
+
+
+class TestRunVerifyVaultPathCatalogParity:
+    def _parity_result(self, status="pass"):
+        return SimpleNamespace(
+            status=status,
+            wiki_root="/wiki",
+            exported_at="2025-01-01T00:00:00+00:00",
+            expected_faculty_count=1,
+            expected_path_option_count=2,
+            production_faculty_count=1,
+            production_path_option_count=2,
+            missing_faculties=[],
+            extra_faculties=[],
+            missing_path_options=[],
+            extra_path_options=[],
+            field_mismatches=[],
+            ok=status == "pass",
+        )
+
+    def test_disconnected_returns_1(self):
+        with patch("app.main.check_mongo_connectivity", return_value="disconnected"):
+            code = run_verify_vault_path_catalog_parity(None, "dds")
+        assert code == 1
+
+    def test_pass_returns_0(self, capsys):
+        parity = self._parity_result("pass")
+        with (
+            patch("app.main.check_mongo_connectivity", return_value="connected"),
+            patch("app.main.get_database", return_value=MagicMock()),
+            patch(
+                "app.vault.verify_vault_path_catalog_parity.verify_vault_path_catalog_parity",
+                return_value=parity,
+            ),
+        ):
+            code = run_verify_vault_path_catalog_parity(None, "dds")
+        assert code == 0
+
+    def test_fail_returns_1(self, capsys):
+        mismatch = SimpleNamespace(
+            option_key="opt-1",
+            field="duration",
+            expected="4 years",
+            actual="3 years",
+        )
+        parity = self._parity_result("fail")
+        parity.field_mismatches = [mismatch]
+        parity.ok = False
+        with (
+            patch("app.main.check_mongo_connectivity", return_value="connected"),
+            patch("app.main.get_database", return_value=MagicMock()),
+            patch(
+                "app.vault.verify_vault_path_catalog_parity.verify_vault_path_catalog_parity",
+                return_value=parity,
+            ),
+        ):
+            code = run_verify_vault_path_catalog_parity(None, "dds")
         assert code == 1
 
 

@@ -33,3 +33,26 @@ def test_cross_faculty_missing_reference_is_not_ocr_blocker() -> None:
         neighbor_matches=["00940842"],
     )
     assert classification == "cross_faculty"
+
+
+def test_short_course_numbers_are_not_cross_faculty() -> None:
+    assert is_cross_faculty_course_reference("12") is False
+
+
+def test_classify_ingestible_reference() -> None:
+    classification = classify_missing_course_reference(
+        "00940345",
+        ingestible_course_numbers={"00940345"},
+        production_excluded_course_numbers=set(),
+    )
+    assert classification == "ingestible"
+
+
+def test_ocr_neighbor_skips_same_candidate() -> None:
+    from app.catalog.course_reference_policy import find_dds_ocr_neighbor_matches
+
+    matches = find_dds_ocr_neighbor_matches(
+        "00940345",
+        {"00940345", "00940346"},
+    )
+    assert "00940345" not in matches

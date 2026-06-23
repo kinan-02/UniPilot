@@ -45,3 +45,23 @@ async def test_ensure_development_catalog_skips_outside_development(mongo_databa
     seeded = await ensure_development_catalog(mongo_database, settings)
     assert seeded is False
     assert await mongo_database.degree_programs.count_documents({}) == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_development_catalog_seeds_faculties_when_only_programs_exist(
+    mongo_database,
+) -> None:
+    settings = Settings(
+        environment="development",
+        auto_seed_catalog=True,
+        jwt_secret="test-secret",
+    )
+    await seed_minimal_catalog(mongo_database, settings)
+    resolved = get_settings()
+    await mongo_database[resolved.catalog_faculties_collection].delete_many({})
+    await mongo_database[resolved.catalog_path_options_collection].delete_many({})
+
+    seeded = await ensure_development_catalog(mongo_database, settings)
+    assert seeded is True
+    assert await mongo_database[resolved.catalog_faculties_collection].count_documents({}) > 0
+    assert await mongo_database[resolved.catalog_path_options_collection].count_documents({}) > 0

@@ -258,6 +258,18 @@ async def test_update_student_profile_updates_institution_id(mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_update_student_profile_updates_faculty_id(mongo_database):
+    await create_student_profile(mongo_database, VALID_USER_ID, VALID_PROFILE_DATA)
+    result = await update_student_profile_by_user_id(
+        mongo_database,
+        VALID_USER_ID,
+        {"facultyId": "faculty-dds"},
+    )
+    assert result is not None
+    assert result["facultyId"] == "faculty-dds"
+
+
+@pytest.mark.asyncio
 async def test_update_student_profile_updates_academic_path(mongo_database):
     await create_student_profile(mongo_database, VALID_USER_ID, VALID_PROFILE_DATA)
     result = await update_student_profile_by_user_id(

@@ -13,6 +13,14 @@ from app.config import get_settings
 
 
 @pytest.mark.asyncio
+async def test_validate_degree_id_allows_existing_degree_program(mongo_database):
+    from tests.fixtures.graduation_progress_fixtures import seed_graduation_progress_fixtures
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    await validate_degree_id_for_profile(mongo_database, fixtures["programId"])
+
+
+@pytest.mark.asyncio
 async def test_validate_degree_id_allows_none(mongo_database):
     await validate_degree_id_for_profile(mongo_database, None)
 
@@ -104,3 +112,19 @@ async def test_validate_academic_path_rejects_mismatched_degree(mongo_database):
         )
     assert exc_info.value.status_code == 400
     assert "does not match" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_validate_academic_path_allows_primary_path_option_degree_id(mongo_database):
+    from tests.fixtures.catalog_production_fixtures import seed_catalog_production_fixtures
+
+    await seed_catalog_production_fixtures(mongo_database)
+    graduate = await mongo_database[get_settings().catalog_path_options_collection].find_one(
+        {"kind": "graduate_program", "selectableAsPrimary": True}
+    )
+    assert graduate is not None
+    await validate_academic_path_for_profile(
+        mongo_database,
+        str(graduate["_id"]),
+        {"trackSlug": "track-data-information-engineering"},
+    )

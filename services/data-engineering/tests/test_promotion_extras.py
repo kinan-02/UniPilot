@@ -53,6 +53,18 @@ class TestProductionKeyHelpers:
         key = production_course_key("01234567")
         assert key == "technion:course:01234567"
 
+    def test_path_option_key_format(self):
+        from app.promotion.dds_production_promoter import production_path_option_key
+
+        key = production_path_option_key("technion:dds:track-dne", "2025-2026")
+        assert key == "technion:path-option:technion:dds:track-dne:2025-2026"
+
+    def test_faculty_key_format(self):
+        from app.promotion.dds_production_promoter import production_faculty_key
+
+        key = production_faculty_key("faculty-dds", "2025-2026")
+        assert key == "technion:faculty:faculty-dds:2025-2026"
+
     def test_offering_key_format(self):
         key = production_offering_key("01234567", 2025, 200)
         assert key == "technion:course-offering:01234567:2025:200"

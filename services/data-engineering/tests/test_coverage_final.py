@@ -81,6 +81,18 @@ class TestMainDispatcherMissingBranches:
         assert code == 0
         fn.assert_called_once()
 
+    def test_verify_vault_path_catalog_parity_command_through_main(self):
+        """Lines 789-793: verify-vault-path-catalog-parity route in main()."""
+        with (
+            patch("app.main.configure_logging"),
+            patch("app.main.close_mongo_client"),
+            patch("app.main.run_verify_vault_path_catalog_parity", return_value=0) as fn,
+        ):
+            from app.main import main
+            code = main(["verify-vault-path-catalog-parity"])
+        assert code == 0
+        fn.assert_called_once()
+
     def test_fallthrough_unsupported_command_returns_2(self):
         """Lines 746-747: parser.error + return 2 when no command matches."""
         mock_parser = MagicMock()
@@ -335,8 +347,12 @@ class TestProductionPromoterGaps:
             production_catalog_rules_collection="prod_rules",
             production_courses_collection="prod_courses",
             production_course_offerings_collection="prod_offerings",
+            production_catalog_path_options_collection="prod_path_options",
+            production_catalog_faculties_collection="prod_faculties",
         )
         assert _collection_name_for_logical("degreePrograms", settings) == "prod_programs"
+        assert _collection_name_for_logical("catalogPathOptions", settings) == "prod_path_options"
+        assert _collection_name_for_logical("catalogFaculties", settings) == "prod_faculties"
         assert _collection_name_for_logical("hardDegreeRequirements", settings) == "prod_requirements"
         assert _collection_name_for_logical("advisoryCatalogRules", settings) == "prod_rules"
         assert _collection_name_for_logical("courses", settings) == "prod_courses"
@@ -2370,6 +2386,8 @@ class TestProductionPromoterBuildDocumentErrors:
                 {},  # advisory_reqs
                 {"course-ok": staging_course},  # courses
                 {},  # offerings - missing!
+                {},  # path options
+                {},  # faculties
             ],
         ):
             with pytest.raises(ProductionPromotionError, match="Missing staging offering"):

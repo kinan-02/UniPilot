@@ -181,8 +181,6 @@ async def ensure_development_catalog(database: AsyncIOMotorDatabase, settings: S
         logger.info("Seeded missing catalog faculties/path options for development")
         return True
 
-    return False
-
 
 async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Settings | None = None) -> None:
     resolved = settings or get_settings()
