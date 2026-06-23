@@ -34,6 +34,23 @@ async def test_catalog_requires_auth(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_list_faculties(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-faculties@example.com")
+
+    response = await auth_client.get(
+        "/catalog/faculties",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["total"] >= 1
+    assert isinstance(body["data"]["items"], list)
+
+
+@pytest.mark.asyncio
 async def test_list_courses_pagination(auth_client, mongo_database):
     await seed_catalog_production_fixtures(mongo_database)
     token = await register_access_token(auth_client, "catalog-list@example.com")

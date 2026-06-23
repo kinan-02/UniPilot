@@ -277,3 +277,84 @@ async def test_analyze_returns_404_for_invalid_plan_id(auth_client, mongo_databa
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_analyze_rejects_empty_payload(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-empty@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/academic-risks/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_analyze_rejects_mixed_plan_and_adhoc_fields(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-mixed@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/academic-risks/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "planId": fixtures["courseAId"],
+            "semesterCode": "2025-2",
+            "courseIds": [fixtures["courseBId"]],
+        },
+    )
+    assert response.status_code == 400
+    assert "not both" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_analyze_rejects_too_many_adhoc_course_ids(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-too-many@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/academic-risks/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "courseIds": [fixtures["courseAId"]] * 21,
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_analyze_rejects_invalid_semester_code(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-bad-semester@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/academic-risks/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "not-a-semester",
+            "courseIds": [fixtures["courseAId"]],
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_analyze_rejects_adhoc_without_course_ids(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "academic-risk-no-courses@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/academic-risks/analyze",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-2", "courseIds": []},
+    )
+    assert response.status_code == 400

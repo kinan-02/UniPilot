@@ -68,15 +68,54 @@ export function poolCategoryTranslationKey(category: PoolCategory): string {
   return `progress.electiveExplorer.categories.${category}`
 }
 
+const GENERAL_TECHNION_POOL_SUFFIXES = [
+  'enrichment-pool',
+  'free-elective-pool',
+  'physical-education-pool',
+] as const
+
+export function isGeneralTechnionPool(
+  pool: Pick<ElectiveBucket, 'groupId'>,
+): boolean {
+  return GENERAL_TECHNION_POOL_SUFFIXES.includes(
+    groupSuffix(pool.groupId) as (typeof GENERAL_TECHNION_POOL_SUFFIXES)[number],
+  )
+}
+
+function generalTechnionPoolSortIndex(groupId: string): number {
+  const suffix = groupSuffix(groupId)
+  const index = GENERAL_TECHNION_POOL_SUFFIXES.indexOf(
+    suffix as (typeof GENERAL_TECHNION_POOL_SUFFIXES)[number],
+  )
+  return index >= 0 ? index : GENERAL_TECHNION_POOL_SUFFIXES.length
+}
+
+export function partitionExplorerPools(pools: ElectiveBucket[]): {
+  programPools: ElectiveBucket[]
+  generalTechnionPools: ElectiveBucket[]
+} {
+  const explorerReady = pools.filter((entry) => entry.explorerReady)
+  const generalTechnionPools = explorerReady
+    .filter(isGeneralTechnionPool)
+    .sort(
+      (left, right) =>
+        generalTechnionPoolSortIndex(left.groupId) -
+        generalTechnionPoolSortIndex(right.groupId),
+    )
+  const generalIds = new Set(generalTechnionPools.map((entry) => entry.groupId))
+  const programPools = explorerReady.filter((entry) => !generalIds.has(entry.groupId))
+  return { programPools, generalTechnionPools }
+}
+
 export function groupPoolsByCategory(
   pools: ElectiveBucket[],
 ): Array<{ category: PoolCategory; pools: ElectiveBucket[] }> {
   const order: PoolCategory[] = [
     'credit_pool',
-    'general_elective',
     'focus_chain',
     'choose_n',
     'faculty_list',
+    'general_elective',
     'other',
   ]
   const grouped = new Map<PoolCategory, ElectiveBucket[]>()

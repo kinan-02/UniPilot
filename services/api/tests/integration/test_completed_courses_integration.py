@@ -139,6 +139,32 @@ async def test_duplicate_create_returns_409(auth_client, mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_create_completed_course_duplicate_key_race_returns_409(auth_client, mongo_database, monkeypatch):
+    """Simulate a race where create_completed_course raises DuplicateKeyError."""
+    from unittest.mock import AsyncMock, patch
+
+    from pymongo.errors import DuplicateKeyError as MongoDuplicateKeyError
+
+    catalog = await seed_production_course_fixture(mongo_database)
+    access_token = await register_access_token(auth_client, "completed-race@example.com")
+    payload = build_completed_course_payload(catalog["courseId"])
+
+    with patch(
+        "app.routes.completed_courses.create_completed_course",
+        new_callable=AsyncMock,
+        side_effect=MongoDuplicateKeyError(""),
+    ):
+        response = await auth_client.post(
+            "/completed-courses",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=payload,
+        )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
 async def test_invalid_record_id_returns_400(auth_client):
     access_token = await register_access_token(auth_client, "completed-bad-id@example.com")
     response = await auth_client.get(

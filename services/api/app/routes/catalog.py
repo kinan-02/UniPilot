@@ -61,6 +61,15 @@ def validate_program_code_param(program_code: str) -> str:
     return program_code
 
 
+@router.get("/faculties")
+async def list_catalog_faculties(
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    database = await get_database()
+    faculties = await catalog_repository.list_faculties(database)
+    return success_response({"items": faculties, "total": len(faculties)})
+
+
 @router.get("/courses")
 async def list_catalog_courses(
     q: str | None = Query(default=None, max_length=200),

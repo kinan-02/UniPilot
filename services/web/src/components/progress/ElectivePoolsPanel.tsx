@@ -1,7 +1,7 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Card } from '../ui/Card'
-import { interpolateTemplate } from '../../lib/electivePools'
+import { interpolateTemplate, partitionExplorerPools } from '../../lib/electivePools'
 import { ElectivePoolRow } from './ElectivePoolRow'
 import type { ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 
@@ -27,14 +27,18 @@ export function ElectivePoolsPanel({
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearch = useDeferredValue(searchQuery.trim().toLowerCase())
 
-  const explorerPools = useMemo(
-    () => pools.filter((pool) => pool.explorerReady),
+  const { programPools, generalTechnionPools } = useMemo(
+    () => partitionExplorerPools(pools),
     [pools],
   )
+  const explorerPools = useMemo(
+    () => [...programPools, ...generalTechnionPools],
+    [generalTechnionPools, programPools],
+  )
 
-  const filteredPools = useMemo(() => {
-    if (!deferredSearch) return explorerPools
-    return explorerPools.filter((pool) => {
+  const filterPools = useMemo(() => {
+    const matchesSearch = (pool: ElectiveBucket) => {
+      if (!deferredSearch) return true
       const haystack = [
         pool.title ?? '',
         pool.groupId,
@@ -46,8 +50,18 @@ export function ElectivePoolsPanel({
         .join(' ')
         .toLowerCase()
       return haystack.includes(deferredSearch)
-    })
-  }, [deferredSearch, explorerPools])
+    }
+    return (list: ElectiveBucket[]) => list.filter(matchesSearch)
+  }, [deferredSearch])
+
+  const filteredProgramPools = useMemo(
+    () => filterPools(programPools),
+    [filterPools, programPools],
+  )
+  const filteredGeneralTechnionPools = useMemo(
+    () => filterPools(generalTechnionPools),
+    [filterPools, generalTechnionPools],
+  )
 
   if (!explorerPools.length) return null
 
@@ -75,23 +89,56 @@ export function ElectivePoolsPanel({
         />
       </label>
 
-      {filteredPools.length ? (
-        <ul className="space-y-2">
-          {filteredPools.map((pool) => (
-            <li key={pool.groupId}>
-              <ElectivePoolRow
-                pool={pool}
-                allPools={explorerPools}
-                requirementBuckets={requirementBuckets}
-                requiredCurriculumNumbers={requiredCurriculumNumbers}
-                transcriptNumbers={transcriptNumbers}
-                expanded={expandedPoolId === pool.groupId}
-                t={t}
-                onToggle={handleToggle}
-              />
-            </li>
-          ))}
-        </ul>
+      {filteredProgramPools.length || filteredGeneralTechnionPools.length ? (
+        <div className="space-y-6">
+          {filteredProgramPools.length ? (
+            <ul className="space-y-2">
+              {filteredProgramPools.map((pool) => (
+                <li key={pool.groupId}>
+                  <ElectivePoolRow
+                    pool={pool}
+                    allPools={explorerPools}
+                    requirementBuckets={requirementBuckets}
+                    requiredCurriculumNumbers={requiredCurriculumNumbers}
+                    transcriptNumbers={transcriptNumbers}
+                    expanded={expandedPoolId === pool.groupId}
+                    t={t}
+                    onToggle={handleToggle}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {generalTechnionPools.length && filteredGeneralTechnionPools.length ? (
+            <section className="space-y-3 border-t border-[var(--color-border)] pt-5">
+              <div>
+                <h3 className="text-sm font-semibold">
+                  {t('progress.electiveExplorer.generalTechnionPoolsTitle')}
+                </h3>
+                <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                  {t('progress.electiveExplorer.generalTechnionPoolsHint')}
+                </p>
+              </div>
+              <ul className="space-y-2">
+                {filteredGeneralTechnionPools.map((pool) => (
+                  <li key={pool.groupId}>
+                    <ElectivePoolRow
+                      pool={pool}
+                      allPools={explorerPools}
+                      requirementBuckets={requirementBuckets}
+                      requiredCurriculumNumbers={requiredCurriculumNumbers}
+                      transcriptNumbers={transcriptNumbers}
+                      expanded={expandedPoolId === pool.groupId}
+                      t={t}
+                      onToggle={handleToggle}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
       ) : (
         <p className="rounded-xl border border-dashed border-[var(--color-border)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
           {interpolateTemplate(t('progress.electiveExplorer.noPoolsMatch'), {

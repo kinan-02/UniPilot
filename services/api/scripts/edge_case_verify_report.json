@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-06-21T21:56:43.518164+00:00",
+  "generated_at": "2026-06-22T23:36:01.172542+00:00",
   "base_url": "http://localhost:8000",
-  "passed": 17,
+  "passed": 28,
   "failed": 0,
   "failures": [],
   "checks_passed": [
@@ -11,6 +11,11 @@
     "empty catalog list",
     "catalog populated total=2068",
     "offset beyond total",
+    "catalog limit=0 rejected",
+    "catalog offset=-1 rejected",
+    "catalog limit=201 rejected",
+    "refresh rotation succeeds",
+    "refresh reuse rejected",
     "invalid course number",
     "missing course",
     "invalid program code",
@@ -20,7 +25,13 @@
     "graduation no profile",
     "plan generate no profile",
     "weak password rejected",
+    "profile edge user register",
+    "student profile create",
+    "duplicate student profile rejected",
+    "degree edge user register",
+    "invalid degreeId format rejected",
+    "missing degree program rejected",
     "excluded course",
-    "vault-aligned advisory/hard totals 35/16"
+    "vault-aligned advisory/hard totals 46/16"
   ]
 }

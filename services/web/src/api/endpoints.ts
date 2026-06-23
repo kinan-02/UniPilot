@@ -83,6 +83,7 @@ export const catalogApi = {
   },
   degreePrograms: () =>
     apiRequest<{ items: DegreeProgram[]; total: number }>('/catalog/degree-programs'),
+  faculties: () => apiRequest<{ items: string[]; total: number }>('/catalog/faculties'),
 }
 
 export const transcriptApi = {

@@ -633,3 +633,17 @@ async def list_advisory_rules_for_program(
     documents = [doc async for doc in cursor]
     deduped = _dedupe_catalog_rules_by_group_id(documents)
     return [to_public_advisory_rule(doc) for doc in deduped]
+
+
+async def list_faculties(
+    database: AsyncIOMotorDatabase,
+    *,
+    settings: Settings | None = None,
+) -> list[str]:
+    settings = settings or get_settings()
+    collection = database[settings.courses_collection]
+    values = await collection.distinct(
+        "faculty",
+        {**PUBLISHED_STATUS_FILTER, "faculty": {"$exists": True, "$nin": [None, ""]}},
+    )
+    return sorted(str(value).strip() for value in values if str(value).strip())

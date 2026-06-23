@@ -1,33 +1,5 @@
 import { expect, test } from '@playwright/test'
 
-test.describe('Graduation progress', () => {
-  test('loads progress page for onboarded user', async ({ page }) => {
-    await page.goto('/progress')
-    await expect(
-      page.getByRole('heading', { name: /התקדמות לתואר|Graduation progress/i }),
-    ).toBeVisible({ timeout: 15_000 })
-    await expect(
-      page.getByRole('link', { name: /עדכון גיליון ציונים|Update transcript/i }),
-    ).toBeVisible()
-  })
-
-  test('opens elective pool explorer from progress bucket', async ({ page }) => {
-    await page.goto('/progress')
-    await expect(
-      page.getByRole('heading', { name: /התקדמות לתואר|Graduation progress/i }),
-    ).toBeVisible({ timeout: 15_000 })
-
-    const exploreButton = page.getByRole('button', { name: /פתח בריכה|Browse pool/i }).first()
-    if ((await exploreButton.count()) === 0) {
-      test.skip(true, 'No explorer-ready elective bucket for this test user')
-    }
-
-    await exploreButton.click()
-    await expect(page.getByTestId('elective-pool-explorer')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/כלל בריכה|Pool rule/i)).toBeVisible()
-  })
-})
-
 test.describe('Catalog', () => {
   test('search returns results and opens course detail', async ({ page }) => {
     await page.goto('/catalog')

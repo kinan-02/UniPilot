@@ -181,3 +181,373 @@ def test_overlay_marks_blocked_when_prereq_missing():
     by_number = {node["courseNumber"]: node for node in graph["nodes"]}
     assert by_number["B"]["status"] == "blocked"
     assert graph["bottlenecks"][0]["courseNumber"] == "B"
+
+
+def test_parse_credits_range_returns_none_for_missing_raw():
+    assert parse_credits_range(None) is None
+
+
+def test_parse_credits_range_swaps_inverted_bounds():
+    assert parse_credits_range("4.0-3.0") == {"min": 3.0, "max": 4.0}
+
+
+def test_build_credits_display_without_any_credit_signal():
+    display = build_credits_display(credits=None, credits_range=None, credits_hint=None)
+    assert display["uncertain"] is True
+    assert display["display"] == "—"
+
+
+def test_prerequisite_sources_use_catalog_prerequisite_ids():
+    from app.curriculum.graph_builder import _prerequisite_sources
+
+    sources = _prerequisite_sources(
+        {
+            "courseNumber": "01040044",
+            "prerequisites": ["665f2b0f2a3f7b2a1a9a7f01"],
+        },
+        None,
+        {
+            "665f2b0f2a3f7b2a1a9a7f01": {
+                "_id": "665f2b0f2a3f7b2a1a9a7f01",
+                "courseNumber": "01040042",
+            }
+        },
+    )
+    assert sources[0]["number"] == "01040042"
+    assert sources[0]["requirementType"] == "hard"
+
+
+def test_prerequisite_sources_include_corequisites_and_course_ref_text():
+    from app.curriculum.graph_builder import _prerequisite_sources
+
+    sources = _prerequisite_sources(
+        {
+            "courseNumber": "01040044",
+            "corequisitesText": "01040031",
+        },
+        {"prerequisitesText": "01040042"},
+        {},
+    )
+    numbers = {(item["number"], item["kind"]) for item in sources}
+    assert ("01040042", "prerequisite") in numbers
+    assert ("01040031", "corequisite") in numbers
+
+
+def test_prerequisite_sources_skip_blank_numbers_and_duplicates():
+    from app.curriculum.graph_builder import _prerequisite_sources
+
+    sources = _prerequisite_sources(
+        {"courseNumber": "01040044", "prerequisitesText": "01040042 01040042"},
+        {"prerequisitesText": "   "},
+        {},
+    )
+    assert len(sources) == 1
+
+
+def test_build_base_graph_parses_credits_from_notes_and_hint_raw():
+    graph = build_base_curriculum_graph(
+        track_slug="track-data-information-engineering",
+        program_code="009216-1-000",
+        catalog_year=2025,
+        catalog_version="2025-2026",
+        semester_matrix_documents=[
+            {
+                "title": "Semester 1",
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "courseReferences": [
+                    {
+                        "courseNumber": "00940345",
+                        "notes": ["3.5–4.0 credits"],
+                        "creditsHintRaw": "3.0-3.5",
+                    }
+                ],
+                "advisoryOnly": True,
+            }
+        ],
+        pool_documents=[],
+        catalog_courses=[],
+    )
+    node = graph["nodes"][0]
+    assert node["credits"]["uncertain"] is True
+
+
+def test_prerequisite_sources_deduplicate_duplicate_prerequisite_ids():
+    from app.curriculum.graph_builder import _prerequisite_sources
+
+    sources = _prerequisite_sources(
+        {"prerequisites": ["665f2b0f2a3f7b2a1a9a7f01", "665f2b0f2a3f7b2a1a9a7f01"]},
+        None,
+        {
+            "665f2b0f2a3f7b2a1a9a7f01": {
+                "_id": "665f2b0f2a3f7b2a1a9a7f01",
+                "courseNumber": "01040042",
+            }
+        },
+    )
+    assert len(sources) == 1
+
+
+def test_build_base_graph_skips_invalid_matrix_course_reference():
+    graph = build_base_curriculum_graph(
+        track_slug="track-data-information-engineering",
+        program_code="009216-1-000",
+        catalog_year=2025,
+        catalog_version="2025-2026",
+        semester_matrix_documents=[
+            {
+                "title": "Semester 1",
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "courseReferences": [{"courseNumber": "invalid"}],
+                "advisoryOnly": True,
+            }
+        ],
+        pool_documents=[],
+        catalog_courses=[],
+    )
+    assert graph["nodes"] == []
+
+
+def test_build_base_graph_prefers_earlier_semester_for_duplicate_course(monkeypatch):
+    original_sorted = sorted
+
+    def reverse_semester_sort(items, key):
+        return original_sorted(items, key=key, reverse=True)
+
+    monkeypatch.setattr("builtins.sorted", reverse_semester_sort)
+    graph = build_base_curriculum_graph(
+        track_slug="track-data-information-engineering",
+        program_code="009216-1-000",
+        catalog_year=2025,
+        catalog_version="2025-2026",
+        semester_matrix_documents=[
+            {
+                "title": "Semester 1",
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "courseReferences": [{"courseNumber": "00940345"}],
+                "advisoryOnly": True,
+            },
+            {
+                "title": "Semester 2",
+                "ruleExpression": {"type": "semester_matrix", "semester": 2},
+                "courseReferences": [{"courseNumber": "00940345"}],
+                "advisoryOnly": True,
+            },
+        ],
+        pool_documents=[],
+        catalog_courses=[{"_id": "665f2b0f2a3f7b2a1a9a7f01", "courseNumber": "00940345", "credits": 4.0}],
+    )
+    assert graph["nodes"][0]["semester"] == 1
+
+
+def test_prerequisite_sources_skip_missing_prerequisite_numbers():
+    from app.curriculum.graph_builder import _prerequisite_sources
+
+    sources = _prerequisite_sources(
+        {"prerequisites": ["665f2b0f2a3f7b2a1a9a7f01"]},
+        None,
+        {"665f2b0f2a3f7b2a1a9a7f01": {"_id": "665f2b0f2a3f7b2a1a9a7f01"}},
+    )
+    assert sources == []
+
+
+def test_prerequisite_sources_deduplicate_hard_and_textual_prerequisites():
+    from app.curriculum.graph_builder import _prerequisite_sources
+
+    sources = _prerequisite_sources(
+        {
+            "courseNumber": "01040044",
+            "prerequisites": ["665f2b0f2a3f7b2a1a9a7f01"],
+            "prerequisitesText": "01040042",
+        },
+        None,
+        {
+            "665f2b0f2a3f7b2a1a9a7f01": {
+                "_id": "665f2b0f2a3f7b2a1a9a7f01",
+                "courseNumber": "01040042",
+            }
+        },
+    )
+    assert len(sources) == 1
+    assert sources[0]["number"] == "01040042"
+
+
+def test_build_base_graph_skips_invalid_course_numbers_and_marks_external_prerequisites():
+    graph = build_base_curriculum_graph(
+        track_slug="track-data-information-engineering",
+        program_code="009216-1-000",
+        catalog_year=2025,
+        catalog_version="2025-2026",
+        semester_matrix_documents=[
+            {
+                "title": "Semester 2",
+                "ruleExpression": {"type": "semester_matrix", "semester": 2},
+                "courseReferences": [{"courseNumber": "00940345"}],
+                "advisoryOnly": True,
+            }
+        ],
+        pool_documents=[],
+        catalog_courses=[
+            {
+                "_id": "665f2b0f2a3f7b2a1a9a7f01",
+                "courseNumber": "00940345",
+                "title": "Discrete",
+                "credits": 4.0,
+                "prerequisitesText": "01040042",
+            }
+        ],
+    )
+    assert len(graph["nodes"]) == 1
+    external = [edge for edge in graph["edges"] if edge["kind"] == "external_prerequisite"]
+    assert external
+    assert external[0]["from"] == "01040042"
+
+
+def test_course_number_helper_returns_none_without_number():
+    from app.curriculum.graph_builder import _course_number
+
+    assert _course_number({"title": "No number"}) is None
+
+
+def test_build_base_graph_uses_credits_hint_raw_when_notes_missing():
+    graph = build_base_curriculum_graph(
+        track_slug="track-data-information-engineering",
+        program_code="009216-1-000",
+        catalog_year=2025,
+        catalog_version="2025-2026",
+        semester_matrix_documents=[
+            {
+                "title": "Semester 1",
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "courseReferences": [
+                    {
+                        "courseNumber": "00940345",
+                        "creditsHintRaw": "3.0-3.5",
+                    }
+                ],
+                "advisoryOnly": True,
+            }
+        ],
+        pool_documents=[],
+        catalog_courses=[],
+    )
+    assert graph["nodes"][0]["credits"]["uncertain"] is True
+
+
+def test_overlay_marks_failed_and_verify_statuses():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "A",
+                "courseNumber": "A",
+                "semester": 1,
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            },
+            {
+                "nodeId": "B",
+                "courseNumber": "B",
+                "semester": 2,
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            },
+            {
+                "nodeId": "C",
+                "courseNumber": "C",
+                "semester": 3,
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": True},
+            },
+        ],
+        "edges": [{"from": "A", "to": "B", "kind": "prerequisite"}],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(
+        base,
+        [
+            {"courseNumber": "A", "grade": 95},
+            {"courseNumber": "B", "grade": 45},
+        ],
+    )
+    by_number = {node["courseNumber"]: node for node in graph["nodes"]}
+    assert by_number["A"]["status"] == "completed"
+    assert by_number["B"]["status"] == "failed"
+    assert by_number["C"]["status"] == "verify_with_registrar"
+
+
+def test_in_progress_numbers_helper():
+    from app.curriculum.graph_overlay import _in_progress_numbers
+
+    numbers = _in_progress_numbers(
+        [{"courseNumber": "00940345", "inProgress": True, "grade": 80}]
+    )
+    assert numbers == {"00940345"}
+
+
+def test_overlay_marks_available_and_highlights_bottleneck_edge():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "A",
+                "courseNumber": "A",
+                "semester": 1,
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            },
+            {
+                "nodeId": "B",
+                "courseNumber": "B",
+                "semester": 2,
+                "prerequisiteNumbers": ["A", "C"],
+                "dataQuality": {"verifyWithRegistrar": False},
+            },
+        ],
+        "edges": [{"from": "A", "to": "B", "kind": "prerequisite"}],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(base, [{"courseNumber": "A", "grade": 90}])
+    by_number = {node["courseNumber"]: node for node in graph["nodes"]}
+    assert by_number["B"]["status"] == "blocked"
+    assert graph["edges"][0]["highlight"] == "bottleneck"
+
+
+def test_overlay_marks_in_progress_status(monkeypatch):
+    import app.curriculum.graph_overlay as graph_overlay
+
+    monkeypatch.setattr(graph_overlay, "_completed_numbers", lambda _records: set())
+    monkeypatch.setattr(graph_overlay, "_failed_numbers", lambda _records: set())
+    base = {
+        "nodes": [
+            {
+                "nodeId": "C",
+                "courseNumber": "C",
+                "semester": 1,
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            }
+        ],
+        "edges": [],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(
+        base,
+        [{"courseNumber": "C", "inProgress": True}],
+    )
+    assert graph["nodes"][0]["status"] == "in_progress"
+
+
+def test_overlay_marks_verify_with_registrar_when_flag_set():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "C",
+                "courseNumber": "C",
+                "semester": 1,
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": True},
+            }
+        ],
+        "edges": [],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(base, [])
+    assert graph["nodes"][0]["status"] == "verify_with_registrar"

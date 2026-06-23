@@ -221,3 +221,69 @@ async def test_catalog_ignores_unknown_query_params(auth_client, mongo_database)
     )
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "expected_status"),
+    [
+        ("limit=0", 400),
+        ("offset=-1", 400),
+        ("limit=201", 400),
+        ("limit=1&offset=0", 200),
+    ],
+)
+async def test_catalog_pagination_rejects_out_of_bounds(
+    auth_client,
+    mongo_database,
+    query: str,
+    expected_status: int,
+):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, f"edge-pagination-{query.replace('=', '-')}@example.com")
+
+    response = await auth_client.get(
+        f"/catalog/courses?{query}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == expected_status
+
+
+@pytest.mark.asyncio
+async def test_completed_courses_list_empty_page_with_high_offset(auth_client, mongo_database):
+    from tests.fixtures.completed_course_fixtures import (
+        build_completed_course_payload,
+        seed_production_course_fixture,
+    )
+
+    catalog = await seed_production_course_fixture(mongo_database)
+    token = await register_access_token(auth_client, "edge-cc-high-page@example.com")
+
+    create_response = await auth_client.post(
+        "/completed-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json=build_completed_course_payload(catalog["courseId"]),
+    )
+    assert create_response.status_code == 201
+
+    response = await auth_client.get(
+        "/completed-courses?page=999&limit=50",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["completedCourses"] == []
+    assert body["pagination"]["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_extra_unknown_fields(auth_client):
+    response = await auth_client.post(
+        "/auth/register",
+        json={
+            "email": "extra-field@example.com",
+            "password": VALID_PASSWORD,
+            "isAdmin": True,
+        },
+    )
+    assert response.status_code == 400

@@ -95,3 +95,17 @@ async def test_auth_routes_enforce_rate_limiting_with_429(security_client):
     assert limited_response.json()["error"] == (
         "Too many authentication requests. Please try again later."
     )
+
+
+@pytest.mark.asyncio
+async def test_refresh_endpoint_enforces_rate_limit(security_client):
+    await security_client.post(
+        "/auth/register",
+        json={"email": "refresh-rate-limit@example.com", "password": VALID_PASSWORD},
+    )
+
+    for _ in range(2):
+        await security_client.post("/auth/refresh")
+
+    limited_response = await security_client.post("/auth/refresh")
+    assert limited_response.status_code == 429

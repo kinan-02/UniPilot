@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.dependencies.auth import AuthContext, require_auth
 from app.db.mongo import get_database
+from app.middleware.auth_rate_limiter import enforce_progress_rate_limit
+from app.security.impersonation_guard import reject_impersonation_query_params
 from app.services.curriculum_graph_service import get_curriculum_graph_for_user
 from app.services.graduation_progress_service import get_graduation_progress_for_user
 
@@ -24,8 +26,11 @@ def success_response(data: Any) -> dict[str, Any]:
 
 @router.get("")
 async def get_graduation_progress(
+    request: Request,
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    reject_impersonation_query_params(request)
+    await enforce_progress_rate_limit(request, auth.user_id)
     database = await get_database()
     result = await get_graduation_progress_for_user(database, auth.user_id)
 
@@ -52,8 +57,11 @@ async def get_graduation_progress(
 
 @router.get("/curriculum-graph")
 async def get_curriculum_graph(
+    request: Request,
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    reject_impersonation_query_params(request)
+    await enforce_progress_rate_limit(request, auth.user_id)
     database = await get_database()
     result = await get_curriculum_graph_for_user(database, auth.user_id)
 

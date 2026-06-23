@@ -92,10 +92,10 @@ With the stack running (uses `API_PORT` from `.env`, default 8000):
 
 ```bash
 cd services/api && python scripts/verify_and_benchmark.py
-cd services/api && python scripts/edge_case_verify.py   # boundary + validation checks
+cd services/api && python scripts/edge_case_verify.py   # boundary + validation checks (~28 checks)
 ```
 
-Writes `services/api/scripts/verify_report.json`. Covers auth, catalog, completed courses, graduation progress, semester plans (generate + manual + versioning), and academic risks against live MongoDB.
+Writes `services/api/scripts/verify_report.json` and `services/api/scripts/edge_case_verify_report.json`. The benchmark script covers auth, catalog, completed courses, graduation progress, semester plans (generate + manual + versioning), and academic risks against live MongoDB. The edge-case script adds pagination bounds, refresh-token rotation/reuse, student-profile validation, and related boundary checks.
 
 ### Production readiness audit
 
@@ -124,17 +124,24 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
+Run a single Playwright project (after `auth.setup` runs via project dependencies):
+
+```bash
+npm run test:e2e -- --project=progress
+npm run test:e2e -- --project=planner-catalog
+```
+
 The web UI defaults to **Hebrew** (RTL) with an in-app language switcher (Hebrew / English). Open [http://localhost:3000](http://localhost:3000) after `docker compose up --build`.
 
 ## API overview (all JWT-protected except `/health`)
 
 | Area | Key routes |
 |------|------------|
-| Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` |
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me` |
 | Profile | `POST/GET/PUT/DELETE /student-profile` |
 | Catalog | `GET /catalog/courses`, `GET /catalog/degree-programs/{code}/...` |
 | Transcript | `POST/GET/PUT/DELETE /completed-courses` |
-| Progress | `GET /graduation-progress` |
+| Progress | `GET /graduation-progress`, `GET /graduation-progress/curriculum-graph` |
 | Plans | `POST /semester-plans/generate`, `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions` |
 | Risks | `POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id` |
 
@@ -176,7 +183,8 @@ See `services/data-engineering/README.md` and `docs/data-sources/TECHNION_DDS_SO
 - `web` and `api` publish host ports; all other services stay internal.
 - Passwords: bcrypt; JWT from env (`JWT_SECRET` required at startup — dev default in `.env.example`; production needs a unique 32+ char secret).
 - Auth rate limit: `AUTH_RATE_LIMIT_MAX` defaults to **30** in development (Docker); set **5** for production.
-- Auth rate limiting via Redis.
+- Progress rate limit: `PROGRESS_RATE_LIMIT_MAX` (default **60**/min) on `GET /graduation-progress` and `/graduation-progress/curriculum-graph`.
+- Auth and progress rate limiting via Redis.
 - Replace dev secrets in `.env` before non-local deployment.
 - Worker and AI remain internal stubs for a future async AI phase.
 

@@ -1,10 +1,9 @@
 import { Link } from 'react-router-dom'
-import { ChevronRight, Layers } from 'lucide-react'
-import { AlertTriangle, BookOpen, ClipboardList } from 'lucide-react'
+import { AlertTriangle, BookOpen, ChevronRight, ClipboardList, Layers } from 'lucide-react'
 import { Badge, Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { bucketCompletionPercent, statusBadgeTone } from '../../lib/graduationProgress'
-import { localizedBucketTitle, localizedPoolTitle } from '../../lib/electivePools'
+import { catalogSearchLink, localizedBucketTitle, localizedPoolTitle } from '../../lib/electivePools'
 import { formatCredits } from '../../lib/utils'
 import type { CourseProgressEntry, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 import type { useTranslation } from '../../i18n'
@@ -105,7 +104,7 @@ export function CourseChipList({ courses }: { courses: CourseProgressEntry[] }) 
       {courses.map((course) => (
         <li key={course.courseId}>
           <Link
-            to="/catalog"
+            to={course.courseNumber ? catalogSearchLink(course.courseNumber) : '/catalog'}
             className="inline-flex max-w-full flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5 text-start transition hover:border-[var(--color-primary)]/30"
           >
             <span className="font-mono text-xs font-medium text-[var(--color-primary)]">

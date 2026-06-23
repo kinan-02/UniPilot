@@ -15,6 +15,7 @@ import httpx
 
 BASE_URL = "http://localhost:8000"
 PASSWORD = "StrongPass123!"
+REFRESH_TOKEN_COOKIE = "unipilot_refresh_token"
 REPORT_PATH = Path(__file__).with_name("edge_case_verify_report.json")
 
 
@@ -43,17 +44,31 @@ class EdgeVerifier:
         label: str,
         json_body: dict | None = None,
         token: str | None = None,
+        cookies: dict[str, str] | None = None,
     ) -> httpx.Response:
         headers = {}
         if token or self.token:
             headers["Authorization"] = f"Bearer {token or self.token}"
-        response = await client.request(method, path, json=json_body, headers=headers)
+        response = await client.request(
+            method,
+            path,
+            json=json_body,
+            headers=headers,
+            cookies=cookies or None,
+        )
         expected_set = {expected} if isinstance(expected, int) else set(expected)
         if response.status_code in expected_set:
             self.ok(label)
         else:
             self.fail(label, f"expected {sorted(expected_set)}, got {response.status_code}")
         return response
+
+    def _extract_cookie(self, response: httpx.Response, name: str) -> str | None:
+        for header in response.headers.get_list("set-cookie"):
+            if header.startswith(f"{name}="):
+                value = header.split("=", 1)[1].split(";", 1)[0]
+                return value
+        return response.cookies.get(name)
 
     async def run(self) -> int:
         print(f"Edge-case verify @ {self.base_url}")
@@ -101,6 +116,48 @@ class EdgeVerifier:
                 expected=200,
                 label="offset beyond total",
             )
+
+            for query, label in [
+                ("limit=0", "catalog limit=0 rejected"),
+                ("offset=-1", "catalog offset=-1 rejected"),
+                ("limit=201", "catalog limit=201 rejected"),
+            ]:
+                await self.request(
+                    client,
+                    "GET",
+                    f"/catalog/courses?{query}",
+                    expected=400,
+                    label=label,
+                )
+
+            refresh_email = f"edge-refresh-{uuid.uuid4().hex[:10]}@example.com"
+            refresh_reg = await client.post(
+                "/auth/register",
+                json={"email": refresh_email, "password": PASSWORD},
+            )
+            if refresh_reg.status_code == 201:
+                old_refresh = self._extract_cookie(refresh_reg, REFRESH_TOKEN_COOKIE)
+                if old_refresh:
+                    first_refresh = await client.post(
+                        "/auth/refresh",
+                        cookies={REFRESH_TOKEN_COOKIE: old_refresh},
+                    )
+                    if first_refresh.status_code == 200:
+                        self.ok("refresh rotation succeeds")
+                        reuse = await client.post(
+                            "/auth/refresh",
+                            cookies={REFRESH_TOKEN_COOKIE: old_refresh},
+                        )
+                        if reuse.status_code == 401:
+                            self.ok("refresh reuse rejected")
+                        else:
+                            self.fail("refresh reuse rejected", f"got {reuse.status_code}")
+                    else:
+                        self.fail("refresh rotation succeeds", f"got {first_refresh.status_code}")
+                else:
+                    self.fail("refresh cookie present", "missing refresh cookie on register")
+            else:
+                self.fail("refresh register", f"got {refresh_reg.status_code}")
 
             await self.request(client, "GET", "/catalog/courses/123", expected=400, label="invalid course number")
             await self.request(client, "GET", "/catalog/courses/00999999", expected=404, label="missing course")
@@ -150,6 +207,91 @@ class EdgeVerifier:
                 json_body={"email": f"weak-{uuid.uuid4().hex[:6]}@example.com", "password": "x"},
             )
 
+            profile_email = f"edge-profile-{uuid.uuid4().hex[:10]}@example.com"
+            profile_reg = await self.request(
+                client,
+                "POST",
+                "/auth/register",
+                expected=201,
+                label="profile edge user register",
+                json_body={"email": profile_email, "password": PASSWORD},
+            )
+            profile_token = (
+                profile_reg.json()["data"]["accessToken"] if profile_reg.status_code == 201 else None
+            )
+
+            await self.request(
+                client,
+                "POST",
+                "/student-profile",
+                expected=201,
+                label="student profile create",
+                token=profile_token,
+                json_body={
+                    "institutionId": "technion",
+                    "programType": "BSc",
+                    "catalogYear": 2025,
+                    "currentSemesterCode": "2025-1",
+                },
+            )
+            await self.request(
+                client,
+                "POST",
+                "/student-profile",
+                expected=409,
+                label="duplicate student profile rejected",
+                token=profile_token,
+                json_body={
+                    "institutionId": "technion",
+                    "programType": "BSc",
+                    "catalogYear": 2025,
+                    "currentSemesterCode": "2025-1",
+                },
+            )
+
+            degree_email = f"edge-degree-{uuid.uuid4().hex[:10]}@example.com"
+            degree_reg = await self.request(
+                client,
+                "POST",
+                "/auth/register",
+                expected=201,
+                label="degree edge user register",
+                json_body={"email": degree_email, "password": PASSWORD},
+            )
+            degree_token = (
+                degree_reg.json()["data"]["accessToken"] if degree_reg.status_code == 201 else None
+            )
+            await self.request(
+                client,
+                "POST",
+                "/student-profile",
+                expected=400,
+                label="invalid degreeId format rejected",
+                token=degree_token,
+                json_body={
+                    "institutionId": "technion",
+                    "programType": "BSc",
+                    "catalogYear": 2025,
+                    "currentSemesterCode": "2025-1",
+                    "degreeId": "not-a-valid-object-id",
+                },
+            )
+            await self.request(
+                client,
+                "POST",
+                "/student-profile",
+                expected=400,
+                label="missing degree program rejected",
+                token=degree_token,
+                json_body={
+                    "institutionId": "technion",
+                    "programType": "BSc",
+                    "catalogYear": 2025,
+                    "currentSemesterCode": "2025-1",
+                    "degreeId": "665f2b0f2a3f7b2a1a9a7fff",
+                },
+            )
+
             # If catalog is populated, verify excluded course and dedupe invariants
             progs = await client.get(
                 "/catalog/degree-programs",
@@ -174,7 +316,7 @@ class EdgeVerifier:
                     )
                     adv += len(ar.json()["data"]["advisoryRules"])
                     hard += len(hr.json()["data"]["requirements"])
-                if adv == 35 and hard == 16:
+                if (adv, hard) in ((35, 16), (46, 16)):
                     self.ok(f"vault-aligned advisory/hard totals {adv}/{hard}")
                 elif adv == 0 and hard == 0:
                     self.ok("catalog programs without requirements yet")

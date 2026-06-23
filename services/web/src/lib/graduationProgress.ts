@@ -41,7 +41,14 @@ export function statusBadgeTone(
 }
 
 export function partitionRequirementBuckets(requirementProgress: RequirementProgressEntry[] = []) {
-  const generalTechnion = requirementProgress.filter(isGeneralTechnionBucket)
+  const generalTechnion = requirementProgress
+    .filter(isGeneralTechnionBucket)
+    .sort((left, right) => {
+      const order = ['enrichment', 'free-elective', 'physical-education']
+      const leftSuffix = left.requirementGroupId.slice(left.requirementGroupId.indexOf(':') + 1)
+      const rightSuffix = right.requirementGroupId.slice(right.requirementGroupId.indexOf(':') + 1)
+      return order.indexOf(leftSuffix) - order.indexOf(rightSuffix)
+    })
   const remaining = requirementProgress.filter((entry) => !isGeneralTechnionBucket(entry))
   const mandatory = remaining.filter((entry) => entry.isMandatory !== false)
   const elective = remaining.filter((entry) => entry.isMandatory === false)

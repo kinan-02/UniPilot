@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   bucketCompletionPercent,
+  hasActionableGaps,
+  isGeneralTechnionBucket,
   partitionRequirementBuckets,
   progressCatalogSubtitle,
   statusBadgeTone,
@@ -57,5 +59,34 @@ describe('graduationProgress helpers', () => {
       statusSummary: 'not_started',
     }
     expect(progressCatalogSubtitle(progress)).toBe('Industrial Engineering · 2025 · v2025.1')
+  })
+
+  it('identifies general Technion buckets by suffix', () => {
+    expect(isGeneralTechnionBucket({ requirementGroupId: '009216-1-000:enrichment' })).toBe(true)
+    expect(isGeneralTechnionBucket({ requirementGroupId: '009216-1-000:core-math' })).toBe(false)
+  })
+
+  it('detects actionable gaps from remaining mandatory, missing, or ineligible credits', () => {
+    const base: GraduationProgress = {
+      degreeId: 'abc',
+      completedCredits: 0,
+      totalRequiredCredits: 155,
+      creditsRemaining: 155,
+      completionPercentage: 0,
+      statusSummary: 'not_started',
+    }
+    expect(hasActionableGaps(base)).toBe(false)
+    expect(
+      hasActionableGaps({
+        ...base,
+        remainingMandatoryCourses: [{ courseNumber: '00940345', courseTitle: 'Math' }],
+      }),
+    ).toBe(true)
+    expect(
+      hasActionableGaps({
+        ...base,
+        ineligibleCredits: [{ courseNumber: '03940580', reason: 'wrong bucket' }],
+      }),
+    ).toBe(true)
   })
 })

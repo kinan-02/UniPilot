@@ -145,3 +145,80 @@ async def test_cross_user_plan_version_returns_404(auth_client, mongo_database):
         json={},
     )
     assert response.status_code == 404
+
+
+async def _create_owner_plan(auth_client, mongo_database, *, owner_email: str):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    owner_token = await register_access_token(auth_client, owner_email)
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+    create_response = await auth_client.post(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "name": "Owner Plan",
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"]}],
+        },
+    )
+    plan_id = create_response.json()["data"]["semesterPlan"]["id"]
+    return fixtures, owner_token, plan_id
+
+
+@pytest.mark.asyncio
+async def test_cross_user_plan_delete_returns_404(auth_client, mongo_database):
+    _fixtures, _owner_token, plan_id = await _create_owner_plan(
+        auth_client,
+        mongo_database,
+        owner_email="delete-owner@example.com",
+    )
+    other_token = await register_access_token(auth_client, "delete-other@example.com")
+
+    response = await auth_client.delete(
+        f"/semester-plans/{plan_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cross_user_patch_planned_course_returns_404(auth_client, mongo_database):
+    fixtures, _owner_token, plan_id = await _create_owner_plan(
+        auth_client,
+        mongo_database,
+        owner_email="patch-course-owner@example.com",
+    )
+    other_token = await register_access_token(auth_client, "patch-course-other@example.com")
+
+    response = await auth_client.patch(
+        f"/semester-plans/{plan_id}/courses/{fixtures['courseANumber']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={"isActive": False},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cross_user_patch_lesson_selection_returns_404(auth_client, mongo_database):
+    fixtures, _owner_token, plan_id = await _create_owner_plan(
+        auth_client,
+        mongo_database,
+        owner_email="lesson-owner@example.com",
+    )
+    other_token = await register_access_token(auth_client, "lesson-other@example.com")
+
+    response = await auth_client.patch(
+        f"/semester-plans/{plan_id}/courses/{fixtures['courseANumber']}/lesson-selection",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={"selectedLessonEvents": []},
+    )
+    assert response.status_code == 404

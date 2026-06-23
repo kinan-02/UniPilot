@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     auth_rate_limit_max: int = 30
     ai_rate_limit_window_ms: int = 60_000
     ai_rate_limit_max: int = 10
+    progress_rate_limit_window_ms: int = 60_000
+    progress_rate_limit_max: int = 60
     cors_allowed_origins: str = ",".join(DEFAULT_CORS_ORIGINS)
     internal_service_token: str | None = None
     courses_collection: str = "courses"

@@ -144,3 +144,83 @@ def test_enrich_pool_documents_adds_synthetic_refs():
     assert summary["courseListSource"] == "prefix_catalog"
     assert summary["courseCount"] == 1
     assert summary["allowedPrefixes"] == ["0094", "0095", "0096", "0097"]
+
+
+def test_pool_suffix_without_program_prefix():
+    from app.curriculum.pool_course_enrichment import _pool_suffix
+
+    assert _pool_suffix("custom-pool-id", "009216-1-000") == "custom-pool-id"
+
+
+def test_merge_course_references_skips_blank_and_duplicate_numbers():
+    from app.curriculum.pool_course_enrichment import merge_course_references
+
+    merged = merge_course_references(
+        [{"courseNumber": "00940345"}, {"courseNumber": ""}, {"courseNumber": "00940345"}],
+        None,
+    )
+    assert merged == [{"courseNumber": "00940345"}]
+
+
+def test_course_list_source_explicit_only():
+    from app.curriculum.pool_course_enrichment import _course_list_source
+
+    assert _course_list_source(explicit_count=2, included_count=0, prefix_count=0) == "explicit"
+
+
+def test_course_list_source_included_only():
+    from app.curriculum.pool_course_enrichment import _course_list_source
+
+    assert _course_list_source(explicit_count=0, included_count=1, prefix_count=0) == "vault_union"
+
+
+def test_course_list_source_prefix_only():
+    from app.curriculum.pool_course_enrichment import _course_list_source
+
+    assert _course_list_source(explicit_count=0, included_count=0, prefix_count=3) == "prefix_catalog"
+
+
+def test_course_list_source_empty():
+    from app.curriculum.pool_course_enrichment import _course_list_source
+
+    assert _course_list_source(explicit_count=0, included_count=0, prefix_count=0) == "empty"
+
+
+def test_explorer_fallback_refs_returns_empty_when_explicit_refs_exist():
+    from app.curriculum.pool_course_enrichment import _explorer_fallback_refs
+
+    pool = {
+        "requirementGroupId": "009118-1-000:is-focus-chain-ml",
+        "courseReferences": [{"courseNumber": "0970209"}],
+    }
+    assert _explorer_fallback_refs(pool, program_code="009118-1-000") == []
+
+
+def test_enrich_pool_documents_marks_explicit_list_source():
+    pool = {
+        "requirementGroupId": "009216-1-000:elective-ds-pool",
+        "courseReferences": [{"courseNumber": "00940411"}],
+        "ruleExpression": {
+            "type": "course_pool",
+            "operator": "min_credits",
+            "alwaysIncludeCourseNumbers": ["00940412"],
+        },
+    }
+    enriched = enrich_pool_documents_for_explorer(
+        [pool],
+        program_code="009216-1-000",
+        prefix_courses_by_pool={"009216-1-000:elective-ds-pool": []},
+        courses_truncated=False,
+    )
+    assert enriched[0]["explorerCourseListSource"] == "explicit"
+
+
+def test_always_include_refs_merges_rule_level_numbers():
+    from app.curriculum.pool_course_enrichment import _always_include_refs
+
+    pool = {
+        "requirementGroupId": "009216-1-000:elective-faculty-pool",
+        "ruleExpression": {"alwaysIncludeCourseNumbers": ["00999999"]},
+    }
+    refs = _always_include_refs(pool, program_code="009216-1-000")
+    assert {"courseNumber": "00999999"} in refs

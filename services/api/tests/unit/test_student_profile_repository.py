@@ -255,3 +255,15 @@ async def test_update_student_profile_updates_institution_id(mongo_database):
     )
     assert result is not None
     assert result["institutionId"] == "tau"
+
+
+@pytest.mark.asyncio
+async def test_update_student_profile_updates_academic_path(mongo_database):
+    await create_student_profile(mongo_database, VALID_USER_ID, VALID_PROFILE_DATA)
+    result = await update_student_profile_by_user_id(
+        mongo_database,
+        VALID_USER_ID,
+        {"academicPath": {"trackSlug": "track-data-information-engineering"}},
+    )
+    assert result is not None
+    assert result["academicPath"]["trackSlug"] == "track-data-information-engineering"

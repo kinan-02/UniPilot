@@ -10,6 +10,7 @@ from tests.fixtures.catalog_production_fixtures import KNOWN_COURSE, KNOWN_PROGR
     "path",
     [
         "/catalog/courses?limit=1",
+        "/catalog/faculties",
         "/catalog/degree-programs",
         f"/catalog/courses/{KNOWN_COURSE}",
         f"/catalog/degree-programs/{KNOWN_PROGRAM}/requirements",

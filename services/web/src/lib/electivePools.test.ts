@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildRequiredCurriculumCourseNumbers,
+  buildTranscriptCourseNumbers,
   catalogSearchLink,
   classifyPool,
   filterPoolCourses,
@@ -7,11 +9,16 @@ import {
   findPoolsForBucket,
   groupPoolsByCategory,
   interpolateTemplate,
-  poolCourseFilterCounts,
+  isGeneralTechnionPool,
+  localizedBucketTitle,
   localizedPoolDescriptions,
+  localizedPoolTitle,
+  partitionExplorerPools,
+  poolCourseFilterCounts,
   poolProgressSummary,
   preparePoolCourseView,
   resolvePoolProgressDisplay,
+  ruleBadgeTone,
   ruleOperatorTranslationKey,
   sortPoolCourses,
 } from './electivePools'
@@ -80,6 +87,23 @@ describe('groupPoolsByCategory', () => {
       }),
     ])
     expect(groups.map((group) => group.category)).toEqual(['credit_pool', 'focus_chain'])
+  })
+})
+
+describe('partitionExplorerPools', () => {
+  it('separates general Technion pools below program pools in fixed order', () => {
+    const { programPools, generalTechnionPools } = partitionExplorerPools([
+      pool({ groupId: '009216-1-000:physical-education-pool', linkedCreditBucketId: '009216-1-000:physical-education' }),
+      pool(),
+      pool({ groupId: '009216-1-000:free-elective-pool', linkedCreditBucketId: '009216-1-000:free-elective' }),
+      pool({ groupId: '009216-1-000:enrichment-pool', linkedCreditBucketId: '009216-1-000:enrichment' }),
+    ])
+    expect(programPools.map((entry) => entry.groupId)).toEqual(['009216-1-000:elective-ds-pool'])
+    expect(generalTechnionPools.map((entry) => entry.groupId)).toEqual([
+      '009216-1-000:enrichment-pool',
+      '009216-1-000:free-elective-pool',
+      '009216-1-000:physical-education-pool',
+    ])
   })
 })
 
@@ -235,5 +259,100 @@ describe('poolCourseFilterCounts', () => {
 describe('interpolateTemplate', () => {
   it('replaces placeholders', () => {
     expect(interpolateTemplate('{counted} of {listed}', { counted: 2, listed: 5 })).toBe('2 of 5')
+  })
+})
+
+describe('isGeneralTechnionPool', () => {
+  it('identifies enrichment, free-elective, and physical-education pools', () => {
+    expect(isGeneralTechnionPool(pool({ groupId: '009216-1-000:enrichment-pool' }))).toBe(true)
+    expect(isGeneralTechnionPool(pool({ groupId: '009216-1-000:free-elective-pool' }))).toBe(true)
+    expect(isGeneralTechnionPool(pool({ groupId: '009216-1-000:physical-education-pool' }))).toBe(true)
+    expect(isGeneralTechnionPool(pool())).toBe(false)
+  })
+})
+
+describe('buildTranscriptCourseNumbers', () => {
+  it('collects unique course numbers from all buckets', () => {
+    const numbers = buildTranscriptCourseNumbers([
+      bucket({
+        completedCourses: [
+          { courseId: '1', courseNumber: '00940345', creditsEarned: 3 },
+          { courseId: '2', courseNumber: '00940411', creditsEarned: 3.5 },
+        ],
+      }),
+      bucket({
+        requirementGroupId: '009216-1-000:elective-ds',
+        completedCourses: [{ courseId: '3', courseNumber: '00940345', creditsEarned: 3 }],
+      }),
+    ])
+    expect([...numbers].sort()).toEqual(['00940345', '00940411'])
+  })
+})
+
+describe('buildRequiredCurriculumCourseNumbers', () => {
+  it('merges mandatory completed, remaining mandatory, and curriculum nodes', () => {
+    const numbers = buildRequiredCurriculumCourseNumbers(
+      [
+        bucket({
+          isMandatory: true,
+          completedCourses: [{ courseId: '1', courseNumber: '00940345', creditsEarned: 4 }],
+        }),
+        bucket({
+          requirementGroupId: '009216-1-000:elective-ds',
+          isMandatory: false,
+          completedCourses: [{ courseId: '2', courseNumber: '00940411', creditsEarned: 3.5 }],
+        }),
+      ],
+      {
+        remainingMandatory: [{ courseNumber: '01040031', courseTitle: 'Intro CS' }],
+        curriculumGraph: {
+          trackSlug: 'track-dne',
+          programCode: '009216-1-000',
+          catalogYear: 2025,
+          viewDefault: 'semester_swimlanes',
+          semesterLanes: [],
+          nodes: [{ courseNumber: '00940219', title: 'Data structures', semester: 2 }],
+          edges: [],
+          bottlenecks: [],
+          electiveBuckets: [],
+        },
+      },
+    )
+    expect([...numbers].sort()).toEqual(['00940219', '00940345', '01040031'])
+  })
+})
+
+describe('localizedPoolTitle', () => {
+  it('prefers i18n key over API title', () => {
+    const title = localizedPoolTitle(pool({ groupId: '009216-1-000:enrichment-pool' }), (key) =>
+      key === 'progress.electiveExplorer.pools.enrichment-pool'
+        ? 'University enrichment (CHE)'
+        : key,
+    )
+    expect(title).toBe('University enrichment (CHE)')
+  })
+
+  it('falls back to API title when translation is missing', () => {
+    expect(localizedPoolTitle(pool({ title: 'Custom pool' }), (key) => key)).toBe('Custom pool')
+  })
+})
+
+describe('localizedBucketTitle', () => {
+  it('uses bucket i18n key when available', () => {
+    const title = localizedBucketTitle(
+      { requirementGroupId: '009216-1-000:elective-ds', title: 'API title' },
+      (key) =>
+        key === 'progress.electiveExplorer.buckets.elective-ds' ? 'Data science electives' : key,
+    )
+    expect(title).toBe('Data science electives')
+  })
+})
+
+describe('ruleBadgeTone', () => {
+  it('maps pool operators to badge tones', () => {
+    expect(ruleBadgeTone('choose_chain')).toBe('primary')
+    expect(ruleBadgeTone('choose_n')).toBe('warning')
+    expect(ruleBadgeTone('choose_credits')).toBe('success')
+    expect(ruleBadgeTone('min_credits')).toBe('neutral')
   })
 })

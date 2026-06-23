@@ -118,3 +118,27 @@ async def ai_security_client(mongo_database, monkeypatch):
         yield client
 
     set_test_database(None)
+
+
+@pytest.fixture
+async def progress_security_client(mongo_database, monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+    monkeypatch.setenv("JWT_EXPIRES_IN", "1h")
+    monkeypatch.setenv("MONGO_URI", "mongodb://localhost/unipilot_test")
+    monkeypatch.setenv("AUTH_RATE_LIMIT_MAX", "100")
+    monkeypatch.setenv("PROGRESS_RATE_LIMIT_MAX", "1")
+    monkeypatch.setenv("PROGRESS_RATE_LIMIT_WINDOW_MS", "60000")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    get_settings.cache_clear()
+    set_test_database(mongo_database)
+
+    app = create_app()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        yield client
+
+    set_test_database(None)

@@ -16,7 +16,13 @@ setup('prepare authenticated session', async ({ page }) => {
 
   const degreeSelect = page.locator('#degree-program')
   await expect(degreeSelect.locator('option')).not.toHaveCount(1, { timeout: 15_000 })
-  const programId = await degreeSelect.locator('option').nth(1).getAttribute('value')
+
+  const ieOption = degreeSelect.locator('option').filter({
+    hasText: /Industrial Engineering|הנדסת תעשייה/i,
+  })
+  const programId =
+    (await ieOption.first().getAttribute('value')) ??
+    (await degreeSelect.locator('option').nth(1).getAttribute('value'))
   if (programId) {
     await degreeSelect.selectOption(programId)
     await page.getByRole('button', { name: /המשך ללוח הבקרה|Continue to dashboard/i }).click()
