@@ -8,6 +8,7 @@ import {
   conflictsToGridBounds,
   eventsFromSchedule,
   formatMinutes,
+  gridColumnIndex,
   gridTimeBounds,
   weekGridDays,
 } from '../../lib/planner'
@@ -191,7 +192,7 @@ export function WeeklyScheduleGrid({
           })}
 
           {conflictBounds.map((bound, index) => {
-            const dayIndex = days.indexOf(bound.day)
+            const dayIndex = gridColumnIndex(days, bound.day)
             if (dayIndex < 0) return null
             const startRow = Math.floor((bound.startMinutes - min) / GRID_STEP) + 2
             const span = Math.max(1, Math.ceil((bound.endMinutes - bound.startMinutes) / GRID_STEP))
@@ -211,7 +212,7 @@ export function WeeklyScheduleGrid({
           })}
 
           {allRenderableEvents.map((event, index) => {
-            const dayIndex = days.indexOf(event.day)
+            const dayIndex = gridColumnIndex(days, event.day)
             if (dayIndex < 0) return null
             const startRow = Math.floor((event.startMinutes - min) / GRID_STEP) + 2
             const span = Math.max(1, Math.ceil((event.endMinutes - event.startMinutes) / GRID_STEP))

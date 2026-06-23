@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { conflictsToGridBounds, collectGridEvents, parseTimeRange, slotsOverlap, weekGridDays } from './planner'
+import {
+  conflictsToGridBounds,
+  collectGridEvents,
+  gridColumnIndex,
+  parseTimeRange,
+  slotsOverlap,
+  weekGridDays,
+} from './planner'
 
 describe('planner utilities', () => {
   it('parses hyphen time ranges', () => {
@@ -32,6 +39,12 @@ describe('planner utilities', () => {
       'Wednesday',
       'Thursday',
     ])
+  })
+
+  it('maps English event days onto Hebrew grid columns', () => {
+    const columns = weekGridDays('he', ['Sunday'])
+    expect(gridColumnIndex(columns, 'Sunday')).toBe(0)
+    expect(columns[0]).toBe('ראשון')
   })
 
   it('adds Friday only when an event exists on Friday', () => {

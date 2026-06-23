@@ -74,9 +74,38 @@ export type GridEvent = {
 
 const DAY_ORDER = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  ראשון: 0,
+  Sunday: 0,
+  שני: 1,
+  Monday: 1,
+  שלישי: 2,
+  Tuesday: 2,
+  רביעי: 3,
+  Wednesday: 3,
+  חמישי: 4,
+  Thursday: 4,
+  שישי: 5,
+  Friday: 5,
+  שבת: 6,
+  Saturday: 6,
+}
+
 export function daySortKey(day: string): number {
   const index = DAY_ORDER.indexOf(day)
   return index >= 0 ? index : 99
+}
+
+/** Map Hebrew or English weekday labels to a shared Sun=0 … Sat=6 index. */
+export function weekdayIndex(day: string): number {
+  return WEEKDAY_INDEX[day.trim()] ?? 99
+}
+
+/** Resolve a grid column for an event day against locale-specific column headers. */
+export function gridColumnIndex(columns: string[], eventDay: string): number {
+  const target = weekdayIndex(eventDay)
+  if (target >= 99) return -1
+  return columns.findIndex((column) => weekdayIndex(column) === target)
 }
 
 export function eventsFromSchedule(schedule?: WeeklySchedule): GridEvent[] {
