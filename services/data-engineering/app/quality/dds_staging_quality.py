@@ -19,6 +19,13 @@ from app.importers.dds_catalog_staging_importer import (
     assert_staging_collection_name,
 )
 from app.curation.catalog_signoff import extract_catalog_signoff
+from app.catalog.course_reference_policy import (
+    KNOWN_OCR_CORRECTIONS,
+    classify_missing_course_reference,
+    derive_production_excluded_from_refs,
+    find_dds_ocr_neighbor_matches,
+    is_cross_faculty_course_reference,
+)
 from app.models.quality_report import (
     DdsStagingQualityReport,
     QualityCheckResult,
@@ -38,10 +45,9 @@ EXPECTED_REQUIREMENT_GROUPS = 41
 EXPECTED_CATALOG_RULES = 22
 EXPECTED_CURATION_STATUS = "ready-for-staging-with-review-flags"
 
-KNOWN_OCR_SUSPECT_NUMBERS = frozenset({"00906292", "01040030", "02300401"})
+KNOWN_OCR_SUSPECT_NUMBERS = frozenset(KNOWN_OCR_CORRECTIONS.keys())
 KNOWN_OCR_NEIGHBORS: dict[str, list[str]] = {
     "00906292": ["00960292", "00960291"],
-    "01040030": ["01040031"],
     "02300401": ["02340117", "02340116"],
 }
 
@@ -396,8 +402,16 @@ def build_dds_staging_quality_report(
         number for number in missing_in_courses if number in production_excluded_courses
     )
     missing_actionable = sorted(
-        number for number in missing_in_courses if number not in production_excluded_courses
+        number
+        for number in missing_in_courses
+        if number not in production_excluded_courses
+        and not is_cross_faculty_course_reference(number)
     )
+    policy_expected_excluded = derive_production_excluded_from_refs(
+        set(unique_ref_numbers),
+        staged_course_numbers,
+    )
+    signoff_exclusion_mismatch = sorted(policy_expected_excluded - production_excluded_courses)
     covered = len(unique_ref_numbers) - len(missing_actionable)
     coverage_denominator = len(unique_ref_numbers) - len(missing_excluded_from_production)
     coverage_pct = (
@@ -405,18 +419,56 @@ def build_dds_staging_quality_report(
     )
 
     ocr_suspects: list[dict[str, Any]] = []
-    for number in missing_actionable:
-        neighbors = find_ocr_suspect_neighbors(number, staged_course_numbers)
+    cross_faculty_refs: list[str] = []
+    for number in missing_in_courses:
+        known_neighbors = [
+            candidate
+            for candidate in KNOWN_OCR_NEIGHBORS.get(number, [])
+            if candidate in staged_course_numbers
+        ]
+        neighbors = known_neighbors or find_dds_ocr_neighbor_matches(number, staged_course_numbers)
+        classification = classify_missing_course_reference(
+            number,
+            ingestible_course_numbers=staged_course_numbers,
+            production_excluded_course_numbers=production_excluded_courses,
+            neighbor_matches=neighbors,
+        )
+        if classification in {"ingestible", "production_excluded"}:
+            continue
+        if classification == "cross_faculty":
+            cross_faculty_refs.append(number)
+            add_finding(
+                f"crosslink.cross_faculty.{number}",
+                "info",
+                "cross_link",
+                (
+                    f"Catalog references cross-faculty course {number}; "
+                    "vault keeps it as reference-only and excludes it from DDS production ingestion."
+                ),
+                {"courseNumber": number},
+            )
+            continue
+
         entry = {"courseNumber": number, "neighborMatches": neighbors}
-        ocr_suspects.append(entry)
-        if number in KNOWN_OCR_SUSPECT_NUMBERS or neighbors:
-            severity = "production-blocker"
+        if number in KNOWN_OCR_SUSPECT_NUMBERS or classification == "ocr_suspect":
+            ocr_suspects.append(entry)
             add_finding(
                 f"crosslink.ocr_suspect.{number}",
-                severity,
+                "production-blocker",
                 "cross_link",
-                f"Missing catalog course {number} may be OCR-corrupted."
+                f"Missing DDS catalog course {number} may be OCR-corrupted."
                 + (f" Nearby staged matches: {neighbors}" if neighbors else ""),
+                entry,
+            )
+        elif classification == "missing":
+            add_finding(
+                f"crosslink.missing_reference.{number}",
+                "warning",
+                "cross_link",
+                (
+                    f"Catalog course {number} is absent from DDS semester JSON staging; "
+                    "vault sign-off should classify it as production-excluded."
+                ),
                 entry,
             )
 
@@ -448,9 +500,31 @@ def build_dds_staging_quality_report(
             "cross_link",
             (
                 f"{len(missing_excluded_from_production)} catalog course references are vault-signed "
-                "production exclusions (not in 2025 JSON; omit from production)."
+                "production exclusions (not in DDS semester JSON; omit from production)."
             ),
             {"courseNumbers": missing_excluded_from_production},
+        )
+    if cross_faculty_refs:
+        add_finding(
+            "crosslink.cross_faculty_references",
+            "info",
+            "cross_link",
+            (
+                f"{len(cross_faculty_refs)} cross-faculty catalog references are reference-only "
+                "and excluded from DDS production course ingestion."
+            ),
+            {"courseNumbers": cross_faculty_refs},
+        )
+    if signoff_exclusion_mismatch:
+        add_finding(
+            "crosslink.signoff_exclusion_mismatch",
+            "production-blocker",
+            "cross_link",
+            (
+                "Vault sign-off production exclusions are stale relative to catalog references; "
+                "re-export and re-import the catalog from the wiki vault."
+            ),
+            {"missingFromSignoff": signoff_exclusion_mismatch[:50]},
         )
 
     # --- Title hints ---
@@ -713,8 +787,14 @@ def build_dds_staging_quality_report(
             "executableRuleGroups": executable_count,
             "nonExecutableRuleGroups": non_executable_count,
             "ocrSuspectMissingCourses": len(
-                [item for item in ocr_suspects if item["courseNumber"] in KNOWN_OCR_SUSPECT_NUMBERS]
+                [
+                    item
+                    for item in ocr_suspects
+                    if item["courseNumber"] in KNOWN_OCR_SUSPECT_NUMBERS
+                    or item.get("neighborMatches")
+                ]
             ),
+            "crossFacultyCatalogReferences": len(cross_faculty_refs),
         },
         checks=checks,
         findings=findings,

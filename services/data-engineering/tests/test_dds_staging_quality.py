@@ -164,7 +164,14 @@ def test_quality_report_detects_missing_and_mismatches(mongo_database) -> None:
     assert report.counts["programs"] == 3
     assert report.missingTitleHintSummary["missingCount"] >= 2
     assert report.courseReferenceCoverage["missingInStagingCourses"]
-    assert any("01040030" in item.get("courseNumber", "") for item in report.courseReferenceCoverage["ocrSuspectMissing"])
+    ocr_numbers = {
+        item.get("courseNumber", "")
+        for item in report.courseReferenceCoverage["ocrSuspectMissing"]
+    }
+    assert "02300401" in report.blockersForProduction or any(
+        finding.id == "crosslink.ocr_suspect.02300401" for finding in report.findings
+    )
+    assert "01040030" not in ocr_numbers
     assert report.nonExecutableRuleSummary["chainRuleViolations"] == []
     assert report.counts["stagedCourses"] == 2
 

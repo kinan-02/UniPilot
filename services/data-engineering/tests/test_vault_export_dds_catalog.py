@@ -49,9 +49,15 @@ def test_export_vault_catalog_builds_three_programs():
     codes = {program["programCode"] for program in document["programs"]}
     assert codes == {"009216-1-000", "009009-1-000", "009118-1-000"}
     assert readiness["canImportToStaging"] is True
-    assert document["curationReport"]["vaultSignoff"] is not None
-    assert readiness["canImportToStaging"] is True
     assert document["signoffReview"]["reviewStatus"] == "vault-signed-ready-for-staging"
+    assert len(document["faculties"]) >= 1
+    assert len(document["pathOptions"]) >= 15
+    primary_tracks = [
+        option
+        for option in document["pathOptions"]
+        if option["kind"] == "bsc_track" and option["selectableAsPrimary"]
+    ]
+    assert len(primary_tracks) == 3
 
 
 def test_export_includes_general_technion_elective_pools():

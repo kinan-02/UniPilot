@@ -1,6 +1,6 @@
 # DDS Production Promotion Plan (Phase 11 — Dry Run)
 
-Generated: 2026-06-21T21:04:49+00:00
+Generated: 2026-06-22T19:23:31+00:00
 Gate status: **pass-with-warnings**
 Can promote (future Phase 12): **True**
 
@@ -13,17 +13,17 @@ Gate passed with warnings. Phase 12 may implement promote-dds-to-production with
 - nonExecutableRulesPolicy: `advisory-only`
 - enforceNonExecutableRulesInProduction: `False`
 - productionExcludedCoursePolicy: `omit-from-production-do-not-ingest`
-- productionExcludedCourseNumbers: 41 courses
-- signedOffBy: vault-wiki at 2026-06-21T20:54:37+00:00
+- productionExcludedCourseNumbers: 42 courses
+- signedOffBy: vault-wiki at 2026-06-22T19:23:04+00:00
 
 ## Planned production writes (counts)
 - degreePrograms: 3
-- hardDegreeRequirements: 19
-- advisoryCatalogRules: 35
+- hardDegreeRequirements: 16
+- advisoryCatalogRules: 46
 - courses: 2068
 - courseOfferings: 2638
-- skippedItems: 111
-- skippedExcludedCourses: 41
+- skippedItems: 88
+- skippedExcludedCourses: 42
 
 ## Target collections
 - degreePrograms → `degree_programs`
@@ -33,7 +33,7 @@ Gate passed with warnings. Phase 12 may implement promote-dds-to-production with
 - courseOfferings → `course_offerings`
 
 ## Advisory rule handling
-- 35 rule/group identifiers promoted as **advisory-only** (enforceInGraduationProgress=false).
+- 46 rule/group identifiers promoted as **advisory-only** (enforceInGraduationProgress=false).
 
 ## Skipped / excluded courses
 - `00400314` — production-excluded-by-catalog-signoff
@@ -55,14 +55,14 @@ Gate passed with warnings. Phase 12 may implement promote-dds-to-production with
 - `00960351` — production-excluded-by-catalog-signoff
 - `00960401` — production-excluded-by-catalog-signoff
 - `00960425` — production-excluded-by-catalog-signoff
-- `00960470` — production-excluded-by-catalog-signoff
-- ... and 21 more
+- `00960465` — production-excluded-by-catalog-signoff
+- ... and 22 more
 
 ## Gate checks
 - [PASS] staging.program_count: Found 3 staged DDS programs (expected 3).
 - [PASS] staging.program_codes: All expected program codes present.
 - [PASS] staging.total_credits: All programs have totalCredits=155.0.
-- [PASS] staging.requirement_groups: Found 54 staged requirement groups.
+- [PASS] staging.requirement_groups: Found 62 staged requirement groups.
 - [PASS] staging.courses: Found 2068 staged courses.
 - [PASS] staging.offerings: Found 2638 staged course offerings.
 - [PASS] staging.safety_flags: All staging documents have isStaging=true and productionEligible=false.
@@ -78,16 +78,16 @@ Gate passed with warnings. Phase 12 may implement promote-dds-to-production with
 - [PASS] quality.chain_rules_preserved: No chain/focus rule violations.
 - [PASS] quality.ocr_suspects: No known OCR suspect gaps.
 - [PASS] production.collections_read_only: Dry-run performed without production writes.
-- [FAIL] production.existing_data: Production collections already contain data: {'catalog_rules': 35, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 19, 'promotion_runs': 4, 'semester_plans': 132}
+- [FAIL] production.existing_data: Production collections already contain data: {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}
 - [PASS] plan.no_excluded_courses_in_writes: Excluded courses are not in planned course writes.
 - [PASS] plan.advisory_rules_not_mandatory: All advisory catalog rules have enforceInGraduationProgress=false.
 
 ## Warnings
-- Production collections already contain data: {'catalog_rules': 35, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 19, 'promotion_runs': 4, 'semester_plans': 132}
+- Production collections already contain data: {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}
 
 ## Production safety
 - **No production collection writes occurred.**
-- Existing production data (review only): {'catalog_rules': 35, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 19, 'promotion_runs': 4, 'semester_plans': 132}
+- Existing production data (review only): {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}
 
 ## Rollback notes
 - Phase 11 dry-run only — no production documents were written.

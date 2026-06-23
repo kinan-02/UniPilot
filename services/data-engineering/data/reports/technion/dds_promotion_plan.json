@@ -1,6 +1,6 @@
 {
   "gate": {
-    "generatedAt": "2026-06-21T21:04:49+00:00",
+    "generatedAt": "2026-06-22T19:23:31+00:00",
     "sourceName": "technion-dds-catalog",
     "catalogYear": 2025,
     "catalogVersion": "2025-2026",
@@ -35,7 +35,7 @@
         "checkId": "staging.requirement_groups",
         "passed": true,
         "severity": "info",
-        "message": "Found 54 staged requirement groups.",
+        "message": "Found 62 staged requirement groups.",
         "details": {}
       },
       {
@@ -113,6 +113,7 @@
             "00960351",
             "00960401",
             "00960425",
+            "00960465",
             "00960470",
             "00960622",
             "00960692",
@@ -156,6 +157,7 @@
             "00960351",
             "00960401",
             "00960425",
+            "00960465",
             "00960470",
             "00960622",
             "00960692",
@@ -234,16 +236,16 @@
         "checkId": "production.existing_data",
         "passed": false,
         "severity": "warning",
-        "message": "Production collections already contain data: {'catalog_rules': 35, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 19, 'promotion_runs': 4, 'semester_plans': 132}",
+        "message": "Production collections already contain data: {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}",
         "details": {
-          "catalog_rules": 35,
+          "catalog_rules": 37,
           "completed_courses": 8,
           "course_offerings": 2638,
           "courses": 2068,
           "degree_programs": 3,
-          "degree_requirements": 19,
-          "promotion_runs": 4,
-          "semester_plans": 132
+          "degree_requirements": 16,
+          "promotion_runs": 5,
+          "semester_plans": 130
         }
       },
       {
@@ -285,6 +287,7 @@
         "00960351",
         "00960401",
         "00960425",
+        "00960465",
         "00960470",
         "00960622",
         "00960692",
@@ -309,7 +312,7 @@
         "02160035"
       ],
       "signedOffBy": "vault-wiki",
-      "signedOffAt": "2026-06-21T20:54:37+00:00"
+      "signedOffAt": "2026-06-22T19:23:04+00:00"
     },
     "plannedWrites": {
       "degreePrograms": [
@@ -344,33 +347,6 @@
       "hardDegreeRequirements": [
         {
           "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:enrichment",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009216-1-000:enrichment",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:free-elective",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009216-1-000:free-elective",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:physical-education",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009216-1-000:physical-education",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
           "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:core-mandatory",
           "productionCollection": "degree_requirements",
           "action": "upsert",
@@ -398,10 +374,46 @@
         },
         {
           "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:elective-general",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:enrichment",
           "productionCollection": "degree_requirements",
           "action": "upsert",
-          "identifier": "009216-1-000:elective-general",
+          "identifier": "009216-1-000:enrichment",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:free-elective",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:free-elective",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:physical-education",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009216-1-000:physical-education",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:core-mandatory",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:core-mandatory",
+          "enforceInGraduationProgress": true,
+          "notes": "Executable credit-bucket requirement group."
+        },
+        {
+          "itemType": "degree_requirement",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:elective-faculty",
+          "productionCollection": "degree_requirements",
+          "action": "upsert",
+          "identifier": "009009-1-000:elective-faculty",
           "enforceInGraduationProgress": true,
           "notes": "Executable credit-bucket requirement group."
         },
@@ -434,28 +446,19 @@
         },
         {
           "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:core-mandatory",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:core-mandatory",
           "productionCollection": "degree_requirements",
           "action": "upsert",
-          "identifier": "009009-1-000:core-mandatory",
+          "identifier": "009118-1-000:core-mandatory",
           "enforceInGraduationProgress": true,
           "notes": "Executable credit-bucket requirement group."
         },
         {
           "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:elective-faculty",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:elective-faculty",
           "productionCollection": "degree_requirements",
           "action": "upsert",
-          "identifier": "009009-1-000:elective-faculty",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:elective-general",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009009-1-000:elective-general",
+          "identifier": "009118-1-000:elective-faculty",
           "enforceInGraduationProgress": true,
           "notes": "Executable credit-bucket requirement group."
         },
@@ -483,33 +486,6 @@
           "productionCollection": "degree_requirements",
           "action": "upsert",
           "identifier": "009118-1-000:physical-education",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:core-mandatory",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009118-1-000:core-mandatory",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:elective-faculty",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009118-1-000:elective-faculty",
-          "enforceInGraduationProgress": true,
-          "notes": "Executable credit-bucket requirement group."
-        },
-        {
-          "itemType": "degree_requirement",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:elective-general",
-          "productionCollection": "degree_requirements",
-          "action": "upsert",
-          "identifier": "009118-1-000:elective-general",
           "enforceInGraduationProgress": true,
           "notes": "Executable credit-bucket requirement group."
         }
@@ -553,6 +529,33 @@
         },
         {
           "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-5-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-5-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-7-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-7-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-8-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:semester-8-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
           "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:elective-ds-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
@@ -571,6 +574,15 @@
         },
         {
           "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:cognition-track:requirements",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009216-1-000:cognition-track:requirements",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
           "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:math-analytics-track:requirements",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
@@ -580,10 +592,10 @@
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:cognition-track:requirements",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-1-matrix",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009216-1-000:cognition-track:requirements",
+          "identifier": "009009-1-000:semester-1-matrix",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
@@ -625,6 +637,33 @@
         },
         {
           "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-6-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-6-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-7-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-7-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-8-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:semester-8-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
           "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-statistics-elective-chain",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
@@ -643,15 +682,6 @@
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain",
-          "productionCollection": "catalog_rules",
-          "action": "advisory-only",
-          "identifier": "009009-1-000:ie-focus-chain",
-          "enforceInGraduationProgress": false,
-          "notes": "Non-executable group promoted as advisory metadata only."
-        },
-        {
-          "itemType": "advisory_requirement_group",
           "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-additional-faculty-electives",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
@@ -661,10 +691,64 @@
         },
         {
           "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-1-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-1-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-2-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-2-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
           "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-3-matrix",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
           "identifier": "009118-1-000:semester-3-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-4-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-4-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-5-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-5-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-7-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-7-matrix",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-8-matrix",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009118-1-000:semester-8-matrix",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
@@ -715,118 +799,109 @@
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-5-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain-game-theory",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009216-1-000:semester-5-matrix",
+          "identifier": "009009-1-000:ie-focus-chain-game-theory",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-7-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain-advanced-industry",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009216-1-000:semester-7-matrix",
+          "identifier": "009009-1-000:ie-focus-chain-advanced-industry",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:semester-8-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain-operations-research",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009216-1-000:semester-8-matrix",
+          "identifier": "009009-1-000:ie-focus-chain-operations-research",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-1-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:enrichment-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009009-1-000:semester-1-matrix",
+          "identifier": "009216-1-000:enrichment-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-6-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:free-elective-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009009-1-000:semester-6-matrix",
+          "identifier": "009216-1-000:free-elective-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-7-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009216-1-000:physical-education-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009009-1-000:semester-7-matrix",
+          "identifier": "009216-1-000:physical-education-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:semester-8-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:enrichment-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009009-1-000:semester-8-matrix",
+          "identifier": "009009-1-000:enrichment-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-1-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:free-elective-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009118-1-000:semester-1-matrix",
+          "identifier": "009009-1-000:free-elective-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-2-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:physical-education-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009118-1-000:semester-2-matrix",
+          "identifier": "009009-1-000:physical-education-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-4-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:enrichment-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009118-1-000:semester-4-matrix",
+          "identifier": "009118-1-000:enrichment-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-5-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:free-elective-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009118-1-000:semester-5-matrix",
+          "identifier": "009118-1-000:free-elective-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-7-matrix",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:physical-education-pool",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009118-1-000:semester-7-matrix",
-          "enforceInGraduationProgress": false,
-          "notes": "Non-executable group promoted as advisory metadata only."
-        },
-        {
-          "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009118-1-000:semester-8-matrix",
-          "productionCollection": "catalog_rules",
-          "action": "advisory-only",
-          "identifier": "009118-1-000:semester-8-matrix",
+          "identifier": "009118-1-000:physical-education-pool",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         }
@@ -43224,6 +43299,30 @@
         },
         {
           "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-5-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-7-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009216-1-000:semester-8-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
           "identifier": "009216-1-000:elective-ds-pool",
           "reason": "advisory-only-non-executable",
           "details": {
@@ -43240,6 +43339,14 @@
         },
         {
           "itemType": "degree_requirement",
+          "identifier": "009216-1-000:cognition-track:requirements",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
           "identifier": "009216-1-000:math-analytics-track:requirements",
           "reason": "advisory-only-non-executable",
           "details": {
@@ -43248,7 +43355,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009216-1-000:cognition-track:requirements",
+          "identifier": "009009-1-000:semester-1-matrix",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43288,6 +43395,30 @@
         },
         {
           "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-6-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-7-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:semester-8-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
           "identifier": "009009-1-000:ie-statistics-elective-chain",
           "reason": "advisory-only-non-executable",
           "details": {
@@ -43304,14 +43435,6 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009009-1-000:ie-focus-chain",
-          "reason": "advisory-only-non-executable",
-          "details": {
-            "enforceInGraduationProgress": false
-          }
-        },
-        {
-          "itemType": "degree_requirement",
           "identifier": "009009-1-000:ie-additional-faculty-electives",
           "reason": "advisory-only-non-executable",
           "details": {
@@ -43320,7 +43443,55 @@
         },
         {
           "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-1-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-2-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
           "identifier": "009118-1-000:semester-3-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-4-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-5-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-7-matrix",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009118-1-000:semester-8-matrix",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43368,7 +43539,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009216-1-000:semester-5-matrix",
+          "identifier": "009009-1-000:ie-focus-chain-game-theory",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43376,7 +43547,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009216-1-000:semester-7-matrix",
+          "identifier": "009009-1-000:ie-focus-chain-advanced-industry",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43384,7 +43555,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009216-1-000:semester-8-matrix",
+          "identifier": "009009-1-000:ie-focus-chain-operations-research",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43392,7 +43563,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009009-1-000:semester-1-matrix",
+          "identifier": "009216-1-000:enrichment-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43400,7 +43571,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009009-1-000:semester-6-matrix",
+          "identifier": "009216-1-000:free-elective-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43408,7 +43579,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009009-1-000:semester-7-matrix",
+          "identifier": "009216-1-000:physical-education-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43416,7 +43587,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009009-1-000:semester-8-matrix",
+          "identifier": "009009-1-000:enrichment-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43424,7 +43595,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009118-1-000:semester-1-matrix",
+          "identifier": "009009-1-000:free-elective-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43432,7 +43603,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009118-1-000:semester-2-matrix",
+          "identifier": "009009-1-000:physical-education-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43440,7 +43611,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009118-1-000:semester-4-matrix",
+          "identifier": "009118-1-000:enrichment-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43448,7 +43619,7 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009118-1-000:semester-5-matrix",
+          "identifier": "009118-1-000:free-elective-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -43456,298 +43627,10 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009118-1-000:semester-7-matrix",
+          "identifier": "009118-1-000:physical-education-pool",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
-          }
-        },
-        {
-          "itemType": "degree_requirement",
-          "identifier": "009118-1-000:semester-8-matrix",
-          "reason": "advisory-only-non-executable",
-          "details": {
-            "enforceInGraduationProgress": false
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-1-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-2-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-3-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-4-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:elective-ds-pool",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:elective-faculty-pool",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:math-analytics-track:requirements",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:cognition-track:requirements",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-2-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-3-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-4-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-5-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:ie-statistics-elective-chain",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:ie-behavior-science-chain",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:ie-focus-chain",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:ie-additional-faculty-electives",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-3-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:is-behavior-science-chain",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:is-focus-chain-performance",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:is-focus-chain-ml",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:is-focus-chain-game-theory",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:is-additional-faculty-electives",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-5-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-7-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009216-1-000:semester-8-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-1-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-6-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-7-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009009-1-000:semester-8-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-1-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-2-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-4-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-5-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-7-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
-          }
-        },
-        {
-          "itemType": "catalog_rule",
-          "identifier": "009118-1-000:semester-8-matrix",
-          "reason": "already-promoted-from-requirement-group",
-          "details": {
-            "dedupe": "advisory_requirement_group"
           }
         },
         {
@@ -43897,6 +43780,14 @@
         {
           "itemType": "catalog_course_reference",
           "identifier": "00960425",
+          "reason": "production-excluded-by-catalog-signoff",
+          "details": {
+            "note": "May remain in catalog refs as reference-only; no production course row."
+          }
+        },
+        {
+          "itemType": "catalog_course_reference",
+          "identifier": "00960465",
           "reason": "production-excluded-by-catalog-signoff",
           "details": {
             "note": "May remain in catalog refs as reference-only; no production course row."
@@ -44081,19 +43972,24 @@
       ],
       "counts": {
         "degreePrograms": 3,
-        "hardDegreeRequirements": 19,
-        "advisoryCatalogRules": 35,
+        "hardDegreeRequirements": 16,
+        "advisoryCatalogRules": 46,
         "courses": 2068,
         "courseOfferings": 2638,
-        "skippedItems": 111,
-        "skippedExcludedCourses": 41
+        "skippedItems": 88,
+        "skippedExcludedCourses": 42
       }
     },
     "advisoryRules": [
+      "009009-1-000:enrichment-pool",
+      "009009-1-000:free-elective-pool",
       "009009-1-000:ie-additional-faculty-electives",
       "009009-1-000:ie-behavior-science-chain",
-      "009009-1-000:ie-focus-chain",
+      "009009-1-000:ie-focus-chain-advanced-industry",
+      "009009-1-000:ie-focus-chain-game-theory",
+      "009009-1-000:ie-focus-chain-operations-research",
       "009009-1-000:ie-statistics-elective-chain",
+      "009009-1-000:physical-education-pool",
       "009009-1-000:semester-1-matrix",
       "009009-1-000:semester-2-matrix",
       "009009-1-000:semester-3-matrix",
@@ -44102,11 +43998,14 @@
       "009009-1-000:semester-6-matrix",
       "009009-1-000:semester-7-matrix",
       "009009-1-000:semester-8-matrix",
+      "009118-1-000:enrichment-pool",
+      "009118-1-000:free-elective-pool",
       "009118-1-000:is-additional-faculty-electives",
       "009118-1-000:is-behavior-science-chain",
       "009118-1-000:is-focus-chain-game-theory",
       "009118-1-000:is-focus-chain-ml",
       "009118-1-000:is-focus-chain-performance",
+      "009118-1-000:physical-education-pool",
       "009118-1-000:semester-1-matrix",
       "009118-1-000:semester-2-matrix",
       "009118-1-000:semester-3-matrix",
@@ -44117,7 +44016,10 @@
       "009216-1-000:cognition-track:requirements",
       "009216-1-000:elective-ds-pool",
       "009216-1-000:elective-faculty-pool",
+      "009216-1-000:enrichment-pool",
+      "009216-1-000:free-elective-pool",
       "009216-1-000:math-analytics-track:requirements",
+      "009216-1-000:physical-education-pool",
       "009216-1-000:semester-1-matrix",
       "009216-1-000:semester-2-matrix",
       "009216-1-000:semester-3-matrix",
@@ -44128,34 +44030,34 @@
     ],
     "blockers": [],
     "warnings": [
-      "Production collections already contain data: {'catalog_rules': 35, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 19, 'promotion_runs': 4, 'semester_plans': 132}"
+      "Production collections already contain data: {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}"
     ],
     "productionSafetySummary": {
       "dryRun": true,
       "productionWritesPerformed": false,
       "productionCollectionCountsBefore": {
         "catalog": 0,
-        "catalog_rules": 35,
+        "catalog_rules": 37,
         "completed_courses": 8,
         "course_offerings": 2638,
         "courses": 2068,
         "degree_programs": 3,
-        "degree_requirements": 19,
+        "degree_requirements": 16,
         "degrees": 0,
-        "promotion_runs": 4,
-        "semester_plans": 132
+        "promotion_runs": 5,
+        "semester_plans": 130
       },
       "productionCollectionCountsAfter": {
         "catalog": 0,
-        "catalog_rules": 35,
+        "catalog_rules": 37,
         "completed_courses": 8,
         "course_offerings": 2638,
         "courses": 2068,
         "degree_programs": 3,
-        "degree_requirements": 19,
+        "degree_requirements": 16,
         "degrees": 0,
-        "promotion_runs": 4,
-        "semester_plans": 132
+        "promotion_runs": 5,
+        "semester_plans": 130
       },
       "productionCollectionsUnchanged": true
     },
@@ -44173,19 +44075,19 @@
     "blockersForProduction": [],
     "counts": {
       "programs": 3,
-      "requirementGroups": 54,
-      "catalogRules": 35,
+      "requirementGroups": 62,
+      "catalogRules": 0,
       "stagedCourses": 2068,
       "stagedOfferings": 2638,
-      "uniqueCatalogCourseReferences": 172,
+      "uniqueCatalogCourseReferences": 173,
       "missingCatalogCourseReferences": 0,
-      "productionExcludedCatalogCourseReferences": 41,
+      "productionExcludedCatalogCourseReferences": 42,
       "missingTitleHints": 0,
-      "missingTitleHintsExcludedOnly": 8,
+      "missingTitleHintsExcludedOnly": 0,
       "creditMismatches": 0,
-      "manualReviewRequiredItems": 422,
-      "executableRuleGroups": 19,
-      "nonExecutableRuleGroups": 70,
+      "manualReviewRequiredItems": 65,
+      "executableRuleGroups": 16,
+      "nonExecutableRuleGroups": 46,
       "ocrSuspectMissingCourses": 0
     },
     "sourcePath": "/app/data/reports/technion/dds_staging_quality_report.json"

@@ -553,6 +553,51 @@ def run_verify_vault_production_parity(
     return 0 if result.ok else 1
 
 
+def run_verify_vault_path_catalog_parity(
+    vault_path: str | None,
+    faculty: str,
+) -> int:
+    if check_mongo_connectivity() != "connected":
+        print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
+        return 1
+
+    from app.vault.verify_vault_path_catalog_parity import verify_vault_path_catalog_parity
+
+    database = get_database()
+    result = verify_vault_path_catalog_parity(
+        database,
+        vault_path=Path(vault_path) if vault_path else None,
+        faculty=faculty,
+    )
+    payload = {
+        "status": result.status,
+        "wikiRoot": result.wiki_root,
+        "exportedAt": result.exported_at,
+        "counts": {
+            "expectedFaculties": result.expected_faculty_count,
+            "expectedPathOptions": result.expected_path_option_count,
+            "productionFaculties": result.production_faculty_count,
+            "productionPathOptions": result.production_path_option_count,
+        },
+        "missingFaculties": result.missing_faculties,
+        "extraFaculties": result.extra_faculties,
+        "missingPathOptions": result.missing_path_options,
+        "extraPathOptions": result.extra_path_options,
+        "fieldMismatchCount": len(result.field_mismatches),
+        "fieldMismatches": [
+            {
+                "optionKey": mismatch.option_key,
+                "field": mismatch.field,
+                "expected": mismatch.expected,
+                "actual": mismatch.actual,
+            }
+            for mismatch in result.field_mismatches[:20]
+        ],
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0 if result.ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="UniPilot data-engineering CLI (staging ingestion foundation)",
@@ -571,6 +616,7 @@ def build_parser() -> argparse.ArgumentParser:
             "promote-dds-to-production",
             "rollback-dds-production-promotion",
             "verify-vault-production-parity",
+            "verify-vault-path-catalog-parity",
         ],
         help="Task to execute",
     )
@@ -739,6 +785,11 @@ def main(argv: list[str] | None = None) -> int:
                 args.faculty,
                 args.output_json,
                 args.output_md,
+            )
+        if args.command == "verify-vault-path-catalog-parity":
+            return run_verify_vault_path_catalog_parity(
+                args.vault_path,
+                args.faculty,
             )
     finally:
         close_mongo_client()

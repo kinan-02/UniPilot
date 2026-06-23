@@ -54,6 +54,8 @@ class PromotionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     degreePrograms: list[PromotionPlanItem] = Field(default_factory=list)
+    catalogPathOptions: list[PromotionPlanItem] = Field(default_factory=list)
+    catalogFaculties: list[PromotionPlanItem] = Field(default_factory=list)
     hardDegreeRequirements: list[PromotionPlanItem] = Field(default_factory=list)
     advisoryCatalogRules: list[PromotionPlanItem] = Field(default_factory=list)
     courses: list[PromotionPlanItem] = Field(default_factory=list)

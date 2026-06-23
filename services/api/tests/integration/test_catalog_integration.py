@@ -34,6 +34,58 @@ async def test_catalog_requires_auth(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_list_academic_faculties_filters_by_program_type(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-faculties-filter@example.com")
+
+    response = await auth_client.get(
+        "/catalog/academic-faculties?programType=MSc",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["total"] == 1
+    assert body["data"]["items"][0]["facultyId"] == "faculty-dds"
+
+
+@pytest.mark.asyncio
+async def test_list_academic_faculties(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-academic-faculties@example.com")
+
+    response = await auth_client.get(
+        "/catalog/academic-faculties",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["total"] >= 1
+    assert body["data"]["items"][0]["facultyId"] == "faculty-dds"
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_for_bsc_tracks(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-path-options@example.com")
+
+    response = await auth_client.get(
+        "/catalog/path-options?facultyId=faculty-dds&programType=BSc&primaryOnly=true",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["total"] == 3
+    assert all(item["kind"] == "bsc_track" for item in body["data"]["items"])
+    assert all(item.get("linkedDegreeProgramId") for item in body["data"]["items"])
+
+
+@pytest.mark.asyncio
 async def test_list_faculties(auth_client, mongo_database):
     await seed_catalog_production_fixtures(mongo_database)
     token = await register_access_token(auth_client, "catalog-faculties@example.com")

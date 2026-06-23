@@ -50,6 +50,8 @@ class CatalogStagingImportSummary(BaseModel):
     programsUpserted: int = 0
     requirementsUpserted: int = 0
     rulesUpserted: int = 0
+    pathOptionsUpserted: int = 0
+    facultiesUpserted: int = 0
     courseReferencesObserved: int = 0
     manualReviewRequiredItems: int = 0
     warningsPreserved: list[str] = Field(default_factory=list)

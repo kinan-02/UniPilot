@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     degree_programs_collection: str = "degree_programs"
     degree_requirements_collection: str = "degree_requirements"
     catalog_rules_collection: str = "catalog_rules"
+    catalog_path_options_collection: str = "catalog_path_options"
+    catalog_faculties_collection: str = "catalog_faculties"
     catalog_default_limit: int = 50
     catalog_max_limit: int = 200
     catalog_cache_enabled: bool = True

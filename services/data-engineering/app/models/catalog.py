@@ -137,11 +137,51 @@ class SignoffReviewMetadata(BaseModel):
     productionPromotionRecommendation: str = Field(min_length=1, max_length=200)
 
 
+class CatalogFacultyEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    facultyId: str = Field(min_length=1, max_length=120)
+    institutionId: str = Field(min_length=1, max_length=100)
+    wikiSlug: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=300)
+    nameHe: str | None = None
+    nameEn: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    catalogPrefix: str | None = None
+    catalogYear: int = Field(ge=1990, le=2100)
+    catalogVersion: str = Field(min_length=1, max_length=50)
+    status: str = "published"
+
+
+class CatalogPathOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    optionKey: str = Field(min_length=1, max_length=200)
+    institutionId: str = Field(min_length=1, max_length=100)
+    facultyId: str = Field(min_length=1, max_length=120)
+    wikiSlug: str = Field(min_length=1, max_length=120)
+    kind: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=300)
+    nameHe: str | None = None
+    nameEn: str | None = None
+    studyLevels: list[str] = Field(default_factory=list)
+    selectableAsPrimary: bool = False
+    linkedProgramCode: str | None = None
+    description: str | None = None
+    duration: str | None = Field(default=None, max_length=200)
+    totalCreditsRequired: str | None = Field(default=None, max_length=50)
+    catalogYear: int = Field(ge=1990, le=2100)
+    catalogVersion: str = Field(min_length=1, max_length=50)
+    status: str = "published"
+
+
 class ReviewedCuratedCatalogDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: CuratedCatalogSource
     programs: list[NormalizedDegreeProgram] = Field(default_factory=list)
+    faculties: list[CatalogFacultyEntry] = Field(default_factory=list)
+    pathOptions: list[CatalogPathOption] = Field(default_factory=list)
     parserReport: dict[str, Any] = Field(default_factory=dict)
     curationMetadata: CurationMetadata
     curationReport: dict[str, Any] = Field(default_factory=dict)

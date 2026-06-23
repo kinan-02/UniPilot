@@ -35,6 +35,8 @@ PROMOTION_COLLECTION_SOURCE_NAMES: dict[str, str] = {
     "degree_programs": DDS_CATALOG_SOURCE,
     "degree_requirements": DDS_CATALOG_SOURCE,
     "catalog_rules": DDS_CATALOG_SOURCE,
+    "catalog_path_options": DDS_CATALOG_SOURCE,
+    "catalog_faculties": DDS_CATALOG_SOURCE,
     "courses": COURSE_JSON_SOURCE,
     "course_offerings": COURSE_JSON_SOURCE,
 }
@@ -154,6 +156,7 @@ def map_staging_program_to_production(
         "catalogYear": staging.get("catalogYear"),
         "catalogVersion": catalog_version,
         "paths": staging.get("paths", []),
+        "metadata": staging.get("metadata", {}),
         "sourceName": DDS_CATALOG_SOURCE,
         "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
         "sourceVersion": staging.get("sourceVersion", catalog_version),
@@ -169,6 +172,82 @@ def map_staging_program_to_production(
         "updatedAt": promoted_at,
     }
     _validate_document_safety(document, context=f"degree_program {program_code}")
+    return document
+
+
+def production_path_option_key(option_key: str, catalog_version: str) -> str:
+    return f"technion:path-option:{option_key}:{catalog_version}"
+
+
+def production_faculty_key(faculty_id: str, catalog_version: str) -> str:
+    return f"technion:faculty:{faculty_id}:{catalog_version}"
+
+
+def map_staging_path_option_to_production(
+    staging: dict[str, Any],
+    *,
+    promotion_run_id: str,
+    promoted_at: str,
+    catalog_version: str,
+) -> dict[str, Any]:
+    option_key = staging.get("optionKey", "")
+    document = {
+        "productionKey": production_path_option_key(option_key, catalog_version),
+        "institutionId": staging.get("institutionId", "technion"),
+        "facultyId": staging.get("facultyId"),
+        "optionKey": option_key,
+        "wikiSlug": staging.get("wikiSlug"),
+        "kind": staging.get("kind"),
+        "name": staging.get("name"),
+        "nameHe": staging.get("nameHe"),
+        "nameEn": staging.get("nameEn"),
+        "studyLevels": staging.get("studyLevels", []),
+        "selectableAsPrimary": bool(staging.get("selectableAsPrimary")),
+        "linkedProgramCode": staging.get("linkedProgramCode"),
+        "description": staging.get("description"),
+        "duration": staging.get("duration"),
+        "totalCreditsRequired": staging.get("totalCreditsRequired"),
+        "catalogYear": staging.get("catalogYear"),
+        "catalogVersion": catalog_version,
+        "sourceName": DDS_CATALOG_SOURCE,
+        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "status": "published",
+        "promotedAt": promoted_at,
+        "promotionRunId": promotion_run_id,
+        "updatedAt": promoted_at,
+    }
+    _validate_document_safety(document, context=f"catalog_path_option {option_key}")
+    return document
+
+
+def map_staging_faculty_to_production(
+    staging: dict[str, Any],
+    *,
+    promotion_run_id: str,
+    promoted_at: str,
+    catalog_version: str,
+) -> dict[str, Any]:
+    faculty_id = staging.get("facultyId", "")
+    document = {
+        "productionKey": production_faculty_key(faculty_id, catalog_version),
+        "institutionId": staging.get("institutionId", "technion"),
+        "facultyId": faculty_id,
+        "wikiSlug": staging.get("wikiSlug"),
+        "name": staging.get("name"),
+        "nameHe": staging.get("nameHe"),
+        "nameEn": staging.get("nameEn"),
+        "aliases": staging.get("aliases", []),
+        "catalogPrefix": staging.get("catalogPrefix"),
+        "catalogYear": staging.get("catalogYear"),
+        "catalogVersion": catalog_version,
+        "sourceName": DDS_CATALOG_SOURCE,
+        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "status": "published",
+        "promotedAt": promoted_at,
+        "promotionRunId": promotion_run_id,
+        "updatedAt": promoted_at,
+    }
+    _validate_document_safety(document, context=f"catalog_faculty {faculty_id}")
     return document
 
 
@@ -361,6 +440,8 @@ def map_staging_offering_to_production(
 def _collection_name_for_logical(logical: str, settings: Settings) -> str:
     mapping = {
         "degreePrograms": settings.production_degree_programs_collection,
+        "catalogPathOptions": settings.production_catalog_path_options_collection,
+        "catalogFaculties": settings.production_catalog_faculties_collection,
         "hardDegreeRequirements": settings.production_degree_requirements_collection,
         "advisoryCatalogRules": settings.production_catalog_rules_collection,
         "courses": settings.production_courses_collection,
@@ -381,6 +462,27 @@ def ensure_production_promotion_indexes(database: Database, settings: Settings) 
         unique=True,
         name="promotion_runs_unique_id",
     )
+
+
+def retire_unplanned_production_documents(
+    database: Database,
+    *,
+    planned_keys_by_collection: dict[str, set[str]],
+) -> dict[str, int]:
+    """Remove legacy/manual production rows so vault re-promotion can replace the full snapshot."""
+    retired: dict[str, int] = {}
+    for collection in sorted(PROMOTION_WRITE_COLLECTIONS):
+        planned_keys = planned_keys_by_collection.get(collection, set())
+        result = database[collection].delete_many(
+            {
+                "$or": [
+                    {"productionKey": {"$exists": False}},
+                    {"productionKey": {"$nin": list(planned_keys)}},
+                ]
+            }
+        )
+        retired[collection] = int(result.deleted_count)
+    return retired
 
 
 def validate_production_collections_for_promotion(
@@ -466,6 +568,8 @@ def build_production_documents(
     }
     course_keys = {item.stagingKey for item in plan.courses}
     offering_keys = {item.stagingKey for item in plan.courseOfferings}
+    path_option_keys = {item.stagingKey for item in plan.catalogPathOptions}
+    faculty_keys = {item.stagingKey for item in plan.catalogFaculties}
 
     programs_by_key = _load_staging_by_key(
         database, settings.staging_degree_programs_collection, program_keys
@@ -480,6 +584,12 @@ def build_production_documents(
     offerings_by_key = _load_staging_by_key(
         database, settings.staging_course_offerings_collection, offering_keys
     )
+    path_options_by_key = _load_staging_by_key(
+        database, settings.staging_catalog_path_options_collection, path_option_keys
+    )
+    faculties_by_key = _load_staging_by_key(
+        database, settings.staging_catalog_faculties_collection, faculty_keys
+    )
 
     promoted_numbers = {item.identifier for item in plan.courses}
     excluded_numbers = set(gate.policiesApplied.productionExcludedCourseNumbers)
@@ -489,6 +599,8 @@ def build_production_documents(
         settings.production_catalog_rules_collection: [],
         settings.production_courses_collection: [],
         settings.production_course_offerings_collection: [],
+        settings.production_catalog_path_options_collection: [],
+        settings.production_catalog_faculties_collection: [],
     }
     planned_keys: dict[str, set[str]] = {name: set() for name in PROMOTION_WRITE_COLLECTIONS}
 
@@ -504,6 +616,32 @@ def build_production_documents(
         )
         documents[settings.production_degree_programs_collection].append(doc)
         planned_keys[settings.production_degree_programs_collection].add(doc["productionKey"])
+
+    for item in plan.catalogPathOptions:
+        staging = path_options_by_key.get(item.stagingKey)
+        if not staging:
+            raise ProductionPromotionError(f"Missing staging path option for key {item.stagingKey}")
+        doc = map_staging_path_option_to_production(
+            staging,
+            promotion_run_id=promotion_run_id,
+            promoted_at=promoted_at,
+            catalog_version=catalog_version,
+        )
+        documents[settings.production_catalog_path_options_collection].append(doc)
+        planned_keys[settings.production_catalog_path_options_collection].add(doc["productionKey"])
+
+    for item in plan.catalogFaculties:
+        staging = faculties_by_key.get(item.stagingKey)
+        if not staging:
+            raise ProductionPromotionError(f"Missing staging faculty for key {item.stagingKey}")
+        doc = map_staging_faculty_to_production(
+            staging,
+            promotion_run_id=promotion_run_id,
+            promoted_at=promoted_at,
+            catalog_version=catalog_version,
+        )
+        documents[settings.production_catalog_faculties_collection].append(doc)
+        planned_keys[settings.production_catalog_faculties_collection].add(doc["productionKey"])
 
     for item in plan.hardDegreeRequirements:
         staging = requirements_by_key.get(item.stagingKey)
@@ -795,6 +933,10 @@ def run_dds_production_promotion(
             settings=settings,
             planned_production_keys=planned_keys.get(settings.production_catalog_rules_collection, set()),
             catalog_version=gate.catalogVersion or "2025-2026",
+        )
+        retire_unplanned_production_documents(
+            database,
+            planned_keys_by_collection=planned_keys,
         )
 
         validate_production_collections_for_promotion(

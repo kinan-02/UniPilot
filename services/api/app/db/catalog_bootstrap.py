@@ -76,16 +76,19 @@ PROGRAM_METADATA: dict[str, dict[str, Any]] = {
         "name": "הנדסת נתונים ומידע",
         "nameEn": "Data and Information Engineering",
         "totalCredits": 155.0,
+        "wikiPage": "track-data-information-engineering",
     },
     "009009-1-000": {
         "name": "הנדסת תעשייה וניהול",
         "nameEn": "Industrial Engineering and Management",
         "totalCredits": 155.0,
+        "wikiPage": "track-industrial-engineering-management",
     },
     "009118-1-000": {
         "name": "הנדסת מערכות מידע",
         "nameEn": "Information Systems Engineering",
         "totalCredits": 155.0,
+        "wikiPage": "track-information-systems-engineering",
     },
 }
 
@@ -157,17 +160,28 @@ async def ensure_development_catalog(database: AsyncIOMotorDatabase, settings: S
     if resolved.environment != "development" or not resolved.auto_seed_catalog:
         return False
 
-    existing = await database[resolved.degree_programs_collection].count_documents({})
-    if existing > 0:
+    programs_existing = await database[resolved.degree_programs_collection].count_documents({})
+    faculties_existing = await database[resolved.catalog_faculties_collection].count_documents({})
+    path_options_existing = await database[resolved.catalog_path_options_collection].count_documents({})
+
+    if programs_existing > 0 and faculties_existing > 0 and path_options_existing > 0:
         return False
 
-    await seed_minimal_catalog(database, resolved)
-    logger.info(
-        "Seeded vault-like development catalog (%d programs, %d advisory rules)",
-        len(ALL_PROGRAMS),
-        TOTAL_ADVISORY_RULES,
-    )
-    return True
+    if programs_existing == 0:
+        await seed_minimal_catalog(database, resolved)
+        logger.info(
+            "Seeded vault-like development catalog (%d programs, %d advisory rules)",
+            len(ALL_PROGRAMS),
+            TOTAL_ADVISORY_RULES,
+        )
+        return True
+
+    if faculties_existing == 0 or path_options_existing == 0:
+        await _seed_catalog_faculties_and_path_options(database, resolved)
+        logger.info("Seeded missing catalog faculties/path options for development")
+        return True
+
+    return False
 
 
 async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Settings | None = None) -> None:
@@ -227,6 +241,123 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
     ]
     assert len(advisory_docs) == TOTAL_ADVISORY_RULES
     await database[resolved.catalog_rules_collection].insert_many(advisory_docs)
+    await _seed_catalog_faculties_and_path_options(database, resolved)
+
+
+async def _seed_catalog_faculties_and_path_options(
+    database: AsyncIOMotorDatabase,
+    settings: Settings,
+) -> None:
+    faculty_doc = {
+        "productionKey": "technion:faculty:faculty-dds:2025-2026",
+        "institutionId": "technion",
+        "facultyId": "faculty-dds",
+        "wikiSlug": "faculty-dds",
+        "name": "הפקולטה למדעי הנתונים וההחלטות",
+        "nameHe": "הפקולטה למדעי הנתונים וההחלטות",
+        "nameEn": "Faculty of Data Science and Decisions",
+        "aliases": ["DDS"],
+        "catalogYear": 2025,
+        "catalogVersion": "2025-2026",
+        "status": "published",
+    }
+    await database[settings.catalog_faculties_collection].insert_one(faculty_doc)
+
+    track_options = [
+        (
+            "track-data-information-engineering",
+            "009216-1-000",
+            "הנדסת נתונים ומידע",
+            "Data and Information Engineering",
+        ),
+        (
+            "track-industrial-engineering-management",
+            "009009-1-000",
+            "הנדסת תעשייה וניהול",
+            "Industrial Engineering and Management",
+        ),
+        (
+            "track-information-systems-engineering",
+            "009118-1-000",
+            "הנדסת מערכות מידע",
+            "Information Systems Engineering",
+        ),
+    ]
+    path_docs = []
+    for wiki_slug, program_code, name_he, name_en in track_options:
+        path_docs.append(
+            {
+                "productionKey": f"technion:path-option:technion:dds:{wiki_slug}:2025-2026",
+                "optionKey": f"technion:dds:{wiki_slug}",
+                "institutionId": "technion",
+                "facultyId": "faculty-dds",
+                "wikiSlug": wiki_slug,
+                "kind": "bsc_track",
+                "name": name_he,
+                "nameHe": name_he,
+                "nameEn": name_en,
+                "studyLevels": ["BSc"],
+                "selectableAsPrimary": True,
+                "linkedProgramCode": program_code,
+                "catalogYear": 2025,
+                "catalogVersion": "2025-2026",
+                "status": "published",
+            }
+        )
+    path_docs.extend(
+        [
+            {
+                "productionKey": "technion:path-option:technion:dds:program-excellence:2025-2026",
+                "optionKey": "technion:dds:program-excellence",
+                "institutionId": "technion",
+                "facultyId": "faculty-dds",
+                "wikiSlug": "program-excellence",
+                "kind": "special_program",
+                "name": "תוכנית מצוינות פקולטית",
+                "nameHe": "תוכנית מצוינות פקולטית",
+                "nameEn": "Faculty Excellence Program",
+                "studyLevels": ["BSc", "MSc"],
+                "selectableAsPrimary": False,
+                "catalogYear": 2025,
+                "catalogVersion": "2025-2026",
+                "status": "published",
+            },
+            {
+                "productionKey": "technion:path-option:technion:dds:minor-robotics:2025-2026",
+                "optionKey": "technion:dds:minor-robotics",
+                "institutionId": "technion",
+                "facultyId": "faculty-dds",
+                "wikiSlug": "minor-robotics",
+                "kind": "minor",
+                "name": "מינור רובוטיקה",
+                "nameHe": "מינור רובוטיקה",
+                "nameEn": "Robotics Minor",
+                "studyLevels": ["BSc"],
+                "selectableAsPrimary": False,
+                "catalogYear": 2025,
+                "catalogVersion": "2025-2026",
+                "status": "published",
+            },
+            {
+                "productionKey": "technion:path-option:technion:dds:grad-data-science:2025-2026",
+                "optionKey": "technion:dds:grad-data-science",
+                "institutionId": "technion",
+                "facultyId": "faculty-dds",
+                "wikiSlug": "grad-data-science",
+                "kind": "graduate_program",
+                "name": "מדעי נתונים ומידע",
+                "nameHe": "מדעי נתונים ומידע",
+                "nameEn": "Data Science",
+                "studyLevels": ["MSc", "PhD"],
+                "selectableAsPrimary": True,
+                "catalogYear": 2025,
+                "catalogVersion": "2025-2026",
+                "status": "published",
+            },
+        ]
+    )
+    if path_docs:
+        await database[settings.catalog_path_options_collection].insert_many(path_docs)
 
 
 def _program_doc(program_code: str) -> dict[str, Any]:
@@ -242,6 +373,12 @@ def _program_doc(program_code: str) -> dict[str, Any]:
         "catalogVersion": "2025-2026",
         "status": "published",
         "paths": [],
+        "metadata": {
+            "facultyId": "faculty-dds",
+            "faculty": "dds",
+            "wikiPage": PROGRAM_METADATA[program_code].get("wikiPage"),
+            "programKind": "bsc_track",
+        },
         "sourceMetadata": {
             "curationReport": {
                 "vaultSignoff": {

@@ -89,11 +89,54 @@ class DegreeProgram(BaseModel):
     institutionId: str
     name: str | None = None
     nameEn: str | None = None
+    nameHebrew: str | None = None
     totalCredits: float | None = None
     catalogYear: int | None = None
     catalogVersion: str | None = None
     status: str = "published"
     paths: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CatalogFaculty(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    facultyId: str
+    institutionId: str
+    wikiSlug: str
+    name: str | None = None
+    nameHe: str | None = None
+    nameEn: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    catalogPrefix: str | None = None
+    catalogYear: int | None = None
+    catalogVersion: str | None = None
+    status: str = "published"
+
+
+class CatalogPathOption(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = None
+    optionKey: str
+    institutionId: str
+    facultyId: str
+    wikiSlug: str
+    kind: str
+    name: str | None = None
+    nameHe: str | None = None
+    nameEn: str | None = None
+    studyLevels: list[str] = Field(default_factory=list)
+    selectableAsPrimary: bool = False
+    linkedProgramCode: str | None = None
+    linkedDegreeProgramId: str | None = None
+    description: str | None = None
+    duration: str | None = None
+    totalCreditsRequired: str | None = None
+    catalogYear: int | None = None
+    catalogVersion: str | None = None
+    status: str = "published"
 
 
 class DegreeRequirement(BaseModel):

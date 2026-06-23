@@ -225,7 +225,7 @@ def test_no_degree_requirements_inferred_from_course_json() -> None:
         )
 
 
-def test_conflicting_production_data_fails(mongo_database) -> None:
+def test_conflicting_production_data_is_retired_on_repromotion(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()
     mongo_database[settings.production_degree_programs_collection].insert_one(
@@ -234,6 +234,35 @@ def test_conflicting_production_data_fails(mongo_database) -> None:
             "programCode": "legacy",
             "catalogVersion": "2099-2099",
             "sourceName": "other-source",
+        }
+    )
+    result = run_dds_production_promotion(
+        mongo_database,
+        confirm_dangerous=True,
+        allow_warnings=True,
+    )
+    assert result.productionWritesPerformed is True
+    assert result.promotionRun.status == "completed"
+    assert (
+        mongo_database[settings.production_degree_programs_collection].count_documents(
+            {"productionKey": "legacy-program"}
+        )
+        == 0
+    )
+
+
+def test_conflicting_catalog_version_fails(mongo_database) -> None:
+    _seed_signed_off_promotion_staging(mongo_database)
+    settings = get_settings()
+    from app.promotion.dds_production_promoter import production_program_key
+
+    conflicting_key = production_program_key("009216-1-000", "2025-2026")
+    mongo_database[settings.production_degree_programs_collection].insert_one(
+        {
+            "productionKey": conflicting_key,
+            "programCode": "009216-1-000",
+            "catalogVersion": "2099-2099",
+            "sourceName": "technion-dds-catalog",
         }
     )
     result = run_dds_production_promotion(

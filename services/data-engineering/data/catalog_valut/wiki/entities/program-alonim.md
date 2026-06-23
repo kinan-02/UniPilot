@@ -1,6 +1,6 @@
 ---
 title: Alonim Excellence Program (תוכנית עילית "אלונים")
-title_he: תוכנית עילית "אלונים"
+title_he: 'תוכנית עילית "אלונים"'
 aliases: [אלונים, תכנית אלונים, תוכנית אלונים, Alonim, alonim program, מסלול אלונים]
 type: entity
 tags: [program, military, excellence, data-engineering, bsc, msc]

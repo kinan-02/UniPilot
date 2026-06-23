@@ -1,6 +1,6 @@
 ---
 title: Barak'at Program (תכנית עילית "ברקת")
-title_he: תכנית עילית "ברקת"
+title_he: 'תכנית עילית "ברקת"'
 aliases: [ברקת, ברק א"ת, תכנית ברקת, תוכנית ברקת, Barak, Barak'at, barak program, מסלול ברקת]
 type: entity
 tags: [program, military, excellence, msc, data-science]

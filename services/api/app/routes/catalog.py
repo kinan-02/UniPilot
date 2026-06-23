@@ -22,6 +22,8 @@ from app.schemas.catalog import (
     COURSE_NUMBER_PATTERN,
     PROGRAM_CODE_PATTERN,
     AdvisoryCatalogRule,
+    CatalogFaculty,
+    CatalogPathOption,
     CatalogSummary,
     CourseDetail,
     CourseListQuery,
@@ -59,6 +61,50 @@ def validate_program_code_param(program_code: str) -> str:
             detail="program_code must match Technion DDS format, e.g. 009216-1-000",
         )
     return program_code
+
+
+@router.get("/academic-faculties")
+async def list_academic_faculties(
+    institutionId: str | None = Query(default="technion", max_length=100),
+    programType: str | None = Query(default=None, max_length=100),
+    withPathOptionsOnly: bool = Query(default=False),
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    database = await get_database()
+    faculties = await catalog_repository.list_catalog_faculties(
+        database,
+        institution_id=institutionId,
+        study_level=programType,
+        with_path_options_only=withPathOptionsOnly or bool(programType),
+    )
+    payload = {
+        "items": [CatalogFaculty.model_validate(item).model_dump() for item in faculties],
+        "total": len(faculties),
+    }
+    return success_response(payload)
+
+
+@router.get("/path-options")
+async def list_catalog_path_options(
+    facultyId: str | None = Query(default=None, max_length=120),
+    programType: str | None = Query(default=None, max_length=100),
+    kind: str | None = Query(default=None, max_length=50),
+    primaryOnly: bool | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    database = await get_database()
+    options = await catalog_repository.list_path_options(
+        database,
+        faculty_id=facultyId,
+        study_level=programType,
+        kind=kind,
+        primary_only=primaryOnly,
+    )
+    payload = {
+        "items": [CatalogPathOption.model_validate(item).model_dump() for item in options],
+        "total": len(options),
+    }
+    return success_response(payload)
 
 
 @router.get("/faculties")
@@ -277,20 +323,27 @@ async def batch_catalog_offerings(
 
 @router.get("/degree-programs")
 async def list_catalog_degree_programs(
+    facultyId: str | None = Query(default=None, max_length=120),
+    programType: str | None = Query(default=None, max_length=100),
     _auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
     cache_key = degree_programs_cache_key()
     cached = await get_cached_json(cache_key)
-    if cached is not None:
+    if cached is not None and not facultyId and not programType:
         return success_response(cached)
 
     database = await get_database()
-    programs = await catalog_repository.list_degree_programs(database)
+    programs = await catalog_repository.list_degree_programs(
+        database,
+        faculty_id=facultyId,
+        study_level=programType,
+    )
     payload = {
         "items": [DegreeProgram.model_validate(item).model_dump() for item in programs],
         "total": len(programs),
     }
-    await set_cached_json(cache_key, payload)
+    if not facultyId and not programType:
+        await set_cached_json(cache_key, payload)
     return success_response(payload)
 
 

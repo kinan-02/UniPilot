@@ -1,6 +1,6 @@
 ---
 title: Avivim Excellence Program (תוכנית עילית "אביבים")
-title_he: תוכנית עילית "אביבים"
+title_he: 'תוכנית עילית "אביבים"'
 aliases: [אביבים, תכנית אביבים, תוכנית אביבים, Avivim, avivim program, מסלול אביבים]
 type: entity
 tags: [program, military, excellence, iem, bsc, msc]

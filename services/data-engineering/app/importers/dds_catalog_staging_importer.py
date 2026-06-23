@@ -69,6 +69,8 @@ PROMOTION_WRITE_COLLECTIONS = frozenset(
         "catalog_rules",
         "courses",
         "course_offerings",
+        "catalog_path_options",
+        "catalog_faculties",
     }
 )
 
@@ -84,6 +86,8 @@ class CatalogStagingImportPlan:
     program_documents: list[dict[str, Any]] = field(default_factory=list)
     requirement_documents: list[dict[str, Any]] = field(default_factory=list)
     rule_documents: list[dict[str, Any]] = field(default_factory=list)
+    path_option_documents: list[dict[str, Any]] = field(default_factory=list)
+    faculty_documents: list[dict[str, Any]] = field(default_factory=list)
     summary: CatalogStagingImportSummary = field(default_factory=CatalogStagingImportSummary)
 
 
@@ -111,6 +115,14 @@ def requirement_staging_key(catalog_version: str, group_id: str) -> str:
     return f"technion-dds:catalog:{catalog_version}:requirement:{group_id}"
 
 
+def path_option_staging_key(catalog_version: str, option_key: str) -> str:
+    return f"technion-dds:catalog:{catalog_version}:path:{option_key}"
+
+
+def faculty_staging_key(catalog_version: str, faculty_id: str) -> str:
+    return f"technion-dds:catalog:{catalog_version}:faculty:{faculty_id}"
+
+
 def assert_staging_collection_name(collection_name: str) -> None:
     if collection_name in PRODUCTION_COLLECTION_NAMES:
         raise CatalogStagingImportError(
@@ -127,6 +139,8 @@ def assert_staging_settings(settings: Settings) -> None:
         settings.staging_degree_programs_collection,
         settings.staging_degree_requirements_collection,
         settings.staging_catalog_rules_collection,
+        settings.staging_catalog_path_options_collection,
+        settings.staging_catalog_faculties_collection,
         settings.staging_ingestion_runs_collection,
     ):
         assert_staging_collection_name(name)
@@ -285,6 +299,8 @@ def build_catalog_staging_plan(
     program_documents: list[dict[str, Any]] = []
     requirement_documents: list[dict[str, Any]] = []
     rule_documents: list[dict[str, Any]] = []
+    path_option_documents: list[dict[str, Any]] = []
+    faculty_documents: list[dict[str, Any]] = []
 
     shared_catalog_context = {
         "catalogSource": document.source.model_dump(mode="json"),
@@ -344,11 +360,49 @@ def build_catalog_staging_plan(
                 }
             )
 
+    for faculty in document.faculties:
+        faculty_key = faculty_staging_key(catalog_version, faculty.facultyId)
+        import_meta = build_import_metadata(
+            staging_key=faculty_key,
+            document=document,
+            import_run_id=dry_run_run_id,
+            catalog_path=catalog_path,
+            readiness_path=readiness_path,
+        )
+        faculty_documents.append(
+            {
+                **import_meta.model_dump(mode="json"),
+                **faculty.model_dump(mode="json"),
+                **shared_catalog_context,
+                "recordType": "catalog_faculty",
+            }
+        )
+
+    for option in document.pathOptions:
+        option_key = path_option_staging_key(catalog_version, option.optionKey)
+        import_meta = build_import_metadata(
+            staging_key=option_key,
+            document=document,
+            import_run_id=dry_run_run_id,
+            catalog_path=catalog_path,
+            readiness_path=readiness_path,
+        )
+        path_option_documents.append(
+            {
+                **import_meta.model_dump(mode="json"),
+                **option.model_dump(mode="json"),
+                **shared_catalog_context,
+                "recordType": "catalog_path_option",
+            }
+        )
+
     summary = CatalogStagingImportSummary(
         dryRun=dry_run,
         programsUpserted=len(program_documents),
         requirementsUpserted=len(requirement_documents),
         rulesUpserted=len(rule_documents),
+        pathOptionsUpserted=len(path_option_documents),
+        facultiesUpserted=len(faculty_documents),
         courseReferencesObserved=course_refs_observed,
         manualReviewRequiredItems=manual_review_items,
         warningsPreserved=list(readiness.warnings),
@@ -356,6 +410,8 @@ def build_catalog_staging_plan(
             "degreePrograms": settings.staging_degree_programs_collection,
             "degreeRequirements": settings.staging_degree_requirements_collection,
             "catalogRules": settings.staging_catalog_rules_collection,
+            "catalogPathOptions": settings.staging_catalog_path_options_collection,
+            "catalogFaculties": settings.staging_catalog_faculties_collection,
             "ingestionRuns": settings.staging_ingestion_runs_collection,
         },
     )
@@ -364,6 +420,8 @@ def build_catalog_staging_plan(
         program_documents=program_documents,
         requirement_documents=requirement_documents,
         rule_documents=rule_documents,
+        path_option_documents=path_option_documents,
+        faculty_documents=faculty_documents,
         summary=summary,
     )
 
@@ -384,6 +442,16 @@ def ensure_dds_catalog_staging_indexes(database: Database, settings: Settings) -
         [("stagingKey", 1)],
         unique=True,
         name="staging_catalog_rules_unique_key",
+    )
+    database[settings.staging_catalog_path_options_collection].create_index(
+        [("stagingKey", 1)],
+        unique=True,
+        name="staging_catalog_path_options_unique_key",
+    )
+    database[settings.staging_catalog_faculties_collection].create_index(
+        [("stagingKey", 1)],
+        unique=True,
+        name="staging_catalog_faculties_unique_key",
     )
     database[settings.staging_ingestion_runs_collection].create_index(
         [("startedAt", -1)],
@@ -510,11 +578,19 @@ def import_dds_catalog_to_staging(
     for doc in plan.rule_documents:
         doc["importRunId"] = run_id_str
         doc["importedAt"] = _utc_now_iso()
+    for doc in plan.path_option_documents:
+        doc["importRunId"] = run_id_str
+        doc["importedAt"] = _utc_now_iso()
+    for doc in plan.faculty_documents:
+        doc["importRunId"] = run_id_str
+        doc["importedAt"] = _utc_now_iso()
 
     items_total = (
         len(plan.program_documents)
         + len(plan.requirement_documents)
         + len(plan.rule_documents)
+        + len(plan.path_option_documents)
+        + len(plan.faculty_documents)
     )
     run = run.model_copy(update={"itemsRead": items_total})
 
@@ -533,11 +609,25 @@ def import_dds_catalog_to_staging(
         settings.staging_catalog_rules_collection,
         plan.rule_documents,
     )
+    _upsert_documents(
+        database,
+        settings.staging_catalog_path_options_collection,
+        plan.path_option_documents,
+    )
+    _upsert_documents(
+        database,
+        settings.staging_catalog_faculties_collection,
+        plan.faculty_documents,
+    )
 
     active_staging_keys = {
         str(document["stagingKey"])
         for document in (
-            plan.program_documents + plan.requirement_documents + plan.rule_documents
+            plan.program_documents
+            + plan.requirement_documents
+            + plan.rule_documents
+            + plan.path_option_documents
+            + plan.faculty_documents
         )
     }
     stale_removed = _remove_stale_dds_staging_records(

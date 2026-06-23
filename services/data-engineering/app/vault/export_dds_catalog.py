@@ -22,6 +22,7 @@ from app.utils.course_numbers import normalize_course_number
 from app.vault.loader import WikiPage, extract_field, load_pages_by_slug, wiki_root
 from app.vault.markdown_tables import MarkdownTable, find_table_with_header, parse_markdown_tables
 from app.vault.vault_signoff import apply_vault_signoff_to_catalog, build_readiness_after_vault_signoff
+from app.vault.wiki_path_catalog import build_wiki_path_catalog
 
 CATALOG_YEAR = 2025
 CATALOG_VERSION = "2025-2026"
@@ -904,7 +905,7 @@ def build_program(page: WikiPage, config: dict[str, Any], pages: dict[str, WikiP
         "paths": [],
         "requirementGroups": requirement_groups,
         "pageNumbers": [],
-        "metadata": {"faculty": "dds", "wikiPage": page.slug},
+        "metadata": {"faculty": "dds", "facultyId": "faculty-dds", "wikiPage": page.slug, "programKind": "bsc_track"},
         "manualReviewRequired": True,
         "confidence": "medium",
     }
@@ -1022,6 +1023,15 @@ def export_dds_vault_catalog(
     ]
     enrich_programs(programs, offering_index)
 
+    path_catalog = build_wiki_path_catalog(
+        wiki_path=root,
+        institution_id=INSTITUTION_ID,
+        faculty_id="faculty-dds",
+        track_program_codes={slug: config["programCode"] for slug, config in DDS_TRACK_SLUGS.items()},
+        catalog_year=CATALOG_YEAR,
+        catalog_version=CATALOG_VERSION,
+    )
+
     wiki_source = _relative_vault_path(root)
     export_report = {
         "exporter": "vault-export",
@@ -1053,7 +1063,13 @@ def export_dds_vault_catalog(
             "notes": ["Exported deterministically from catalog_valut wiki pages."],
         },
         "programs": programs,
-        "parserReport": export_report,
+        "faculties": path_catalog["faculties"],
+        "pathOptions": path_catalog["pathOptions"],
+        "parserReport": {
+            **export_report,
+            "pathOptionsExported": len(path_catalog["pathOptions"]),
+            "facultiesExported": len(path_catalog["faculties"]),
+        },
         "curationMetadata": {
             "curatedBy": "vault-export",
             "curatedAt": _utc_now_iso(),

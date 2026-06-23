@@ -1227,6 +1227,28 @@ class TestVaultLoaderGaps:
         assert _parse_scalar("false") is False
         assert _parse_scalar("TRUE") is True
 
+    def test_parse_scalar_preserves_internal_quotes(self):
+        """Embedded quotes in Hebrew titles must not be stripped."""
+        from app.vault.loader import _parse_scalar, load_wiki_page
+
+        assert _parse_scalar('תוכנית עילית "אביבים"') == 'תוכנית עילית "אביבים"'
+        assert _parse_scalar('"Avivim Excellence Program"') == "Avivim Excellence Program"
+        assert _parse_scalar("'wrapped value'") == "wrapped value"
+
+    def test_load_program_avivim_title_he(self):
+        from pathlib import Path
+
+        from app.vault.loader import load_wiki_page
+
+        page = load_wiki_page(
+            Path(__file__).resolve().parents[1]
+            / "data"
+            / "catalog_valut"
+            / "wiki"
+            / "entities"
+            / "program-avivim.md",
+        )
+        assert page.title_he == 'תוכנית עילית "אביבים"'
     def test_parse_frontmatter_no_markers(self):
         """Line 62: returns ({}, text) when no frontmatter markers."""
         from app.vault.loader import parse_frontmatter

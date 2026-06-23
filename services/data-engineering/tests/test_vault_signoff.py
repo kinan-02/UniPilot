@@ -24,7 +24,9 @@ def test_vault_signoff_marks_production_exclusions():
     assert vault["signoffSource"] == "vault-wiki"
     assert vault["enforceNonExecutableRulesInProduction"] is False
     assert vault["nonExecutableRulesPolicy"] == "advisory-only"
+    assert vault.get("ingestibleCourseScope") == "dds-faculty-semester-json"
     assert len(vault["productionExcludedCourseNumbers"]) >= 10
+    assert "01040042" in vault["productionExcludedCourseNumbers"]
     assert len(vault["signedOffNonExecutableRuleGroupIds"]) >= 30
 
 

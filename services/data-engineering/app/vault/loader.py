@@ -37,6 +37,12 @@ class WikiPage:
         return str(value) if value else None
 
 
+def _unwrap_wrapping_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] in "'\"" and value[0] == value[-1]:
+        return value[1:-1]
+    return value
+
+
 def _parse_scalar(value: str) -> Any:
     stripped = value.strip()
     if not stripped:
@@ -45,7 +51,7 @@ def _parse_scalar(value: str) -> Any:
         inner = stripped[1:-1].strip()
         if not inner:
             return []
-        parts = [part.strip().strip("'\"") for part in inner.split(",")]
+        parts = [_unwrap_wrapping_quotes(part.strip()) for part in inner.split(",")]
         return [part for part in parts if part]
     if stripped.lower() in {"true", "false"}:
         return stripped.lower() == "true"
@@ -53,7 +59,7 @@ def _parse_scalar(value: str) -> Any:
         return int(stripped)
     if re.fullmatch(r"-?\d+\.\d+", stripped):
         return float(stripped)
-    return stripped.strip("'\"")
+    return _unwrap_wrapping_quotes(stripped)
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:

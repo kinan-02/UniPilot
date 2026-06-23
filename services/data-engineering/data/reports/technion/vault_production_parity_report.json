@@ -1,13 +1,13 @@
 {
   "status": "pass",
   "wikiRoot": "data/catalog_valut/wiki",
-  "exportedAt": "2026-06-21T21:58:34+00:00",
+  "exportedAt": "2026-06-23T12:09:30+00:00",
   "counts": {
     "expectedHard": 16,
-    "expectedAdvisory": 35,
+    "expectedAdvisory": 46,
     "productionHard": 16,
-    "productionAdvisory": 35,
-    "matchedGroups": 51
+    "productionAdvisory": 46,
+    "matchedGroups": 62
   },
   "missingInProduction": [],
   "extraInProduction": [],

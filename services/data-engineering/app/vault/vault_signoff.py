@@ -7,9 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from app.curation.catalog_signoff import SIGNOFF_SOURCE_VAULT
+from app.catalog.course_reference_policy import (
+    build_dds_promotion_course_number_set,
+    collect_catalog_course_numbers,
+    derive_production_excluded_course_numbers,
+)
 from app.sources.technion_course_json_index import build_course_index, default_course_json_paths
 from app.utils.course_numbers import normalize_course_number
 from app.vault.loader import WikiPage, load_pages_by_slug, wiki_root
+from app.vault.ocr_course_resolution import apply_ocr_resolutions_to_catalog
 from app.vault.title_index import (
     align_credits_with_semester_json,
     build_wiki_title_index,
@@ -56,17 +62,6 @@ def enrich_titles_from_semester_json(
     return enrich_titles_from_index(document, title_index, source_label="semester-json")
 
 
-def collect_catalog_course_numbers(document: dict[str, Any]) -> set[str]:
-    numbers: set[str] = set()
-    for program in document.get("programs", []):
-        for group in program.get("requirementGroups", []):
-            for ref in group.get("courseReferences", []):
-                number = ref.get("courseNumber")
-                if number:
-                    numbers.add(number)
-    return numbers
-
-
 def derive_non_executable_rule_group_ids(document: dict[str, Any]) -> list[str]:
     group_ids: list[str] = []
     for program in document.get("programs", []):
@@ -79,13 +74,16 @@ def derive_non_executable_rule_group_ids(document: dict[str, Any]) -> list[str]:
     return sorted(group_ids)
 
 
-def derive_production_excluded_course_numbers(
+def derive_production_excluded_from_document(
     document: dict[str, Any],
     *,
-    course_index: dict[str, Any],
+    ingestible_course_numbers: set[str],
 ) -> list[str]:
     catalog_numbers = collect_catalog_course_numbers(document)
-    return sorted(number for number in catalog_numbers if number not in course_index)
+    return derive_production_excluded_course_numbers(
+        catalog_numbers,
+        ingestible_course_numbers=ingestible_course_numbers,
+    )
 
 
 def attach_program_source_refs(document: dict[str, Any], pages: dict[str, WikiPage]) -> None:
@@ -139,12 +137,15 @@ def extract_program_code(page: WikiPage) -> str | None:
 def build_vault_signoff_payload(
     document: dict[str, Any],
     *,
-    course_index: dict[str, Any],
+    ingestible_course_numbers: set[str],
     wiki_root_path: Path,
     signed_off_at: str | None = None,
 ) -> dict[str, Any]:
     non_executable = derive_non_executable_rule_group_ids(document)
-    excluded = derive_production_excluded_course_numbers(document, course_index=course_index)
+    excluded = derive_production_excluded_from_document(
+        document,
+        ingestible_course_numbers=ingestible_course_numbers,
+    )
     return {
         "signoffSource": SIGNOFF_SOURCE_VAULT,
         "signedOffBy": SIGNOFF_SOURCE_VAULT,
@@ -155,10 +156,11 @@ def build_vault_signoff_payload(
         "signedOffNonExecutableRuleGroupIds": non_executable,
         "productionExcludedCourseNumbers": excluded,
         "productionExcludedCoursePolicy": PRODUCTION_EXCLUDED_POLICY,
+        "ingestibleCourseScope": "dds-faculty-semester-json",
         "notes": (
             "Vault wiki sign-off: non-executable requirement groups are advisory-only in production. "
-            "Catalog course references absent from 2025 semester JSON are excluded from production "
-            "course ingestion but may remain as reference-only metadata in degree requirements."
+            "Catalog course references outside the DDS ingest scope are excluded from production "
+            "course ingestion but remain as reference-only metadata in vault-backed requirements."
         ),
     }
 
@@ -174,16 +176,21 @@ def apply_vault_signoff_to_catalog(
 
     paths = [path for path in (course_json_paths or default_course_json_paths()) if path.exists()]
     course_index = build_course_index(paths)
+    ingestible_course_numbers = build_dds_promotion_course_number_set(course_index)
     wiki_titles = build_wiki_course_title_index(pages)
 
     titles_filled = enrich_titles_from_wiki(document, wiki_titles)
     titles_filled += enrich_titles_from_semester_json(document, course_index)
     credits_aligned = align_credits_with_semester_json(document, course_index)
     attach_program_source_refs(document, pages)
+    apply_ocr_resolutions_to_catalog(
+        document,
+        ingestible_course_numbers=ingestible_course_numbers,
+    )
 
     vault_signoff = build_vault_signoff_payload(
         document,
-        course_index=course_index,
+        ingestible_course_numbers=ingestible_course_numbers,
         wiki_root_path=root,
     )
 

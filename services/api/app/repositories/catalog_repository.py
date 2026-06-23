@@ -86,6 +86,25 @@ def to_public_degree_program(document: dict[str, Any]) -> dict[str, Any]:
     public = _strip_internal_fields(document)
     if "_id" in document:
         public["id"] = str(document["_id"])
+    metadata = public.get("metadata")
+    if isinstance(metadata, dict):
+        public["metadata"] = dict(metadata)
+        if metadata.get("nameHe") and not public.get("nameHebrew"):
+            public["nameHebrew"] = metadata.get("nameHe")
+    return public
+
+
+def to_public_catalog_faculty(document: dict[str, Any]) -> dict[str, Any]:
+    public = _strip_internal_fields(document)
+    if "_id" in document:
+        public["id"] = str(document["_id"])
+    return public
+
+
+def to_public_path_option(document: dict[str, Any]) -> dict[str, Any]:
+    public = _strip_internal_fields(document)
+    if "_id" in document:
+        public["id"] = str(document["_id"])
     return public
 
 
@@ -463,13 +482,34 @@ async def find_courses_by_numbers(
 async def list_degree_programs(
     database: AsyncIOMotorDatabase,
     *,
+    faculty_id: str | None = None,
+    study_level: str | None = None,
     settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
     settings = settings or get_settings()
-    cursor = database[settings.degree_programs_collection].find(PUBLISHED_STATUS_FILTER).sort(
-        "programCode", 1
-    )
-    return [to_public_degree_program(doc) async for doc in cursor]
+    query: dict[str, Any] = dict(PUBLISHED_STATUS_FILTER)
+    if faculty_id:
+        query["$or"] = [
+            {"metadata.facultyId": faculty_id},
+            {"metadata.faculty": faculty_id.removeprefix("faculty-")},
+        ]
+    cursor = database[settings.degree_programs_collection].find(query).sort("programCode", 1)
+    programs = [to_public_degree_program(doc) async for doc in cursor]
+    if study_level:
+        programs = [
+            program
+            for program in programs
+            if _program_matches_study_level(program, study_level)
+        ]
+    return programs
+
+
+def _program_matches_study_level(program: dict[str, Any], study_level: str) -> bool:
+    metadata = program.get("metadata") or {}
+    kind = metadata.get("programKind")
+    if kind == "graduate_program":
+        return study_level in {"MSc", "PhD", "MBA"}
+    return study_level == "BSc"
 
 
 async def get_degree_program_by_code(
@@ -498,13 +538,130 @@ async def find_degree_program_by_id(
 
     settings = settings or get_settings()
     try:
-        parsed_id = ObjectId(str(degree_id))
+        object_id = ObjectId(degree_id)
     except Exception:
         return None
-
     return await database[settings.degree_programs_collection].find_one(
-        {"_id": parsed_id, **PUBLISHED_STATUS_FILTER}
+        {**PUBLISHED_STATUS_FILTER, "_id": object_id}
     )
+
+
+async def find_path_option_by_id(
+    database: AsyncIOMotorDatabase,
+    option_id: str,
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    from bson import ObjectId
+
+    settings = settings or get_settings()
+    try:
+        object_id = ObjectId(option_id)
+    except Exception:
+        return None
+    return await database[settings.catalog_path_options_collection].find_one(
+        {**PUBLISHED_STATUS_FILTER, "_id": object_id}
+    )
+
+
+async def _faculty_ids_with_path_options(
+    database: AsyncIOMotorDatabase,
+    *,
+    study_level: str | None = None,
+    settings: Settings | None = None,
+) -> list[str]:
+    settings = settings or get_settings()
+    match_query: dict[str, Any] = dict(PUBLISHED_STATUS_FILTER)
+    if study_level:
+        match_query["studyLevels"] = study_level
+    pipeline: list[dict[str, Any]] = [
+        {"$match": match_query},
+        {"$group": {"_id": "$facultyId"}},
+        {"$sort": {"_id": 1}},
+    ]
+    faculty_ids: list[str] = []
+    async for row in database[settings.catalog_path_options_collection].aggregate(pipeline):
+        faculty_id = row.get("_id")
+        if faculty_id:
+            faculty_ids.append(str(faculty_id))
+    return faculty_ids
+
+
+async def list_catalog_faculties(
+    database: AsyncIOMotorDatabase,
+    *,
+    institution_id: str | None = None,
+    study_level: str | None = None,
+    with_path_options_only: bool = False,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    settings = settings or get_settings()
+    query: dict[str, Any] = dict(PUBLISHED_STATUS_FILTER)
+    if institution_id:
+        query["institutionId"] = institution_id
+    if with_path_options_only or study_level:
+        faculty_ids = await _faculty_ids_with_path_options(
+            database,
+            study_level=study_level,
+            settings=settings,
+        )
+        if not faculty_ids:
+            return []
+        query["facultyId"] = {"$in": faculty_ids}
+    cursor = database[settings.catalog_faculties_collection].find(query).sort("facultyId", 1)
+    return [to_public_catalog_faculty(doc) async for doc in cursor]
+
+
+async def list_path_options(
+    database: AsyncIOMotorDatabase,
+    *,
+    faculty_id: str | None = None,
+    study_level: str | None = None,
+    kind: str | None = None,
+    primary_only: bool | None = None,
+    settings: Settings | None = None,
+) -> list[dict[str, Any]]:
+    settings = settings or get_settings()
+    query: dict[str, Any] = dict(PUBLISHED_STATUS_FILTER)
+    if faculty_id:
+        query["facultyId"] = faculty_id
+    if kind:
+        query["kind"] = kind
+    if primary_only is True:
+        query["selectableAsPrimary"] = True
+    elif primary_only is False:
+        query["selectableAsPrimary"] = False
+
+    cursor = database[settings.catalog_path_options_collection].find(query).sort("name", 1)
+    options = [to_public_path_option(doc) async for doc in cursor]
+
+    if study_level:
+        options = [
+            option
+            for option in options
+            if study_level in (option.get("studyLevels") or [])
+        ]
+
+    linked_codes = {
+        option["linkedProgramCode"]
+        for option in options
+        if option.get("linkedProgramCode")
+    }
+    program_ids_by_code: dict[str, str] = {}
+    if linked_codes:
+        program_cursor = database[settings.degree_programs_collection].find(
+            {**PUBLISHED_STATUS_FILTER, "programCode": {"$in": list(linked_codes)}},
+            {"programCode": 1},
+        )
+        async for program in program_cursor:
+            program_ids_by_code[str(program["programCode"])] = str(program["_id"])
+
+    for option in options:
+        linked_code = option.get("linkedProgramCode")
+        if linked_code and linked_code in program_ids_by_code:
+            option["linkedDegreeProgramId"] = program_ids_by_code[linked_code]
+
+    return options
 
 
 async def list_course_pools_for_program(

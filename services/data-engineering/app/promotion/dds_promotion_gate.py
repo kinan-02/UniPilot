@@ -12,6 +12,7 @@ from pymongo.database import Database
 
 from app.config import Settings, get_settings
 from app.curation.catalog_signoff import extract_catalog_signoff
+from app.catalog.course_reference_policy import derive_production_excluded_from_refs
 from app.importers.dds_catalog_staging_importer import (
     EXECUTABLE_RULE_TYPES,
     PRODUCTION_COLLECTION_NAMES,
@@ -39,6 +40,8 @@ EXPECTED_TOTAL_CREDITS = 155.0
 
 PRODUCTION_TARGET_COLLECTIONS = {
     "degreePrograms": "degree_programs",
+    "catalogPathOptions": "catalog_path_options",
+    "catalogFaculties": "catalog_faculties",
     "hardDegreeRequirements": "degree_requirements",
     "advisoryCatalogRules": "catalog_rules",
     "courses": "courses",
@@ -56,6 +59,12 @@ def default_promotion_md_path() -> Path:
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def _bounded_message(message: str, *, max_length: int = 500) -> str:
+    if len(message) <= max_length:
+        return message
+    return message[: max_length - 1] + "…"
 
 
 def _catalog_filter() -> dict[str, Any]:
@@ -122,6 +131,10 @@ def build_promotion_gate_result(
     advisory_rule_ids: list[str] = []
 
     programs = list(database[settings.staging_degree_programs_collection].find(_catalog_filter()))
+    path_options = list(
+        database[settings.staging_catalog_path_options_collection].find(_catalog_filter())
+    )
+    faculties = list(database[settings.staging_catalog_faculties_collection].find(_catalog_filter()))
     requirements = list(
         database[settings.staging_degree_requirements_collection].find(_catalog_filter())
     )
@@ -157,13 +170,17 @@ def build_promotion_gate_result(
         blocker: bool = False,
         warning: bool = False,
     ) -> None:
+        bounded = _bounded_message(message)
+        check_details = dict(details or {})
+        if bounded != message:
+            check_details.setdefault("fullMessage", message)
         checks.append(
             PromotionCheck(
                 checkId=check_id,
                 passed=passed,
                 severity=severity,  # type: ignore[arg-type]
-                message=message,
-                details=details or {},
+                message=bounded,
+                details=check_details,
             )
         )
         if blocker and not passed:
@@ -290,7 +307,7 @@ def build_promotion_gate_result(
         doc.get("courseNumber") for doc in courses if doc.get("courseNumber")
     }
     catalog_refs = _collect_course_refs_from_requirements(requirements)
-    expected_excluded = catalog_refs - staging_course_numbers
+    expected_excluded = derive_production_excluded_from_refs(catalog_refs, staging_course_numbers)
     actual_excluded = set(catalog_signoff.get("productionExcludedCourseNumbers", []))
     excluded_match = actual_excluded == expected_excluded
     add_check(
@@ -298,13 +315,15 @@ def build_promotion_gate_result(
         excluded_match,
         "Production-excluded course list matches catalog refs absent from semester JSON staging."
         if excluded_match
-        else f"Excluded list mismatch: extra={sorted(actual_excluded - expected_excluded)} "
-        f"missing={sorted(expected_excluded - actual_excluded)}",
+        else f"Excluded list mismatch: extra={len(actual_excluded - expected_excluded)} "
+        f"missing={len(expected_excluded - actual_excluded)} (see details).",
         severity="blocker",
         blocker=not excluded_match,
         details={
             "expected": sorted(expected_excluded),
             "actual": sorted(actual_excluded),
+            "extra": sorted(actual_excluded - expected_excluded),
+            "missing": sorted(expected_excluded - actual_excluded),
         },
     )
     staging_non_executable = {
@@ -432,6 +451,34 @@ def build_promotion_gate_result(
                 identifier=code,
                 enforceInGraduationProgress=True,
                 notes="Promote program shell with catalog metadata.",
+            )
+        )
+
+    for option in path_options:
+        option_key = option.get("optionKey", "")
+        plan.catalogPathOptions.append(
+            PromotionPlanItem(
+                itemType="catalog_path_option",
+                stagingKey=option.get("stagingKey", option_key),
+                productionCollection=PRODUCTION_TARGET_COLLECTIONS["catalogPathOptions"],
+                action="upsert",
+                identifier=option_key,
+                enforceInGraduationProgress=False,
+                notes="Profile-selectable academic path option from wiki vault.",
+            )
+        )
+
+    for faculty in faculties:
+        faculty_id = faculty.get("facultyId", "")
+        plan.catalogFaculties.append(
+            PromotionPlanItem(
+                itemType="catalog_faculty",
+                stagingKey=faculty.get("stagingKey", faculty_id),
+                productionCollection=PRODUCTION_TARGET_COLLECTIONS["catalogFaculties"],
+                action="upsert",
+                identifier=faculty_id,
+                enforceInGraduationProgress=False,
+                notes="Technion faculty registry entry from wiki vault.",
             )
         )
 
@@ -563,6 +610,8 @@ def build_promotion_gate_result(
 
     plan.counts = {
         "degreePrograms": len(plan.degreePrograms),
+        "catalogPathOptions": len(plan.catalogPathOptions),
+        "catalogFaculties": len(plan.catalogFaculties),
         "hardDegreeRequirements": len(plan.hardDegreeRequirements),
         "advisoryCatalogRules": len(plan.advisoryCatalogRules),
         "courses": len(plan.courses),
