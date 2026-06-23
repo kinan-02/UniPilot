@@ -18,6 +18,18 @@ async def test_validate_degree_id_allows_none(mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_validate_degree_id_allows_primary_path_option(mongo_database):
+    from tests.fixtures.catalog_production_fixtures import seed_catalog_production_fixtures
+
+    await seed_catalog_production_fixtures(mongo_database)
+    graduate = await mongo_database[get_settings().catalog_path_options_collection].find_one(
+        {"kind": "graduate_program", "selectableAsPrimary": True}
+    )
+    assert graduate is not None
+    await validate_degree_id_for_profile(mongo_database, str(graduate["_id"]))
+
+
+@pytest.mark.asyncio
 async def test_validate_degree_id_rejects_missing_program(mongo_database):
     with pytest.raises(HTTPException) as exc_info:
         await validate_degree_id_for_profile(mongo_database, "665f2b0f2a3f7b2a1a9a7fff")

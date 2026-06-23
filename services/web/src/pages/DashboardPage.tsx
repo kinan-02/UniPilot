@@ -1,17 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowRight, BookOpen, CalendarDays, GraduationCap, ShieldAlert } from 'lucide-react'
-import { profileApi, progressApi, plansApi, risksApi } from '../api/endpoints'
-import { isAuthError } from '../auth/AuthContext'
+import { progressApi, plansApi, risksApi } from '../api/endpoints'
 import { Badge, Card, PageHeader, Spinner } from '../components/ui/Card'
 import { formatPercent } from '../lib/utils'
+import { hasStudentProfile, useStudentProfileQuery } from '../lib/studentProfileQuery'
 
 export function DashboardPage() {
-  const profileQuery = useQuery({
-    queryKey: ['profile'],
-    queryFn: profileApi.get,
-    retry: false,
-  })
+  const profileQuery = useStudentProfileQuery()
 
   const progressQuery = useQuery({
     queryKey: ['progress'],
@@ -37,7 +33,7 @@ export function DashboardPage() {
     )
   }
 
-  if (profileQuery.isError && isAuthError(profileQuery.error) && profileQuery.error.status === 404) {
+  if (!hasStudentProfile(profileQuery.data)) {
     return (
       <Card className="animate-fade-in text-center">
         <h2 className="text-lg font-semibold">Complete your profile</h2>
@@ -55,7 +51,7 @@ export function DashboardPage() {
     )
   }
 
-  const profile = profileQuery.data?.profile
+  const profile = profileQuery.data.profile
   const progress = progressQuery.data?.graduationProgress
   const planCount = plansQuery.data?.pagination.total ?? 0
   const riskCount = risksQuery.data?.pagination.total ?? 0

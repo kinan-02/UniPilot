@@ -127,6 +127,8 @@ npm run test:e2e
 Run a single Playwright project (after `auth.setup` runs via project dependencies):
 
 ```bash
+npm run test:e2e -- --project=smoke
+npm run test:e2e -- --project=onboarding
 npm run test:e2e -- --project=progress
 npm run test:e2e -- --project=planner-catalog
 ```

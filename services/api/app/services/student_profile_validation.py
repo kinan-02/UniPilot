@@ -22,11 +22,17 @@ async def validate_degree_id_for_profile(
         return
 
     program = await catalog_repository.find_degree_program_by_id(database, degree_id)
-    if not program:
-        raise HTTPException(
-            status_code=400,
-            detail="Referenced degree program was not found in the catalog",
-        )
+    if program:
+        return
+
+    path_option = await catalog_repository.find_path_option_by_id(database, degree_id)
+    if path_option and path_option.get("selectableAsPrimary"):
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail="Referenced degree program was not found in the catalog",
+    )
 
 
 async def validate_academic_path_for_profile(
@@ -56,6 +62,9 @@ async def validate_academic_path_for_profile(
 
     program = await catalog_repository.find_degree_program_by_id(database, degree_id)
     if not program:
+        path_option = await catalog_repository.find_path_option_by_id(database, degree_id)
+        if path_option and path_option.get("selectableAsPrimary"):
+            return
         raise HTTPException(
             status_code=400,
             detail="Referenced degree program was not found in the catalog",

@@ -2,6 +2,8 @@ import { apiRequest } from '../lib/api'
 import type {
   AcademicRiskAnalysis,
   AuthPayload,
+  CatalogFaculty,
+  CatalogPathOption,
   CompletedCourse,
   CourseDetail,
   CourseOffering,
@@ -81,8 +83,35 @@ export const catalogApi = {
       totalCourses: number
     }>(`/catalog/offerings?${query}`)
   },
-  degreePrograms: () =>
-    apiRequest<{ items: DegreeProgram[]; total: number }>('/catalog/degree-programs'),
+  degreePrograms: (params?: { facultyId?: string; programType?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.facultyId) query.set('facultyId', params.facultyId)
+    if (params?.programType) query.set('programType', params.programType)
+    const suffix = query.toString() ? `?${query}` : ''
+    return apiRequest<{ items: DegreeProgram[]; total: number }>(`/catalog/degree-programs${suffix}`)
+  },
+  academicFaculties: (institutionId = 'technion', programType?: string) => {
+    const query = new URLSearchParams()
+    query.set('institutionId', institutionId)
+    if (programType) query.set('programType', programType)
+    return apiRequest<{ items: CatalogFaculty[]; total: number }>(
+      `/catalog/academic-faculties?${query}`,
+    )
+  },
+  pathOptions: (params: {
+    facultyId?: string
+    programType?: string
+    kind?: string
+    primaryOnly?: boolean
+  }) => {
+    const query = new URLSearchParams()
+    if (params.facultyId) query.set('facultyId', params.facultyId)
+    if (params.programType) query.set('programType', params.programType)
+    if (params.kind) query.set('kind', params.kind)
+    if (params.primaryOnly !== undefined) query.set('primaryOnly', String(params.primaryOnly))
+    const suffix = query.toString() ? `?${query}` : ''
+    return apiRequest<{ items: CatalogPathOption[]; total: number }>(`/catalog/path-options${suffix}`)
+  },
   faculties: () => apiRequest<{ items: string[]; total: number }>('/catalog/faculties'),
 }
 

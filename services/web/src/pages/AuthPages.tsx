@@ -1,11 +1,17 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { isAuthError, useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Card } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
 import { validateEmail, validatePassword } from '../lib/validation'
+import {
+  fetchStudentProfileOrNull,
+  hasStudentProfile,
+  resetStudentProfileCache,
+} from '../lib/studentProfileQuery'
 
 export function AuthShell({
   title,
@@ -34,6 +40,7 @@ export function AuthShell({
 
 export function LoginPage() {
   const { login } = useAuth()
+  const queryClient = useQueryClient()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -59,7 +66,9 @@ export function LoginPage() {
     setLoading(true)
     try {
       await login(email.trim(), password)
-      navigate('/')
+      resetStudentProfileCache(queryClient)
+      const profileData = await fetchStudentProfileOrNull()
+      navigate(hasStudentProfile(profileData) ? '/' : '/onboarding', { replace: true })
     } catch (err) {
       setError(isAuthError(err) ? err.message : t('auth.signInFailed'))
     } finally {
@@ -105,6 +114,7 @@ export function LoginPage() {
 
 export function RegisterPage() {
   const { register } = useAuth()
+  const queryClient = useQueryClient()
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -130,7 +140,8 @@ export function RegisterPage() {
     setLoading(true)
     try {
       await register(email.trim(), password)
-      navigate('/onboarding')
+      resetStudentProfileCache(queryClient)
+      navigate('/onboarding', { replace: true })
     } catch (err) {
       setError(isAuthError(err) ? err.message : t('auth.registerFailed'))
     } finally {

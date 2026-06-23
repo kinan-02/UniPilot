@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nProvider } from './i18n'
 import { AuthProvider } from './auth/AuthContext'
+import { AuthQuerySync } from './auth/AuthQuerySync'
 import { AppLayout } from './components/layout/AppLayout'
 import { LoginPage, RegisterPage } from './pages/AuthPages'
 import { OnboardingPage } from './pages/OnboardingPage'
@@ -31,6 +32,7 @@ export default function App() {
     <I18nProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <AuthQuerySync />
           <BrowserRouter>
             <Routes>
               <Route element={<PublicOnlyRoute />}>
@@ -42,16 +44,16 @@ export default function App() {
 
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />
-                <Route element={<AppLayout />}>
-                  <Route path="catalog" element={<CatalogPage />} />
-                  <Route path="plans" element={<PlansPage />} />
-                  <Route path="plans/new" element={<PlanBuilderPage />} />
-                  <Route path="plans/:id/edit" element={<PlanBuilderPage />} />
-                  <Route path="plans/:id" element={<PlanDetailPage />} />
-                  <Route element={<ProfileGuard />}>
+                <Route element={<ProfileGuard />}>
+                  <Route element={<AppLayout />}>
                     <Route index element={<DashboardPage />} />
+                    <Route path="catalog" element={<CatalogPage />} />
                     <Route path="transcript" element={<TranscriptPage />} />
                     <Route path="progress" element={<ProgressPage />} />
+                    <Route path="plans" element={<PlansPage />} />
+                    <Route path="plans/new" element={<PlanBuilderPage />} />
+                    <Route path="plans/:id/edit" element={<PlanBuilderPage />} />
+                    <Route path="plans/:id" element={<PlanDetailPage />} />
                     <Route path="risks" element={<RisksPage />} />
                     <Route path="profile" element={<ProfilePage />} />
                   </Route>

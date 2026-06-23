@@ -1,69 +1,115 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { catalogApi, profileApi } from '../api/endpoints'
 import { isAuthError } from '../auth/AuthContext'
-import { AcademicPathFields } from '../components/profile/AcademicPathFields'
+import { ProfileProgramFields } from '../components/profile/ProfileProgramFields'
 import { Button } from '../components/ui/Button'
 import { Card, PageHeader, Spinner } from '../components/ui/Card'
-import { Input, Select } from '../components/ui/Input'
-import { buildAcademicPathForProgram, trackSlugFromProgram } from '../lib/academicPath'
+import { Input } from '../components/ui/Input'
 import { useTranslation } from '../i18n'
+import {
+  buildAcademicPathPayload,
+  findPrimaryOptionId,
+  resolveDegreeIdFromPathOption,
+  resolveFacultyIdFromProfile,
+  supplementalOptionIdsFromPath,
+} from '../lib/profilePrograms'
+import {
+  invalidateStudentProfile,
+  useStudentProfileQuery,
+} from '../lib/studentProfileQuery'
 
 export function ProfilePage() {
   const queryClient = useQueryClient()
   const { t } = useTranslation()
+  const hydratedProfileIdRef = useRef<string | null>(null)
+  const [facultyId, setFacultyId] = useState('')
   const [programType, setProgramType] = useState('BSc')
-  const [degreeId, setDegreeId] = useState('')
+  const [primaryOptionId, setPrimaryOptionId] = useState('')
+  const [supplementalOptionIds, setSupplementalOptionIds] = useState<string[]>([])
   const [catalogYear, setCatalogYear] = useState('2025')
   const [semesterCode, setSemesterCode] = useState('2025-1')
   const [maxCredits, setMaxCredits] = useState('18')
-  const [trackSlug, setTrackSlug] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  const profileQuery = useQuery({
-    queryKey: ['profile'],
-    queryFn: profileApi.get,
-    retry: false,
+  const profileQuery = useStudentProfileQuery()
+
+  const facultiesQuery = useQuery({
+    queryKey: ['academic-faculties', programType],
+    queryFn: () => catalogApi.academicFaculties('technion', programType),
   })
 
-  const programsQuery = useQuery({
-    queryKey: ['degree-programs'],
-    queryFn: catalogApi.degreePrograms,
+  const pathOptionsQuery = useQuery({
+    queryKey: ['path-options', facultyId, programType],
+    queryFn: () =>
+      catalogApi.pathOptions({
+        facultyId: facultyId || undefined,
+        programType,
+      }),
+    enabled: Boolean(facultyId),
   })
+
+  const pathOptions = (pathOptionsQuery.data?.items ?? []).filter((option) => Boolean(option.id))
+  const primaryOptions = useMemo(
+    () => pathOptions.filter((option) => option.selectableAsPrimary),
+    [pathOptions],
+  )
+  const supplementalOptions = useMemo(
+    () => pathOptions.filter((option) => !option.selectableAsPrimary),
+    [pathOptions],
+  )
+  const selectedPrimary = primaryOptions.find((option) => option.id === primaryOptionId)
+  const selectedSupplemental = supplementalOptions.filter((option) =>
+    supplementalOptionIds.includes(option.id ?? ''),
+  )
+
+  useEffect(() => {
+    const faculties = facultiesQuery.data?.items ?? []
+    if (faculties.length === 0) {
+      if (facultyId) setFacultyId('')
+      return
+    }
+    const stillValid = faculties.some((faculty) => faculty.facultyId === facultyId)
+    if (!facultyId || !stillValid) {
+      const profile = profileQuery.data?.profile
+      const preferred = resolveFacultyIdFromProfile(profile?.facultyId, pathOptions, faculties)
+      setFacultyId(preferred || faculties[0].facultyId)
+    }
+  }, [facultiesQuery.data, facultyId, pathOptions, profileQuery.data])
+
+  useEffect(() => {
+    setPrimaryOptionId('')
+    setSupplementalOptionIds([])
+  }, [facultyId, programType])
 
   useEffect(() => {
     const profile = profileQuery.data?.profile
-    if (!profile) return
+    if (!profile || pathOptions.length === 0) return
+    if (hydratedProfileIdRef.current === profile.id) return
+
     setProgramType(profile.programType)
-    setDegreeId(profile.degreeId ?? '')
     setCatalogYear(String(profile.catalogYear))
     setSemesterCode(profile.currentSemesterCode)
     setMaxCredits(String(profile.preferences?.maxCreditsPerSemester ?? 18))
-    setTrackSlug(profile.academicPath?.trackSlug ?? '')
-  }, [profileQuery.data])
-
-  const programs = (programsQuery.data?.items ?? []).filter((program) => Boolean(program.id))
-  const selectedProgram = programs.find((program) => program.id === degreeId)
-
-  useEffect(() => {
-    if (trackSlug) return
-    const suggested = trackSlugFromProgram(selectedProgram)
-    if (suggested) setTrackSlug(suggested)
-  }, [selectedProgram?.id, trackSlug])
+    setPrimaryOptionId(findPrimaryOptionId(profile.degreeId, pathOptions))
+    setSupplementalOptionIds(supplementalOptionIdsFromPath(profile.academicPath, pathOptions))
+    if (profile.facultyId) setFacultyId(profile.facultyId)
+    hydratedProfileIdRef.current = profile.id
+  }, [profileQuery.data, pathOptions])
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const academicPath = buildAcademicPathForProgram(selectedProgram, {
-        trackSlug,
-        minors: profileQuery.data?.profile?.academicPath?.minors,
-        specialPrograms: profileQuery.data?.profile?.academicPath?.specialPrograms,
-        graduatePrograms: profileQuery.data?.profile?.academicPath?.graduatePrograms,
-        specializations: profileQuery.data?.profile?.academicPath?.specializations,
-      })
+      const resolvedDegreeId = resolveDegreeIdFromPathOption(selectedPrimary)
+      const academicPath = buildAcademicPathPayload(
+        selectedPrimary,
+        selectedSupplemental,
+        profileQuery.data?.profile?.academicPath,
+      )
       const body = {
+        facultyId: facultyId || undefined,
         programType,
-        degreeId: degreeId || undefined,
+        degreeId: resolvedDegreeId || undefined,
         catalogYear: Number(catalogYear),
         currentSemesterCode: semesterCode,
         preferences: { maxCreditsPerSemester: Number(maxCredits) },
@@ -76,11 +122,11 @@ export function ProfilePage() {
             ...body,
           })
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] })
+    onSuccess: async () => {
+      await invalidateStudentProfile(queryClient)
       queryClient.invalidateQueries({ queryKey: ['progress'] })
       queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
-      setMessage('Profile saved')
+      setMessage(t('profilePrograms.saveSuccess'))
       setError('')
     },
     onError: (err) => {
@@ -97,78 +143,89 @@ export function ProfilePage() {
     )
   }
 
-  const programsLoading = programsQuery.isLoading
-  const programsLoadError = programsQuery.isError
-  const programsEmpty = !programsLoading && !programsLoadError && programs.length === 0
+  const facultiesLoading = facultiesQuery.isLoading
+  const pathOptionsLoading = pathOptionsQuery.isLoading && Boolean(facultyId)
+  const optionsError = facultiesQuery.isError || pathOptionsQuery.isError
+  const optionsEmpty =
+    !facultiesLoading &&
+    !pathOptionsLoading &&
+    !optionsError &&
+    Boolean(facultyId) &&
+    primaryOptions.length === 0
 
   return (
     <div className="animate-fade-in">
       <PageHeader
-        title="Student profile"
-        description="Your program context drives catalog filtering, progress calculation, and semester planning."
+        title={t('onboarding.title')}
+        description={t('profilePrograms.wizardSubtitle')}
       />
-      <Card className="max-w-xl">
+      <Card className="max-w-3xl overflow-hidden">
+        <div className="border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-6 py-4">
+          <p className="text-sm font-medium text-[var(--color-text)]">{t('profilePrograms.wizardTitle')}</p>
+        </div>
         <form
-          className="space-y-4"
+          className="space-y-6 p-6"
           onSubmit={(e) => {
             e.preventDefault()
             saveMutation.mutate()
           }}
         >
-          <Select label="Program type" value={programType} onChange={(e) => setProgramType(e.target.value)}>
-            <option value="BSc">BSc</option>
-            <option value="MSc">MSc</option>
-          </Select>
-          <Select
-            label="Degree program"
-            value={degreeId}
-            onChange={(e) => setDegreeId(e.target.value)}
-            disabled={programsLoading || programsEmpty || programsLoadError}
-          >
-            <option value="">None selected</option>
-            {programs.map((p) => (
-              <option key={p.id} value={p.id!}>
-                {p.name ?? p.nameEn ?? p.programCode}
-              </option>
-            ))}
-          </Select>
-          {programsLoading ? <p className="text-sm text-[var(--color-muted)]">Loading degree programs…</p> : null}
-          {programsLoadError ? (
-            <p className="text-sm text-[var(--color-danger)]">Could not load degree programs</p>
-          ) : null}
-          {programsEmpty ? (
-            <p className="text-sm text-[var(--color-danger)]">No degree programs are available yet.</p>
-          ) : null}
-          <AcademicPathFields
-            programs={programs}
-            degreeId={degreeId}
-            trackSlug={trackSlug}
-            onTrackSlugChange={setTrackSlug}
+          <ProfileProgramFields
+            faculties={facultiesQuery.data?.items ?? []}
+            facultiesLoading={facultiesLoading}
+            facultyId={facultyId}
+            onFacultyIdChange={setFacultyId}
+            programType={programType}
+            onProgramTypeChange={setProgramType}
+            primaryOptions={primaryOptions}
+            primaryOptionId={primaryOptionId}
+            onPrimaryOptionIdChange={setPrimaryOptionId}
+            supplementalOptions={supplementalOptions}
+            supplementalOptionIds={supplementalOptionIds}
+            onSupplementalOptionIdsChange={setSupplementalOptionIds}
+            pathOptionsLoading={pathOptionsLoading}
+            optionsError={optionsError}
             t={t}
           />
-          <Input
-            label="Catalog year"
-            type="number"
-            value={catalogYear}
-            onChange={(e) => setCatalogYear(e.target.value)}
-          />
-          <Input
-            label="Current semester"
-            value={semesterCode}
-            onChange={(e) => setSemesterCode(e.target.value)}
-          />
-          <Input
-            label="Max credits per semester"
-            type="number"
-            min={1}
-            max={36}
-            value={maxCredits}
-            onChange={(e) => setMaxCredits(e.target.value)}
-          />
+          {optionsEmpty ? (
+            <p className="text-sm text-[var(--color-danger)]">{t('onboarding.programsEmpty')}</p>
+          ) : null}
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+            <h3 className="text-sm font-semibold text-[var(--color-text)]">
+              {t('profilePrograms.stepSemester')}
+            </h3>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <Input
+                label={t('onboarding.catalogYear')}
+                type="number"
+                value={catalogYear}
+                onChange={(e) => setCatalogYear(e.target.value)}
+              />
+              <Input
+                label={t('onboarding.currentSemester')}
+                value={semesterCode}
+                onChange={(e) => setSemesterCode(e.target.value)}
+              />
+            </div>
+            <div className="mt-4">
+              <Input
+                label={t('profilePrograms.maxCredits')}
+                type="number"
+                min={1}
+                max={36}
+                value={maxCredits}
+                onChange={(e) => setMaxCredits(e.target.value)}
+              />
+            </div>
+          </div>
           {message ? <p className="text-sm text-[var(--color-success)]">{message}</p> : null}
           {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
-          <Button type="submit" loading={saveMutation.isPending}>
-            Save profile
+          <Button
+            type="submit"
+            loading={saveMutation.isPending}
+            disabled={facultiesLoading || pathOptionsLoading || optionsError}
+          >
+            {t('profilePrograms.save')}
           </Button>
         </form>
       </Card>

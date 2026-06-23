@@ -38,6 +38,7 @@ class CreateStudentProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     institutionId: str = Field(min_length=1, max_length=100)
+    facultyId: str | None = Field(default=None, max_length=120)
     programType: str = Field(min_length=1, max_length=100)
     degreeId: str | None = None
     catalogYear: int = Field(ge=1990, le=2100)
@@ -70,6 +71,7 @@ class UpdateStudentProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     institutionId: str | None = Field(default=None, min_length=1, max_length=100)
+    facultyId: str | None = Field(default=None, max_length=120)
     programType: str | None = Field(default=None, min_length=1, max_length=100)
     degreeId: str | None = None
     catalogYear: int | None = Field(default=None, ge=1990, le=2100)

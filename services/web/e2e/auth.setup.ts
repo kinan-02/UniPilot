@@ -1,4 +1,5 @@
-import { expect, test as setup } from '@playwright/test'
+import { test as setup } from '@playwright/test'
+import { completeOnboarding } from './helpers/onboarding'
 
 const password = 'StrongPass123!'
 const email = `e2e-shared-${Date.now()}@example.com`
@@ -14,20 +15,8 @@ setup('prepare authenticated session', async ({ page }) => {
   await registerResponse
   await page.waitForURL('**/onboarding', { timeout: 15_000 })
 
-  const degreeSelect = page.locator('#degree-program')
-  await expect(degreeSelect.locator('option')).not.toHaveCount(1, { timeout: 15_000 })
-
-  const ieOption = degreeSelect.locator('option').filter({
-    hasText: /Industrial Engineering|הנדסת תעשייה/i,
-  })
-  const programId =
-    (await ieOption.first().getAttribute('value')) ??
-    (await degreeSelect.locator('option').nth(1).getAttribute('value'))
-  if (programId) {
-    await degreeSelect.selectOption(programId)
-    await page.getByRole('button', { name: /המשך ללוח הבקרה|Continue to dashboard/i }).click()
-    await page.waitForURL('**/', { timeout: 15_000 })
-  }
+  await completeOnboarding(page)
+  await page.waitForURL('**/', { timeout: 15_000 })
 
   await page.context().storageState({ path: 'e2e/.auth/user.json' })
 })

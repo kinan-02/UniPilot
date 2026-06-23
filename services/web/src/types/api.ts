@@ -13,6 +13,7 @@ export type StudentProfile = {
   id: string
   userId: string
   institutionId: string
+  facultyId?: string | null
   programType: string
   degreeId: string | null
   catalogYear: number
@@ -70,7 +71,45 @@ export type DegreeProgram = {
   metadata?: {
     wikiPage?: string
     faculty?: string
+    facultyId?: string
+    programKind?: string
   }
+}
+
+export type CatalogFaculty = {
+  id?: string
+  facultyId: string
+  institutionId: string
+  wikiSlug: string
+  name?: string
+  nameHe?: string
+  nameEn?: string
+  aliases?: string[]
+  catalogPrefix?: string
+}
+
+export type CatalogPathOption = {
+  id?: string
+  optionKey: string
+  facultyId: string
+  wikiSlug: string
+  kind:
+    | 'bsc_track'
+    | 'special_program'
+    | 'minor'
+    | 'graduate_program'
+    | 'dne_specialization'
+    | string
+  name?: string
+  nameHe?: string
+  nameEn?: string
+  studyLevels?: string[]
+  selectableAsPrimary?: boolean
+  linkedProgramCode?: string
+  linkedDegreeProgramId?: string
+  description?: string
+  duration?: string
+  totalCreditsRequired?: string
 }
 
 export type CompletedCourse = {

@@ -40,6 +40,7 @@ def build_profile_document(user_id: str, profile_data: dict[str, Any]) -> dict[s
     return {
         "userId": parsed_user_id,
         "institutionId": profile_data["institutionId"],
+        "facultyId": profile_data.get("facultyId"),
         "programType": profile_data["programType"],
         "degreeId": parse_object_id(degree_id) if degree_id else None,
         "catalogYear": profile_data["catalogYear"],
@@ -91,6 +92,8 @@ async def update_student_profile_by_user_id(
 
     if "institutionId" in updates:
         update_document["institutionId"] = updates["institutionId"]
+    if "facultyId" in updates:
+        update_document["facultyId"] = updates["facultyId"]
     if "programType" in updates:
         update_document["programType"] = updates["programType"]
     if "degreeId" in updates:
@@ -147,6 +150,7 @@ def to_public_student_profile(profile_document: dict[str, Any] | None) -> dict[s
         "id": str(profile_document["_id"]),
         "userId": str(profile_document["userId"]),
         "institutionId": profile_document["institutionId"],
+        "facultyId": profile_document.get("facultyId"),
         "programType": profile_document["programType"],
         "degreeId": str(degree_id) if degree_id else None,
         "catalogYear": profile_document["catalogYear"],

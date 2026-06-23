@@ -22,6 +22,11 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      name: 'onboarding',
+      testMatch: /onboarding\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
       name: 'features',
       testMatch: /features\.spec\.ts/,
       use: {

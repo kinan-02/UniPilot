@@ -9,6 +9,7 @@ import { usePlannerHistory } from '../../hooks/usePlannerHistory'
 import { useTranslation } from '../../i18n'
 import { downloadIcs, generatePlanIcs } from '../../lib/icsExport'
 import { ensurePlanningProfile, courseTitle } from '../../lib/planning'
+import { fetchStudentProfileOrNull, useStudentProfileQuery } from '../../lib/studentProfileQuery'
 import { courseNumbersInConflict } from '../../lib/planner'
 import {
   extractLessonOptions,
@@ -117,11 +118,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     enabled: isEdit,
   })
 
-  const profileQuery = useQuery({
-    queryKey: ['profile'],
-    queryFn: () => profileApi.get(),
-    retry: false,
-  })
+  const profileQuery = useStudentProfileQuery()
 
   const [name, setName] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
@@ -560,14 +557,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   const ensurePlanningProfileReady = async () => {
     await ensurePlanningProfile(
       semesterCode,
-      async () => {
-        try {
-          return await profileApi.get()
-        } catch (err) {
-          if (isAuthError(err) && err.status === 404) return null
-          throw err
-        }
-      },
+      fetchStudentProfileOrNull,
       (body) => profileApi.create(body),
     )
   }
