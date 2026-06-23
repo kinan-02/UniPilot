@@ -129,7 +129,7 @@ export function emptyCurriculumGraph(
         title: 'Discrete Math',
         semester: 1,
         status: 'available',
-        credits: { display: '4', uncertain: false },
+        credits: { display: '4', value: 4, uncertain: false },
         alternatives: [],
         dataQuality: {
           manualReviewRequired: false,
@@ -148,7 +148,7 @@ export function emptyCurriculumGraph(
         title: 'Intro to CS',
         semester: 1,
         status: 'completed',
-        credits: { display: '3.5', uncertain: false },
+        credits: { display: '3.5', value: 3.5, uncertain: false },
         alternatives: [],
         dataQuality: {
           manualReviewRequired: false,
