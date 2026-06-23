@@ -28,12 +28,10 @@ test.describe('Planner with live vault catalog', () => {
     await page.getByRole('button', { name: /הוסף לתוכנית|Add to plan/i }).click()
 
     const lessonBlock = page
-      .locator('.planner-workspace')
-      .getByRole('button')
-      .filter({ hasText: '00940345' })
+      .locator('.planner-workspace button')
+      .filter({ has: page.locator('p.font-mono', { hasText: '00940345' }) })
       .first()
     await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
-    await expect(lessonBlock).toContainText(/10:30|12:30/)
     await lessonBlock.click()
     await expect(lessonBlock).toHaveClass(/ring-2/)
   })

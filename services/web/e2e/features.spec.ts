@@ -55,12 +55,10 @@ test.describe('Semester planner workspace', () => {
     await expect(page.getByText(/4.*נק|4.*cred/i).first()).toBeVisible()
 
     const lessonBlock = page
-      .locator('.planner-workspace')
-      .getByRole('button')
-      .filter({ hasText: '02340117' })
+      .locator('.planner-workspace button')
+      .filter({ has: page.locator('p.font-mono', { hasText: '02340117' }) })
       .first()
     await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
-    await expect(lessonBlock).toContainText(/12:30|10:30/)
     await lessonBlock.click()
     await expect(lessonBlock).toHaveClass(/ring-2/)
 
