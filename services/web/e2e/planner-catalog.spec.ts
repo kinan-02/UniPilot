@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { selectPlannerSemester } from './helpers/planner'
 
 /**
  * Semester planner against the live promoted vault catalog (Docker stack).
@@ -8,6 +9,7 @@ test.describe('Planner with live vault catalog', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/plans/new')
     await expect(page.getByRole('heading', { name: /תוכנית חדשה|New plan/i })).toBeVisible()
+    await selectPlannerSemester(page)
   })
 
   test('DNE catalog course 00940345 appears in search and adds to plan', async ({ page }) => {

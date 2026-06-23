@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { selectPlannerSemester } from './helpers/planner'
 
 test.describe('Catalog', () => {
   test('search returns results and opens course detail', async ({ page }) => {
@@ -17,6 +18,7 @@ test.describe('Semester planner workspace', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/plans/new')
     await expect(page.getByRole('heading', { name: /תוכנית חדשה|New plan/i })).toBeVisible()
+    await selectPlannerSemester(page)
   })
 
   test('maybe courses: add, grid preview, move between lists', async ({ page }) => {
