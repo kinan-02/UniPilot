@@ -60,9 +60,9 @@ test.describe('Semester planner workspace', () => {
       .filter({ hasText: '02340117' })
       .first()
     await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
+    await expect(lessonBlock).toContainText(/12:30|10:30/)
     await lessonBlock.click()
-
-    await expect(page.getByText(/Lecture|הרצאה/i).first()).toBeVisible({ timeout: 10_000 })
+    await expect(lessonBlock).toHaveClass(/ring-2/)
 
     await page.getByRole('button', { name: /שמירת תוכנית|Save plan/i }).click()
     await expect(page).toHaveURL(/\/plans\/[^/]+\/edit/, { timeout: 20_000 })

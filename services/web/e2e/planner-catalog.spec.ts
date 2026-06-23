@@ -33,8 +33,9 @@ test.describe('Planner with live vault catalog', () => {
       .filter({ hasText: '00940345' })
       .first()
     await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
+    await expect(lessonBlock).toContainText(/10:30|12:30/)
     await lessonBlock.click()
-    await expect(page.getByText(/Lecture|הרצאה/i).first()).toBeVisible({ timeout: 10_000 })
+    await expect(lessonBlock).toHaveClass(/ring-2/)
   })
 
   test('profile loads three DDS degree programs from catalog', async ({ page }) => {
