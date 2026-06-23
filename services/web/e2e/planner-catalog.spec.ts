@@ -28,8 +28,9 @@ test.describe('Planner with live vault catalog', () => {
     await page.getByRole('button', { name: /הוסף לתוכנית|Add to plan/i }).click()
 
     const lessonBlock = page
-      .locator('.planner-workspace button')
-      .filter({ has: page.locator('p.font-mono', { hasText: '00940345' }) })
+      .getByTestId('weekly-schedule-grid')
+      .getByRole('button')
+      .filter({ hasText: '00940345' })
       .first()
     await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
     await lessonBlock.click()

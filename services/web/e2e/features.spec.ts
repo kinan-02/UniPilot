@@ -55,8 +55,9 @@ test.describe('Semester planner workspace', () => {
     await expect(page.getByText(/4.*נק|4.*cred/i).first()).toBeVisible()
 
     const lessonBlock = page
-      .locator('.planner-workspace button')
-      .filter({ has: page.locator('p.font-mono', { hasText: '02340117' }) })
+      .getByTestId('weekly-schedule-grid')
+      .getByRole('button')
+      .filter({ hasText: '02340117' })
       .first()
     await expect(lessonBlock).toBeVisible({ timeout: 15_000 })
     await lessonBlock.click()

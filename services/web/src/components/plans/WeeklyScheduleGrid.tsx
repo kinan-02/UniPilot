@@ -87,7 +87,7 @@ export function WeeklyScheduleGrid({
     )
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div className={cn('space-y-3', className)} data-testid="weekly-schedule-grid">
       {conflicts.length ? (
         <div className="rounded-xl border border-[var(--color-warning)]/40 bg-amber-50/80 p-3">
           <p className="mb-2 text-xs font-semibold text-[var(--color-warning)]">
