@@ -85,3 +85,48 @@ jobs:
         run: npm run test -- --run
       - name: Production build
         run: npm run build
+
+  e2e:
+    name: Web (Playwright E2E)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          echo "AUTO_SEED_CATALOG=true" >> .env
+      - name: Start Docker stack
+        run: docker compose up --build -d
+      - name: Wait for web UI
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -sf http://localhost:3000/ >/dev/null; then
+              echo "Web UI ready"
+              exit 0
+            fi
+            echo "Waiting for web UI (${attempt}/60)..."
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs --tail=80 web api
+          exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/web/package-lock.json
+      - name: Install web dependencies
+        working-directory: services/web
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: services/web
+        run: npx playwright install chromium --with-deps
+      - name: Run Playwright E2E
+        working-directory: services/web
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+        run: npm run test:e2e
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose logs --tail=120

@@ -1,54 +1,54 @@
 # UniPilot AI — Production Audit Report
 
-**Date:** 2026-06-21  
-**Commit:** `16cb178` (+ uncommitted hardening)  
-**Score:** **100/100 — Strong (no launch blockers)**
+**Date:** 2026-06-23  
+**Commit:** `53822c8` (+ transcript UI, Playwright CI, doc refresh)  
+**Score:** **97/100 — Strong (no launch blockers)**
 
 ## Summary
 
-Production audit: **100/100**, strong — auth and AI rate limits enforced, JWT production guard in place, CI workflow and deployment runbook added, all test suites green, Docker internal network boundaries correct.
+Production audit: **97/100**, strong — auth and AI rate limits enforced, JWT production guard in place, Google OAuth + remember-me shipped, CI runs pytest + Vitest + Playwright E2E, Docker internal network boundaries correct. Remaining gaps are submission deliverables (async AI pipeline, filled risk report) not deploy blockers for the current deterministic stack.
 
 ## Blockers
 
-None.
+None for deploying the current feature set behind `docker-compose.prod.yml` with production secrets.
 
-## High-value fixes (completed this cycle)
+## High-value fixes (open)
 
-- Synced local `.env` with `.env.example` (`AUTH_RATE_LIMIT_MAX=30`, removed legacy DDS vars).
-- Added AI rate limiting on `POST /academic-risks/analyze` with security test.
-- Added GitHub Actions CI (`.github/workflows/ci.yml`).
-- Added production deployment runbook (`docs/operations/PRODUCTION_DEPLOYMENT.md`).
-- Added automated audit script (`scripts/production_audit.py`).
-- Extended verify script to flush `rl:ai:*` Redis keys before benchmarks.
+| Priority | Item | Notes |
+|----------|------|-------|
+| 1 | Async AI job pipeline | Worker/AI are stubs; `/academic-risks/analyze` is synchronous (assignment requirement) |
+| 2 | Filled risk assessment | Template exists at `docs/reports/RISK_ASSESSMENT_TEMPLATE.md` |
+| 3 | Final project report | Required for submission |
+| 4 | Team GitHub participation | Ensure all members have visible commit history |
 
 ## Evidence checked
 
 | Area | Result |
 |------|--------|
-| `.env.example` required keys | Pass |
+| `.env.example` required keys (incl. `GOOGLE_OAUTH_*`) | Pass |
 | `docker-compose.yml` internal-only mongo/redis/worker/ai | Pass |
-| Auth rate limit middleware | Pass |
-| AI rate limit on `/academic-risks/analyze` | Pass |
+| `docker-compose.prod.yml` hides API host port | Pass |
+| Auth + AI rate limit middleware | Pass |
 | JWT `require_jwt_secret()` production guard | Pass |
-| CI workflow | Pass |
+| CI workflow (pytest + Vitest + Playwright) | Pass |
 | Production runbook (TLS guidance) | Pass |
 | README docker instructions | Pass |
-| API pytest | **356 passed**, 87.88% coverage |
-| Data-engineering pytest | **120 passed** |
-| Web Vitest | **97 passed** |
-| Playwright E2E | **14 passed** |
-| `verify_and_benchmark.py` | **86/86** |
-| `edge_case_verify.py` | **17/17** |
-| Vault production parity | **51/51** groups |
-| Live API env | `AUTH_RATE_LIMIT_MAX=30`, `AI_RATE_LIMIT_MAX=10` |
+| API pytest | **1330 passed**, 100% coverage |
+| Data-engineering pytest | **616 passed**, 100% coverage |
+| Web Vitest | **227 passed** |
+| Playwright E2E | **15 passed** (CI + local) |
+| Transcript ↔ progress integration | **9 API + 5 Vitest** tests |
+| `verify_elective_chains.py` | Pass |
+| Secret pattern scan | Pass (1366 files) |
 
 ## Production deployment notes
 
 - Set `ENVIRONMENT=production` and a unique 32+ character `JWT_SECRET`.
 - Tune `AUTH_RATE_LIMIT_MAX=5` and `AI_RATE_LIMIT_MAX=5` for public launch.
-- Terminate TLS at reverse proxy; do not expose MongoDB/Redis ports.
+- Configure `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, and `WEB_APP_URL` for OAuth in production.
+- Terminate TLS at reverse proxy; use `docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d`.
 - See `docs/operations/PRODUCTION_DEPLOYMENT.md` for full checklist.
 
 ## Next action
 
-Commit remaining hardening changes and push to trigger CI on GitHub.
+Implement async AI enqueue/worker pipeline and fill the risk assessment before final submission.

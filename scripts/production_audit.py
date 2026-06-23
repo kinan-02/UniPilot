@@ -124,7 +124,7 @@ def check_test_report(audit: AuditResult) -> None:
         audit.deduct(5, "TEST_REPORT.md missing", blocker=False)
         return
     text = read_text(report)
-    if "356" not in text and "349" not in text:
+    if "1330" not in text and "356" not in text and "349" not in text:
         audit.deduct(3, "TEST_REPORT.md may be stale (pytest counts)", blocker=False)
     if "AI rate limit" not in text and "ai rate limit" not in text.lower():
         audit.deduct(2, "TEST_REPORT.md missing AI rate limit coverage note", blocker=False)

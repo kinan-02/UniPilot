@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   academicYearStartFromDate,
+  buildTranscriptSemesterOptions,
   currentTermIndex,
   defaultSemesterCode,
   parseSemesterCode,
+  semesterCodesInRange,
   semesterLabel,
   suggestedPlanName,
   upcomingSemesterCodes,
@@ -43,5 +45,19 @@ describe('semester helpers', () => {
   it('suggests a localized plan name from semester code', () => {
     expect(suggestedPlanName('2025-2', 'en')).toContain('2025')
     expect(suggestedPlanName('2025-2', 'he')).toContain('תוכנית')
+  })
+
+  it('builds transcript semester options across many academic years', () => {
+    const options = buildTranscriptSemesterOptions({
+      catalogYear: 2021,
+      currentSemesterCode: '2025-1',
+      existingSemesterCodes: ['2019-2'],
+    })
+
+    expect(options).toContain('2019-2')
+    expect(options).toContain('2021-1')
+    expect(options).toContain('2025-1')
+    expect(options.indexOf('2025-1')).toBeLessThan(options.indexOf('2019-2'))
+    expect(semesterCodesInRange(2024, 2025)).toHaveLength(6)
   })
 })

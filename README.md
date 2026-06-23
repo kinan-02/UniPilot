@@ -130,8 +130,11 @@ Run a single Playwright project (after `auth.setup` runs via project dependencie
 npm run test:e2e -- --project=smoke
 npm run test:e2e -- --project=onboarding
 npm run test:e2e -- --project=progress
+npm run test:e2e -- --project=transcript-progress
 npm run test:e2e -- --project=planner-catalog
 ```
+
+CI runs the full Playwright suite against a Docker stack with `AUTO_SEED_CATALOG=true` (see `.github/workflows/ci.yml`).
 
 The web UI defaults to **Hebrew** (RTL) with an in-app language switcher (Hebrew / English). Open [http://localhost:3000](http://localhost:3000) after `docker compose up --build`.
 

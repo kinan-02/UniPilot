@@ -1,162 +1,130 @@
-import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Trash2 } from 'lucide-react'
-import { catalogApi, transcriptApi } from '../api/endpoints'
-import { Button } from '../components/ui/Button'
-import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui/Card'
-import { Input } from '../components/ui/Input'
-import { formatCredits } from '../lib/utils'
+import { GraduationCap, Info } from 'lucide-react'
+import { progressApi, transcriptApi } from '../api/endpoints'
+import { TranscriptAddCourseForm } from '../components/transcript/TranscriptAddCourseForm'
+import { TranscriptCourseList } from '../components/transcript/TranscriptCourseList'
+import { TranscriptPageSkeleton } from '../components/transcript/TranscriptPageSkeleton'
+import { TranscriptSummaryCard } from '../components/transcript/TranscriptSummaryCard'
+import { Card, EmptyState, PageHeader } from '../components/ui/Card'
+import { TRANSCRIPT_QUERY_KEY, useTranscriptRecords } from '../hooks/useTranscriptRecords'
+import { useTranslation } from '../i18n'
+import { defaultSemesterCode } from '../lib/semester'
+import { computeTranscriptStats } from '../lib/transcript'
+import { hasStudentProfile, useStudentProfileQuery } from '../lib/studentProfileQuery'
 
 export function TranscriptPage() {
+  const { t, locale } = useTranslation()
   const queryClient = useQueryClient()
-  const [courseNumber, setCourseNumber] = useState('')
-  const [semesterCode, setSemesterCode] = useState('2025-1')
-  const [grade, setGrade] = useState('85')
-  const [creditsEarned, setCreditsEarned] = useState('3')
-  const [error, setError] = useState('')
+  const profileQuery = useStudentProfileQuery()
+  const transcriptQuery = useTranscriptRecords()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const transcriptQuery = useQuery({
-    queryKey: ['transcript'],
-    queryFn: transcriptApi.list,
-  })
-
-  const addMutation = useMutation({
-    mutationFn: async () => {
-      const courseResponse = await catalogApi.courses({
-        courseNumber: courseNumber.trim(),
-        limit: 1,
-        offset: 0,
-      })
-      const course = courseResponse.items[0]
-      if (!course?.id) {
-        throw new Error('Course not found in catalog')
-      }
-      return transcriptApi.create({
-        courseId: course.id,
-        semesterCode,
-        grade: Number(grade),
-        creditsEarned: Number(creditsEarned),
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transcript'] })
-      queryClient.invalidateQueries({ queryKey: ['progress'] })
-      setError('')
-      setCourseNumber('')
-    },
-    onError: (err: Error) => setError(err.message),
+  const progressQuery = useQuery({
+    queryKey: ['progress'],
+    queryFn: progressApi.get,
+    enabled: Boolean(profileQuery.data?.profile?.degreeId),
+    retry: false,
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => transcriptApi.remove(id),
+    onMutate: (id) => setDeletingId(id),
+    onSettled: () => setDeletingId(null),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transcript'] })
+      queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
     },
   })
 
   const records = transcriptQuery.data?.completedCourses ?? []
+  const stats = useMemo(() => computeTranscriptStats(records), [records])
+  const completionPercent = progressQuery.data?.graduationProgress?.completionPercentage ?? null
+  const profile = profileQuery.data?.profile
+  const currentSemesterCode = profile?.currentSemesterCode ?? defaultSemesterCode()
+  const existingSemesterCodes = useMemo(
+    () => [...new Set(records.map((record) => record.semesterCode))],
+    [records],
+  )
+  const hasReadOnlyEntries = stats.readOnlyCount > 0
+
+  if (transcriptQuery.isLoading) {
+    return <TranscriptPageSkeleton />
+  }
+
+  if (transcriptQuery.isError) {
+    return (
+      <div className="animate-fade-in">
+        <PageHeader title={t('transcript.title')} description={t('transcript.description')} />
+        <EmptyState title={t('transcript.loadFailed')} />
+      </div>
+    )
+  }
 
   return (
     <div className="animate-fade-in space-y-6">
       <PageHeader
-        title="Transcript"
-        description="Track completed courses manually. Official registrar imports are read-only."
+        title={t('transcript.title')}
+        description={t('transcript.description')}
+        action={
+          hasStudentProfile(profileQuery.data) ? (
+            <Link
+              to="/progress"
+              className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-medium transition hover:bg-[var(--color-surface-muted)]"
+            >
+              <GraduationCap className="h-4 w-4" />
+              {t('transcript.viewProgress')}
+            </Link>
+          ) : null
+        }
       />
 
-      <Card>
-        <h2 className="mb-4 text-sm font-semibold">Add completed course</h2>
-        <form
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
-          onSubmit={(e) => {
-            e.preventDefault()
-            addMutation.mutate()
-          }}
-        >
-          <Input
-            label="Course number"
-            placeholder="00940345"
-            value={courseNumber}
-            onChange={(e) => setCourseNumber(e.target.value)}
-            required
-          />
-          <Input
-            label="Semester"
-            placeholder="2025-1"
-            value={semesterCode}
-            onChange={(e) => setSemesterCode(e.target.value)}
-            required
-          />
-          <Input
-            label="Grade"
-            type="number"
-            min={0}
-            max={100}
-            value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            required
-          />
-          <Input
-            label="Credits earned"
-            type="number"
-            step="0.5"
-            min={0}
-            value={creditsEarned}
-            onChange={(e) => setCreditsEarned(e.target.value)}
-            required
-          />
-          <div className="sm:col-span-2 lg:col-span-4 flex items-center gap-4">
-            <Button type="submit" loading={addMutation.isPending}>
-              Add course
-            </Button>
-            {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
-          </div>
-        </form>
-      </Card>
+      <TranscriptSummaryCard
+        stats={stats}
+        completionPercent={completionPercent}
+        locale={locale}
+        t={t}
+      />
 
-      {transcriptQuery.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
-      ) : records.length ? (
-        <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white">
-          <div className="divide-y divide-[var(--color-border)]">
-            {records.map((record) => (
-              <div
-                key={record.id}
-                className="flex items-center justify-between gap-4 px-5 py-4"
-              >
-                <div>
-                  <p className="font-mono text-sm font-medium text-[var(--color-primary)]">
-                    {record.courseNumber ?? record.courseId}
-                  </p>
-                  <p className="text-sm">{record.courseTitle ?? 'Course'}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">
-                    {record.semesterCode} · Grade {record.grade} ·{' '}
-                    {formatCredits(record.creditsEarned)} cr
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone="neutral">{record.source}</Badge>
-                  {record.source === 'manual' ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(record.id)}
-                      aria-label="Delete course"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
+      {hasReadOnlyEntries ? (
+        <Card className="border-[var(--color-primary)]/15 bg-[var(--color-primary)]/5">
+          <div className="flex gap-3">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-primary)]" />
+            <p className="text-sm text-[var(--color-text-muted)]">{t('transcript.officialNotice')}</p>
           </div>
-        </div>
-      ) : (
+        </Card>
+      ) : null}
+
+      <TranscriptAddCourseForm
+        defaultSemesterCode={currentSemesterCode}
+        catalogYear={profile?.catalogYear}
+        currentSemesterCode={currentSemesterCode}
+        existingSemesterCodes={existingSemesterCodes}
+        locale={locale}
+        t={t}
+      />
+
+      {records.length === 0 ? (
         <EmptyState
-          title="No completed courses yet"
-          description="Add courses you've finished to unlock accurate graduation progress."
+          title={t('transcript.emptyTitle')}
+          description={t('transcript.emptyDescription')}
+          action={
+            <Link
+              to="/catalog"
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white"
+            >
+              {t('transcript.emptyBrowseCatalog')}
+            </Link>
+          }
+        />
+      ) : (
+        <TranscriptCourseList
+          records={records}
+          locale={locale}
+          t={t}
+          deletingId={deletingId}
+          onDelete={(id) => deleteMutation.mutate(id)}
         />
       )}
     </div>

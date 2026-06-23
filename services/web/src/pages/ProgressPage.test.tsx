@@ -182,6 +182,17 @@ describe('ProgressPage', () => {
     expect(detail).toHaveTextContent('00940345')
   })
 
+  it('hides transcript hint once completed credits are recorded', async () => {
+    vi.mocked(endpoints.progressApi.get).mockResolvedValue({
+      graduationProgress: baseProgress,
+    })
+    renderProgress()
+    await screen.findByTestId('progress-summary-card')
+    expect(
+      screen.queryByText(/add completed courses on your transcript|הוסף קורסים שהושלמו/i),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows transcript hint when progress has not started', async () => {
     vi.mocked(endpoints.progressApi.get).mockResolvedValue({
       graduationProgress: {

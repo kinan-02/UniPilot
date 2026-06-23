@@ -122,10 +122,37 @@ export const catalogApi = {
 }
 
 export const transcriptApi = {
-  list: () =>
-    apiRequest<{ completedCourses: CompletedCourse[]; pagination: { total: number } }>(
-      '/completed-courses',
-    ),
+  list: (params?: { page?: number; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.set('page', String(params.page))
+    if (params?.limit) query.set('limit', String(params.limit))
+    const suffix = query.toString() ? `?${query}` : ''
+    return apiRequest<{
+      completedCourses: CompletedCourse[]
+      pagination: { total: number; page: number; limit: number }
+    }>(`/completed-courses${suffix}`)
+  },
+  listAll: async () => {
+    const limit = 100
+    let page = 1
+    let completedCourses: CompletedCourse[] = []
+    let total = 0
+
+    while (true) {
+      const response = await transcriptApi.list({ page, limit })
+      completedCourses = [...completedCourses, ...response.completedCourses]
+      total = response.pagination.total
+      if (completedCourses.length >= total || response.completedCourses.length === 0) {
+        break
+      }
+      page += 1
+    }
+
+    return {
+      completedCourses,
+      pagination: { total, page: 1, limit: completedCourses.length },
+    }
+  },
   create: (body: Record<string, unknown>) =>
     apiRequest<{ completedCourse: CompletedCourse }>('/completed-courses', {
       method: 'POST',

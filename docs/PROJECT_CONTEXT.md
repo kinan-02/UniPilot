@@ -1,6 +1,6 @@
 # UniPilot AI — Project Context (Source of Truth)
 
-Last updated: 2026-06-21
+Last updated: 2026-06-23
 Use it before starting major coding, architecture updates, or roadmap decisions.
 
 If this file and another doc conflict:
@@ -41,10 +41,10 @@ Mandatory constraints:
 
 ## 3) Current Architecture (As Implemented)
 
-Current stage: **auth + student profile + catalog + completed courses + graduation progress + deterministic semester planner + deterministic academic risk analyzer backend implemented** (Phase 8 academic risk analyzer complete).
+Current stage: **auth (incl. Google OAuth + remember-me) + student profile + catalog + completed courses + graduation progress + deterministic semester planner + deterministic academic risk analyzer + transcript UI** implemented.
 
 Architecture pattern:
-- `api` receives client requests and exposes `/health`, auth routes, protected `/student-profile` CRUD, protected `/completed-courses` CRUD, protected `/graduation-progress`, protected `/semester-plans` generate/history routes, protected `/academic-risks` analyze/history routes, and read-only catalog routes (`/courses`, `/degrees`).
+- `api` receives client requests and exposes `/health`, auth routes (register, login, refresh, logout, Google OAuth, remember-me cookies), protected `/student-profile` CRUD, protected `/completed-courses` CRUD, protected `/graduation-progress`, protected `/semester-plans` generate/history routes, protected `/academic-risks` analyze/history routes, and read-only catalog routes (`/catalog/*`).
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
@@ -72,6 +72,9 @@ The **Node.js / Express** reference backend has been **removed**. **`services/ap
 | Item | Status |
 |---|---|
 | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` | Done |
+| `POST /auth/refresh`, `POST /auth/logout` (HttpOnly cookies) | Done |
+| Google OAuth (`GET /auth/google`, `GET /auth/google/callback`) | Done (optional via `GOOGLE_OAUTH_*` env) |
+| Remember-me refresh token TTL (`rememberMe` on login/register) | Done |
 | bcrypt password hashing + JWT access tokens | Done |
 | Pydantic strict validation (email normalize, password policy incl. 72-byte bcrypt limit) | Done |
 | Redis-backed auth rate limiting (in-memory fallback in `test` env) | Done |
@@ -512,7 +515,9 @@ Current implemented tests:
 - Semester plans security tests (JWT required, cross-user isolation, userId rejection).
 - Academic risk analyzer unit tests (overload, prerequisites, completed/failed courses, mandatory progress).
 - Academic risks integration tests (plan/ad-hoc analyze, history, edge cases).
-- Academic risks security tests (JWT required, cross-user isolation, userId rejection).
+- Academic risks security tests (JWT required, cross-user isolation, userId rejection, AI rate limit 429).
+- Transcript ↔ graduation progress integration tests (add/update/delete completed courses, multi-year, pool eligibility).
+- Web transcript unit/page/integration tests + Playwright `transcript-progress` E2E.
 
 Near-term testing priorities:
 - Add integration tests for container/dependency wiring.
@@ -564,7 +569,7 @@ Canonical roadmaps:
 
 **FastAPI is the sole client-facing API** (Docker service `api`, container port 8000). MongoDB database: `MONGO_DB` (default `unipilot_python`).
 
-Implemented: auth, profile, catalog (`/catalog/*`), completed courses, graduation progress, semester plans (generate + manual + weekly schedule + versioning), academic risk analyzer. API version **1.0.0**. pytest: **272** tests (unit, integration, security, stress). Docker E2E: `services/api/scripts/verify_and_benchmark.py`.
+Implemented: auth (JWT + Google OAuth + remember-me), profile, catalog (`/catalog/*`), completed courses, graduation progress, semester plans (generate + manual + weekly schedule + versioning), academic risk analyzer, transcript UI (i18n, paginated list, progress link). API version **1.0.0**. pytest: **1330** tests (unit, integration, security, stress). Web Vitest: **227**. Playwright E2E: **15** (runs in CI).
 
 ### Still pending
 
@@ -579,7 +584,7 @@ Implemented: auth, profile, catalog (`/catalog/*`), completed courses, graduatio
 - Healthchecks and startup ordering for core dependencies.
 - MongoDB named volume persistence (`mongo_data`).
 - Host exposure for `api` (FastAPI) only; all other services internal-only.
-- API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/me`).
+- API `/health` endpoint and auth endpoints (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me`, Google OAuth when configured).
 - Student profile endpoints (`POST/GET/PUT/DELETE /student-profile`) with JWT protection and ownership checks.
 - Completed courses endpoints (`POST/GET/PUT/DELETE /completed-courses`) with JWT protection, ownership checks, catalog FK validation, and manual-only mutations.
 - Graduation progress endpoint (`GET /graduation-progress`) with JWT protection and deterministic requirement evaluation.
@@ -587,7 +592,7 @@ Implemented: auth, profile, catalog (`/catalog/*`), completed courses, graduatio
 - Academic risks model (`academic_risks`) with user ownership indexes and embedded rule-based findings.
 - Academic risks endpoints (`POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id`) with JWT protection, ownership checks, and deterministic analysis (no LLM).
 - Catalog read endpoints with JWT protection (shared academic data, not user-owned).
-- bcrypt password hashing, JWT token issuance, and protected-route middleware.
+- bcrypt password hashing, JWT token issuance, HttpOnly refresh cookies, and protected-route middleware.
 - Auth validation and auth rate limiting middleware.
 - Student profile validation schemas and MongoDB model/indexes.
 - Completed courses validation schemas, MongoDB model/indexes, and test suites.
