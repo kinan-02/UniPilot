@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     completed_courses_collection: str = "completed_courses"
     semester_plans_collection: str = "semester_plans"
     academic_risks_collection: str = "academic_risks"
+    web_app_url: str = "http://localhost:3000"
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: str | None = None
+    google_oauth_redirect_uri: str | None = None
+    refresh_token_session_ttl_seconds: int = 24 * 60 * 60
+    refresh_token_remember_ttl_seconds: int = 30 * 24 * 60 * 60
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -101,6 +107,20 @@ class Settings(BaseSettings):
             if origin.strip()
         ]
         return origins or list(DEFAULT_CORS_ORIGINS)
+
+    def resolved_web_app_url(self) -> str:
+        return str(self.web_app_url).rstrip("/")
+
+    def resolved_google_oauth_redirect_uri(self) -> str:
+        configured = (self.google_oauth_redirect_uri or "").strip()
+        if configured:
+            return configured
+        return f"{self.resolved_web_app_url()}/api/auth/google/callback"
+
+    def google_oauth_enabled(self) -> bool:
+        client_id = (self.google_oauth_client_id or "").strip()
+        client_secret = (self.google_oauth_client_secret or "").strip()
+        return bool(client_id and client_secret)
 
     @field_validator("mongo_root_password", mode="before")
     @classmethod

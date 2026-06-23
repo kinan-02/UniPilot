@@ -10,6 +10,7 @@ import app.security.refresh_tokens as refresh_module
 from app.security.refresh_tokens import (
     InMemoryRefreshTokenStore,
     RedisRefreshTokenStore,
+    _decode_store_value,
     issue_refresh_token,
     reset_in_memory_refresh_token_store,
     revoke_refresh_token,
@@ -17,11 +18,22 @@ from app.security.refresh_tokens import (
 )
 
 
+def test_decode_store_value_supports_legacy_plain_user_id() -> None:
+    assert _decode_store_value("user-legacy") == ("user-legacy", False)
+
+
+def test_decode_store_value_returns_none_without_user_id() -> None:
+    assert _decode_store_value('{"rememberMe": true}') is None
+
+
 @pytest.mark.asyncio
 async def test_in_memory_consume_rejects_expired_entry() -> None:
     store = InMemoryRefreshTokenStore()
     token = "expired-token"
-    store._entries[refresh_module._hash_token(token)] = ("user-1", 0)
+    store._entries[refresh_module._hash_token(token)] = (
+        refresh_module._encode_store_value(user_id="user-1", remember_me=False),
+        0,
+    )
     assert await store.consume(token) is None
 
 
@@ -59,15 +71,28 @@ def test_resolve_refresh_token_store_honors_override() -> None:
 @pytest.mark.asyncio
 async def test_in_memory_refresh_token_store_expires_entries() -> None:
     store = InMemoryRefreshTokenStore()
-    store._entries["hash"] = ("user-1", 0)
+    store._entries["hash"] = (
+        refresh_module._encode_store_value(user_id="user-1", remember_me=False),
+        0,
+    )
     assert await store.consume("unused") is None
 
 
 @pytest.mark.asyncio
 async def test_in_memory_refresh_token_store_revoke() -> None:
     store = InMemoryRefreshTokenStore()
-    await store.store("token", user_id="user-1")
+    await store.store("token", user_id="user-1", remember_me=False)
     await store.revoke("token")
+    assert await store.consume("token") is None
+
+
+@pytest.mark.asyncio
+async def test_redis_refresh_token_store_returns_none_for_missing_token(monkeypatch) -> None:
+    fake_client = AsyncMock()
+    fake_client.getdel = AsyncMock(return_value=None)
+    monkeypatch.setattr(refresh_module, "get_redis_client", lambda: fake_client)
+
+    store = RedisRefreshTokenStore()
     assert await store.consume("token") is None
 
 
@@ -75,13 +100,15 @@ async def test_in_memory_refresh_token_store_revoke() -> None:
 async def test_redis_refresh_token_store_round_trip(monkeypatch) -> None:
     fake_client = AsyncMock()
     fake_client.setex = AsyncMock()
-    fake_client.getdel = AsyncMock(return_value="user-42")
+    fake_client.getdel = AsyncMock(
+        return_value=refresh_module._encode_store_value(user_id="user-42", remember_me=True)
+    )
     fake_client.delete = AsyncMock()
     monkeypatch.setattr(refresh_module, "get_redis_client", lambda: fake_client)
 
     store = RedisRefreshTokenStore()
-    await store.store("token", user_id="user-42")
-    assert await store.consume("token") == "user-42"
+    await store.store("token", user_id="user-42", remember_me=True)
+    assert await store.consume("token") == ("user-42", True)
     await store.revoke("token")
     fake_client.delete.assert_awaited()
 
@@ -98,7 +125,7 @@ async def test_redis_refresh_token_store_store_raises_without_client(monkeypatch
     monkeypatch.setattr(refresh_module, "get_redis_client", lambda: None)
     store = RedisRefreshTokenStore()
     with pytest.raises(RuntimeError, match="Redis is required"):
-        await store.store("token", user_id="user-1")
+        await store.store("token", user_id="user-1", remember_me=False)
 
 
 @pytest.mark.asyncio

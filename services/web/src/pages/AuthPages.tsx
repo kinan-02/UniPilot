@@ -1,5 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isAuthError, useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui/Button'
@@ -12,6 +12,16 @@ import {
   hasStudentProfile,
   resetStudentProfileCache,
 } from '../lib/studentProfileQuery'
+import { SocialAuthPanel } from '../components/auth/SocialAuthPanel'
+
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  google_denied: 'auth.googleDenied',
+  google_account_exists: 'auth.googleAccountExists',
+  google_auth_failed: 'auth.googleSignInFailed',
+  google_invalid_state: 'auth.googleSignInFailed',
+  google_email_unverified: 'auth.googleEmailUnverified',
+  google_not_configured: 'auth.googleNotConfigured',
+}
 
 export function AuthShell({
   title,
@@ -43,10 +53,19 @@ export function LoginPage() {
   const queryClient = useQueryClient()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const oauthError = searchParams.get('error')
+    if (!oauthError) return
+    const messageKey = AUTH_ERROR_MESSAGES[oauthError] ?? 'auth.googleSignInFailed'
+    setError(t(messageKey))
+  }, [searchParams, t])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -65,7 +84,7 @@ export function LoginPage() {
 
     setLoading(true)
     try {
-      await login(email.trim(), password)
+      await login(email.trim(), password, rememberMe)
       resetStudentProfileCache(queryClient)
       const profileData = await fetchStudentProfileOrNull()
       navigate(hasStudentProfile(profileData) ? '/' : '/onboarding', { replace: true })
@@ -97,10 +116,20 @@ export function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+        <label className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(event) => setRememberMe(event.target.checked)}
+            className="h-4 w-4 rounded border-[var(--color-border)]"
+          />
+          {t('auth.rememberMe')}
+        </label>
         {error ? <p className="text-sm text-[var(--color-danger)]">{error}</p> : null}
         <Button type="submit" className="w-full" loading={loading}>
           {t('auth.signIn')}
         </Button>
+        <SocialAuthPanel rememberMe={rememberMe} />
         <p className="text-center text-sm text-[var(--color-text-muted)]">
           {t('auth.newHere')}{' '}
           <Link className="font-medium text-[var(--color-primary)] hover:underline" to="/register">
@@ -176,6 +205,7 @@ export function RegisterPage() {
         <Button type="submit" className="w-full" loading={loading}>
           {t('auth.register')}
         </Button>
+        <SocialAuthPanel rememberMe />
         <p className="text-center text-sm text-[var(--color-text-muted)]">
           {t('auth.haveAccount')}{' '}
           <Link className="font-medium text-[var(--color-primary)] hover:underline" to="/login">

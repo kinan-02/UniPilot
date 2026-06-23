@@ -99,6 +99,7 @@ async def test_refresh_token_rotation_consumes_old_token() -> None:
     rotation = await rotate_refresh_token(token)
     assert rotation is not None
     assert rotation[0] == "user-1"
+    assert rotation[2] is False
     assert await rotate_refresh_token(token) is None
 
 

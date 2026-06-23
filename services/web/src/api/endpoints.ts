@@ -1,4 +1,4 @@
-import { apiRequest } from '../lib/api'
+import { apiRequest, getApiBaseUrl } from '../lib/api'
 import type {
   AcademicRiskAnalysis,
   AuthPayload,
@@ -17,19 +17,25 @@ import type {
 } from '../types/api'
 
 export const authApi = {
+  providers: () => apiRequest<{ google: boolean }>('/auth/providers'),
   register: (email: string, password: string) =>
     apiRequest<AuthPayload>('/auth/register', {
       method: 'POST',
       body: { email, password },
       token: null,
     }),
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, rememberMe = false) =>
     apiRequest<AuthPayload>('/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, rememberMe },
       token: null,
     }),
   me: () => apiRequest<{ user: User }>('/auth/me'),
+}
+
+export function googleSignInUrl(rememberMe: boolean): string {
+  const params = new URLSearchParams({ rememberMe: String(rememberMe) })
+  return `${getApiBaseUrl()}/auth/google?${params}`
 }
 
 export const profileApi = {

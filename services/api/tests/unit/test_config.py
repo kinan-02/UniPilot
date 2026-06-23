@@ -26,6 +26,27 @@ def test_require_jwt_secret_accepts_strong_production_secret() -> None:
     assert settings.require_jwt_secret() == secret
 
 
+def test_resolved_google_oauth_redirect_uri_uses_explicit_value() -> None:
+    settings = Settings(
+        environment="development",
+        jwt_secret=DEV_JWT_SECRET,
+        google_oauth_redirect_uri="https://example.com/custom/callback",
+    )
+    assert settings.resolved_google_oauth_redirect_uri() == "https://example.com/custom/callback"
+
+
+def test_google_oauth_enabled_requires_client_credentials() -> None:
+    settings = Settings(environment="development", jwt_secret=DEV_JWT_SECRET)
+    assert settings.google_oauth_enabled() is False
+    settings_with_google = Settings(
+        environment="development",
+        jwt_secret=DEV_JWT_SECRET,
+        google_oauth_client_id="client",
+        google_oauth_client_secret="secret",
+    )
+    assert settings_with_google.google_oauth_enabled() is True
+
+
 def test_legacy_placeholder_is_rejected_in_production() -> None:
     assert "replace_me_with_secure_jwt_secret" in JWT_SECRET_PLACEHOLDERS
 

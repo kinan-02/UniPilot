@@ -54,8 +54,15 @@ class LoginRequest(BaseModel):
 
     email: EmailStr = Field(max_length=254)
     password: str = Field(min_length=1)
+    rememberMe: bool = False
 
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, value: str) -> str:
         return normalize_email_value(value)
+
+
+class AuthProvidersResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    google: bool

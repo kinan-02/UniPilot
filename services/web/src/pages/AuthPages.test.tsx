@@ -14,6 +14,7 @@ vi.mock('../api/endpoints', () => ({
     me: vi.fn(),
     login: vi.fn(),
     register: vi.fn(),
+    providers: vi.fn().mockResolvedValue({ google: false }),
   },
   profileApi: { get: vi.fn() },
 }))
@@ -66,7 +67,11 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: /התחברות/i }))
 
     await waitFor(() => {
-      expect(endpoints.authApi.login).toHaveBeenCalledWith('demo@example.com', 'StrongPass123!')
+      expect(endpoints.authApi.login).toHaveBeenCalledWith(
+        'demo@example.com',
+        'StrongPass123!',
+        true,
+      )
     })
     expect(await screen.findByText('Onboarding page')).toBeInTheDocument()
   })

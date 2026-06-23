@@ -5,6 +5,7 @@ import { AuthProvider } from './auth/AuthContext'
 import { AuthQuerySync } from './auth/AuthQuerySync'
 import { AppLayout } from './components/layout/AppLayout'
 import { LoginPage, RegisterPage } from './pages/AuthPages'
+import { GoogleAuthCallbackPage } from './pages/GoogleAuthCallbackPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { CatalogPage } from './pages/CatalogPage'
@@ -39,6 +40,8 @@ export default function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
               </Route>
+
+              <Route path="/auth/callback" element={<GoogleAuthCallbackPage />} />
 
               <Route path="/shared/plans/:token" element={<SharedPlanPage />} />
 
