@@ -15,20 +15,20 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    { name: 'setup', testMatch: /^auth\.setup\.ts$/ },
     {
       name: 'smoke',
-      testMatch: /smoke\.spec\.ts/,
+      testMatch: /^smoke\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'onboarding',
-      testMatch: /onboarding\.spec\.ts/,
+      testMatch: /^onboarding\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'features',
-      testMatch: /features\.spec\.ts/,
+      testMatch: /^features\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'e2e/.auth/user.json',
@@ -37,7 +37,7 @@ export default defineConfig({
     },
     {
       name: 'progress',
-      testMatch: /progress\.spec\.ts/,
+      testMatch: /^progress\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'e2e/.auth/user.json',
@@ -46,7 +46,7 @@ export default defineConfig({
     },
     {
       name: 'transcript-progress',
-      testMatch: /transcript-progress\.spec\.ts/,
+      testMatch: /^transcript-progress\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'e2e/.auth/user.json',
@@ -55,7 +55,7 @@ export default defineConfig({
     },
     {
       name: 'planner-catalog',
-      testMatch: /planner-catalog\.spec\.ts/,
+      testMatch: /^planner-catalog\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'e2e/.auth/user.json',

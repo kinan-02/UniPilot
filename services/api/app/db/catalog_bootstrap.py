@@ -199,7 +199,9 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
                 "academicYear": 2025,
                 "semesterCode": 201,
                 "semesterName": "spring",
-                "scheduleGroups": [{"day": "Sunday", "time": "10:30-12:30"}],
+                "scheduleGroups": [
+                    {"day": "Sunday", "time": "10:30-12:30", "type": "הרצאה", "group": "10"}
+                ],
                 "examDates": {"moedA": "2025-06-01"},
                 "instructors": "Dr. Example",
                 "sourceFile": "courses_2025_201.json",
@@ -212,7 +214,9 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
                 "academicYear": 2025,
                 "semesterCode": 201,
                 "semesterName": "spring",
-                "scheduleGroups": [{"day": "Sunday", "time": "12:30-14:30"}],
+                "scheduleGroups": [
+                    {"day": "Sunday", "time": "12:30-14:30", "type": "הרצאה", "group": "11"}
+                ],
                 "examDates": {"moedA": "2025-06-01"},
                 "instructors": "Dr. Example",
                 "sourceFile": "courses_2025_201.json",

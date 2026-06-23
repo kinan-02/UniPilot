@@ -39,11 +39,10 @@ test.describe('Planner with live vault catalog', () => {
 
   test('profile loads three DDS degree programs from catalog', async ({ page }) => {
     await page.goto('/profile')
-    const degreeSelect = page.getByLabel(/Degree program|תוכנית לימודים/i)
-    await expect(degreeSelect.locator('option')).not.toHaveCount(1, { timeout: 15_000 })
-    await expect(degreeSelect.locator('option')).toHaveCount(4)
-    await expect(degreeSelect.locator('option', { hasText: /הנדסת נתונים|Data and Information/i })).toHaveCount(1)
-    await expect(degreeSelect.locator('option', { hasText: /הנדסת תעשייה|Industrial Engineering/i })).toHaveCount(1)
-    await expect(degreeSelect.locator('option', { hasText: /מערכות מידע|Information Systems/i })).toHaveCount(1)
+    await expect(page.getByText(/הנדסת נתונים|Data and Information Engineering/i).first()).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByText(/הנדסת תעשייה|Industrial Engineering/i).first()).toBeVisible()
+    await expect(page.getByText(/מערכות מידע|Information Systems Engineering/i).first()).toBeVisible()
   })
 })

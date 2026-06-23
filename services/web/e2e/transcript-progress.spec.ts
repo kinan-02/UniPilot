@@ -18,7 +18,9 @@ test.describe('Transcript ↔ Graduation progress E2E', () => {
     await semesterCustom.fill('2020-2')
 
     await page.getByTestId('transcript-add-button').click()
-    await expect(page.getByText(/course added to your transcript|נוסף לגיליון/i)).toBeVisible({
+    await expect(
+      page.getByText(/course added to your transcript|הקורס נוסף לגיליון הציונים/i),
+    ).toBeVisible({
       timeout: 15_000,
     })
     await expect(page.getByTestId('transcript-row-00940345')).toBeVisible()
