@@ -67,13 +67,7 @@ export class PlannerPage extends BasePage {
   }
 
   get autoPickStatus() {
-    return this.page
-      .getByTestId('planner-auto-pick-status')
-      .or(
-        this.page
-          .locator('p')
-          .filter({ hasText: /נוספו|לא נמצאו|כבר נמצאים|Added|No conflict-free|already in your list/i }),
-      )
+    return this.page.getByTestId('planner-auto-pick-status')
   }
 
   async setMaxCredits(value: string) {
