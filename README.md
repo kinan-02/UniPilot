@@ -116,12 +116,21 @@ npm run test
 npm run build
 ```
 
-End-to-end smoke tests (requires Docker stack on `WEB_PORT`, default 3000):
+End-to-end tests (requires Docker stack on `WEB_PORT`, default 3000):
 
 ```bash
 cd services/web
 npx playwright install chromium
 npm run test:e2e
+```
+
+See `services/web/e2e/README.md` for architecture (Page Object Model, fixtures, accessibility gates, and CI artifacts).
+
+```bash
+npm run test:e2e:smoke          # Register/login/onboarding smoke
+npm run test:e2e:critical       # Cross-feature @critical journey
+npm run test:e2e:a11y           # WCAG 2.x accessibility scans
+npm run test:e2e:report         # Open HTML report after a run
 ```
 
 Run a single Playwright project (after `auth.setup` runs via project dependencies):
@@ -132,6 +141,8 @@ npm run test:e2e -- --project=onboarding
 npm run test:e2e -- --project=progress
 npm run test:e2e -- --project=transcript-progress
 npm run test:e2e -- --project=planner-catalog
+npm run test:e2e -- --project=critical-paths
+npm run test:e2e -- --project=accessibility
 ```
 
 CI runs the full Playwright suite against a Docker stack with `AUTO_SEED_CATALOG=true` (see `.github/workflows/ci.yml`).

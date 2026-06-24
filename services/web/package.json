@@ -9,6 +9,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --project=smoke",
+    "test:e2e:critical": "playwright test --grep @critical",
+    "test:e2e:a11y": "playwright test --project=accessibility",
+    "test:e2e:report": "playwright show-report",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -22,6 +26,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.0",
     "@tailwindcss/vite": "^4.3.1",
