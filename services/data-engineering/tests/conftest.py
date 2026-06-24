@@ -1,5 +1,6 @@
 import pytest
 import mongomock
+from pathlib import Path
 
 from app.config import get_settings
 from app.db import close_mongo_client, set_test_database
@@ -17,6 +18,15 @@ def reset_runtime_state(monkeypatch):
     get_settings.cache_clear()
     set_test_database(None)
     close_mongo_client()
+
+
+@pytest.fixture(autouse=True)
+def isolate_tests_from_local_catalog_export(monkeypatch):
+    """Tests seed their own staging; ignore a developer's vault export artifact on disk."""
+    monkeypatch.setattr(
+        "app.promotion.dds_promotion_gate.catalog_reviewed_json_path",
+        lambda: Path("/nonexistent/catalog_reviewed.json"),
+    )
 
 
 @pytest.fixture

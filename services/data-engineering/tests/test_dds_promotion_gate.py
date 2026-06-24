@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.config import get_settings
@@ -15,6 +16,7 @@ from app.promotion.dds_promotion_gate import (
     EXCLUDED_COURSE_SKIP_REASON,
     _collect_course_refs_from_requirements,
     build_promotion_gate_result,
+    catalog_reviewed_json_path,
     render_promotion_plan_markdown,
     run_promotion_gate_plan,
 )
@@ -365,6 +367,62 @@ def test_strict_mode_fails_on_warnings(mongo_database) -> None:
     if gate.warnings:
         assert gate.gateStatus == "fail"
         assert gate.canPromote is False
+
+
+def test_catalog_reviewed_json_path_points_to_generated_catalog() -> None:
+    path = catalog_reviewed_json_path()
+    assert path.as_posix().endswith("generated/technion/catalog/catalog_reviewed.json")
+
+
+def test_gate_recomputes_excluded_courses_from_vault_export(
+    mongo_database,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    reviewed_path = tmp_path / "catalog_reviewed.json"
+    reviewed_path.write_text(
+        json.dumps(
+            {
+                "programs": [
+                    {
+                        "requirementGroups": [
+                            {
+                                "courseReferences": [
+                                    {"courseNumber": "00940345"},
+                                    {"courseNumber": "00960226"},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "app.promotion.dds_promotion_gate.catalog_reviewed_json_path",
+        lambda: reviewed_path,
+    )
+    _seed_signed_off_promotion_staging(mongo_database)
+    settings = get_settings()
+    mongo_database[settings.staging_courses_collection].update_one(
+        {"courseNumber": "00940345"},
+        {"$set": {"faculty": "הפקולטה למדעי הנתונים וההחלטות"}},
+    )
+    program = mongo_database[settings.staging_degree_programs_collection].find_one({})
+    signoff = program["curationReport"]["vaultSignoff"]
+    signoff["signoffSource"] = "vault-wiki"
+    signoff["productionExcludedCourseNumbers"] = ["00960226"]
+    mongo_database[settings.staging_degree_programs_collection].update_one(
+        {"_id": program["_id"]},
+        {"$set": {"curationReport.vaultSignoff": signoff}},
+    )
+
+    gate = build_promotion_gate_result(mongo_database, allow_warnings=True)
+    excluded_check = next(
+        check for check in gate.checks if check.checkId == "policy.excluded_courses_list"
+    )
+    assert excluded_check.passed is True
 
 
 def test_cli_plan_command_exits_zero_on_pass(mongo_database, tmp_path: Path, monkeypatch) -> None:

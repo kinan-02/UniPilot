@@ -12,7 +12,11 @@ from pymongo.database import Database
 
 from app.config import Settings, get_settings
 from app.curation.catalog_signoff import extract_catalog_signoff
-from app.catalog.course_reference_policy import derive_production_excluded_from_refs
+from app.catalog.course_reference_policy import (
+    collect_catalog_course_numbers,
+    derive_production_excluded_course_numbers,
+    derive_production_excluded_from_refs,
+)
 from app.importers.dds_catalog_staging_importer import (
     EXECUTABLE_RULE_TYPES,
     PRODUCTION_COLLECTION_NAMES,
@@ -32,7 +36,7 @@ from app.quality.dds_staging_quality import (
     default_json_report_path as default_quality_json_path,
 )
 from app.paths import service_root
-from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE
+from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE, is_dds_faculty
 
 EXCLUDED_COURSE_SKIP_REASON = "production-excluded-by-catalog-signoff"
 EXPECTED_PROGRAM_CODES = ["009216-1-000", "009009-1-000", "009118-1-000"]
@@ -55,6 +59,10 @@ def default_promotion_json_path() -> Path:
 
 def default_promotion_md_path() -> Path:
     return service_root() / "data" / "reports" / "technion" / "dds_promotion_plan.md"
+
+
+def catalog_reviewed_json_path() -> Path:
+    return service_root() / "data" / "generated" / "technion" / "catalog" / "catalog_reviewed.json"
 
 
 def _utc_now_iso() -> str:
@@ -307,7 +315,29 @@ def build_promotion_gate_result(
         doc.get("courseNumber") for doc in courses if doc.get("courseNumber")
     }
     catalog_refs = _collect_course_refs_from_requirements(requirements)
-    expected_excluded = derive_production_excluded_from_refs(catalog_refs, staging_course_numbers)
+    dds_ingestible_course_numbers = {
+        str(doc.get("courseNumber"))
+        for doc in courses
+        if doc.get("courseNumber") and is_dds_faculty(doc.get("faculty"))
+    }
+    catalog_reviewed_path = catalog_reviewed_json_path()
+    if (
+        catalog_signoff.get("signoffSource") == "vault-wiki"
+        and catalog_reviewed_path.is_file()
+    ):
+        reviewed_document = json.loads(catalog_reviewed_path.read_text(encoding="utf-8"))
+        catalog_numbers = set(collect_catalog_course_numbers(reviewed_document))
+        expected_excluded = set(
+            derive_production_excluded_course_numbers(
+                catalog_numbers,
+                ingestible_course_numbers=dds_ingestible_course_numbers,
+            )
+        )
+    else:
+        expected_excluded = derive_production_excluded_from_refs(
+            catalog_refs,
+            staging_course_numbers,
+        )
     actual_excluded = set(catalog_signoff.get("productionExcludedCourseNumbers", []))
     excluded_match = actual_excluded == expected_excluded
     add_check(
