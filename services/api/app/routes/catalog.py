@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.config import get_settings
 from app.db.mongo import get_database
 from app.dependencies.auth import AuthContext, require_auth
+from app.planning.technion_planner_semesters import resolve_planner_semester_codes
 from app.repositories import catalog_repository
 from app.services.catalog_cache import (
     course_cache_key,
@@ -446,3 +448,27 @@ async def get_catalog_degree_summary(
         },
     )
     return success_response({"catalogSummary": summary.model_dump()})
+
+
+@router.get("/planner-semesters")
+async def list_planner_semesters(
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    """Semester plan codes for each on-disk courses_YYYY_20X.json file (any academic year)."""
+    settings = get_settings()
+    database = await get_database()
+    raw_dir = Path(settings.technion_raw_dir) if settings.technion_raw_dir else None
+    mongo_codes = await catalog_repository.list_planner_semester_codes_from_offerings(
+        database,
+        settings=settings,
+    )
+    plan_semester_codes = resolve_planner_semester_codes(
+        raw_dir=raw_dir,
+        mongo_codes=mongo_codes,
+    )
+    return success_response(
+        {
+            "planSemesterCodes": plan_semester_codes,
+            "total": len(plan_semester_codes),
+        }
+    )

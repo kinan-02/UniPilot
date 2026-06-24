@@ -5,6 +5,7 @@ import {
   currentTermIndex,
   defaultSemesterCode,
   parseSemesterCode,
+  pickDefaultPlannerSemester,
   semesterCodesInRange,
   semesterLabel,
   suggestedPlanName,
@@ -40,6 +41,12 @@ describe('semester helpers', () => {
     const options = upcomingSemesterCodes(3)
     expect(options).toHaveLength(3)
     options.forEach((code) => expect(parseSemesterCode(code)).not.toBeNull())
+  })
+
+  it('picks a catalog-backed default semester', () => {
+    expect(pickDefaultPlannerSemester(['2025-1', '2025-2', '2025-3'])).toMatch(/^2025-[123]$/)
+    expect(pickDefaultPlannerSemester(['2025-2'])).toBe('2025-2')
+    expect(pickDefaultPlannerSemester([])).toBe(defaultSemesterCode())
   })
 
   it('suggests a localized plan name from semester code', () => {

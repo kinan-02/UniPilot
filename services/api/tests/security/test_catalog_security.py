@@ -17,6 +17,7 @@ from tests.fixtures.catalog_production_fixtures import KNOWN_COURSE, KNOWN_PROGR
         f"/catalog/degree-programs/{KNOWN_PROGRAM}/advisory-rules",
         f"/catalog/degree-programs/{KNOWN_PROGRAM}/catalog-summary",
         "/catalog/offerings?courseNumbers=00940345&academicYear=2025&semesterCode=201",
+        "/catalog/planner-semesters",
     ],
 )
 async def test_catalog_routes_require_jwt(security_client, path: str) -> None:

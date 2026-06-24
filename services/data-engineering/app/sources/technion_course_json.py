@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models.staging_course import StagedTechnionCourse, StagedTechnionCourseOffering
-from app.sources.technion_course_json_index import SEMESTER_CODE_LABELS
-from app.paths import service_root
+from app.sources.technion_course_json_index import SEMESTER_CODE_LABELS, list_semester_course_json_paths
 from app.utils.course_numbers import normalize_course_number
 
 FILENAME_PATTERN = re.compile(r"courses_(\d{4})_(\d{3})\.json$")
@@ -144,8 +143,7 @@ def _exam_dates(general: dict[str, Any]) -> dict[str, str | None]:
 
 
 def default_course_json_paths() -> list[Path]:
-    raw_dir = service_root() / "data" / "raw" / "technion"
-    return sorted(raw_dir.glob("courses_2025_20*.json"))
+    return list_semester_course_json_paths()
 
 
 def _read_json_array(path: Path) -> list[dict[str, Any]]:

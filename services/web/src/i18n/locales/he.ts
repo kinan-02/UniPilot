@@ -165,6 +165,8 @@ export const he = {
     scheduleTip3: 'לחצו «שמירת תוכנית» כדי לשמור את הקורסים והלוח (אם נבנה).',
     pickSemester: 'בחרו סמסטר',
     customSemesterCode: 'או הזינו קוד סמסטר ידנית',
+    noPlannerSemesters: 'אין סמסטרים זמינים בקטלוג',
+    plannerSemesterUnavailable: 'בחרו סמסטר שיש עבורו נתוני קורסים מהטכניון',
     semesterAcademicYearHint: 'השנה היא תחילת שנת הלימודים (למשל 2025-2 = אביב תשפ״ו), לא שנת לוח השנה.',
     goalCreditsHint: 'יעד נק״ז לסמסטר — נעזור לכם לראות כמה נשאר עד היעד.',
     emptyCoursesTitle: 'עדיין לא נוספו קורסים',

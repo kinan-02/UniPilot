@@ -122,6 +122,8 @@ export const catalogApi = {
     return apiRequest<{ items: CatalogPathOption[]; total: number }>(`/catalog/path-options${suffix}`)
   },
   faculties: () => apiRequest<{ items: string[]; total: number }>('/catalog/faculties'),
+  plannerSemesters: () =>
+    apiRequest<{ planSemesterCodes: string[]; total: number }>('/catalog/planner-semesters'),
 }
 
 export const transcriptApi = {

@@ -1,0 +1,4 @@
+{
+  "planSemesterCodes": ["2025-1", "2025-2", "2025-3"],
+  "notes": "Dev/CI fallback when TECHNION_RAW_DIR is unset. Runtime in Docker uses on-disk courses_YYYY_20X.json files for any year."
+}

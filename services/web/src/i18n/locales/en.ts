@@ -165,6 +165,8 @@ export const en: TranslationTree = {
     scheduleTip3: 'Click “Save plan” to keep your courses and schedule (if built).',
     pickSemester: 'Pick a semester',
     customSemesterCode: 'Or enter a semester code manually',
+    noPlannerSemesters: 'No catalog semesters available',
+    plannerSemesterUnavailable: 'Choose a semester that has Technion course data',
     semesterAcademicYearHint: 'The year is the academic-year start (e.g. 2025-2 = spring of 2025-2026), not the calendar year.',
     goalCreditsHint: 'Your target credits for the semester — we show progress toward this goal.',
     emptyCoursesTitle: 'No courses added yet',

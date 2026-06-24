@@ -72,6 +72,19 @@ export function compareSemesterCodesDesc(a: string, b: string): number {
   return parsedB.termIndex - parsedA.termIndex
 }
 
+export function compareSemesterCodesAsc(a: string, b: string): number {
+  return -compareSemesterCodesDesc(a, b)
+}
+
+/** Default planner semester when the calendar term is not in the catalog-backed list. */
+export function pickDefaultPlannerSemester(available: string[]): string {
+  if (!available.length) return defaultSemesterCode()
+  const preferred = defaultSemesterCode()
+  if (available.includes(preferred)) return preferred
+  const sorted = [...available].sort(compareSemesterCodesAsc)
+  return sorted[sorted.length - 1] ?? preferred
+}
+
 /** All YYYY-1/2/3 codes from the start academic year through the end year (inclusive). */
 export function semesterCodesInRange(fromAcademicYear: number, toAcademicYear: number): string[] {
   const start = Math.min(fromAcademicYear, toAcademicYear)

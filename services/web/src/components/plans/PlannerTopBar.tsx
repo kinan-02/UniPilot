@@ -7,6 +7,8 @@ import { Input } from '../ui/Input'
 type PlannerTopBarProps = {
   semesterCode: string
   onSemesterChange: (value: string) => void
+  semesterOptions: string[]
+  semesterOptionsLoading?: boolean
   semesterError?: string
   planName: string
   onPlanNameChange: (value: string) => void
@@ -27,6 +29,8 @@ type PlannerTopBarProps = {
 export function PlannerTopBar({
   semesterCode,
   onSemesterChange,
+  semesterOptions,
+  semesterOptionsLoading,
   semesterError,
   planName,
   onPlanNameChange,
@@ -49,7 +53,14 @@ export function PlannerTopBar({
     <div className="rounded-xl border border-[var(--color-border)] bg-white px-4 py-3 shadow-[var(--shadow-soft)] print:hidden">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <SemesterPicker value={semesterCode} onChange={onSemesterChange} error={semesterError} disabled={readOnly} />
+          <SemesterPicker
+            value={semesterCode}
+            onChange={onSemesterChange}
+            options={semesterOptions}
+            loading={semesterOptionsLoading}
+            error={semesterError}
+            disabled={readOnly}
+          />
           <Input
             label={t('plans.planName')}
             value={planName}

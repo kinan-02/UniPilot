@@ -235,6 +235,37 @@ async def list_offerings_for_courses_in_semester(
     return summaries
 
 
+async def list_planner_semester_codes_from_offerings(
+    database: AsyncIOMotorDatabase,
+    settings: Settings | None = None,
+) -> list[str]:
+    """Distinct plan semester codes (YYYY-1/2/3) from published course offerings."""
+    from app.planning.semester_codes import offering_keys_to_plan_semester_code
+
+    settings = settings or get_settings()
+    collection = database[settings.course_offerings_collection]
+    pipeline = [
+        {"$match": PUBLISHED_STATUS_FILTER},
+        {
+            "$group": {
+                "_id": {
+                    "academicYear": "$academicYear",
+                    "semesterCode": "$semesterCode",
+                }
+            }
+        },
+    ]
+    codes: list[str] = []
+    async for row in collection.aggregate(pipeline):
+        keys = row.get("_id") or {}
+        academic_year = int(keys.get("academicYear") or 0)
+        semester_code = int(keys.get("semesterCode") or 0)
+        plan_code = offering_keys_to_plan_semester_code(academic_year, semester_code)
+        if plan_code:
+            codes.append(plan_code)
+    return codes
+
+
 async def list_courses(
     database: AsyncIOMotorDatabase,
     *,

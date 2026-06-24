@@ -451,7 +451,26 @@ Returns advisory/manual-review metadata from `catalog_rules` only. Each item inc
 
 Combined program + hard requirements + advisory rules + counts.
 
-**Errors:** `400` validation, `401` auth, `404` not found, `500` internal.
+### `GET /catalog/planner-semesters`
+
+Returns semester plan codes (`YYYY-1` / `YYYY-2` / `YYYY-3`) for every `courses_YYYY_20X.json` file under `services/data-engineering/data/raw/technion` (any academic year). When `TECHNION_RAW_DIR` is mounted, only on-disk semester JSON files are listed. Without that mount, the API falls back to published `course_offerings` in MongoDB, then a committed dev default.
+
+**Auth:** `Authorization: Bearer <accessToken>` required.
+
+**Success (`200`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "planSemesterCodes": ["2025-1", "2025-2", "2025-3"],
+    "total": 3
+  },
+  "error": null
+}
+```
+
+**Errors:** `401` auth, `500` internal.
 
 ---
 

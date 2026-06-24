@@ -21,6 +21,7 @@ import { buildScheduleGridEvents } from '../../lib/scheduleGridEvents'
 import {
   defaultSemesterCode,
   parseSemesterCode,
+  pickDefaultPlannerSemester,
   suggestedPlanName,
 } from '../../lib/semester'
 import { formatCredits } from '../../lib/utils'
@@ -127,6 +128,15 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
 
   const profileQuery = useStudentProfileQuery()
 
+  const plannerSemestersQuery = useQuery({
+    queryKey: ['catalog', 'planner-semesters'],
+    queryFn: async () => {
+      const response = await catalogApi.plannerSemesters()
+      return response.planSemesterCodes
+    },
+  })
+  const plannerSemesterOptions = plannerSemestersQuery.data ?? []
+
   const [name, setName] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
   const [semesterCode, setSemesterCode] = useState(defaultSemesterCode())
@@ -220,6 +230,14 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     if (nameTouched) return
     setName(suggestedPlanName(semesterCode, locale))
   }, [semesterCode, locale, nameTouched])
+
+  useEffect(() => {
+    if (isEdit || plannerSemestersQuery.isLoading) return
+    if (!plannerSemesterOptions.length) return
+    if (!plannerSemesterOptions.includes(semesterCode)) {
+      setSemesterCode(pickDefaultPlannerSemester(plannerSemesterOptions))
+    }
+  }, [isEdit, plannerSemestersQuery.isLoading, plannerSemesterOptions, semesterCode])
 
   const activeCourses = useMemo(
     () => courses.filter((course) => course.isActive !== false),
@@ -537,7 +555,14 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     if (!nameResult.ok) nextFieldErrors.name = t(nameResult.message)
 
     const semesterResult = validateSemesterCode(semesterCode)
-    if (!semesterResult.ok) nextFieldErrors.semesterCode = t(semesterResult.message)
+    if (!semesterResult.ok) {
+      nextFieldErrors.semesterCode = t(semesterResult.message)
+    } else if (
+      plannerSemesterOptions.length > 0 &&
+      !plannerSemesterOptions.includes(semesterCode.trim())
+    ) {
+      nextFieldErrors.semesterCode = t('plans.plannerSemesterUnavailable')
+    }
 
     if (!courses.length) nextFieldErrors.courses = t('validation.minOneCourse')
 
@@ -894,6 +919,8 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       <PlannerTopBar
         semesterCode={semesterCode}
         onSemesterChange={setSemesterCode}
+        semesterOptions={plannerSemesterOptions}
+        semesterOptionsLoading={plannerSemestersQuery.isLoading}
         semesterError={fieldErrors.semesterCode}
         planName={name}
         onPlanNameChange={(value) => {

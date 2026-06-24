@@ -700,3 +700,23 @@ async def test_list_degree_programs_returns_cached(auth_client, mongo_database):
 
     assert response.status_code == 200
     assert response.json()["data"]["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_planner_semesters_returns_catalog_backed_codes(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "catalog-planner-semesters@example.com")
+
+    response = await auth_client.get(
+        "/catalog/planner-semesters",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    codes = body["data"]["planSemesterCodes"]
+    assert isinstance(codes, list)
+    assert "2025-2" in codes
+    assert all(isinstance(code, str) and code.count("-") == 1 for code in codes)
+    assert body["data"]["total"] == len(codes)

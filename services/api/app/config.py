@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     google_oauth_redirect_uri: str | None = None
     refresh_token_session_ttl_seconds: int = 24 * 60 * 60
     refresh_token_remember_ttl_seconds: int = 30 * 24 * 60 * 60
+    technion_raw_dir: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

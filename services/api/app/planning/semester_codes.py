@@ -18,6 +18,14 @@ def plan_semester_to_offering_keys(semester_code: str) -> tuple[int, int] | None
     return academic_year, 200 + term_index - 1
 
 
+def offering_keys_to_plan_semester_code(academic_year: int, semester_code: int) -> str | None:
+    """Map offering academicYear + semesterCode (200/201/202) to plan code YYYY-1/2/3."""
+    if semester_code not in {200, 201, 202}:
+        return None
+    term_index = semester_code - 199
+    return f"{academic_year}-{term_index}"
+
+
 def pick_best_offering(
     offerings: list[dict[str, Any]],
     *,

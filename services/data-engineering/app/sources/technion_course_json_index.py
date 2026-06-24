@@ -66,6 +66,25 @@ class CourseOfferingRecord:
         }
 
 
+def default_technion_raw_dir() -> Path:
+    return service_root() / "data" / "raw" / "technion"
+
+
+SEMESTER_COURSE_JSON_FILENAME = re.compile(r"^courses_(\d{4})_(200|201|202)\.json$")
+
+
+def list_semester_course_json_paths(raw_dir: Path | None = None) -> list[Path]:
+    """All ``courses_YYYY_20X.json`` semester offering files in the Technion raw directory."""
+    directory = raw_dir or default_technion_raw_dir()
+    if not directory.is_dir():
+        return []
+    paths: list[Path] = []
+    for path in sorted(directory.glob("courses_*.json")):
+        if path.is_file() and SEMESTER_COURSE_JSON_FILENAME.match(path.name):
+            paths.append(path)
+    return paths
+
+
 def semester_code_from_filename(path: Path) -> int | None:
     match = re.search(r"_(\d{3})\.json$", path.name)
     if not match:
@@ -202,8 +221,7 @@ def build_course_index_from_paths(paths: list[Path]) -> dict[str, CourseOffering
 
 
 def default_course_json_paths() -> list[Path]:
-    raw_dir = service_root() / "data" / "raw" / "technion"
-    return sorted(raw_dir.glob("courses_2025_20*.json"))
+    return list_semester_course_json_paths()
 
 
 def build_course_index(course_json_paths: list[Path] | None = None) -> dict[str, CourseOfferingRecord]:
