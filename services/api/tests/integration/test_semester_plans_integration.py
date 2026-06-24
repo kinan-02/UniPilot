@@ -365,3 +365,67 @@ async def test_patch_maybe_lesson_selection_returns_200_for_valid_request(auth_c
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_returns_preview_without_persisting(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "semester-suggest-courses@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-2", "maxCredits": 9},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert isinstance(body["plannedCourses"], list)
+    assert body["explanation"]["maxCredits"] == 9
+    assert "rulesApplied" in body["explanation"]
+
+    list_response = await auth_client.get(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_response.json()["data"]["pagination"]["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_suggest_schedule_returns_lesson_selections(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "semester-suggest-schedule@example.com")
+    await create_profile(auth_client, token, degree_id=fixtures["programId"])
+
+    suggest_courses = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-2", "maxCredits": 6},
+    )
+    planned = suggest_courses.json()["data"]["plannedCourses"]
+    if not planned:
+        pytest.skip("No suggested courses available in fixtures for schedule test")
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-schedule",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {
+                    "courseId": course["courseId"],
+                    "courseNumber": course["courseNumber"],
+                    "courseTitle": course.get("courseTitle"),
+                    "isActive": True,
+                }
+                for course in planned[:2]
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert "selections" in body
+    assert "skippedCourses" in body
+    assert "examSummary" in body

@@ -141,6 +141,7 @@ npm run test:e2e -- --project=onboarding
 npm run test:e2e -- --project=progress
 npm run test:e2e -- --project=transcript-progress
 npm run test:e2e -- --project=planner-catalog
+npm run test:e2e -- --project=planner-auto-assist
 npm run test:e2e -- --project=critical-paths
 npm run test:e2e -- --project=accessibility
 ```
@@ -158,7 +159,7 @@ The web UI defaults to **Hebrew** (RTL) with an in-app language switcher (Hebrew
 | Catalog | `GET /catalog/courses`, `GET /catalog/degree-programs/{code}/...` |
 | Transcript | `POST/GET/PUT/DELETE /completed-courses` |
 | Progress | `GET /graduation-progress`, `GET /graduation-progress/curriculum-graph` |
-| Plans | `POST /semester-plans/generate`, `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions` |
+| Plans | `POST /semester-plans/generate`, `POST /semester-plans/suggest-courses`, `POST /semester-plans/suggest-schedule`, `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions` |
 | Risks | `POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id` |
 
 Full contract: `docs/API_SPEC.md`. API version **1.0.0**.
@@ -174,14 +175,17 @@ Build a semester schedule at **`/plans/new`** or edit an existing manual plan at
 The planner is a CheeseFork-inspired schedule workspace (product inspiration only — no CheeseFork code in this repo):
 
 1. Select semester (year + Technion semester code: 200 winter, 201 spring, 202 summer).
-2. Search catalog courses with offerings for that semester; preview before adding.
-3. Add courses to your plan; choose exact lecture/tutorial/lab groups per course.
-4. The weekly grid shows **selected lesson events from active courses only**; inactive courses stay in the list but are excluded from credits, conflicts, exams, and export.
-5. Review exams, conflicts, and change warnings; save explicitly; share read-only via token or export `.ics`.
+2. Optional **auto-pick courses** — suggests matrix/progress-aware courses for the semester (respects max credits, offerings, exam/schedule conflicts). Preview only; edit before save. Status messages are localized (Hebrew/English).
+3. Search catalog courses with offerings for that semester; preview before adding.
+4. Add courses to your plan; choose exact lecture/tutorial/lab groups per course.
+5. The weekly grid shows **selected lesson events from active courses only**; inactive courses stay in the list but are excluded from credits, conflicts, exams, and export.
+6. Review exams, conflicts, and change warnings; save explicitly; share read-only via token or export `.ics`.
+
+**API (preview, no persist):** `POST /semester-plans/suggest-courses`, `POST /semester-plans/suggest-schedule`.
 
 Plan data is user-owned (`semester_plans` collection). Catalog/course/offering data is read-only. Shared plans: **`/shared/:token`** (read-only, no private profile data).
 
-See `docs/API_SPEC.md` for `selectedLessonEvents`, `PATCH .../lesson-selection`, and `plannerInsights`.
+See `docs/API_SPEC.md` for `selectedLessonEvents`, `PATCH .../lesson-selection`, `plannerInsights`, and suggestion `explanation` fields (`partialPlan`, `emptyPlan`).
 
 ## Data engineering
 

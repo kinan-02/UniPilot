@@ -8,9 +8,12 @@ import type {
   CourseDetail,
   CourseOffering,
   DegreeProgram,
+  ExamSummary,
   GraduationProgress,
   CurriculumGraph,
   PaginatedCourses,
+  PlannedCourse,
+  SelectedLessonEvent,
   SemesterPlan,
   StudentProfile,
   User,
@@ -193,6 +196,23 @@ export const plansApi = {
     }),
   generate: (body: Record<string, unknown>) =>
     apiRequest<{ semesterPlan: SemesterPlan }>('/semester-plans/generate', {
+      method: 'POST',
+      body,
+    }),
+  suggestCourses: (body: Record<string, unknown>) =>
+    apiRequest<{
+      plannedCourses: PlannedCourse[]
+      explanation: Record<string, unknown>
+    }>('/semester-plans/suggest-courses', {
+      method: 'POST',
+      body,
+    }),
+  suggestSchedule: (body: Record<string, unknown>) =>
+    apiRequest<{
+      selections: Array<{ courseNumber: string; selectedLessonEvents: SelectedLessonEvent[] }>
+      skippedCourses: Array<{ courseNumber?: string; reason?: string }>
+      examSummary?: ExamSummary
+    }>('/semester-plans/suggest-schedule', {
       method: 'POST',
       body,
     }),

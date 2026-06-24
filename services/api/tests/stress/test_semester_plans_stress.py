@@ -87,3 +87,43 @@ async def test_many_users_generate_plans_in_parallel(auth_client, mongo_database
 
     assert all(response.status_code == 201 for response in responses)
     assert elapsed_ms < 20000, f"15 user generates took {elapsed_ms:.1f}ms"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_suggest_courses_requests_for_same_user(auth_client, mongo_database):
+    from tests.fixtures.suggest_courses_fixtures import seed_suggest_courses_offerings
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    await seed_suggest_courses_offerings(mongo_database)
+    token = await _register(auth_client, "suggest-stress-user@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+
+    async def suggest(index: int):
+        return await auth_client.post(
+            "/semester-plans/suggest-courses",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"semesterCode": "2025-2", "maxCredits": 9},
+        )
+
+    start = time.perf_counter()
+    responses = await asyncio.gather(*[suggest(index) for index in range(25)])
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    assert all(response.status_code == 200 for response in responses)
+    assert elapsed_ms < 15000, f"25 concurrent suggest-courses took {elapsed_ms:.1f}ms"
+
+    list_response = await auth_client.get(
+        "/semester-plans",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert list_response.json()["data"]["pagination"]["total"] == 0

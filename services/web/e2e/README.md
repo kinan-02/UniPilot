@@ -50,6 +50,7 @@ npm run test:e2e:smoke          # Auth + onboarding smoke only
 npm run test:e2e:critical       # @critical journey (isolated fresh user)
 npm run test:e2e:a11y           # Accessibility project
 npm run test:e2e -- --project=planner-catalog
+npm run test:e2e -- --project=planner-auto-assist
 npm run test:e2e:report         # Open last HTML report
 ```
 

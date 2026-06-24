@@ -362,6 +362,8 @@ Phase 16 generates a deterministic next-semester plan from profile, graduation p
 | `POST /semester-plans` (manual create) | Done |
 | `PUT /semester-plans/:id` (update courses + weekly schedule) | Done |
 | `DELETE /semester-plans/:id` (archive) | Done |
+| `POST /semester-plans/suggest-courses` (preview auto-pick for manual planner) | Done |
+| `POST /semester-plans/suggest-schedule` (preview lesson selection) | Done |
 | Weekly schedule conflict detection (`weeklySchedule.conflicts`, `weekView`) | Done |
 | Offering resolution via `GET /catalog/courses/:number/offerings` data | Done |
 | API version `0.8.0` | Done |
@@ -569,7 +571,7 @@ Canonical roadmaps:
 
 **FastAPI is the sole client-facing API** (Docker service `api`, container port 8000). MongoDB database: `MONGO_DB` (default `unipilot_python`).
 
-Implemented: auth (JWT + Google OAuth + remember-me), profile, catalog (`/catalog/*`), completed courses, graduation progress, semester plans (generate + manual + weekly schedule + versioning), academic risk analyzer, transcript UI (i18n, paginated list, progress link). API version **1.0.0**. pytest: **1330** tests (unit, integration, security, stress). Web Vitest: **227**. Playwright E2E: **15** (runs in CI).
+Implemented: auth (JWT + Google OAuth + remember-me), profile, catalog (`/catalog/*`), completed courses, graduation progress, semester plans (generate + manual + auto-pick preview + weekly schedule + versioning), academic risk analyzer, transcript UI (i18n, paginated list, progress link). API version **1.0.0**. pytest: **1391** tests (unit, integration, security, stress). Web Vitest: **242**. Playwright E2E: **18** (runs in CI).
 
 ### Still pending
 

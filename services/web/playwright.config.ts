@@ -84,6 +84,15 @@ export default defineConfig({
       dependencies: ['setup'],
     },
     {
+      name: 'planner-auto-assist',
+      testMatch: /planner-auto-assist\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
+      },
+      dependencies: ['setup'],
+    },
+    {
       name: 'critical-paths',
       testMatch: /critical-paths\.spec\.ts/,
       use: {

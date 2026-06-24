@@ -27,6 +27,8 @@ from app.schemas.semester_plan import (
     PatchMaybeCoursesRequest,
     PatchPlannedCourseRequest,
     ReorderPlannedCoursesRequest,
+    SuggestSemesterCoursesRequest,
+    SuggestSemesterScheduleRequest,
     UpdateSemesterPlanRequest,
     UpdateSemesterPlanShareRequest,
 )
@@ -44,6 +46,10 @@ from app.services.manual_semester_plan_service import (
     update_semester_plan_share_by_user,
 )
 from app.services.semester_plan_service import generate_and_store_semester_plan
+from app.services.semester_plan_suggestion_service import (
+    suggest_semester_courses,
+    suggest_semester_schedule,
+)
 
 router = APIRouter(prefix="/semester-plans", tags=["semester-plans"])
 
@@ -196,6 +202,53 @@ async def generate_semester_plan(
             "semesterPlan": await _public_plan_with_insights(
                 database, auth.user_id, result["plan"], recompute=True, persist_snapshot=True
             )
+        }
+    )
+
+
+@router.post("/suggest-courses")
+async def suggest_courses_for_planner(
+    payload: SuggestSemesterCoursesRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    database = await get_database()
+    result = await suggest_semester_courses(
+        database,
+        auth.user_id,
+        semester_code=payload.semesterCode,
+        max_credits=payload.maxCredits,
+    )
+    _handle_planning_context_error(result)
+    if result.get("status") == "validation_error":
+        raise HTTPException(status_code=400, detail=result.get("errors") or ["Invalid request"])
+    return success_response(
+        {
+            "plannedCourses": result["plannedCourses"],
+            "explanation": result["explanation"],
+        }
+    )
+
+
+@router.post("/suggest-schedule")
+async def suggest_schedule_for_planner(
+    payload: SuggestSemesterScheduleRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    database = await get_database()
+    result = await suggest_semester_schedule(
+        database,
+        auth.user_id,
+        semester_code=payload.semesterCode,
+        planned_courses=[course.model_dump(exclude_none=True) for course in payload.plannedCourses],
+    )
+    _handle_planning_context_error(result)
+    if result.get("status") == "validation_error":
+        raise HTTPException(status_code=400, detail=result.get("errors") or ["Invalid request"])
+    return success_response(
+        {
+            "selections": result["selections"],
+            "skippedCourses": result["skippedCourses"],
+            "examSummary": result["examSummary"],
         }
     )
 

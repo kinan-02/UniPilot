@@ -21,6 +21,32 @@ async def test_semester_plans_require_jwt(auth_client):
 
 
 @pytest.mark.asyncio
+async def test_suggest_courses_requires_jwt(auth_client):
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        json={"semesterCode": "2025-2", "maxCredits": 9},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_suggest_schedule_requires_jwt(auth_client):
+    response = await auth_client.post(
+        "/semester-plans/suggest-schedule",
+        json={
+            "semesterCode": "2025-2",
+            "plannedCourses": [
+                {
+                    "courseId": "665f2b0f2a3f7b2a1a9a7c01",
+                    "courseNumber": "00940345",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_cross_user_plan_access_returns_404(auth_client, mongo_database):
     fixtures = await seed_graduation_progress_fixtures(mongo_database)
 
@@ -71,6 +97,58 @@ async def test_generate_rejects_unknown_fields(auth_client, mongo_database):
         "/semester-plans/generate",
         headers={"Authorization": f"Bearer {token}"},
         json={"semesterCode": "2025-2", "userId": "evil"},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_rejects_unknown_fields(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "suggest-strict@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-2", "plannedCourses": []},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_suggest_schedule_rejects_unknown_fields(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "suggest-schedule-strict@example.com")
+    await auth_client.post(
+        "/student-profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "institutionId": "technion",
+            "programType": "BSc",
+            "degreeId": fixtures["programId"],
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+        },
+    )
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-schedule",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "plannedCourses": [{"courseId": fixtures["courseAId"], "courseNumber": fixtures["courseANumber"]}],
+            "maxCredits": 9,
+        },
     )
     assert response.status_code == 400
 

@@ -6,6 +6,7 @@ import {
   eventsFromOffering,
   type ClientScheduleCourse,
 } from '../lib/clientSchedulePreview'
+import { buildClientExamSummary } from '../lib/clientExamSummary'
 
 import type { CustomEvent } from '../types/api'
 
@@ -53,10 +54,11 @@ export function useClientSchedulePreview({
     },
     enabled: Boolean(academicYear && semesterCode && activeCourses.length),
     staleTime: 30_000,
+    placeholderData: (previous) => previous,
   })
 
   const data = useMemo(() => {
-    if (!offeringsQuery.data) return undefined
+    if (!offeringsQuery.data || activeCourses.length === 0) return undefined
 
     const allEvents = activeCourses.flatMap((course) =>
       eventsFromOffering(
@@ -68,7 +70,10 @@ export function useClientSchedulePreview({
     return {
       schedule: buildClientWeeklySchedule(allEvents, customEvents),
       offeringsByCourse: offeringsQuery.data.offeringsByCourse,
-      missingOfferings: offeringsQuery.data.missingOfferings,
+      missingOfferings: offeringsQuery.data.missingOfferings.filter((courseNumber) =>
+        activeCourses.some((course) => course.courseNumber === courseNumber),
+      ),
+      examSummary: buildClientExamSummary(activeCourses, offeringsQuery.data.offeringsByCourse),
     }
   }, [activeCourses, customEvents, offeringsQuery.data])
 

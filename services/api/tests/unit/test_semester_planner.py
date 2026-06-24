@@ -455,3 +455,158 @@ def test_build_plan_summary_empty_no_blocked():
         skipped_workload_count=0,
     )
     assert "No eligible courses are available for the requested semester workload" in result
+
+
+def test_append_graduation_mandatory_candidates_merges_with_matrix_mandatory():
+    from bson import ObjectId
+    from app.planning.semester_planner import append_graduation_mandatory_candidates
+
+    matrix_course_id = str(ObjectId())
+    graduation_course_id = str(ObjectId())
+    mandatory = [
+        {
+            "_id": matrix_course_id,
+            "number": "00940345",
+            "title": "Matrix course",
+            "credits": 4.0,
+            "prerequisites": [],
+        }
+    ]
+    courses_by_id = {
+        matrix_course_id: mandatory[0],
+        graduation_course_id: {
+            "_id": graduation_course_id,
+            "number": "00940411",
+            "title": "Graduation mandatory",
+            "credits": 3.5,
+            "prerequisites": [],
+        },
+    }
+    graduation_progress = {
+        "remainingMandatoryCourses": [{"courseId": graduation_course_id}],
+    }
+
+    merged = append_graduation_mandatory_candidates(
+        mandatory,
+        graduation_progress=graduation_progress,
+        courses_by_id=courses_by_id,
+        completed_course_ids=set(),
+    )
+
+    numbers = sorted(course["number"] for course in merged)
+    assert numbers == ["00940345", "00940411"]
+
+
+def test_matrix_semesters_for_planning_limits_brand_new_students_to_first_semester():
+    from app.planning.semester_planner import matrix_semesters_for_planning
+
+    mandatory_by_semester = {
+        1: [{"_id": "a", "number": "10001"}],
+        2: [{"_id": "b", "number": "10002"}],
+    }
+
+    assert matrix_semesters_for_planning(
+        mandatory_by_semester,
+        active_semester=1,
+        completed_course_ids=set(),
+    ) == [1]
+
+    assert matrix_semesters_for_planning(
+        mandatory_by_semester,
+        active_semester=1,
+        completed_course_ids={"completed"},
+    ) == [1, 2]
+
+
+def test_build_matrix_course_semester_index_ignores_missing_course_number():
+    from app.planning.semester_planner import build_matrix_course_semester_index
+
+    index = build_matrix_course_semester_index(
+        [
+            {
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "courseReferences": [{"courseNumber": None}, {"courseNumber": "10001"}],
+            }
+        ]
+    )
+    assert index == {"10001": 1}
+
+
+def test_resolve_active_matrix_semester_returns_none_without_documents():
+    from app.planning.semester_planner import resolve_active_matrix_semester
+
+    assert (
+        resolve_active_matrix_semester(
+            [],
+            courses_by_id={},
+            courses_by_number={},
+            completed_course_ids=set(),
+        )
+        is None
+    )
+
+
+def test_resolve_active_matrix_semester_skips_unknown_course_references():
+    from app.planning.semester_planner import resolve_active_matrix_semester
+
+    result = resolve_active_matrix_semester(
+        [
+            {
+                "ruleExpression": {"type": "semester_matrix", "semester": 1},
+                "courseReferences": [{"courseNumber": "missing"}],
+            }
+        ],
+        courses_by_id={},
+        courses_by_number={},
+        completed_course_ids=set(),
+    )
+    assert result is None
+
+
+def test_partition_mandatory_by_matrix_semester_splits_unmapped():
+    from app.planning.semester_planner import partition_mandatory_by_matrix_semester
+
+    mandatory = [
+        {"_id": "a", "number": "10001"},
+        {"_id": "b", "number": "99999"},
+    ]
+    unmapped, by_semester = partition_mandatory_by_matrix_semester(
+        mandatory,
+        {"10001": 1},
+    )
+    assert len(unmapped) == 1
+    assert by_semester[1][0]["number"] == "10001"
+
+
+def test_append_graduation_mandatory_candidates_skips_unknown_course_refs():
+    from app.planning.semester_planner import append_graduation_mandatory_candidates
+
+    merged = append_graduation_mandatory_candidates(
+        [{"_id": "a", "number": "10001"}],
+        graduation_progress={"remainingMandatoryCourses": [{"courseId": "missing"}]},
+        courses_by_id={},
+        completed_course_ids=set(),
+    )
+    assert len(merged) == 1
+
+
+def test_matrix_semesters_for_planning_returns_empty_when_no_active_semester():
+    from app.planning.semester_planner import matrix_semesters_for_planning
+
+    assert (
+        matrix_semesters_for_planning({1: []}, active_semester=None, completed_course_ids=set())
+        == []
+    )
+
+
+def test_matrix_semesters_for_planning_returns_empty_when_no_available_semesters():
+    from app.planning.semester_planner import matrix_semesters_for_planning
+
+    assert (
+        matrix_semesters_for_planning(
+            {1: []},
+            active_semester=2,
+            completed_course_ids={"done"},
+        )
+        == []
+    )

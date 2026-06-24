@@ -55,6 +55,36 @@ class GenerateSemesterPlanRequest(BaseModel):
         return self
 
 
+SuggestSemesterCoursesRequest = GenerateSemesterPlanRequest
+
+
+class SuggestScheduleCourseInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    courseId: str
+    courseNumber: str = Field(min_length=1, max_length=32)
+    courseTitle: str | None = Field(default=None, max_length=240)
+    isActive: bool = True
+    selectedLessonEvents: list[SelectedLessonEventInput] | None = None
+
+    @field_validator("courseId")
+    @classmethod
+    def validate_course_id(cls, value: str) -> str:
+        return validate_object_id(value)
+
+
+class SuggestSemesterScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    semesterCode: str
+    plannedCourses: list[SuggestScheduleCourseInput] = Field(min_length=1)
+
+    @field_validator("semesterCode")
+    @classmethod
+    def validate_semester_code_field(cls, value: str) -> str:
+        return validate_semester_code(value)
+
+
 class SelectedLessonEventInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

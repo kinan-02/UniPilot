@@ -23,6 +23,7 @@ import {
   parseSemesterCode,
   suggestedPlanName,
 } from '../../lib/semester'
+import { formatCredits } from '../../lib/utils'
 import {
   validatePlanName,
   validateSemesterCode,
@@ -38,6 +39,11 @@ import type {
 } from '../../types/api'
 import { Card, Spinner } from '../ui/Card'
 import { buildPlanChanges } from '../../lib/plannerChanges'
+import {
+  formatAutoPickStatus,
+  mergeSuggestedCourses,
+  type CourseSuggestionExplanation,
+} from '../../lib/plannerAutoAssist'
 import {
   addMaybeCourseToSnapshot,
   filterSearchItemsForPlanner,
@@ -59,6 +65,7 @@ import {
   type PlannerSnapshot,
 } from '../../types/planner'
 import { ChangesDialog } from './ChangesDialog'
+import { PlannerAutoAssistPanel } from './PlannerAutoAssistPanel'
 import { PlannerCourseSearch } from './PlannerCourseSearch'
 import { PlannerTopBar } from './PlannerTopBar'
 import { CustomEventsPanel } from './CustomEventsPanel'
@@ -172,6 +179,8 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   const hydratedPlanIdRef = useRef<string | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [autoAssistStatus, setAutoAssistStatus] = useState('')
+  const [autoAssistError, setAutoAssistError] = useState('')
 
   const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
   const parsedSemester = parseSemesterCode(semesterCode)
@@ -258,13 +267,16 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   })
 
   const displaySchedule = useMemo(() => {
-    // CheeseFork-style: live grid always follows current draft selections.
-    if (activeCourses.length && clientPreviewQuery.data?.schedule) {
-      return clientPreviewQuery.data.schedule
+    const hasDraftCourses = previewCourses.length > 0
+    // Live draft: never fall back to persisted server schedule (it can be stale after removals).
+    if (hasDraftCourses) {
+      return clientPreviewQuery.data?.schedule
     }
-    if (weeklySchedule?.weekView?.length) return weeklySchedule
+    if (weeklySchedule?.weekView?.length) {
+      return weeklySchedule
+    }
     return clientPreviewQuery.data?.schedule
-  }, [activeCourses.length, clientPreviewQuery.data?.schedule, weeklySchedule])
+  }, [previewCourses.length, clientPreviewQuery.data?.schedule, weeklySchedule])
 
   const totalCredits = useMemo(
     () => activeCourses.reduce((sum, course) => sum + (course.credits || 0), 0),
@@ -276,7 +288,14 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     [displaySchedule],
   )
 
-  const examCount = plannerInsights?.examSummary?.totalExams ?? plannerInsights?.examSummary?.exams?.length ?? 0
+  const displayExamSummary = useMemo(() => {
+    if (clientPreviewQuery.data?.examSummary) {
+      return clientPreviewQuery.data.examSummary
+    }
+    return plannerInsights?.examSummary
+  }, [clientPreviewQuery.data?.examSummary, plannerInsights?.examSummary])
+
+  const examCount = displayExamSummary?.totalExams ?? displayExamSummary?.exams?.length ?? 0
   const conflictCount =
     displaySchedule?.conflicts?.length ?? plannerInsights?.scheduleConflicts?.length ?? 0
 
@@ -504,7 +523,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     const content = generatePlanIcs({
       planName: name.trim() || t('plans.newPlan'),
       schedule: displaySchedule ?? weeklySchedule,
-      examSummary: plannerInsights?.examSummary,
+      examSummary: displayExamSummary,
       customEvents,
       customEventsDirty,
     })
@@ -562,6 +581,40 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     )
   }
 
+  const autoPickCoursesMutation = useMutation({
+    mutationFn: async (maxCreditsValue: number) => {
+      await ensurePlanningProfileReady()
+      return plansApi.suggestCourses({
+        semesterCode,
+        maxCredits: maxCreditsValue,
+      })
+    },
+    onSuccess: (data) => {
+      let addedCount = 0
+      setCourses((prev) => {
+        const merged = mergeSuggestedCourses(prev, data.plannedCourses)
+        addedCount = merged.length - prev.length
+        return merged
+      })
+      setAutoAssistError('')
+      setErrors([])
+
+      const explanation = data.explanation as CourseSuggestionExplanation
+      setAutoAssistStatus(
+        formatAutoPickStatus(addedCount, explanation, {
+          success: t('planner.autoPickSuccess'),
+          successPartial: t('planner.autoPickSuccessPartial'),
+          empty: t('planner.autoPickEmpty'),
+          noNewCourses: t('planner.autoPickNoNewCourses'),
+        }, formatCredits),
+      )
+    },
+    onError: (err) => {
+      setAutoAssistStatus('')
+      setAutoAssistError(isAuthError(err) ? err.message : t('common.errorGeneric'))
+    },
+  })
+
   const persistPlanWithSchedule = async () => {
     if (!validateForm()) throw new Error('validation')
     await ensurePlanningProfileReady()
@@ -574,6 +627,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     const nameResult = validatePlanName(name)
     const semesterResult = validateSemesterCode(semesterCode)
     if (!nameResult.ok || !semesterResult.ok) throw new Error('validation')
+    if (courses.length === 0 && maybeCourses.length === 0) throw new Error('validation')
     await ensurePlanningProfileReady()
     const payload = buildPayload(true)
     return plansApi.update(planId!, payload)
@@ -661,13 +715,28 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     if (skipAutoInsightsRef.current) return
     if (!planId) return
     if (selectedPersistSignature === persistedSelectedSignature) return
+    if (courses.length === 0 && maybeCourses.length === 0) {
+      setPlannerInsights(undefined)
+      setWeeklySchedule(undefined)
+      setPersistedSelectedSignature(selectedPersistSignature)
+      setPersistedMaybeSignature(maybePersistSignature)
+      setErrors([])
+      return
+    }
 
     const timer = setTimeout(() => {
       insightsRefreshMutation.mutate()
     }, 400)
 
     return () => clearTimeout(timer)
-  }, [selectedPersistSignature, persistedSelectedSignature, planId])
+  }, [
+    selectedPersistSignature,
+    persistedSelectedSignature,
+    maybePersistSignature,
+    planId,
+    courses.length,
+    maybeCourses.length,
+  ])
 
   useEffect(() => {
     if (skipAutoInsightsRef.current) return
@@ -712,10 +781,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   ])
 
   const showScheduleGrid =
-    semesterSelected &&
-    (activeCourses.length > 0 ||
-      activeMaybeCourses.length > 0 ||
-      Boolean(displaySchedule?.weekView?.length))
+    semesterSelected && (activeCourses.length > 0 || activeMaybeCourses.length > 0)
 
   const slotTypeMatches = (slotTypes: string[] | undefined, filter: string) => {
     if (!filter) return true
@@ -765,14 +831,22 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       selectedGroups: course.selectedGroups,
       selectedLessonEvents: course.selectedLessonEvents,
     })
+    const offeringsByCourse: Record<string, (typeof clientPreviewQuery.data)['offeringsByCourse'][string]> = {}
+    for (const course of previewCourses) {
+      const offering = clientPreviewQuery.data!.offeringsByCourse[course.courseNumber]
+      if (offering) {
+        offeringsByCourse[course.courseNumber] = offering
+      }
+    }
     return buildScheduleGridEvents({
       courses: activeCourses.map(toClientCourse),
       maybeCourses: activeMaybeCourses.map(toClientCourse),
-      offeringsByCourse: clientPreviewQuery.data.offeringsByCourse,
+      offeringsByCourse,
       hoveredLessonEventId,
       customEvents,
     })
   }, [
+    previewCourses,
     activeCourses,
     activeMaybeCourses,
     clientPreviewQuery.data?.offeringsByCourse,
@@ -850,6 +924,16 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
         changesCount={planChanges.length}
       />
 
+      <PlannerAutoAssistPanel
+        semesterCode={semesterCode}
+        semesterSelected={semesterSelected}
+        defaultMaxCredits={maxCreditsPref}
+        pickingCourses={autoPickCoursesMutation.isPending}
+        statusMessage={autoAssistStatus}
+        errorMessage={autoAssistError}
+        onAutoPickCourses={(maxCreditsValue) => autoPickCoursesMutation.mutate(maxCreditsValue)}
+      />
+
       {errors.length ? (
         <div className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 px-4 py-3 text-sm text-[var(--color-danger)] print:hidden">
           {errors.join(' · ')}
@@ -919,7 +1003,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
                 ) : null}
                 {!planId && activeCourses.length ? (
                   <p className="mt-3 text-xs text-[var(--color-text-muted)] print:hidden">
-                    {t('planner.saveForPrereqExams')}
+                    {t('planner.saveForPrereqChecks')}
                   </p>
                 ) : null}
               </>
@@ -928,7 +1012,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
 
           {activeCourses.length ? (
             <ExamSummaryPanel
-              summary={plannerInsights?.examSummary}
+              summary={displayExamSummary}
               highlightedCourseNumber={highlightedCourseNumber}
               highlightedCourseNumbers={conflictHighlightNumbers ?? undefined}
               onExamHover={handleCourseHover}

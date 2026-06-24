@@ -184,6 +184,122 @@ def _mandatory_from_semester_matrix(
     return candidates
 
 
+def build_matrix_course_semester_index(
+    semester_matrix_documents: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Map course number to the earliest matrix semester that lists it."""
+    index: dict[str, int] = {}
+    for matrix_document in semester_matrix_documents:
+        semester_number = _matrix_semester_number(matrix_document)
+        for reference in matrix_document.get("courseReferences") or []:
+            course_number = reference.get("courseNumber")
+            if course_number is None:
+                continue
+            number = str(course_number)
+            index[number] = min(index.get(number, semester_number), semester_number)
+    return index
+
+
+def resolve_active_matrix_semester(
+    semester_matrix_documents: list[dict[str, Any]],
+    *,
+    courses_by_id: dict[str, dict[str, Any]],
+    courses_by_number: dict[str, dict[str, Any]],
+    completed_course_ids: set[str],
+) -> int | None:
+    """Earliest matrix semester that still has incomplete courses."""
+    if not semester_matrix_documents:
+        return None
+
+    sorted_matrices = sorted(
+        semester_matrix_documents,
+        key=lambda document: _matrix_semester_number(document),
+    )
+    for matrix_document in sorted_matrices:
+        semester_number = _matrix_semester_number(matrix_document)
+        has_incomplete = False
+        for reference in matrix_document.get("courseReferences") or []:
+            course = _resolve_matrix_course(
+                reference,
+                courses_by_id=courses_by_id,
+                courses_by_number=courses_by_number,
+            )
+            if course is None:
+                continue
+            if normalize_course_id(course["_id"]) not in completed_course_ids:
+                has_incomplete = True
+                break
+        if has_incomplete:
+            return semester_number
+    return None
+
+
+def partition_mandatory_by_matrix_semester(
+    mandatory_candidates: list[dict[str, Any]],
+    matrix_semester_index: dict[str, int],
+) -> tuple[list[dict[str, Any]], dict[int, list[dict[str, Any]]]]:
+    """Split mandatory candidates into degree-only refs and matrix semester buckets."""
+    unmapped: list[dict[str, Any]] = []
+    by_semester: dict[int, list[dict[str, Any]]] = {}
+    for course in mandatory_candidates:
+        course_number = str(course.get("number") or "")
+        semester_number = matrix_semester_index.get(course_number)
+        if semester_number is None:
+            unmapped.append(course)
+            continue
+        by_semester.setdefault(semester_number, []).append(course)
+    return unmapped, by_semester
+
+
+def append_graduation_mandatory_candidates(
+    mandatory_candidates: list[dict[str, Any]],
+    *,
+    graduation_progress: dict[str, Any],
+    courses_by_id: dict[str, dict[str, Any]],
+    completed_course_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Add hard-requirement mandatory courses from graduation progress (deduped)."""
+    seen_ids = {normalize_course_id(course["_id"]) for course in mandatory_candidates}
+    extras: list[dict[str, Any]] = []
+
+    for course_ref in graduation_progress.get("remainingMandatoryCourses") or []:
+        course = resolve_catalog_course(courses_by_id, course_ref)
+        if course is None:
+            continue
+        course_id = normalize_course_id(course["_id"])
+        if course_id in completed_course_ids or course_id in seen_ids:
+            continue
+        extras.append(course)
+        seen_ids.add(course_id)
+
+    if not extras:
+        return mandatory_candidates
+    return sort_courses_by_number([*mandatory_candidates, *extras])
+
+
+def matrix_semesters_for_planning(
+    mandatory_by_semester: dict[int, list[dict[str, Any]]],
+    *,
+    active_semester: int | None,
+    completed_course_ids: set[str],
+) -> list[int]:
+    """Choose which matrix semesters to draw from based on student progress."""
+    if active_semester is None:
+        return []
+
+    available = sorted(
+        semester for semester in mandatory_by_semester if semester >= active_semester
+    )
+    if not available:
+        return []
+
+    # Brand-new students: focus on the first incomplete matrix semester only.
+    if not completed_course_ids and active_semester == available[0]:
+        return [active_semester]
+
+    return available
+
+
 def _mandatory_from_course_references(
     hard_requirements: list[dict[str, Any]],
     courses_by_id: dict[str, dict[str, Any]],
@@ -339,18 +455,20 @@ def build_candidate_pools(
             courses_by_number,
             completed_course_ids,
         )
+    elif mandatory_candidates:
+        mandatory_candidates = append_graduation_mandatory_candidates(
+            mandatory_candidates,
+            graduation_progress=graduation_progress,
+            courses_by_id=courses_by_id,
+            completed_course_ids=completed_course_ids,
+        )
 
-    elective_requirement_progress = next(
-        (
-            entry
-            for entry in (graduation_progress.get("requirementProgress") or [])
-            if entry.get("requirementType") == "elective"
-        ),
-        None,
-    )
-    elective_remaining_refs = (
-        (elective_requirement_progress or {}).get("remainingCourses") or []
-    )
+    elective_remaining_refs: list[dict[str, Any]] = []
+    for entry in graduation_progress.get("requirementProgress") or []:
+        if entry.get("requirementType") != "elective":
+            continue
+        elective_remaining_refs.extend(entry.get("remainingCourses") or [])
+
     elective_candidates = sort_courses_by_number(
         [
             course

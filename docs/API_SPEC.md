@@ -525,6 +525,8 @@ Calculate graduation progress for the authenticated user.
 
 ### Implemented endpoints
 - `POST /semester-plans/generate` (protected) — generate and persist a deterministic next-semester plan
+- `POST /semester-plans/suggest-courses` (protected) — preview course suggestions for the manual planner (no persist)
+- `POST /semester-plans/suggest-schedule` (protected) — preview conflict-free lesson selections for planned courses
 - `POST /semester-plans` (protected) — create a student-built manual plan
 - `GET /semester-plans` (protected) — list own planning history (`?page=1&limit=50`)
 - `GET /semester-plans/:id` (protected) — get one owned plan by id
@@ -605,6 +607,88 @@ Calculate graduation progress for the authenticated user.
 - `explanation.blockedByPrerequisites` includes `missingPrerequisites` (course id/number/title) and a human-readable `reason`.
 - `explanation.partialPlan` is `true` when `minCredits` or `maxCredits` targets cannot be fully met.
 - Returns partial/empty plans with structured `explanation` when workload or eligibility limits apply.
+
+### POST /semester-plans/suggest-courses
+
+Preview-only course suggestions for the manual planner UI. Does **not** persist a plan.
+
+**Body (strict):** same as `POST /semester-plans/generate` (`semesterCode`, optional `maxCredits`; unknown fields rejected).
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "data": {
+    "plannedCourses": [
+      {
+        "courseId": "...",
+        "courseNumber": "00940345",
+        "courseTitle": "...",
+        "credits": 4,
+        "category": "mandatory",
+        "selectedLessonEvents": [{ "eventId": "...", "type": "lecture" }]
+      }
+    ],
+    "explanation": {
+      "summary": "English summary for logs/API consumers",
+      "semesterCode": "2025-2",
+      "maxCredits": 18,
+      "totalRecommendedCredits": 7.5,
+      "selectedCount": 2,
+      "partialPlan": true,
+      "emptyPlan": false,
+      "skippedDueToWorkload": [],
+      "skippedDueToConflicts": [],
+      "skippedDueToUnavailable": [],
+      "activeMatrixSemester": 1,
+      "rulesApplied": ["..."]
+    }
+  },
+  "error": null
+}
+```
+
+- Uses progress-aware matrix selection, exact-term offerings, max-credits workload, and conflict-aware lesson/exam checks.
+- `partialPlan` / `emptyPlan` are structured flags for localized UI messaging (web clients should not display `summary` verbatim).
+
+### POST /semester-plans/suggest-schedule
+
+Preview-only lesson assignments for courses already on the manual planner draft.
+
+**Body (strict):**
+```json
+{
+  "semesterCode": "2025-2",
+  "plannedCourses": [
+    {
+      "courseId": "665f2b0f2a3f7b2a1a9a7c01",
+      "courseNumber": "00940345",
+      "courseTitle": "Optional",
+      "isActive": true
+    }
+  ]
+}
+```
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "data": {
+    "selections": [
+      {
+        "courseNumber": "00940345",
+        "selectedLessonEvents": [{ "eventId": "...", "type": "lecture" }]
+      }
+    ],
+    "skippedCourses": [],
+    "examSummary": { }
+  },
+  "error": null
+}
+```
+
+- Requires at least one active planned course; returns `400` when all courses are inactive or validation fails.
 
 ### POST /semester-plans (manual create)
 

@@ -53,4 +53,45 @@ export class PlannerPage extends BasePage {
     await this.page.getByRole('button', { name: /שמירת תוכנית|Save plan/i }).click()
     await expect(this.page).toHaveURL(/\/plans\/[^/]+\/edit/, { timeout: 20_000 })
   }
+
+  get autoAssistPanel() {
+    return this.page
+      .getByTestId('planner-auto-assist-panel')
+      .or(this.page.getByRole('heading', { name: /עוזר תכנון|Planning assistant/i }).locator('..'))
+  }
+
+  get autoPickButton() {
+    return this.page
+      .getByTestId('planner-auto-pick-button')
+      .or(this.page.getByRole('button', { name: /בחירת קורסים אוטומטית|Auto-pick courses/i }))
+  }
+
+  get autoPickStatus() {
+    return this.page
+      .getByTestId('planner-auto-pick-status')
+      .or(
+        this.page
+          .locator('p')
+          .filter({ hasText: /נוספו|לא נמצאו|כבר נמצאים|Added|No conflict-free|already in your list/i }),
+      )
+  }
+
+  async setMaxCredits(value: string) {
+    const input = this.page.getByRole('spinbutton', { name: /מקסימום נק״ז|Max credits/i })
+    await input.fill(value)
+  }
+
+  async autoPickCourses(maxCredits?: string) {
+    await expect(this.autoPickButton).toBeVisible({ timeout: 15_000 })
+    if (maxCredits !== undefined) {
+      await this.setMaxCredits(maxCredits)
+    }
+    const suggestResponse = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/semester-plans/suggest-courses') && response.status() === 200,
+      { timeout: 30_000 },
+    )
+    await this.autoPickButton.click()
+    await suggestResponse
+  }
 }
