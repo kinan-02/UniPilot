@@ -254,3 +254,9 @@ async def test_load_exact_term_offerings_indexes_canonical_number_aliases():
     assert "00940345" in queried_numbers
     assert result["00940345"] == offering
     assert result["0940345"] == offering
+
+
+def test_expand_course_numbers_for_lookup_skips_empty_values():
+    from app.services.semester_plan_suggestion_service import _expand_course_numbers_for_lookup
+
+    assert _expand_course_numbers_for_lookup(["", "  ", "0940345"]) == ["00940345", "0940345"]
