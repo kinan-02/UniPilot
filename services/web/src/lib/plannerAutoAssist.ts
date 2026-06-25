@@ -96,6 +96,10 @@ type AutoPickStatusLabels = {
   emptyWorkload: string
   emptyConflicts: string
   emptyUnavailable: string
+  emptyMixed: string
+  emptyReasonWorkload: string
+  emptyReasonConflicts: string
+  emptyReasonUnavailable: string
   noNewCourses: string
   mergeFiltered: string
   overBudget: string
@@ -103,11 +107,34 @@ type AutoPickStatusLabels = {
 
 type EmptySkipReason = 'workload' | 'conflicts' | 'unavailable'
 
-function primaryEmptySkipReason(explanation: CourseSuggestionExplanation): EmptySkipReason | null {
-  if ((explanation.skippedDueToWorkload?.length ?? 0) > 0) return 'workload'
-  if ((explanation.skippedDueToConflicts?.length ?? 0) > 0) return 'conflicts'
-  if ((explanation.skippedDueToUnavailable?.length ?? 0) > 0) return 'unavailable'
-  return null
+function collectEmptySkipReasons(explanation: CourseSuggestionExplanation): EmptySkipReason[] {
+  const reasons: EmptySkipReason[] = []
+  if ((explanation.skippedDueToWorkload?.length ?? 0) > 0) reasons.push('workload')
+  if ((explanation.skippedDueToConflicts?.length ?? 0) > 0) reasons.push('conflicts')
+  if ((explanation.skippedDueToUnavailable?.length ?? 0) > 0) reasons.push('unavailable')
+  return reasons
+}
+
+function buildEmptySkipReasonDetails(
+  reasons: EmptySkipReason[],
+  labels: Pick<
+    AutoPickStatusLabels,
+    'emptyReasonWorkload' | 'emptyReasonConflicts' | 'emptyReasonUnavailable'
+  >,
+  formatCredits: (value: number) => string,
+  maxCredits: number,
+): string {
+  const parts: string[] = []
+  if (reasons.includes('workload')) {
+    parts.push(labels.emptyReasonWorkload.replace('{max}', formatCredits(maxCredits)))
+  }
+  if (reasons.includes('conflicts')) {
+    parts.push(labels.emptyReasonConflicts)
+  }
+  if (reasons.includes('unavailable')) {
+    parts.push(labels.emptyReasonUnavailable)
+  }
+  return parts.join(', ')
 }
 
 export function formatAutoPickStatus(
@@ -160,15 +187,24 @@ export function formatAutoPickStatus(
     return labels.noNewCourses
   }
 
-  const skipReason = primaryEmptySkipReason(explanation)
-  if (skipReason === 'workload') {
-    return labels.emptyWorkload.replace('{max}', formatCredits(maxCredits))
+  const skipReasons = collectEmptySkipReasons(explanation)
+  if (skipReasons.length > 1) {
+    return labels.emptyMixed.replace(
+      '{reasons}',
+      buildEmptySkipReasonDetails(skipReasons, labels, formatCredits, maxCredits),
+    )
   }
-  if (skipReason === 'conflicts') {
-    return labels.emptyConflicts
-  }
-  if (skipReason === 'unavailable') {
-    return labels.emptyUnavailable
+  if (skipReasons.length === 1) {
+    const skipReason = skipReasons[0]
+    if (skipReason === 'workload') {
+      return labels.emptyWorkload.replace('{max}', formatCredits(maxCredits))
+    }
+    if (skipReason === 'conflicts') {
+      return labels.emptyConflicts
+    }
+    if (skipReason === 'unavailable') {
+      return labels.emptyUnavailable
+    }
   }
 
   return labels.empty

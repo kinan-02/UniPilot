@@ -44,3 +44,14 @@ test.describe('Planner auto-pick assistant', () => {
     await expect(plannerPage.autoPickStatus).not.toHaveText(/Partial plan generated|maxCredits/i)
   })
 })
+
+test.describe('Planner auto-pick assistant on edit plan', () => {
+  test('auto-pick on saved plan shows localized status', async ({ plannerPage }) => {
+    await plannerPage.openSavedPlanForEdit(E2E_PLANNER_SEMESTER)
+    await plannerPage.autoPickCourses()
+
+    await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
+    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים|סוננו|מעל מגבלת|מתאימים|מערכת|נק״ז/)
+    await expect(plannerPage.autoPickStatus).not.toHaveText(/Partial plan generated|maxCredits/i)
+  })
+})

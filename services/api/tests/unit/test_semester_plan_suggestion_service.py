@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.services.semester_plan_suggestion_service import (
+    _draft_course_ids,
     suggest_semester_courses,
     suggest_semester_schedule,
 )
@@ -260,3 +261,15 @@ def test_expand_course_numbers_for_lookup_skips_empty_values():
     from app.services.semester_plan_suggestion_service import _expand_course_numbers_for_lookup
 
     assert _expand_course_numbers_for_lookup(["", "  ", "0940345"]) == ["00940345", "0940345"]
+
+
+def test_draft_course_ids_ignores_inactive_planned_courses() -> None:
+    draft_ids = _draft_course_ids(
+        [
+            {"courseId": "active-a", "isActive": True},
+            {"courseId": "inactive-b", "isActive": False},
+            {"courseId": "", "isActive": True},
+        ]
+    )
+
+    assert draft_ids == {"active-a"}

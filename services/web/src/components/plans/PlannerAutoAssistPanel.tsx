@@ -9,6 +9,7 @@ import { Input } from '../ui/Input'
 type PlannerAutoAssistPanelProps = {
   semesterCode: string
   semesterSelected: boolean
+  semesterOptions?: string[]
   defaultMaxCredits?: number
   pickingCourses: boolean
   statusMessage?: string
@@ -20,6 +21,7 @@ type PlannerAutoAssistPanelProps = {
 export function PlannerAutoAssistPanel({
   semesterCode,
   semesterSelected,
+  semesterOptions = [],
   defaultMaxCredits,
   pickingCourses,
   statusMessage,
@@ -42,6 +44,13 @@ export function PlannerAutoAssistPanel({
     const semesterResult = validateSemesterCode(semesterCode)
     if (!semesterResult.ok) {
       setLocalError(t(semesterResult.message))
+      return
+    }
+    if (
+      semesterOptions.length > 0 &&
+      !semesterOptions.includes(semesterCode.trim())
+    ) {
+      setLocalError(t('plans.plannerSemesterUnavailable'))
       return
     }
     const creditsResult = validateCredits(Number(maxCredits))

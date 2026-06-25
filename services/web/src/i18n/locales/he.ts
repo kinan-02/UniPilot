@@ -247,6 +247,10 @@ export const he = {
       'קורסים מתאימים מתנגשים עם המערכת או מועדי המבחנים הנוכחיים. עדכנו בחירות שיעור או הסירו קורסים מתנגשים.',
     autoPickEmptyUnavailable:
       'לא נמצאו קורסים מתאימים עם מערכת מפורסמת לסמסטר זה.',
+    autoPickEmptyMixed: 'לא ניתן להוסיף קורסים: {reasons}.',
+    autoPickEmptyReasonWorkload: 'מגבלת נק״ז ({max})',
+    autoPickEmptyReasonConflicts: 'התנגשויות במערכת או במבחנים',
+    autoPickEmptyReasonUnavailable: 'אין מערכת מפורסמת',
     autoScheduleSuccess: 'עודכנו בחירות שיעור ל-{count} קורסים בלוח השבועי.',
     autoSchedulePartial: 'לא ניתן לתזמן {count} קורסים — עדכן את הבחירות ידנית.',
     scheduleEmptyHint: 'הוסיפו קורסים מהחיפוש כדי לראות את הלוח השבועי',

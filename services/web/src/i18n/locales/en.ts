@@ -248,6 +248,10 @@ export const en: TranslationTree = {
       'Eligible courses conflict with your current schedule or exam dates. Adjust lesson picks or remove conflicting courses.',
     autoPickEmptyUnavailable:
       'No eligible courses have a published schedule for this semester.',
+    autoPickEmptyMixed: 'No courses could be added: {reasons}.',
+    autoPickEmptyReasonWorkload: 'credit limit ({max})',
+    autoPickEmptyReasonConflicts: 'schedule or exam conflicts',
+    autoPickEmptyReasonUnavailable: 'no published schedule',
     autoScheduleSuccess: 'Updated lesson selections for {count} courses on the weekly grid.',
     autoSchedulePartial: 'Could not schedule {count} courses — adjust selections manually.',
     scheduleEmptyHint: 'Add courses from search to see your weekly grid here',

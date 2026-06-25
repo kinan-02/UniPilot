@@ -16,6 +16,10 @@ describe('plannerAutoAssist', () => {
     emptyWorkload: 'Workload {max}',
     emptyConflicts: 'Conflicts',
     emptyUnavailable: 'Unavailable',
+    emptyMixed: 'Mixed: {reasons}',
+    emptyReasonWorkload: 'limit {max}',
+    emptyReasonConflicts: 'clashes',
+    emptyReasonUnavailable: 'no schedule',
     noNewCourses: 'No new',
     mergeFiltered: 'Filtered {count}',
     overBudget: 'Over {credits}/{max}',
@@ -329,5 +333,21 @@ describe('plannerAutoAssist', () => {
     )
 
     expect(message).toBe('Schedule clash')
+  })
+
+  it('formats mixed empty state when multiple skip reasons apply', () => {
+    const message = formatAutoPickStatus(
+      0,
+      {
+        selectedCount: 0,
+        skippedDueToWorkload: [{ courseNumber: '10401' }],
+        skippedDueToConflicts: [{ courseNumber: '10403' }],
+        maxCredits: 5,
+      },
+      baseLabels,
+      String,
+    )
+
+    expect(message).toBe('Mixed: limit 5, clashes')
   })
 })

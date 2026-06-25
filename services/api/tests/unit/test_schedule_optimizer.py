@@ -135,6 +135,33 @@ def test_build_selection_state_skips_inactive_and_missing_course_id() -> None:
     assert "10001" in state["plannedCourseNumbers"]
 
 
+def test_build_selection_state_seeds_inactive_course_conflicts() -> None:
+    offering = _offering_with_exams("10001", day="Sunday", time="08:30-10:30")
+    options = extract_lesson_options_from_offering(offering, course_number="10001")
+    assert options
+
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "10001",
+                "courseTitle": "Inactive draft",
+                "credits": 4.0,
+                "isActive": False,
+                "selectedLessonEvents": [
+                    {"eventId": options[0]["eventId"], "type": options[0]["type"]}
+                ],
+            }
+        ],
+        offerings_by_number={"10001": offering},
+    )
+
+    assert state["totalCredits"] == 0.0
+    assert len(state["occupiedSlots"]) == 1
+    assert len(state["examEntries"]) == 1
+
+
 def test_build_selection_state_ignores_unselected_lesson_options() -> None:
     offering = _offering_with_exams("10001", day="Sunday", time="08:30-10:30")
 

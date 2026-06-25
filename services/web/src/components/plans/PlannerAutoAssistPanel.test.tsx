@@ -121,4 +121,25 @@ describe('PlannerAutoAssistPanel', () => {
     expect(onAutoPickCourses).not.toHaveBeenCalled()
     expect(screen.getByText(/קוד סמסטר חייב להיות|semester code must/i)).toBeInTheDocument()
   })
+
+  it('blocks auto-pick when semester is not in planner options', async () => {
+    const user = userEvent.setup()
+    const onAutoPickCourses = vi.fn()
+
+    render(
+      <I18nProvider>
+        <PlannerAutoAssistPanel
+          semesterCode="2025-2"
+          semesterSelected
+          semesterOptions={['2025-1']}
+          pickingCourses={false}
+          onAutoPickCourses={onAutoPickCourses}
+        />
+      </I18nProvider>,
+    )
+
+    await user.click(screen.getByTestId('planner-auto-pick-button'))
+    expect(onAutoPickCourses).not.toHaveBeenCalled()
+    expect(screen.getByText(/בחרו סמסטר שיש עבורו|Choose a semester that has Technion/i)).toBeInTheDocument()
+  })
 })

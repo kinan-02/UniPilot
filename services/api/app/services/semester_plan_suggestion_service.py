@@ -95,6 +95,8 @@ async def _load_exact_term_offerings(
 def _draft_course_ids(existing_planned_courses: list[dict[str, Any]] | None) -> set[str]:
     draft_ids: set[str] = set()
     for course in existing_planned_courses or []:
+        if course.get("isActive", True) is False:
+            continue
         course_id = normalize_course_id(str(course.get("courseId") or ""))
         if course_id:
             draft_ids.add(course_id)

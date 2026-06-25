@@ -454,12 +454,14 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   }
 
   const moveSelectedToMaybe = (courseId: string) => {
+    clearAutoAssistFeedback()
     setPlannerState((prev) => moveSelectedToMaybeSnapshot(prev, courseId))
     const moved = courses.find((item) => item.courseId === courseId)
     if (moved) setFocusedCourseNumber(moved.courseNumber)
   }
 
   const moveMaybeToSelected = (courseId: string) => {
+    clearAutoAssistFeedback()
     setPlannerState((prev) => moveMaybeToSelectedSnapshot(prev, courseId))
     const moved = maybeCourses.find((item) => item.courseId === courseId)
     if (moved) setFocusedCourseNumber(moved.courseNumber)
@@ -688,6 +690,10 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
           emptyWorkload: t('planner.autoPickEmptyWorkload'),
           emptyConflicts: t('planner.autoPickEmptyConflicts'),
           emptyUnavailable: t('planner.autoPickEmptyUnavailable'),
+          emptyMixed: t('planner.autoPickEmptyMixed'),
+          emptyReasonWorkload: t('planner.autoPickEmptyReasonWorkload'),
+          emptyReasonConflicts: t('planner.autoPickEmptyReasonConflicts'),
+          emptyReasonUnavailable: t('planner.autoPickEmptyReasonUnavailable'),
           noNewCourses: t('planner.autoPickNoNewCourses'),
           mergeFiltered: t('planner.autoPickMergeFiltered'),
           overBudget: t('planner.autoPickOverBudget'),
@@ -1030,6 +1036,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       <PlannerAutoAssistPanel
         semesterCode={semesterCode}
         semesterSelected={semesterSelected}
+        semesterOptions={plannerSemesterOptions}
         defaultMaxCredits={maxCreditsPref}
         pickingCourses={autoPickCoursesMutation.isPending}
         statusMessage={autoAssistStatus}

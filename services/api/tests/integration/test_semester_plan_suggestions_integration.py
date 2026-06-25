@@ -486,3 +486,43 @@ async def test_suggest_courses_advances_matrix_when_semester_one_is_on_draft(
     assert fixtures["courseANumber"] not in numbers
     assert fixtures["courseDNumber"] not in numbers
     assert fixtures["courseENumber"] in numbers
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_ignores_inactive_draft_for_matrix_progression(
+    auth_client, mongo_database
+):
+    fixtures, token = await _profile_and_token(
+        auth_client, mongo_database, "suggest-draft-inactive-matrix@example.com"
+    )
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "maxCredits": 18,
+            "existingPlannedCourses": [
+                {
+                    "courseId": fixtures["courseAId"],
+                    "courseNumber": fixtures["courseANumber"],
+                    "courseTitle": "Discrete math",
+                    "credits": 4.0,
+                    "isActive": False,
+                },
+                {
+                    "courseId": fixtures["courseDId"],
+                    "courseNumber": fixtures["courseDNumber"],
+                    "courseTitle": "Intro CS",
+                    "credits": 3.5,
+                    "isActive": False,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    numbers = [course["courseNumber"] for course in body["plannedCourses"]]
+
+    assert fixtures["courseENumber"] not in numbers

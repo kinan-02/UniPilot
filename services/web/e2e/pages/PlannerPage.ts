@@ -1,5 +1,5 @@
 import { expect, type Locator } from '@playwright/test'
-import { E2E_PLANNER_SEMESTER } from '../helpers/planner'
+import { E2E_KNOWN_COURSE, E2E_PLANNER_SEMESTER } from '../helpers/planner'
 import { BasePage } from './BasePage'
 
 export class PlannerPage extends BasePage {
@@ -20,6 +20,14 @@ export class PlannerPage extends BasePage {
   async openNewPlanWithSemester(semesterCode = E2E_PLANNER_SEMESTER) {
     await this.gotoNewPlan()
     await this.selectSemester(semesterCode)
+  }
+
+  async openSavedPlanForEdit(semesterCode = E2E_PLANNER_SEMESTER) {
+    await this.openNewPlanWithSemester(semesterCode)
+    await this.searchCourse(E2E_KNOWN_COURSE)
+    await this.addToPlan()
+    await this.savePlan()
+    await expect(this.heading(/עריכת תוכנית|Edit plan/i)).toBeVisible({ timeout: 15_000 })
   }
 
   async searchCourse(courseNumber: string) {

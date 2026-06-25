@@ -194,6 +194,40 @@ def _empty_selection_state(
     }
 
 
+def _seed_planned_conflicts_from_offering(
+    state: dict[str, Any],
+    *,
+    planned: dict[str, Any],
+    course_number: str,
+    offerings_by_number: dict[str, dict[str, Any]],
+) -> None:
+    """Reserve exam and weekly slots from draft picks even when the course is inactive."""
+    offering = _offering_for_planned_number(offerings_by_number, course_number)
+    if not offering:
+        return
+
+    course_title = str(planned.get("courseTitle") or "")
+    state["examEntries"].extend(
+        _exam_entries_for_course(
+            offering,
+            course_number=course_number,
+            course_title=course_title,
+        )
+    )
+    selected_events = planned.get("selectedLessonEvents") or []
+    if not selected_events:
+        return
+
+    options = extract_lesson_options_from_offering(offering, course_number=course_number)
+    selected_ids = {str(event.get("eventId") or "") for event in selected_events}
+    for option in options:
+        if str(option.get("eventId") or "") not in selected_ids:
+            continue
+        slot = _option_slot({**option, "courseNumber": course_number})
+        if slot:
+            state["occupiedSlots"].append(slot)
+
+
 def build_selection_state_from_existing_planned(
     *,
     satisfied_course_ids: set[str],
@@ -214,39 +248,21 @@ def build_selection_state_from_existing_planned(
         if course_id in seen_course_ids:
             continue
         seen_course_ids.add(course_id)
-        if planned.get("isActive", True) is False:
-            state["localSatisfied"].add(course_id)
-            if number_key:
-                state["plannedCourseNumbers"].add(number_key)
-            continue
-
-        course_title = str(planned.get("courseTitle") or "")
-        credits = round_credits(float(planned.get("credits") or 0))
 
         state["localSatisfied"].add(course_id)
         if number_key:
             state["plannedCourseNumbers"].add(number_key)
-        state["totalCredits"] = round_credits(state["totalCredits"] + credits)
 
-        offering = _offering_for_planned_number(offerings_by_number, course_number)
-        if offering:
-            state["examEntries"].extend(
-                _exam_entries_for_course(
-                    offering,
-                    course_number=course_number,
-                    course_title=course_title,
-                )
-            )
-            selected_events = planned.get("selectedLessonEvents") or []
-            if selected_events:
-                options = extract_lesson_options_from_offering(offering, course_number=course_number)
-                selected_ids = {str(event.get("eventId") or "") for event in selected_events}
-                for option in options:
-                    if str(option.get("eventId") or "") not in selected_ids:
-                        continue
-                    slot = _option_slot({**option, "courseNumber": course_number})
-                    if slot:
-                        state["occupiedSlots"].append(slot)
+        if planned.get("isActive", True) is not False:
+            credits = round_credits(float(planned.get("credits") or 0))
+            state["totalCredits"] = round_credits(state["totalCredits"] + credits)
+
+        _seed_planned_conflicts_from_offering(
+            state,
+            planned=planned,
+            course_number=course_number,
+            offerings_by_number=offerings_by_number,
+        )
 
     return state
 

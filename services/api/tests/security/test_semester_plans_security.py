@@ -300,3 +300,33 @@ async def test_cross_user_patch_lesson_selection_returns_404(auth_client, mongo_
         json={"selectedLessonEvents": []},
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_enforces_rate_limit_with_429(
+    progress_security_client,
+    mongo_database,
+):
+    from tests.fixtures.suggest_courses_fixtures import seed_suggest_courses_offerings
+    from tests.integration.test_semester_plans_integration import create_profile
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    await seed_suggest_courses_offerings(mongo_database)
+    token = await register_access_token(progress_security_client, "suggest-rate@example.com")
+    await create_profile(progress_security_client, token, degree_id=fixtures["programId"])
+
+    payload = {"semesterCode": "2025-2", "maxCredits": 18}
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = await progress_security_client.post(
+        "/semester-plans/suggest-courses",
+        headers=headers,
+        json=payload,
+    )
+    second = await progress_security_client.post(
+        "/semester-plans/suggest-courses",
+        headers=headers,
+        json=payload,
+    )
+    assert first.status_code == 200
+    assert second.status_code == 429

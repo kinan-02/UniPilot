@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.dependencies.auth import AuthContext, require_auth
+from app.middleware.auth_rate_limiter import enforce_progress_rate_limit
 from app.db.mongo import get_database
 from app.repositories.semester_plan_repository import (
     ensure_semester_plan_indexes,
@@ -208,9 +209,11 @@ async def generate_semester_plan(
 
 @router.post("/suggest-courses")
 async def suggest_courses_for_planner(
+    request: Request,
     payload: SuggestSemesterCoursesForPlannerRequest,
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    await enforce_progress_rate_limit(request, auth.user_id)
     database = await get_database()
     result = await suggest_semester_courses(
         database,
@@ -235,9 +238,11 @@ async def suggest_courses_for_planner(
 
 @router.post("/suggest-schedule")
 async def suggest_schedule_for_planner(
+    request: Request,
     payload: SuggestSemesterScheduleRequest,
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    await enforce_progress_rate_limit(request, auth.user_id)
     database = await get_database()
     result = await suggest_semester_schedule(
         database,
