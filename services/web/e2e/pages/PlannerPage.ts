@@ -90,7 +90,7 @@ export class PlannerPage extends BasePage {
   }
 
   async countSelectedCourses(): Promise<number> {
-    const badge = this.selectedPanel.locator('span').filter({ hasText: /\d/ }).first()
+    const badge = this.selectedPanel.getByText(/\d+\s*(קורסים|courses)/i)
     if (!(await badge.isVisible().catch(() => false))) return 0
     const text = (await badge.textContent()) ?? ''
     const match = text.match(/(\d+)/)

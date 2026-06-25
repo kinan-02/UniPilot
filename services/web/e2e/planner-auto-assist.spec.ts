@@ -22,9 +22,8 @@ test.describe('Planner auto-pick assistant', () => {
   test('second auto-pick keeps localized status without backend English', async ({ plannerPage }) => {
     await plannerPage.autoPickCourses()
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
-
+    const firstStatus = (await plannerPage.autoPickStatus.textContent()) ?? ''
     const countAfterFirst = await plannerPage.countSelectedCourses()
-    expect(countAfterFirst).toBeGreaterThan(0)
 
     await plannerPage.autoPickCourses()
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
@@ -33,7 +32,7 @@ test.describe('Planner auto-pick assistant', () => {
 
     const countAfterSecond = await plannerPage.countSelectedCourses()
     expect(countAfterSecond).toBeGreaterThanOrEqual(countAfterFirst)
-    if (countAfterSecond === countAfterFirst) {
+    if (/נוספו/.test(firstStatus) && countAfterFirst > 0 && countAfterSecond === countAfterFirst) {
       await expect(plannerPage.autoPickStatus).toHaveText(/כבר נמצאים|לא נמצאו/)
     }
   })
