@@ -235,6 +235,32 @@ def test_select_conflict_aware_courses_skips_differently_padded_planned_numbers(
     assert result["totalCredits"] == 4.0
 
 
+def test_build_selection_state_handles_empty_and_non_canonical_course_numbers() -> None:
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-empty",
+                "courseNumber": "",
+                "credits": 2.0,
+                "isActive": True,
+            },
+            {
+                "courseId": "existing-invalid",
+                "courseNumber": "123456",
+                "credits": 3.0,
+                "isActive": True,
+            },
+        ],
+        offerings_by_number={},
+    )
+
+    assert state["totalCredits"] == 5.0
+    assert "existing-empty" in state["localSatisfied"]
+    assert "existing-invalid" in state["localSatisfied"]
+    assert state["examEntries"] == []
+
+
 def test_select_conflict_aware_courses_uses_initial_state_for_credit_budget() -> None:
     mandatory = [
         {
