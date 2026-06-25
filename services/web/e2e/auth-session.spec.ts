@@ -159,8 +159,8 @@ test.describe('Auth session isolation', () => {
     const passwordEmail = `password-first-${Date.now()}@example.com`
     const googleEmail = `google-second-${Date.now()}@example.com`
 
-    await registerOnboardAndReturnToDashboard(page, passwordEmail, { programType: 'MBA' })
-    await expectDashboardProgramType(page, 'MBA')
+    await registerOnboardAndReturnToDashboard(page, passwordEmail, { programType: 'MSc' })
+    await expectDashboardProgramType(page, 'MSc')
     await expectSidebarEmail(page, passwordEmail)
 
     await signOut(page)
@@ -170,6 +170,6 @@ test.describe('Auth session isolation', () => {
       googleId: `google-sub-${Date.now()}`,
     })
     await waitForOnboardingPage(page)
-    await expect(page.getByRole('heading', { name: /MBA student/i })).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: /MSc student/i })).not.toBeVisible()
   })
 })

@@ -44,6 +44,11 @@ export async function completeOnboarding(
   await expect(
     page.getByRole('heading', { name: /Which faculty\?|באיזו פקולטה\?/i }),
   ).toBeVisible({ timeout: 15_000 })
+
+  const firstFaculty = page.locator('[data-testid^="faculty-"]').first()
+  await expect(firstFaculty).toBeVisible({ timeout: 15_000 })
+  await firstFaculty.click()
+  await expect(page.getByTestId('onboarding-continue')).toBeEnabled({ timeout: 15_000 })
   await page.getByTestId('onboarding-continue').click()
 
   const primaryProgramCard = page.locator('label:has(input[name="primary-program"])').first()
