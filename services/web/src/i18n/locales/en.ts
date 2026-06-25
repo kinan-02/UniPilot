@@ -233,11 +233,21 @@ export const en: TranslationTree = {
     autoPickSuccess: 'Added {count} recommended courses ({credits} credits). You can edit the list before saving.',
     autoPickSuccessPartial:
       'Added {count} recommended courses ({credits} of {max} credits). No more eligible courses are available for this semester — you can add more manually.',
+    autoPickSuccessPartialMerge:
+      'Added {added} recommended courses. {filtered} more matched but were already on your list or maybe list ({credits} credits total).',
     autoPickNoNewCourses:
       'The recommended courses are already in your list. No new courses were added.',
+    autoPickMergeFiltered:
+      '{count} recommended courses were filtered out (already on your list or maybe list). No new courses were added.',
     autoPickOverBudget:
       'Your current plan already uses {credits} credits, which is above the {max} credit limit. Remove courses or raise the limit before auto-picking.',
     autoPickEmpty: 'No conflict-free courses matched your constraints for this semester.',
+    autoPickEmptyWorkload:
+      'No courses fit within your {max} credit limit for this semester. Raise the limit or remove courses to make room.',
+    autoPickEmptyConflicts:
+      'Eligible courses conflict with your current schedule or exam dates. Adjust lesson picks or remove conflicting courses.',
+    autoPickEmptyUnavailable:
+      'No eligible courses have a published schedule for this semester.',
     autoScheduleSuccess: 'Updated lesson selections for {count} courses on the weekly grid.',
     autoSchedulePartial: 'Could not schedule {count} courses — adjust selections manually.',
     scheduleEmptyHint: 'Add courses from search to see your weekly grid here',

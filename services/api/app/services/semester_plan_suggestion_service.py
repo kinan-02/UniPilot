@@ -14,12 +14,42 @@ from app.planning.schedule_optimizer import (
 from app.planning.semester_codes import pick_best_offering, plan_semester_to_offering_keys
 from app.planning.semester_planner import (
     build_candidate_pools,
-    build_plan_summary,
+    normalize_course_id,
 )
-from app.planning.prerequisite_resolver import build_courses_by_number
+from app.planning.prerequisite_resolver import build_courses_by_number, canonical_course_number
 from app.repositories import catalog_repository
 from app.services.graduation_progress_calculator import build_effective_completions, round_credits
 from app.services.semester_plan_service import load_planning_context
+
+
+def _expand_course_numbers_for_lookup(course_numbers: list[str]) -> list[str]:
+    """Include canonical aliases so Mongo lookups match catalog courseNumber keys."""
+    expanded: set[str] = set()
+    for number in course_numbers:
+        raw = str(number or "").strip()
+        if not raw:
+            continue
+        expanded.add(raw)
+        canonical = canonical_course_number(raw)
+        if canonical:
+            expanded.add(canonical)
+    return sorted(expanded)
+
+
+def _index_offering_aliases(
+    offerings_by_number: dict[str, dict[str, Any]],
+    offering: dict[str, Any],
+    *aliases: str,
+) -> None:
+    keys: set[str] = {str(alias).strip() for alias in aliases if str(alias).strip()}
+    offering_number = str(offering.get("courseNumber") or "").strip()
+    if offering_number:
+        keys.add(offering_number)
+    canonical = canonical_course_number(offering_number)
+    if canonical:
+        keys.add(canonical)
+    for key in keys:
+        offerings_by_number[key] = offering
 
 
 async def _load_exact_term_offerings(
@@ -30,17 +60,18 @@ async def _load_exact_term_offerings(
     semester_code: int,
 ) -> dict[str, dict[str, Any]]:
     """Return offerings only for the exact requested academic year and term."""
-    if not course_numbers:
+    lookup_numbers = _expand_course_numbers_for_lookup(course_numbers)
+    if not lookup_numbers:
         return {}
 
     grouped = await catalog_repository.list_offerings_grouped_for_courses(
         database,
-        sorted(set(course_numbers)),
+        lookup_numbers,
         academic_year=academic_year,
         semester_code=semester_code,
     )
     offerings_by_number: dict[str, dict[str, Any]] = {}
-    for number in sorted(set(course_numbers)):
+    for number in lookup_numbers:
         offering = pick_best_offering(
             grouped.get(number, []),
             preferred_academic_year=academic_year,
@@ -51,8 +82,23 @@ async def _load_exact_term_offerings(
             and int(offering.get("academicYear") or 0) == academic_year
             and int(offering.get("semesterCode") or 0) == semester_code
         ):
-            offerings_by_number[number] = offering
+            _index_offering_aliases(offerings_by_number, offering, number)
+
+    for number in lookup_numbers:
+        canonical = canonical_course_number(number)
+        if canonical and canonical in offerings_by_number:
+            offerings_by_number[number] = offerings_by_number[canonical]
+
     return offerings_by_number
+
+
+def _draft_course_ids(existing_planned_courses: list[dict[str, Any]] | None) -> set[str]:
+    draft_ids: set[str] = set()
+    for course in existing_planned_courses or []:
+        course_id = normalize_course_id(str(course.get("courseId") or ""))
+        if course_id:
+            draft_ids.add(course_id)
+    return draft_ids
 
 
 async def suggest_semester_courses(
@@ -121,6 +167,9 @@ async def suggest_semester_courses(
         )
         reserved_credits = float(initial_state["totalCredits"])
 
+    draft_course_ids = _draft_course_ids(existing_planned_courses)
+    matrix_progress_ids = completed_course_ids | draft_course_ids
+
     selection = select_progress_aware_courses(
         mandatory_candidates=pools["mandatoryCandidates"],
         elective_candidates=pools["electiveCandidates"],
@@ -133,6 +182,7 @@ async def suggest_semester_courses(
         academic_year=academic_year,
         semester_code=term_semester_code,
         initial_state=initial_state,
+        matrix_progress_course_ids=matrix_progress_ids,
     )
 
     selected_courses = selection["selectedCourses"]
@@ -143,17 +193,6 @@ async def suggest_semester_courses(
     )
 
     explanation = {
-        "summary": build_plan_summary(
-            empty_plan=len(selected_courses) == 0 and reserved_credits == 0,
-            partial_plan=partial_plan,
-            semester_code=semester_code,
-            selected_count=len(selected_courses),
-            min_credits_target=0,
-            total_credits=semester_total_credits,
-            max_credits_limit=max_credits_limit,
-            blocked_count=0,
-            skipped_workload_count=len(selection["skippedDueToWorkload"]),
-        ),
         "semesterCode": semester_code,
         "maxCredits": max_credits_limit,
         "totalRecommendedCredits": new_credits,

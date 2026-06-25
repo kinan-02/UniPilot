@@ -15,7 +15,7 @@ test.describe('Planner auto-pick assistant', () => {
     await plannerPage.autoPickCourses()
 
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
-    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים/)
+    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים|סוננו|מעל מגבלת|מתאימים|מערכת|נק״ז/)
     await expect(plannerPage.autoPickStatus).not.toHaveText(/Partial plan generated|maxCredits/i)
   })
 
@@ -27,20 +27,20 @@ test.describe('Planner auto-pick assistant', () => {
 
     await plannerPage.autoPickCourses()
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
-    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים/)
+    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים|סוננו|מעל מגבלת|מתאימים|מערכת|נק״ז/)
     await expect(plannerPage.autoPickStatus).not.toHaveText(/Partial plan generated|maxCredits/i)
 
     const countAfterSecond = await plannerPage.countSelectedCourses()
     expect(countAfterSecond).toBeGreaterThanOrEqual(countAfterFirst)
     if (/נוספו/.test(firstStatus) && countAfterFirst > 0 && countAfterSecond === countAfterFirst) {
-      await expect(plannerPage.autoPickStatus).toHaveText(/כבר נמצאים|לא נמצאו/)
+      await expect(plannerPage.autoPickStatus).toHaveText(/כבר נמצאים|לא נמצאו|סוננו/)
     }
   })
 
   test('low max credits shows localized status without backend English', async ({ plannerPage }) => {
     await plannerPage.autoPickCourses('5')
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
-    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים|מתוך/)
+    await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים|סוננו|מעל מגבלת|מתאימים|מערכת|נק״ז|מתוך/)
     await expect(plannerPage.autoPickStatus).not.toHaveText(/Partial plan generated|maxCredits/i)
   })
 })

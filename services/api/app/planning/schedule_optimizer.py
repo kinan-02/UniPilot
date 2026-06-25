@@ -202,6 +202,7 @@ def build_selection_state_from_existing_planned(
 ) -> dict[str, Any]:
     """Seed conflict/credit state from courses already on the manual planner draft."""
     state = _empty_selection_state(satisfied_course_ids=set(satisfied_course_ids))
+    seen_course_ids: set[str] = set()
 
     for planned in existing_planned:
         course_id = normalize_course_id(str(planned.get("courseId") or ""))
@@ -210,6 +211,9 @@ def build_selection_state_from_existing_planned(
 
         course_number = str(planned.get("courseNumber") or "")
         number_key = _planned_number_key(course_number)
+        if course_id in seen_course_ids:
+            continue
+        seen_course_ids.add(course_id)
         if planned.get("isActive", True) is False:
             state["localSatisfied"].add(course_id)
             if number_key:
@@ -296,7 +300,7 @@ def select_conflict_aware_courses(
             continue
 
         course_title = str(course.get("title") or "")
-        offering = offerings_by_number.get(course_number)
+        offering = _offering_for_planned_number(offerings_by_number, course_number)
         schedulable, options = _offering_is_schedulable(offering, course_number=course_number)
         if not schedulable:
             skipped_due_to_unavailable.append(
@@ -378,6 +382,7 @@ def select_progress_aware_courses(
     academic_year: int,
     semester_code: int,
     initial_state: dict[str, Any] | None = None,
+    matrix_progress_course_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Select courses semester-by-semester according to matrix progress, then electives."""
     state = (
@@ -385,11 +390,16 @@ def select_progress_aware_courses(
         if initial_state is not None
         else _empty_selection_state(satisfied_course_ids=satisfied_course_ids)
     )
+    matrix_ids = (
+        matrix_progress_course_ids
+        if matrix_progress_course_ids is not None
+        else satisfied_course_ids
+    )
     active_semester = resolve_active_matrix_semester(
         semester_matrix_documents,
         courses_by_id=courses_by_id,
         courses_by_number=courses_by_number,
-        completed_course_ids=satisfied_course_ids,
+        completed_course_ids=matrix_ids,
     )
 
     if semester_matrix_documents and active_semester is not None:
@@ -401,7 +411,7 @@ def select_progress_aware_courses(
         semester_numbers = matrix_semesters_for_planning(
             mandatory_by_semester,
             active_semester=active_semester,
-            completed_course_ids=satisfied_course_ids,
+            completed_course_ids=matrix_ids,
         )
 
         if unmapped_mandatory:
@@ -498,8 +508,9 @@ def optimize_schedule_for_planned_courses(
         if planned.get("isActive", True) is False:
             continue
         course_number = str(planned.get("courseNumber") or "")
+        offering = _offering_for_planned_number(offerings_by_number, course_number)
         options = extract_lesson_options_from_offering(
-            offerings_by_number.get(course_number),
+            offering,
             course_number=course_number,
         )
         if not options:

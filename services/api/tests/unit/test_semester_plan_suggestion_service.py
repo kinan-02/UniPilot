@@ -223,3 +223,34 @@ async def test_suggest_semester_schedule_propagates_planning_context_error():
         )
 
     assert result["status"] == "degree_not_selected"
+
+
+@pytest.mark.asyncio
+async def test_load_exact_term_offerings_indexes_canonical_number_aliases():
+    from app.services.semester_plan_suggestion_service import _load_exact_term_offerings
+
+    offering = {
+        "courseNumber": "00940345",
+        "academicYear": 2025,
+        "semesterCode": 201,
+        "scheduleGroups": [{"day": "Sunday", "time": "08:30-10:30", "type": "lecture"}],
+    }
+    database = AsyncMock()
+    with patch(
+        "app.services.semester_plan_suggestion_service.catalog_repository.list_offerings_grouped_for_courses",
+        new_callable=AsyncMock,
+        return_value={"00940345": [offering]},
+    ) as list_offerings:
+        result = await _load_exact_term_offerings(
+            database,
+            ["0940345"],
+            academic_year=2025,
+            semester_code=201,
+        )
+
+    list_offerings.assert_awaited_once()
+    queried_numbers = list_offerings.await_args.args[1]
+    assert "0940345" in queried_numbers
+    assert "00940345" in queried_numbers
+    assert result["00940345"] == offering
+    assert result["0940345"] == offering

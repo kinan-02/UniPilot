@@ -408,3 +408,81 @@ async def test_suggest_courses_second_pick_excludes_already_suggested(auth_clien
 
     assert not set(second_numbers).intersection(first_numbers)
     assert second_body["explanation"]["reservedCredits"] > 0
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_resolves_padded_existing_planned_numbers(
+    auth_client, mongo_database
+):
+    fixtures, token = await _profile_and_token(
+        auth_client, mongo_database, "suggest-padded-existing@example.com"
+    )
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "maxCredits": 18,
+            "existingPlannedCourses": [
+                {
+                    "courseId": fixtures["courseAId"],
+                    "courseNumber": "0940345",
+                    "courseTitle": "Discrete math",
+                    "credits": 4.0,
+                    "isActive": True,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    numbers = [course["courseNumber"] for course in body["plannedCourses"]]
+    explanation = body["explanation"]
+
+    assert fixtures["courseANumber"] not in numbers
+    assert explanation["reservedCredits"] == 4.0
+    assert explanation["semesterTotalCredits"] <= 18
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_advances_matrix_when_semester_one_is_on_draft(
+    auth_client, mongo_database
+):
+    fixtures, token = await _profile_and_token(
+        auth_client, mongo_database, "suggest-draft-matrix@example.com"
+    )
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "maxCredits": 18,
+            "existingPlannedCourses": [
+                {
+                    "courseId": fixtures["courseAId"],
+                    "courseNumber": fixtures["courseANumber"],
+                    "courseTitle": "Discrete math",
+                    "credits": 4.0,
+                    "isActive": True,
+                },
+                {
+                    "courseId": fixtures["courseDId"],
+                    "courseNumber": fixtures["courseDNumber"],
+                    "courseTitle": "Intro CS",
+                    "credits": 3.5,
+                    "isActive": True,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    numbers = [course["courseNumber"] for course in body["plannedCourses"]]
+
+    assert fixtures["courseANumber"] not in numbers
+    assert fixtures["courseDNumber"] not in numbers
+    assert fixtures["courseENumber"] in numbers

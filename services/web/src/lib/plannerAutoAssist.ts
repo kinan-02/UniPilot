@@ -1,5 +1,16 @@
 import type { ExamSummary, PlannedCourse, SelectedLessonEvent } from '../types/api'
 import type { DraftCourse } from '../types/planner'
+import { courseNumberKeys } from './courseNumbers'
+
+function addNumberKeys(target: Set<string>, value: string) {
+  for (const key of courseNumberKeys(value)) {
+    target.add(key)
+  }
+}
+
+function numberSetMatches(set: Set<string>, value: string): boolean {
+  return courseNumberKeys(value).some((key) => set.has(key))
+}
 
 export function mergeSuggestedCourses(
   current: DraftCourse[],
@@ -7,8 +18,14 @@ export function mergeSuggestedCourses(
   options?: { excludedCourseNumbers?: Iterable<string> },
 ): DraftCourse[] {
   const existingIds = new Set(current.map((course) => course.courseId))
-  const existingNumbers = new Set(current.map((course) => course.courseNumber))
-  const excludedNumbers = new Set(options?.excludedCourseNumbers ?? [])
+  const existingNumbers = new Set<string>()
+  for (const course of current) {
+    addNumberKeys(existingNumbers, course.courseNumber)
+  }
+  const excludedNumbers = new Set<string>()
+  for (const number of options?.excludedCourseNumbers ?? []) {
+    addNumberKeys(excludedNumbers, number)
+  }
   const merged = [...current]
 
   for (const course of suggested) {
@@ -16,8 +33,8 @@ export function mergeSuggestedCourses(
     const courseNumber = course.courseNumber ?? ''
     if (
       existingIds.has(course.courseId)
-      || existingNumbers.has(courseNumber)
-      || excludedNumbers.has(courseNumber)
+      || numberSetMatches(existingNumbers, courseNumber)
+      || numberSetMatches(excludedNumbers, courseNumber)
     ) {
       continue
     }
@@ -30,7 +47,7 @@ export function mergeSuggestedCourses(
       selectedLessonEvents: course.selectedLessonEvents,
     })
     existingIds.add(course.courseId)
-    existingNumbers.add(course.courseNumber ?? '')
+    addNumberKeys(existingNumbers, courseNumber)
   }
 
   return merged
@@ -40,12 +57,18 @@ export function applyScheduleSelections(
   courses: DraftCourse[],
   selections: Array<{ courseNumber: string; selectedLessonEvents: SelectedLessonEvent[] }>,
 ): DraftCourse[] {
-  const byNumber = new Map(
-    selections.map((selection) => [selection.courseNumber, selection.selectedLessonEvents]),
-  )
+  const byNumber = new Map<string, SelectedLessonEvent[]>()
+  for (const selection of selections) {
+    for (const key of courseNumberKeys(selection.courseNumber)) {
+      byNumber.set(key, selection.selectedLessonEvents)
+    }
+  }
 
   return courses.map((course) => {
-    const selectedLessonEvents = byNumber.get(course.courseNumber)
+    const keys = courseNumberKeys(course.courseNumber)
+    const selectedLessonEvents = keys
+      .map((key) => byNumber.get(key))
+      .find((events) => events != null)
     if (!selectedLessonEvents) return course
     return { ...course, selectedLessonEvents }
   })
@@ -62,14 +85,29 @@ export type CourseSuggestionExplanation = {
   emptyPlan?: boolean
   skippedDueToWorkload?: Array<{ courseNumber?: string; courseTitle?: string }>
   skippedDueToConflicts?: Array<{ courseNumber?: string; courseTitle?: string; reason?: string }>
+  skippedDueToUnavailable?: Array<{ courseNumber?: string; courseTitle?: string; reason?: string }>
 }
 
 type AutoPickStatusLabels = {
   success: string
   successPartial: string
+  successPartialMerge: string
   empty: string
+  emptyWorkload: string
+  emptyConflicts: string
+  emptyUnavailable: string
   noNewCourses: string
+  mergeFiltered: string
   overBudget: string
+}
+
+type EmptySkipReason = 'workload' | 'conflicts' | 'unavailable'
+
+function primaryEmptySkipReason(explanation: CourseSuggestionExplanation): EmptySkipReason | null {
+  if ((explanation.skippedDueToWorkload?.length ?? 0) > 0) return 'workload'
+  if ((explanation.skippedDueToConflicts?.length ?? 0) > 0) return 'conflicts'
+  if ((explanation.skippedDueToUnavailable?.length ?? 0) > 0) return 'unavailable'
+  return null
 }
 
 export function formatAutoPickStatus(
@@ -83,11 +121,20 @@ export function formatAutoPickStatus(
   const semesterTotalCredits = explanation.semesterTotalCredits ?? newCredits
   const reservedCredits = explanation.reservedCredits ?? 0
   const maxCredits = explanation.maxCredits ?? 0
+  const filteredCount = Math.max(0, selectedCount - addedCount)
   const isPartial =
     explanation.partialPlan ??
     (selectedCount > 0 && maxCredits > 0 && semesterTotalCredits < maxCredits)
 
   if (addedCount > 0) {
+    if (filteredCount > 0) {
+      return labels.successPartialMerge
+        .replace('{added}', String(addedCount))
+        .replace('{filtered}', String(filteredCount))
+        .replace('{credits}', formatCredits(isPartial ? semesterTotalCredits : newCredits))
+        .replace('{max}', formatCredits(maxCredits))
+    }
+
     const template = isPartial ? labels.successPartial : labels.success
     const creditsForMessage = isPartial ? semesterTotalCredits : newCredits
     return template
@@ -105,8 +152,23 @@ export function formatAutoPickStatus(
       .replace('{max}', formatCredits(maxCredits))
   }
 
+  if (addedCount === 0 && selectedCount > 0) {
+    return labels.mergeFiltered.replace('{count}', String(selectedCount))
+  }
+
   if (selectedCount > 0 || reservedCredits > 0) {
     return labels.noNewCourses
+  }
+
+  const skipReason = primaryEmptySkipReason(explanation)
+  if (skipReason === 'workload') {
+    return labels.emptyWorkload.replace('{max}', formatCredits(maxCredits))
+  }
+  if (skipReason === 'conflicts') {
+    return labels.emptyConflicts
+  }
+  if (skipReason === 'unavailable') {
+    return labels.emptyUnavailable
   }
 
   return labels.empty

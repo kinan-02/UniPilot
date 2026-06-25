@@ -45,6 +45,7 @@ import {
   mergeSuggestedCourses,
   type CourseSuggestionExplanation,
 } from '../../lib/plannerAutoAssist'
+import { lookupByCourseNumberKeys } from '../../lib/courseNumbers'
 import {
   addMaybeCourseToSnapshot,
   filterSearchItemsForPlanner,
@@ -192,6 +193,16 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   const [autoAssistStatus, setAutoAssistStatus] = useState('')
   const [autoAssistStatusTone, setAutoAssistStatusTone] = useState<'success' | 'warning'>('success')
   const [autoAssistError, setAutoAssistError] = useState('')
+
+  const clearAutoAssistFeedback = () => {
+    setAutoAssistStatus('')
+    setAutoAssistStatusTone('success')
+    setAutoAssistError('')
+  }
+
+  useEffect(() => {
+    clearAutoAssistFeedback()
+  }, [semesterCode])
 
   const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
   const parsedSemester = parseSemesterCode(semesterCode)
@@ -404,6 +415,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     }
     setErrors([])
     setSearchQuery('')
+    clearAutoAssistFeedback()
     setCourses((prev) => [...prev, draftFromCourseSummary(course, locale)])
     setFocusedCourseNumber(course.courseNumber)
   }
@@ -416,6 +428,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     }
     setErrors([])
     setSearchQuery('')
+    clearAutoAssistFeedback()
     setPlannerState((prev) =>
       addMaybeCourseToSnapshot(prev, draftFromCourseSummary(course, locale)),
     )
@@ -424,6 +437,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
 
   const removeCourse = (courseId: string) => {
     const removed = courses.find((course) => course.courseId === courseId)
+    clearAutoAssistFeedback()
     setCourses((prev) => prev.filter((course) => course.courseId !== courseId))
     if (removed?.courseNumber === focusedCourseNumber) {
       setFocusedCourseNumber(null)
@@ -432,6 +446,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
 
   const removeMaybeCourse = (courseId: string) => {
     const removed = maybeCourses.find((course) => course.courseId === courseId)
+    clearAutoAssistFeedback()
     setPlannerState((prev) => removeMaybeCourseFromSnapshot(prev, courseId))
     if (removed?.courseNumber === focusedCourseNumber) {
       setFocusedCourseNumber(null)
@@ -454,7 +469,9 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     courseNumber: string,
     selectedLessonEvents: SelectedLessonEvent[],
   ) => {
-    const offering = clientPreviewQuery.data?.offeringsByCourse?.[courseNumber]
+    const offering = clientPreviewQuery.data?.offeringsByCourse
+      ? lookupByCourseNumberKeys(clientPreviewQuery.data.offeringsByCourse, courseNumber)
+      : undefined
     const options = extractLessonOptions(offering, courseNumber)
     const groupSummary = selectedLessonEvents.length
       ? lessonSelectionSummary(options, selectedLessonEvents, t)
@@ -484,7 +501,9 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   }
 
   const saveMaybeLessons = (courseNumber: string, selectedLessonEvents: SelectedLessonEvent[]) => {
-    const offering = clientPreviewQuery.data?.offeringsByCourse?.[courseNumber]
+    const offering = clientPreviewQuery.data?.offeringsByCourse
+      ? lookupByCourseNumberKeys(clientPreviewQuery.data.offeringsByCourse, courseNumber)
+      : undefined
     const options = extractLessonOptions(offering, courseNumber)
     const groupSummary = selectedLessonEvents.length
       ? lessonSelectionSummary(options, selectedLessonEvents, t)
@@ -513,7 +532,9 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   }
 
   const handleLessonGridClick = (eventId: string, courseNumber: string) => {
-    const offering = clientPreviewQuery.data?.offeringsByCourse?.[courseNumber]
+    const offering = clientPreviewQuery.data?.offeringsByCourse
+      ? lookupByCourseNumberKeys(clientPreviewQuery.data.offeringsByCourse, courseNumber)
+      : undefined
     const options = extractLessonOptions(offering, courseNumber)
     const option = options.find((item) => item.eventId === eventId)
     if (!option) return
@@ -612,12 +633,12 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       isActive: course.isActive !== false,
       selectedLessonEvents: course.selectedLessonEvents,
     })),
-    ...activeMaybeCourses.map((course) => ({
+    ...maybeCourses.map((course) => ({
       courseId: course.courseId,
       courseNumber: course.courseNumber,
       courseTitle: course.courseTitle,
       credits: 0,
-      isActive: true,
+      isActive: course.isActive !== false,
       selectedLessonEvents: course.selectedLessonEvents,
     })),
   ]
@@ -651,14 +672,24 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
         addedCount === 0
         && maxCredits > 0
         && (reservedCredits > maxCredits || semesterTotalCredits > maxCredits)
+      const mergeFiltered = addedCount === 0 && (explanation.selectedCount ?? 0) > 0
+      const partialMergeFiltered =
+        addedCount > 0 && (explanation.selectedCount ?? 0) > addedCount
 
-      setAutoAssistStatusTone(overBudget ? 'warning' : 'success')
+      setAutoAssistStatusTone(
+        overBudget || mergeFiltered || partialMergeFiltered ? 'warning' : 'success',
+      )
       setAutoAssistStatus(
         formatAutoPickStatus(addedCount, explanation, {
           success: t('planner.autoPickSuccess'),
           successPartial: t('planner.autoPickSuccessPartial'),
+          successPartialMerge: t('planner.autoPickSuccessPartialMerge'),
           empty: t('planner.autoPickEmpty'),
+          emptyWorkload: t('planner.autoPickEmptyWorkload'),
+          emptyConflicts: t('planner.autoPickEmptyConflicts'),
+          emptyUnavailable: t('planner.autoPickEmptyUnavailable'),
           noNewCourses: t('planner.autoPickNoNewCourses'),
+          mergeFiltered: t('planner.autoPickMergeFiltered'),
           overBudget: t('planner.autoPickOverBudget'),
         }, formatCredits),
       )
@@ -894,7 +925,10 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     })
     const offeringsByCourse: Record<string, (typeof clientPreviewQuery.data)['offeringsByCourse'][string]> = {}
     for (const course of previewCourses) {
-      const offering = clientPreviewQuery.data!.offeringsByCourse[course.courseNumber]
+      const offering = lookupByCourseNumberKeys(
+        clientPreviewQuery.data!.offeringsByCourse,
+        course.courseNumber,
+      )
       if (offering) {
         offeringsByCourse[course.courseNumber] = offering
       }
@@ -966,8 +1000,14 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
         planNameError={fieldErrors.name}
         canUndo={canUndo}
         canRedo={canRedo}
-        onUndo={undoPlanner}
-        onRedo={redoPlanner}
+        onUndo={() => {
+          clearAutoAssistFeedback()
+          undoPlanner()
+        }}
+        onRedo={() => {
+          clearAutoAssistFeedback()
+          redoPlanner()
+        }}
         onExportIcs={activeCourses.length ? exportIcs : undefined}
         exportDisabled={!displaySchedule?.weekView?.length}
         onSave={() => saveMutation.mutate()}

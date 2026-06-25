@@ -11,8 +11,13 @@ describe('plannerAutoAssist', () => {
   const baseLabels = {
     success: 'Added {count}',
     successPartial: 'Partial {count}',
+    successPartialMerge: 'Added {added}, filtered {filtered}',
     empty: 'Empty',
+    emptyWorkload: 'Workload {max}',
+    emptyConflicts: 'Conflicts',
+    emptyUnavailable: 'Unavailable',
     noNewCourses: 'No new',
+    mergeFiltered: 'Filtered {count}',
     overBudget: 'Over {credits}/{max}',
   }
   it('merges suggested courses without duplicates', () => {
@@ -215,5 +220,114 @@ describe('plannerAutoAssist', () => {
 
     const merged = mergeSuggestedCourses(current, suggested)
     expect(merged).toHaveLength(1)
+  })
+
+  it('treats padded and canonical course numbers as duplicates', () => {
+    const current: DraftCourse[] = [
+      {
+        courseId: 'a',
+        courseNumber: '0940345',
+        courseTitle: 'Discrete math',
+        credits: 4,
+        isActive: true,
+      },
+    ]
+    const suggested: PlannedCourse[] = [
+      {
+        courseId: 'b',
+        courseNumber: '00940345',
+        courseTitle: 'Discrete math',
+        credits: 4,
+      },
+      {
+        courseId: 'c',
+        courseNumber: '01040031',
+        courseTitle: 'Intro CS',
+        credits: 3.5,
+      },
+    ]
+
+    const merged = mergeSuggestedCourses(current, suggested)
+    expect(merged).toHaveLength(2)
+    expect(merged[1]?.courseNumber).toBe('01040031')
+  })
+
+  it('skips maybe-list courses when numbers use different padding', () => {
+    const merged = mergeSuggestedCourses(
+      [],
+      [
+        {
+          courseId: 'b',
+          courseNumber: '00940345',
+          courseTitle: 'Discrete math',
+          credits: 4,
+        },
+      ],
+      { excludedCourseNumbers: ['0940345'] },
+    )
+
+    expect(merged).toHaveLength(0)
+  })
+
+  it('formats merge-filtered when suggestions were blocked on the client', () => {
+    const message = formatAutoPickStatus(
+      0,
+      {
+        selectedCount: 2,
+        totalRecommendedCredits: 7,
+        semesterTotalCredits: 7,
+        reservedCredits: 0,
+        maxCredits: 18,
+      },
+      { ...baseLabels, mergeFiltered: 'Filtered {count}' },
+      String,
+    )
+
+    expect(message).toBe('Filtered 2')
+  })
+
+  it('formats partial merge when some suggestions were filtered on the client', () => {
+    const message = formatAutoPickStatus(
+      2,
+      {
+        selectedCount: 4,
+        totalRecommendedCredits: 8,
+        semesterTotalCredits: 12,
+        maxCredits: 18,
+      },
+      { ...baseLabels, successPartialMerge: 'Added {added}, skipped {filtered}' },
+      String,
+    )
+
+    expect(message).toBe('Added 2, skipped 2')
+  })
+
+  it('formats workload-limited empty state', () => {
+    const message = formatAutoPickStatus(
+      0,
+      {
+        selectedCount: 0,
+        skippedDueToWorkload: [{ courseNumber: '10401' }],
+        maxCredits: 5,
+      },
+      { ...baseLabels, emptyWorkload: 'Cap {max}' },
+      String,
+    )
+
+    expect(message).toBe('Cap 5')
+  })
+
+  it('formats conflict-limited empty state', () => {
+    const message = formatAutoPickStatus(
+      0,
+      {
+        selectedCount: 0,
+        skippedDueToConflicts: [{ courseNumber: '10401' }],
+      },
+      { ...baseLabels, emptyConflicts: 'Schedule clash' },
+      String,
+    )
+
+    expect(message).toBe('Schedule clash')
   })
 })

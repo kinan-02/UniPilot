@@ -261,6 +261,31 @@ def test_build_selection_state_handles_empty_and_non_canonical_course_numbers() 
     assert state["examEntries"] == []
 
 
+def test_build_selection_state_dedupes_duplicate_existing_planned_entries() -> None:
+    offering = _offering_with_exams("00940345", day="Sunday", time="08:30-10:30")
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "00940345",
+                "credits": 4.0,
+                "isActive": True,
+            },
+            {
+                "courseId": "existing-a",
+                "courseNumber": "00940345",
+                "credits": 4.0,
+                "isActive": True,
+            },
+        ],
+        offerings_by_number={"00940345": offering},
+    )
+
+    assert state["totalCredits"] == 4.0
+    assert state["examEntries"]
+
+
 def test_select_conflict_aware_courses_uses_initial_state_for_credit_budget() -> None:
     mandatory = [
         {
