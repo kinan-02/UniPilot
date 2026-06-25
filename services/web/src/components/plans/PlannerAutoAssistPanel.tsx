@@ -12,6 +12,7 @@ type PlannerAutoAssistPanelProps = {
   defaultMaxCredits?: number
   pickingCourses: boolean
   statusMessage?: string
+  statusTone?: 'success' | 'warning'
   errorMessage?: string
   onAutoPickCourses: (maxCredits: number) => void
 }
@@ -22,6 +23,7 @@ export function PlannerAutoAssistPanel({
   defaultMaxCredits,
   pickingCourses,
   statusMessage,
+  statusTone = 'success',
   errorMessage,
   onAutoPickCourses,
 }: PlannerAutoAssistPanelProps) {
@@ -90,7 +92,11 @@ export function PlannerAutoAssistPanel({
       ) : null}
       {statusMessage ? (
         <p
-          className="mt-3 text-sm text-[var(--color-success)]"
+          className={
+            statusTone === 'warning'
+              ? 'mt-3 text-sm text-[var(--color-warning)]'
+              : 'mt-3 text-sm text-[var(--color-success)]'
+          }
           data-testid="planner-auto-pick-status"
         >
           {statusMessage}

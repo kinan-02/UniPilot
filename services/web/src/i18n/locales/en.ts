@@ -235,6 +235,8 @@ export const en: TranslationTree = {
       'Added {count} recommended courses ({credits} of {max} credits). No more eligible courses are available for this semester — you can add more manually.',
     autoPickNoNewCourses:
       'The recommended courses are already in your list. No new courses were added.',
+    autoPickOverBudget:
+      'Your current plan already uses {credits} credits, which is above the {max} credit limit. Remove courses or raise the limit before auto-picking.',
     autoPickEmpty: 'No conflict-free courses matched your constraints for this semester.',
     autoScheduleSuccess: 'Updated lesson selections for {count} courses on the weekly grid.',
     autoSchedulePartial: 'Could not schedule {count} courses — adjust selections manually.',

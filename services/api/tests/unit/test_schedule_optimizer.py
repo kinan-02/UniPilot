@@ -70,6 +70,13 @@ def _offering(number: str, *, day: str = "Sunday", time: str = "10:30-12:30") ->
     }
 
 
+def _offering_with_exams(number: str, *, day: str = "Sunday", time: str = "10:30-12:30") -> dict:
+    return {
+        **_offering(number, day=day, time=time),
+        "examDates": {"moedA": f"2025-06-{int(number[-2:]) % 28 + 1:02d} 09:00"},
+    }
+
+
 def test_build_selection_state_from_existing_planned_reserves_credits_and_slots() -> None:
     offering = _offering("10001", day="Sunday", time="08:30-10:30")
     options = extract_lesson_options_from_offering(offering, course_number="10001")
@@ -125,10 +132,11 @@ def test_build_selection_state_skips_inactive_and_missing_course_id() -> None:
 
     assert state["totalCredits"] == 2.0
     assert "existing-b" in state["localSatisfied"]
+    assert "10001" in state["plannedCourseNumbers"]
 
 
 def test_build_selection_state_ignores_unselected_lesson_options() -> None:
-    offering = _offering("10001", day="Sunday", time="08:30-10:30")
+    offering = _offering_with_exams("10001", day="Sunday", time="08:30-10:30")
 
     state = build_selection_state_from_existing_planned(
         satisfied_course_ids=set(),
@@ -146,6 +154,85 @@ def test_build_selection_state_ignores_unselected_lesson_options() -> None:
 
     assert state["totalCredits"] == 4.0
     assert state["occupiedSlots"] == []
+    assert state["examEntries"]
+
+
+def test_build_selection_state_seeds_exam_entries_without_lesson_selection() -> None:
+    offering = _offering_with_exams("10001", day="Sunday", time="08:30-10:30")
+
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "10001",
+                "credits": 4.0,
+                "isActive": True,
+            }
+        ],
+        offerings_by_number={"10001": offering},
+    )
+
+    assert state["examEntries"]
+    assert state["occupiedSlots"] == []
+
+
+def test_build_selection_state_resolves_canonical_course_number_for_offerings() -> None:
+    offering = _offering_with_exams("00940345", day="Sunday", time="08:30-10:30")
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "0940345",
+                "credits": 4.0,
+                "isActive": True,
+            }
+        ],
+        offerings_by_number={"00940345": offering},
+    )
+
+    assert "00940345" in state["plannedCourseNumbers"]
+    assert state["examEntries"]
+
+
+def test_select_conflict_aware_courses_skips_differently_padded_planned_numbers() -> None:
+    mandatory = [
+        {
+            "_id": "course-a",
+            "number": "00940345",
+            "title": "Course A",
+            "credits": 4,
+            "prerequisites": [],
+        }
+    ]
+    offerings = {"00940345": _offering("00940345", day="Sunday", time="10:30-12:30")}
+    initial_state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "draft-a",
+                "courseNumber": "0940345",
+                "credits": 4.0,
+                "isActive": True,
+            }
+        ],
+        offerings_by_number=offerings,
+    )
+
+    result = select_conflict_aware_courses(
+        mandatory_candidates=mandatory,
+        elective_candidates=[],
+        satisfied_course_ids=set(),
+        max_credits_limit=12,
+        offerings_by_number=offerings,
+        academic_year=2025,
+        semester_code=202,
+        initial_state=initial_state,
+    )
+
+    assert result["selectedCourses"] == []
+    assert result["totalCredits"] == 4.0
 
 
 def test_select_conflict_aware_courses_uses_initial_state_for_credit_budget() -> None:

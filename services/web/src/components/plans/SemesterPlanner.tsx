@@ -190,6 +190,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   const [errors, setErrors] = useState<string[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [autoAssistStatus, setAutoAssistStatus] = useState('')
+  const [autoAssistStatusTone, setAutoAssistStatusTone] = useState<'success' | 'warning'>('success')
   const [autoAssistError, setAutoAssistError] = useState('')
 
   const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
@@ -602,15 +603,24 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     await ensurePlanningProfile(fetchStudentProfileOrNull)
   }
 
-  const buildExistingPlannedCoursesPayload = () =>
-    activeCourses.map((course) => ({
+  const buildExistingPlannedCoursesPayload = () => [
+    ...courses.map((course) => ({
       courseId: course.courseId,
       courseNumber: course.courseNumber,
       courseTitle: course.courseTitle,
       credits: course.credits,
       isActive: course.isActive !== false,
       selectedLessonEvents: course.selectedLessonEvents,
-    }))
+    })),
+    ...activeMaybeCourses.map((course) => ({
+      courseId: course.courseId,
+      courseNumber: course.courseNumber,
+      courseTitle: course.courseTitle,
+      credits: 0,
+      isActive: true,
+      selectedLessonEvents: course.selectedLessonEvents,
+    })),
+  ]
 
   const autoPickCoursesMutation = useMutation({
     mutationFn: async (maxCreditsValue: number) => {
@@ -624,7 +634,9 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     onSuccess: (data) => {
       let addedCount = 0
       setCourses((prev) => {
-        const merged = mergeSuggestedCourses(prev, data.plannedCourses)
+        const merged = mergeSuggestedCourses(prev, data.plannedCourses, {
+          excludedCourseNumbers: maybeCourses.map((course) => course.courseNumber),
+        })
         addedCount = merged.length - prev.length
         return merged
       })
@@ -632,17 +644,28 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       setErrors([])
 
       const explanation = data.explanation as CourseSuggestionExplanation
+      const maxCredits = explanation.maxCredits ?? 0
+      const semesterTotalCredits = explanation.semesterTotalCredits ?? explanation.totalRecommendedCredits ?? 0
+      const reservedCredits = explanation.reservedCredits ?? 0
+      const overBudget =
+        addedCount === 0
+        && maxCredits > 0
+        && (reservedCredits > maxCredits || semesterTotalCredits > maxCredits)
+
+      setAutoAssistStatusTone(overBudget ? 'warning' : 'success')
       setAutoAssistStatus(
         formatAutoPickStatus(addedCount, explanation, {
           success: t('planner.autoPickSuccess'),
           successPartial: t('planner.autoPickSuccessPartial'),
           empty: t('planner.autoPickEmpty'),
           noNewCourses: t('planner.autoPickNoNewCourses'),
+          overBudget: t('planner.autoPickOverBudget'),
         }, formatCredits),
       )
     },
     onError: (err) => {
       setAutoAssistStatus('')
+      setAutoAssistStatusTone('success')
       if (err instanceof PlanningProfileError) {
         setAutoAssistError(
           t(err.code === 'degree_required' ? 'progress.noDegree' : 'plans.profileRequired'),
@@ -970,6 +993,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
         defaultMaxCredits={maxCreditsPref}
         pickingCourses={autoPickCoursesMutation.isPending}
         statusMessage={autoAssistStatus}
+        statusTone={autoAssistStatusTone}
         errorMessage={autoAssistError}
         onAutoPickCourses={(maxCreditsValue) => autoPickCoursesMutation.mutate(maxCreditsValue)}
       />

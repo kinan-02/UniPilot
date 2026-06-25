@@ -4,14 +4,21 @@ import type { DraftCourse } from '../types/planner'
 export function mergeSuggestedCourses(
   current: DraftCourse[],
   suggested: PlannedCourse[],
+  options?: { excludedCourseNumbers?: Iterable<string> },
 ): DraftCourse[] {
   const existingIds = new Set(current.map((course) => course.courseId))
   const existingNumbers = new Set(current.map((course) => course.courseNumber))
+  const excludedNumbers = new Set(options?.excludedCourseNumbers ?? [])
   const merged = [...current]
 
   for (const course of suggested) {
     if (!course.courseId) continue
-    if (existingIds.has(course.courseId) || existingNumbers.has(course.courseNumber ?? '')) {
+    const courseNumber = course.courseNumber ?? ''
+    if (
+      existingIds.has(course.courseId)
+      || existingNumbers.has(courseNumber)
+      || excludedNumbers.has(courseNumber)
+    ) {
       continue
     }
     merged.push({
@@ -62,6 +69,7 @@ type AutoPickStatusLabels = {
   successPartial: string
   empty: string
   noNewCourses: string
+  overBudget: string
 }
 
 export function formatAutoPickStatus(
@@ -85,6 +93,15 @@ export function formatAutoPickStatus(
     return template
       .replace('{count}', String(addedCount))
       .replace('{credits}', formatCredits(creditsForMessage))
+      .replace('{max}', formatCredits(maxCredits))
+  }
+
+  if (
+    maxCredits > 0
+    && (reservedCredits > maxCredits || semesterTotalCredits > maxCredits)
+  ) {
+    return labels.overBudget
+      .replace('{credits}', formatCredits(semesterTotalCredits))
       .replace('{max}', formatCredits(maxCredits))
   }
 

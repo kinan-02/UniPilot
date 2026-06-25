@@ -8,6 +8,13 @@ import type { PlannedCourse } from '../types/api'
 import type { DraftCourse } from '../types/planner'
 
 describe('plannerAutoAssist', () => {
+  const baseLabels = {
+    success: 'Added {count}',
+    successPartial: 'Partial {count}',
+    empty: 'Empty',
+    noNewCourses: 'No new',
+    overBudget: 'Over {credits}/{max}',
+  }
   it('merges suggested courses without duplicates', () => {
     const current: DraftCourse[] = [
       {
@@ -100,10 +107,9 @@ describe('plannerAutoAssist', () => {
         partialPlan: true,
       },
       {
+        ...baseLabels,
         success: 'Added {count} ({credits} cr)',
         successPartial: 'Added {count} ({credits}/{max} cr), no more available',
-        empty: 'Empty',
-        noNewCourses: 'No new',
       },
       (value) => String(value),
     )
@@ -122,16 +128,28 @@ describe('plannerAutoAssist', () => {
         maxCredits: 18,
         partialPlan: true,
       },
-      {
-        success: 'Added {count}',
-        successPartial: 'Partial {count}',
-        empty: 'Empty',
-        noNewCourses: 'Already in list',
-      },
+      { ...baseLabels, noNewCourses: 'Already in list' },
       String,
     )
 
     expect(message).toBe('Already in list')
+  })
+
+  it('formats over-budget when the draft already exceeds max credits', () => {
+    const message = formatAutoPickStatus(
+      0,
+      {
+        selectedCount: 0,
+        totalRecommendedCredits: 0,
+        semesterTotalCredits: 12,
+        reservedCredits: 12,
+        maxCredits: 10,
+      },
+      baseLabels,
+      String,
+    )
+
+    expect(message).toBe('Over 12/10')
   })
 
   it('formats full success when credits reach max', () => {
@@ -139,10 +157,8 @@ describe('plannerAutoAssist', () => {
       3,
       { selectedCount: 3, totalRecommendedCredits: 18, maxCredits: 18, partialPlan: false },
       {
+        ...baseLabels,
         success: 'Added {count} ({credits}/{max})',
-        successPartial: 'Partial {count}',
-        empty: 'Empty',
-        noNewCourses: 'No new',
       },
       String,
     )
@@ -154,16 +170,28 @@ describe('plannerAutoAssist', () => {
     const message = formatAutoPickStatus(
       0,
       { selectedCount: 0, totalRecommendedCredits: 0, maxCredits: 18, emptyPlan: true },
-      {
-        success: 'Added {count}',
-        successPartial: 'Partial',
-        empty: 'Nothing matched',
-        noNewCourses: 'No new',
-      },
+      { ...baseLabels, empty: 'Nothing matched' },
       String,
     )
 
     expect(message).toBe('Nothing matched')
+  })
+
+  it('skips courses already on the maybe list', () => {
+    const merged = mergeSuggestedCourses(
+      [],
+      [
+        {
+          courseId: 'b',
+          courseNumber: '10403',
+          courseTitle: 'Physics 2',
+          credits: 5,
+        },
+      ],
+      { excludedCourseNumbers: ['10403'] },
+    )
+
+    expect(merged).toHaveLength(0)
   })
 
   it('merges by course number when courseId differs', () => {

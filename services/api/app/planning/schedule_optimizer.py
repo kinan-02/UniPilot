@@ -19,8 +19,30 @@ from app.planning.semester_planner import (
     resolve_active_matrix_semester,
     select_courses_from_candidates,
 )
+from app.planning.prerequisite_resolver import canonical_course_number
 from app.services.graduation_progress_calculator import round_credits
 from app.planning.weekly_schedule import parse_time_range
+
+
+def _planned_number_key(course_number: str) -> str:
+    if not course_number:
+        return ""
+    return canonical_course_number(course_number) or course_number
+
+
+def _offering_for_planned_number(
+    offerings_by_number: dict[str, dict[str, Any]],
+    course_number: str,
+) -> dict[str, Any] | None:
+    if not course_number:
+        return None
+    direct = offerings_by_number.get(course_number)
+    if direct is not None:
+        return direct
+    canonical = canonical_course_number(course_number)
+    if canonical:
+        return offerings_by_number.get(canonical)
+    return None
 
 
 def _option_slot(option: dict[str, Any]) -> dict[str, Any] | None:
@@ -182,34 +204,28 @@ def build_selection_state_from_existing_planned(
     state = _empty_selection_state(satisfied_course_ids=set(satisfied_course_ids))
 
     for planned in existing_planned:
-        if planned.get("isActive", True) is False:
-            continue
-
         course_id = normalize_course_id(str(planned.get("courseId") or ""))
         if not course_id:
             continue
 
         course_number = str(planned.get("courseNumber") or "")
+        number_key = _planned_number_key(course_number)
+        if planned.get("isActive", True) is False:
+            state["localSatisfied"].add(course_id)
+            if number_key:
+                state["plannedCourseNumbers"].add(number_key)
+            continue
+
         course_title = str(planned.get("courseTitle") or "")
         credits = round_credits(float(planned.get("credits") or 0))
 
         state["localSatisfied"].add(course_id)
-        if course_number:
-            state["plannedCourseNumbers"].add(course_number)
+        if number_key:
+            state["plannedCourseNumbers"].add(number_key)
         state["totalCredits"] = round_credits(state["totalCredits"] + credits)
 
-        offering = offerings_by_number.get(course_number)
-        selected_events = planned.get("selectedLessonEvents") or []
-        if offering and selected_events:
-            options = extract_lesson_options_from_offering(offering, course_number=course_number)
-            selected_ids = {str(event.get("eventId") or "") for event in selected_events}
-            for option in options:
-                if str(option.get("eventId") or "") not in selected_ids:
-                    continue
-                slot = _option_slot({**option, "courseNumber": course_number})
-                if slot:
-                    state["occupiedSlots"].append(slot)
-
+        offering = _offering_for_planned_number(offerings_by_number, course_number)
+        if offering:
             state["examEntries"].extend(
                 _exam_entries_for_course(
                     offering,
@@ -217,6 +233,16 @@ def build_selection_state_from_existing_planned(
                     course_title=course_title,
                 )
             )
+            selected_events = planned.get("selectedLessonEvents") or []
+            if selected_events:
+                options = extract_lesson_options_from_offering(offering, course_number=course_number)
+                selected_ids = {str(event.get("eventId") or "") for event in selected_events}
+                for option in options:
+                    if str(option.get("eventId") or "") not in selected_ids:
+                        continue
+                    slot = _option_slot({**option, "courseNumber": course_number})
+                    if slot:
+                        state["occupiedSlots"].append(slot)
 
     return state
 
@@ -258,7 +284,8 @@ def select_conflict_aware_courses(
     for course, category, reason in ordered:
         course_id = normalize_course_id(course["_id"])
         course_number = str(course.get("number") or "")
-        if course_id in local_satisfied or course_number in planned_course_numbers:
+        number_key = _planned_number_key(course_number)
+        if course_id in local_satisfied or number_key in planned_course_numbers:
             continue
         if not prerequisites_met(course, local_satisfied):
             continue
@@ -321,8 +348,8 @@ def select_conflict_aware_courses(
         selected_courses.append(snapshot)
         exam_entries.extend(candidate_exams)
         local_satisfied.add(course_id)
-        if course_number:
-            planned_course_numbers.add(course_number)
+        if number_key:
+            planned_course_numbers.add(number_key)
         total_credits = round_credits(total_credits + course_credits)
 
     return {
