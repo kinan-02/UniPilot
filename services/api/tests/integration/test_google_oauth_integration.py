@@ -393,3 +393,33 @@ async def test_google_callback_accepts_e2e_stub_code(auth_client, monkeypatch):
     assert me_response.status_code == 200
     assert me_response.json()["data"]["user"]["email"] == "stub-oauth-user@example.com"
     assert me_response.json()["data"]["user"]["authProvider"] == "google"
+
+
+@pytest.mark.asyncio
+async def test_google_callback_rejects_malformed_e2e_stub_code(auth_client, monkeypatch):
+    _enable_e2e_google_stub(monkeypatch)
+
+    state = await issue_oauth_state(remember_me=False)
+    response = await auth_client.get(
+        "/auth/google/callback",
+        params={"code": "e2e|missing-google-id", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "error=google_auth_failed" in response.headers["location"]
+
+
+@pytest.mark.asyncio
+async def test_google_callback_rejects_blank_e2e_stub_identity(auth_client, monkeypatch):
+    _enable_e2e_google_stub(monkeypatch)
+
+    state = await issue_oauth_state(remember_me=False)
+    response = await auth_client.get(
+        "/auth/google/callback",
+        params={"code": "e2e|   |   ", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "error=google_auth_failed" in response.headers["location"]
