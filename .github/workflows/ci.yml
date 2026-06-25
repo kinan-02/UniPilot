@@ -96,6 +96,9 @@ jobs:
         run: |
           cp .env.example .env
           echo "AUTO_SEED_CATALOG=true" >> .env
+          echo "GOOGLE_OAUTH_CLIENT_ID=e2e-stub-client" >> .env
+          echo "GOOGLE_OAUTH_CLIENT_SECRET=e2e-stub-secret" >> .env
+          echo "E2E_GOOGLE_OAUTH_STUB=true" >> .env
       - name: Start Docker stack
         run: docker compose up --build -d
       - name: Wait for web UI

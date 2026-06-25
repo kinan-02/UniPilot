@@ -364,3 +364,32 @@ async def test_google_callback_returns_account_exists_when_duplicate_has_no_user
 
     assert response.status_code == 302
     assert "error=google_account_exists" in response.headers["location"]
+
+
+def _enable_e2e_google_stub(monkeypatch) -> None:
+    _enable_google_oauth(monkeypatch)
+    monkeypatch.setenv("E2E_GOOGLE_OAUTH_STUB", "true")
+
+
+@pytest.mark.asyncio
+async def test_google_callback_accepts_e2e_stub_code(auth_client, monkeypatch):
+    _enable_e2e_google_stub(monkeypatch)
+    monkeypatch.setenv("WEB_APP_URL", "http://testserver")
+
+    state = await issue_oauth_state(remember_me=False)
+    response = await auth_client.get(
+        "/auth/google/callback",
+        params={
+            "code": "e2e|stub-oauth-user@example.com|google-sub-stub",
+            "state": state,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"].endswith("/auth/callback")
+
+    me_response = await auth_client.get("/auth/me")
+    assert me_response.status_code == 200
+    assert me_response.json()["data"]["user"]["email"] == "stub-oauth-user@example.com"
+    assert me_response.json()["data"]["user"]["authProvider"] == "google"

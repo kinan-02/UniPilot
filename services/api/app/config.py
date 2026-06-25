@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str | None = None
+    e2e_google_oauth_stub: bool = False
     refresh_token_session_ttl_seconds: int = 24 * 60 * 60
     refresh_token_remember_ttl_seconds: int = 30 * 24 * 60 * 60
     technion_raw_dir: str | None = None
@@ -122,6 +123,11 @@ class Settings(BaseSettings):
         client_id = (self.google_oauth_client_id or "").strip()
         client_secret = (self.google_oauth_client_secret or "").strip()
         return bool(client_id and client_secret)
+
+    def e2e_google_oauth_stub_enabled(self) -> bool:
+        if self.environment == "production":
+            return False
+        return bool(self.e2e_google_oauth_stub and self.google_oauth_enabled())
 
     @field_validator("mongo_root_password", mode="before")
     @classmethod

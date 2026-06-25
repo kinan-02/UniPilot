@@ -1,5 +1,6 @@
 import { useQuery, type QueryClient, type UseQueryOptions } from '@tanstack/react-query'
 import { profileApi } from '../api/endpoints'
+import { resetAuthScopedQueryCache } from './authQueryCache'
 import { isAuthError, useAuth } from '../auth/AuthContext'
 import type { StudentProfile } from '../types/api'
 
@@ -47,7 +48,7 @@ export function hasStudentProfile(
 }
 
 export function resetStudentProfileCache(queryClient: QueryClient) {
-  queryClient.removeQueries({ queryKey: STUDENT_PROFILE_QUERY_KEY })
+  resetAuthScopedQueryCache(queryClient)
 }
 
 export async function invalidateStudentProfile(queryClient: QueryClient) {

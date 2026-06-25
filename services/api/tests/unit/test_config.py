@@ -47,6 +47,31 @@ def test_google_oauth_enabled_requires_client_credentials() -> None:
     assert settings_with_google.google_oauth_enabled() is True
 
 
+def test_e2e_google_oauth_stub_disabled_in_production() -> None:
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 32,
+        google_oauth_client_id="client",
+        google_oauth_client_secret="secret",
+        e2e_google_oauth_stub=True,
+    )
+    assert settings.e2e_google_oauth_stub_enabled() is False
+
+
+def test_e2e_google_oauth_stub_requires_flag_and_credentials() -> None:
+    settings = Settings(
+        environment="development",
+        jwt_secret=DEV_JWT_SECRET,
+        google_oauth_client_id="client",
+        google_oauth_client_secret="secret",
+        e2e_google_oauth_stub=False,
+    )
+    assert settings.e2e_google_oauth_stub_enabled() is False
+
+    enabled = settings.model_copy(update={"e2e_google_oauth_stub": True})
+    assert enabled.e2e_google_oauth_stub_enabled() is True
+
+
 def test_legacy_placeholder_is_rejected_in_production() -> None:
     assert "replace_me_with_secure_jwt_secret" in JWT_SECRET_PLACEHOLDERS
 

@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../auth/AuthContext'
-import { resetStudentProfileCache } from '../lib/studentProfileQuery'
+import { resetAuthScopedQueryCache } from '../lib/authQueryCache'
 
-/** Drop cached profile data whenever the signed-in user changes. */
+/** Drop cached user data whenever the signed-in user changes or signs out. */
 export function AuthQuerySync() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -12,7 +12,7 @@ export function AuthQuerySync() {
   useEffect(() => {
     const nextUserId = user?.id ?? null
     if (previousUserIdRef.current !== nextUserId) {
-      resetStudentProfileCache(queryClient)
+      resetAuthScopedQueryCache(queryClient)
       previousUserIdRef.current = nextUserId
     }
   }, [queryClient, user?.id])

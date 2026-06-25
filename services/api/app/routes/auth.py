@@ -26,6 +26,7 @@ from app.security.cookies import (
 )
 from app.security.google_oauth import (
     GoogleOAuthError,
+    GoogleUserInfo,
     build_google_authorization_url,
     exchange_code_for_id_token,
     verify_google_id_token,
@@ -140,6 +141,26 @@ def _oauth_success_redirect() -> RedirectResponse:
     )
 
 
+async def _resolve_google_user_from_callback(code: str, *, settings) -> GoogleUserInfo:
+    if settings.e2e_google_oauth_stub_enabled() and code.startswith("e2e|"):
+        parts = code.split("|", 2)
+        if len(parts) != 3:
+            raise GoogleOAuthError("E2E Google stub code is invalid")
+        _, email, google_id = parts
+        normalized_email = email.strip().lower()
+        normalized_google_id = google_id.strip()
+        if not normalized_email or not normalized_google_id:
+            raise GoogleOAuthError("E2E Google stub code is invalid")
+        return GoogleUserInfo(
+            google_id=normalized_google_id,
+            email=normalized_email,
+            email_verified=True,
+        )
+
+    id_token = await exchange_code_for_id_token(code, settings=settings)
+    return verify_google_id_token(id_token, settings=settings)
+
+
 @router.get("/providers")
 async def get_auth_providers() -> dict[str, Any]:
     settings = get_settings()
@@ -251,8 +272,7 @@ async def complete_google_oauth(
         return _oauth_error_redirect(error_code="google_invalid_state")
 
     try:
-        id_token = await exchange_code_for_id_token(code, settings=settings)
-        google_user = verify_google_id_token(id_token, settings=settings)
+        google_user = await _resolve_google_user_from_callback(code, settings=settings)
     except GoogleOAuthError:
         return _oauth_error_redirect(error_code="google_auth_failed")
 
