@@ -16,19 +16,24 @@ export function normalizeScheduleGroup(group: Record<string, string>) {
   }
 }
 
+export class PlanningProfileError extends Error {
+  readonly code: 'profile_required' | 'degree_required'
+
+  constructor(code: 'profile_required' | 'degree_required') {
+    super(code)
+    this.name = 'PlanningProfileError'
+    this.code = code
+  }
+}
+
 export async function ensurePlanningProfile(
-  semesterCode: string,
-  getProfile: () => Promise<{ profile: { id: string } } | null>,
-  createProfile: (body: Record<string, unknown>) => Promise<unknown>,
+  getProfile: () => Promise<{ profile: { degreeId?: string | null } } | null>,
 ): Promise<void> {
   const existing = await getProfile()
-  if (existing?.profile) return
-
-  const year = Number(semesterCode.split('-')[0]) || new Date().getFullYear()
-  await createProfile({
-    institutionId: 'technion',
-    programType: 'BSc',
-    catalogYear: year,
-    currentSemesterCode: semesterCode,
-  })
+  if (!existing?.profile) {
+    throw new PlanningProfileError('profile_required')
+  }
+  if (!existing.profile.degreeId) {
+    throw new PlanningProfileError('degree_required')
+  }
 }

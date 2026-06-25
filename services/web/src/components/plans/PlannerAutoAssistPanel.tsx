@@ -1,5 +1,5 @@
 import { Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from '../../i18n'
 import { validateCredits, validateSemesterCode } from '../../lib/validation'
 import { Button } from '../ui/Button'
@@ -27,7 +27,14 @@ export function PlannerAutoAssistPanel({
 }: PlannerAutoAssistPanelProps) {
   const { t } = useTranslation()
   const [maxCredits, setMaxCredits] = useState(String(defaultMaxCredits ?? 18))
+  const [maxCreditsTouched, setMaxCreditsTouched] = useState(false)
   const [localError, setLocalError] = useState('')
+
+  useEffect(() => {
+    if (!maxCreditsTouched && defaultMaxCredits != null) {
+      setMaxCredits(String(defaultMaxCredits))
+    }
+  }, [defaultMaxCredits, maxCreditsTouched])
 
   const handleAutoPick = () => {
     const semesterResult = validateSemesterCode(semesterCode)
@@ -60,7 +67,10 @@ export function PlannerAutoAssistPanel({
           type="number"
           step="0.5"
           value={maxCredits}
-          onChange={(event) => setMaxCredits(event.target.value)}
+          onChange={(event) => {
+            setMaxCreditsTouched(true)
+            setMaxCredits(event.target.value)
+          }}
           className="sm:max-w-[180px]"
         />
         <Button

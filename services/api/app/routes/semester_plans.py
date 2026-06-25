@@ -27,7 +27,7 @@ from app.schemas.semester_plan import (
     PatchMaybeCoursesRequest,
     PatchPlannedCourseRequest,
     ReorderPlannedCoursesRequest,
-    SuggestSemesterCoursesRequest,
+    SuggestSemesterCoursesForPlannerRequest,
     SuggestSemesterScheduleRequest,
     UpdateSemesterPlanRequest,
     UpdateSemesterPlanShareRequest,
@@ -208,7 +208,7 @@ async def generate_semester_plan(
 
 @router.post("/suggest-courses")
 async def suggest_courses_for_planner(
-    payload: SuggestSemesterCoursesRequest,
+    payload: SuggestSemesterCoursesForPlannerRequest,
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
     database = await get_database()
@@ -217,6 +217,10 @@ async def suggest_courses_for_planner(
         auth.user_id,
         semester_code=payload.semesterCode,
         max_credits=payload.maxCredits,
+        existing_planned_courses=[
+            course.model_dump(exclude_none=True)
+            for course in payload.existingPlannedCourses
+        ],
     )
     _handle_planning_context_error(result)
     if result.get("status") == "validation_error":

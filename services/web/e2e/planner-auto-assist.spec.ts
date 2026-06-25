@@ -23,10 +23,19 @@ test.describe('Planner auto-pick assistant', () => {
     await plannerPage.autoPickCourses()
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
 
+    const countAfterFirst = await plannerPage.countSelectedCourses()
+    expect(countAfterFirst).toBeGreaterThan(0)
+
     await plannerPage.autoPickCourses()
     await expect(plannerPage.autoPickStatus).toBeVisible({ timeout: 15_000 })
     await expect(plannerPage.autoPickStatus).toHaveText(/נוספו|לא נמצאו|כבר נמצאים/)
     await expect(plannerPage.autoPickStatus).not.toHaveText(/Partial plan generated|maxCredits/i)
+
+    const countAfterSecond = await plannerPage.countSelectedCourses()
+    expect(countAfterSecond).toBeGreaterThanOrEqual(countAfterFirst)
+    if (countAfterSecond === countAfterFirst) {
+      await expect(plannerPage.autoPickStatus).toHaveText(/כבר נמצאים|לא נמצאו/)
+    }
   })
 
   test('low max credits shows localized status without backend English', async ({ plannerPage }) => {

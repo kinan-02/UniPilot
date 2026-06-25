@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { catalogApi, plansApi, profileApi } from '../../api/endpoints'
+import { catalogApi, plansApi } from '../../api/endpoints'
 import { isAuthError } from '../../auth/AuthContext'
 import { useClientSchedulePreview } from '../../hooks/useClientSchedulePreview'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { usePlannerHistory } from '../../hooks/usePlannerHistory'
 import { useTranslation } from '../../i18n'
 import { downloadIcs, generatePlanIcs } from '../../lib/icsExport'
-import { ensurePlanningProfile, courseTitle } from '../../lib/planning'
+import { ensurePlanningProfile, PlanningProfileError, courseTitle } from '../../lib/planning'
 import { fetchStudentProfileOrNull, useStudentProfileQuery } from '../../lib/studentProfileQuery'
 import { courseNumbersInConflict } from '../../lib/planner'
 import {
@@ -599,12 +599,18 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
   }
 
   const ensurePlanningProfileReady = async () => {
-    await ensurePlanningProfile(
-      semesterCode,
-      fetchStudentProfileOrNull,
-      (body) => profileApi.create(body),
-    )
+    await ensurePlanningProfile(fetchStudentProfileOrNull)
   }
+
+  const buildExistingPlannedCoursesPayload = () =>
+    activeCourses.map((course) => ({
+      courseId: course.courseId,
+      courseNumber: course.courseNumber,
+      courseTitle: course.courseTitle,
+      credits: course.credits,
+      isActive: course.isActive !== false,
+      selectedLessonEvents: course.selectedLessonEvents,
+    }))
 
   const autoPickCoursesMutation = useMutation({
     mutationFn: async (maxCreditsValue: number) => {
@@ -612,6 +618,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       return plansApi.suggestCourses({
         semesterCode,
         maxCredits: maxCreditsValue,
+        existingPlannedCourses: buildExistingPlannedCoursesPayload(),
       })
     },
     onSuccess: (data) => {
@@ -636,6 +643,12 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     },
     onError: (err) => {
       setAutoAssistStatus('')
+      if (err instanceof PlanningProfileError) {
+        setAutoAssistError(
+          t(err.code === 'degree_required' ? 'progress.noDegree' : 'plans.profileRequired'),
+        )
+        return
+      }
       setAutoAssistError(isAuthError(err) ? err.message : t('common.errorGeneric'))
     },
   })

@@ -95,6 +95,7 @@ describe('plannerAutoAssist', () => {
       {
         selectedCount: 2,
         totalRecommendedCredits: 4,
+        semesterTotalCredits: 10,
         maxCredits: 18,
         partialPlan: true,
       },
@@ -107,13 +108,20 @@ describe('plannerAutoAssist', () => {
       (value) => String(value),
     )
 
-    expect(message).toBe('Added 2 (4/18 cr), no more available')
+    expect(message).toBe('Added 2 (10/18 cr), no more available')
   })
 
   it('formats no-new-courses when suggestions were already applied', () => {
     const message = formatAutoPickStatus(
       0,
-      { selectedCount: 2, totalRecommendedCredits: 4, maxCredits: 18, partialPlan: true },
+      {
+        selectedCount: 0,
+        totalRecommendedCredits: 0,
+        semesterTotalCredits: 7.5,
+        reservedCredits: 7.5,
+        maxCredits: 18,
+        partialPlan: true,
+      },
       {
         success: 'Added {count}',
         successPartial: 'Partial {count}',

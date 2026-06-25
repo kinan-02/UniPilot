@@ -88,4 +88,12 @@ export class PlannerPage extends BasePage {
     await this.autoPickButton.click()
     await suggestResponse
   }
+
+  async countSelectedCourses(): Promise<number> {
+    const badge = this.selectedPanel.locator('span').filter({ hasText: /\d/ }).first()
+    if (!(await badge.isVisible().catch(() => false))) return 0
+    const text = (await badge.textContent()) ?? ''
+    const match = text.match(/(\d+)/)
+    return match ? Number(match[1]) : 0
+  }
 }

@@ -1,8 +1,17 @@
+import type { ComponentProps } from 'react'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nProvider } from '../../i18n'
 import { PlannerAutoAssistPanel } from './PlannerAutoAssistPanel'
+
+function renderPanel(props: ComponentProps<typeof PlannerAutoAssistPanel>) {
+  return render(
+    <I18nProvider>
+      <PlannerAutoAssistPanel {...props} />
+    </I18nProvider>,
+  )
+}
 
 describe('PlannerAutoAssistPanel', () => {
   beforeEach(() => {
@@ -65,6 +74,32 @@ describe('PlannerAutoAssistPanel', () => {
     const status = screen.getByTestId('planner-auto-pick-status')
     expect(status).toHaveTextContent(/נוספו 2 קורסים מומלצים/)
     expect(status).not.toHaveTextContent(/Partial plan generated/i)
+  })
+
+  it('syncs max credits when profile default loads after mount', () => {
+    const { rerender } = renderPanel({
+      semesterCode: '2025-2',
+      semesterSelected: true,
+      pickingCourses: false,
+      onAutoPickCourses: vi.fn(),
+    })
+
+    const creditsInput = screen.getByLabelText(/מקסימום נק״ז|Max credits/i)
+    expect(creditsInput).toHaveValue(18)
+
+    rerender(
+      <I18nProvider>
+        <PlannerAutoAssistPanel
+          semesterCode="2025-2"
+          semesterSelected
+          defaultMaxCredits={22}
+          pickingCourses={false}
+          onAutoPickCourses={vi.fn()}
+        />
+      </I18nProvider>,
+    )
+
+    expect(creditsInput).toHaveValue(22)
   })
 
   it('blocks auto-pick when semester is invalid', async () => {

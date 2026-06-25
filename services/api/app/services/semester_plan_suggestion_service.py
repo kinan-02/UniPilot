@@ -7,6 +7,7 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.planning.schedule_optimizer import (
+    build_selection_state_from_existing_planned,
     optimize_schedule_for_planned_courses,
     select_progress_aware_courses,
 )
@@ -60,6 +61,7 @@ async def suggest_semester_courses(
     *,
     semester_code: str,
     max_credits: float | None = None,
+    existing_planned_courses: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     context = await load_planning_context(database, user_id)
     if context["status"] != "ok":
@@ -97,12 +99,27 @@ async def suggest_semester_courses(
         for course in [*pools["mandatoryCandidates"], *pools["electiveCandidates"]]
         if course.get("number")
     ]
+    existing_numbers = [
+        str(course.get("courseNumber") or "")
+        for course in existing_planned_courses or []
+        if course.get("courseNumber")
+    ]
     offerings_by_number = await _load_exact_term_offerings(
         database,
-        candidate_numbers,
+        sorted(set([*candidate_numbers, *existing_numbers])),
         academic_year=academic_year,
         semester_code=term_semester_code,
     )
+
+    initial_state = None
+    reserved_credits = 0.0
+    if existing_planned_courses:
+        initial_state = build_selection_state_from_existing_planned(
+            satisfied_course_ids=completed_course_ids,
+            existing_planned=existing_planned_courses,
+            offerings_by_number=offerings_by_number,
+        )
+        reserved_credits = float(initial_state["totalCredits"])
 
     selection = select_progress_aware_courses(
         mandatory_candidates=pools["mandatoryCandidates"],
@@ -115,30 +132,36 @@ async def suggest_semester_courses(
         courses_by_number=build_courses_by_number(context["catalogCourses"]),
         academic_year=academic_year,
         semester_code=term_semester_code,
+        initial_state=initial_state,
     )
 
     selected_courses = selection["selectedCourses"]
-    total_credits = selection["totalCredits"]
-    partial_plan = len(selected_courses) > 0 and total_credits < max_credits_limit
+    semester_total_credits = float(selection["totalCredits"])
+    new_credits = round_credits(max(0.0, semester_total_credits - reserved_credits))
+    partial_plan = semester_total_credits < max_credits_limit and (
+        len(selected_courses) > 0 or reserved_credits > 0
+    )
 
     explanation = {
         "summary": build_plan_summary(
-            empty_plan=len(selected_courses) == 0,
+            empty_plan=len(selected_courses) == 0 and reserved_credits == 0,
             partial_plan=partial_plan,
             semester_code=semester_code,
             selected_count=len(selected_courses),
             min_credits_target=0,
-            total_credits=total_credits,
+            total_credits=semester_total_credits,
             max_credits_limit=max_credits_limit,
             blocked_count=0,
             skipped_workload_count=len(selection["skippedDueToWorkload"]),
         ),
         "semesterCode": semester_code,
         "maxCredits": max_credits_limit,
-        "totalRecommendedCredits": total_credits,
+        "totalRecommendedCredits": new_credits,
+        "semesterTotalCredits": semester_total_credits,
+        "reservedCredits": reserved_credits,
         "selectedCount": len(selected_courses),
         "partialPlan": partial_plan,
-        "emptyPlan": len(selected_courses) == 0,
+        "emptyPlan": len(selected_courses) == 0 and reserved_credits == 0,
         "skippedDueToWorkload": selection["skippedDueToWorkload"],
         "skippedDueToConflicts": selection.get("skippedDueToConflicts") or [],
         "skippedDueToUnavailable": selection.get("skippedDueToUnavailable") or [],

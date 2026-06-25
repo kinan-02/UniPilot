@@ -152,6 +152,7 @@ def _merge_selection_state(
     target["occupiedSlots"] = batch["occupiedSlots"]
     target["examEntries"] = batch["examEntries"]
     target["localSatisfied"] = batch["localSatisfied"]
+    target["plannedCourseNumbers"] = batch.get("plannedCourseNumbers") or set()
 
 
 def _empty_selection_state(
@@ -167,7 +168,57 @@ def _empty_selection_state(
         "occupiedSlots": [],
         "examEntries": [],
         "localSatisfied": set(satisfied_course_ids),
+        "plannedCourseNumbers": set(),
     }
+
+
+def build_selection_state_from_existing_planned(
+    *,
+    satisfied_course_ids: set[str],
+    existing_planned: list[dict[str, Any]],
+    offerings_by_number: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Seed conflict/credit state from courses already on the manual planner draft."""
+    state = _empty_selection_state(satisfied_course_ids=set(satisfied_course_ids))
+
+    for planned in existing_planned:
+        if planned.get("isActive", True) is False:
+            continue
+
+        course_id = normalize_course_id(str(planned.get("courseId") or ""))
+        if not course_id:
+            continue
+
+        course_number = str(planned.get("courseNumber") or "")
+        course_title = str(planned.get("courseTitle") or "")
+        credits = round_credits(float(planned.get("credits") or 0))
+
+        state["localSatisfied"].add(course_id)
+        if course_number:
+            state["plannedCourseNumbers"].add(course_number)
+        state["totalCredits"] = round_credits(state["totalCredits"] + credits)
+
+        offering = offerings_by_number.get(course_number)
+        selected_events = planned.get("selectedLessonEvents") or []
+        if offering and selected_events:
+            options = extract_lesson_options_from_offering(offering, course_number=course_number)
+            selected_ids = {str(event.get("eventId") or "") for event in selected_events}
+            for option in options:
+                if str(option.get("eventId") or "") not in selected_ids:
+                    continue
+                slot = _option_slot({**option, "courseNumber": course_number})
+                if slot:
+                    state["occupiedSlots"].append(slot)
+
+            state["examEntries"].extend(
+                _exam_entries_for_course(
+                    offering,
+                    course_number=course_number,
+                    course_title=course_title,
+                )
+            )
+
+    return state
 
 
 def select_conflict_aware_courses(
@@ -202,10 +253,12 @@ def select_conflict_aware_courses(
     exam_entries: list[dict[str, Any]] = state["examEntries"]
     total_credits = float(state["totalCredits"])
     local_satisfied = set(state["localSatisfied"])
+    planned_course_numbers = set(state.get("plannedCourseNumbers") or set())
 
     for course, category, reason in ordered:
         course_id = normalize_course_id(course["_id"])
-        if course_id in local_satisfied:
+        course_number = str(course.get("number") or "")
+        if course_id in local_satisfied or course_number in planned_course_numbers:
             continue
         if not prerequisites_met(course, local_satisfied):
             continue
@@ -215,7 +268,6 @@ def select_conflict_aware_courses(
             skipped_due_to_workload.append(build_workload_skip(course, course_credits))
             continue
 
-        course_number = str(course.get("number") or "")
         course_title = str(course.get("title") or "")
         offering = offerings_by_number.get(course_number)
         schedulable, options = _offering_is_schedulable(offering, course_number=course_number)
@@ -269,6 +321,8 @@ def select_conflict_aware_courses(
         selected_courses.append(snapshot)
         exam_entries.extend(candidate_exams)
         local_satisfied.add(course_id)
+        if course_number:
+            planned_course_numbers.add(course_number)
         total_credits = round_credits(total_credits + course_credits)
 
     return {
@@ -280,6 +334,7 @@ def select_conflict_aware_courses(
         "occupiedSlots": occupied_slots,
         "examEntries": exam_entries,
         "localSatisfied": local_satisfied,
+        "plannedCourseNumbers": planned_course_numbers,
     }
 
 
@@ -295,9 +350,14 @@ def select_progress_aware_courses(
     courses_by_number: dict[str, dict[str, Any]],
     academic_year: int,
     semester_code: int,
+    initial_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select courses semester-by-semester according to matrix progress, then electives."""
-    state = _empty_selection_state(satisfied_course_ids=satisfied_course_ids)
+    state = (
+        initial_state
+        if initial_state is not None
+        else _empty_selection_state(satisfied_course_ids=satisfied_course_ids)
+    )
     active_semester = resolve_active_matrix_semester(
         semester_matrix_documents,
         courses_by_id=courses_by_id,

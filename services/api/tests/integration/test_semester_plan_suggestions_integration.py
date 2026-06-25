@@ -324,3 +324,87 @@ async def test_suggest_courses_without_offerings_returns_empty_plan(auth_client,
     assert body["plannedCourses"] == []
     assert body["explanation"]["emptyPlan"] is True
     assert body["explanation"]["partialPlan"] is False
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_respects_existing_planned_draft(auth_client, mongo_database):
+    fixtures, token = await _profile_and_token(
+        auth_client, mongo_database, "suggest-existing-draft@example.com"
+    )
+
+    existing_course = {
+        "courseId": fixtures["courseAId"],
+        "courseNumber": fixtures["courseANumber"],
+        "courseTitle": "Discrete math",
+        "credits": 4.0,
+        "isActive": True,
+    }
+
+    response = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "maxCredits": 7.5,
+            "existingPlannedCourses": [existing_course],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    numbers = [course["courseNumber"] for course in body["plannedCourses"]]
+    explanation = body["explanation"]
+
+    assert fixtures["courseANumber"] not in numbers
+    assert explanation["reservedCredits"] == 4.0
+    assert explanation["semesterTotalCredits"] <= 7.5
+    assert explanation["totalRecommendedCredits"] == round(
+        explanation["semesterTotalCredits"] - explanation["reservedCredits"], 1
+    )
+    assert fixtures["courseDNumber"] in numbers or explanation["totalRecommendedCredits"] == 0
+
+
+@pytest.mark.asyncio
+async def test_suggest_courses_second_pick_excludes_already_suggested(auth_client, mongo_database):
+    fixtures, token = await _profile_and_token(
+        auth_client, mongo_database, "suggest-second-pick@example.com"
+    )
+
+    first = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-2", "maxCredits": 18},
+    )
+    assert first.status_code == 200
+    first_courses = first.json()["data"]["plannedCourses"]
+    assert first_courses
+
+    existing_planned = [
+        {
+            "courseId": course["courseId"],
+            "courseNumber": course["courseNumber"],
+            "courseTitle": course.get("courseTitle"),
+            "credits": course["credits"],
+            "isActive": True,
+            "selectedLessonEvents": course.get("selectedLessonEvents"),
+        }
+        for course in first_courses
+    ]
+
+    second = await auth_client.post(
+        "/semester-plans/suggest-courses",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "semesterCode": "2025-2",
+            "maxCredits": 18,
+            "existingPlannedCourses": existing_planned,
+        },
+    )
+
+    assert second.status_code == 200
+    second_body = second.json()["data"]
+    second_numbers = [course["courseNumber"] for course in second_body["plannedCourses"]]
+    first_numbers = [course["courseNumber"] for course in first_courses]
+
+    assert not set(second_numbers).intersection(first_numbers)
+    assert second_body["explanation"]["reservedCredits"] > 0

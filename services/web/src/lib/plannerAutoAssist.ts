@@ -48,6 +48,8 @@ export type CourseSuggestionExplanation = {
   summary?: string
   selectedCount?: number
   totalRecommendedCredits?: number
+  semesterTotalCredits?: number
+  reservedCredits?: number
   maxCredits?: number
   partialPlan?: boolean
   emptyPlan?: boolean
@@ -69,21 +71,24 @@ export function formatAutoPickStatus(
   formatCredits: (value: number) => string,
 ): string {
   const selectedCount = explanation.selectedCount ?? 0
-  const totalCredits = explanation.totalRecommendedCredits ?? 0
+  const newCredits = explanation.totalRecommendedCredits ?? 0
+  const semesterTotalCredits = explanation.semesterTotalCredits ?? newCredits
+  const reservedCredits = explanation.reservedCredits ?? 0
   const maxCredits = explanation.maxCredits ?? 0
   const isPartial =
     explanation.partialPlan ??
-    (selectedCount > 0 && maxCredits > 0 && totalCredits < maxCredits)
+    (selectedCount > 0 && maxCredits > 0 && semesterTotalCredits < maxCredits)
 
   if (addedCount > 0) {
     const template = isPartial ? labels.successPartial : labels.success
+    const creditsForMessage = isPartial ? semesterTotalCredits : newCredits
     return template
       .replace('{count}', String(addedCount))
-      .replace('{credits}', formatCredits(totalCredits))
+      .replace('{credits}', formatCredits(creditsForMessage))
       .replace('{max}', formatCredits(maxCredits))
   }
 
-  if (selectedCount > 0) {
+  if (selectedCount > 0 || reservedCredits > 0) {
     return labels.noNewCourses
   }
 

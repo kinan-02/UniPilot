@@ -93,6 +93,47 @@ class SelectedLessonEventInput(BaseModel):
     group: str | None = Field(default=None, max_length=64)
 
 
+class ExistingPlannedCourseInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    courseId: str
+    courseNumber: str = Field(min_length=1, max_length=32)
+    courseTitle: str | None = Field(default=None, max_length=240)
+    credits: float = Field(ge=0, le=36)
+    isActive: bool = True
+    selectedLessonEvents: list[SelectedLessonEventInput] | None = None
+
+    @field_validator("courseId")
+    @classmethod
+    def validate_course_id(cls, value: str) -> str:
+        return validate_object_id(value)
+
+    @field_validator("credits")
+    @classmethod
+    def validate_credits(cls, value: float) -> float:
+        return validate_credit_load(value)
+
+
+class SuggestSemesterCoursesForPlannerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    semesterCode: str
+    maxCredits: float | None = None
+    existingPlannedCourses: list[ExistingPlannedCourseInput] = Field(default_factory=list)
+
+    @field_validator("semesterCode")
+    @classmethod
+    def validate_semester_code_field(cls, value: str) -> str:
+        return validate_semester_code(value)
+
+    @field_validator("maxCredits")
+    @classmethod
+    def validate_max_credits(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return validate_credit_load(value)
+
+
 class SelectedGroupsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

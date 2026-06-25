@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from app.planning.lesson_events import extract_lesson_options_from_offering
 from app.planning.schedule_optimizer import (
+    build_selection_state_from_existing_planned,
     exams_conflict,
     pick_lessons_for_course,
     select_conflict_aware_courses,
@@ -66,6 +68,83 @@ def _offering(number: str, *, day: str = "Sunday", time: str = "10:30-12:30") ->
         "semesterCode": 202,
         "scheduleGroups": [{"day": day, "time": time, "type": "lecture"}],
     }
+
+
+def test_build_selection_state_from_existing_planned_reserves_credits_and_slots() -> None:
+    offering = _offering("10001", day="Sunday", time="08:30-10:30")
+    options = extract_lesson_options_from_offering(offering, course_number="10001")
+    assert options
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "10001",
+                "courseTitle": "Existing course",
+                "credits": 4.0,
+                "isActive": True,
+                "selectedLessonEvents": [
+                    {"eventId": options[0]["eventId"], "type": options[0]["type"]}
+                ],
+            }
+        ],
+        offerings_by_number={"10001": offering},
+    )
+
+    assert state["totalCredits"] == 4.0
+    assert "existing-a" in state["localSatisfied"]
+    assert len(state["occupiedSlots"]) == 1
+
+
+def test_select_conflict_aware_courses_uses_initial_state_for_credit_budget() -> None:
+    mandatory = [
+        {
+            "_id": "course-a",
+            "number": "10001",
+            "title": "Course A",
+            "credits": 5,
+            "prerequisites": [],
+        },
+        {
+            "_id": "course-b",
+            "number": "10002",
+            "title": "Course B",
+            "credits": 5,
+            "prerequisites": [],
+        },
+    ]
+    offerings = {
+        "10001": _offering("10001", day="Sunday", time="10:30-12:30"),
+        "10002": _offering("10002", day="Monday", time="10:30-12:30"),
+    }
+    initial_state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "10001",
+                "courseTitle": "Course A",
+                "credits": 5.0,
+                "isActive": True,
+            }
+        ],
+        offerings_by_number=offerings,
+    )
+
+    result = select_conflict_aware_courses(
+        mandatory_candidates=mandatory,
+        elective_candidates=[],
+        satisfied_course_ids=set(),
+        max_credits_limit=10,
+        offerings_by_number=offerings,
+        academic_year=2025,
+        semester_code=202,
+        initial_state=initial_state,
+    )
+
+    assert len(result["selectedCourses"]) == 1
+    assert result["selectedCourses"][0]["courseNumber"] == "10002"
+    assert result["totalCredits"] == 10.0
 
 
 def test_select_conflict_aware_courses_respects_max_credits() -> None:
