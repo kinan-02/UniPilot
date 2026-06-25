@@ -96,6 +96,58 @@ def test_build_selection_state_from_existing_planned_reserves_credits_and_slots(
     assert len(state["occupiedSlots"]) == 1
 
 
+def test_build_selection_state_skips_inactive_and_missing_course_id() -> None:
+    offering = _offering("10001", day="Sunday", time="08:30-10:30")
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "10001",
+                "credits": 4.0,
+                "isActive": False,
+            },
+            {
+                "courseId": "",
+                "courseNumber": "10002",
+                "credits": 3.0,
+                "isActive": True,
+            },
+            {
+                "courseId": "existing-b",
+                "courseNumber": "10001",
+                "credits": 2.0,
+                "isActive": True,
+            },
+        ],
+        offerings_by_number={"10001": offering},
+    )
+
+    assert state["totalCredits"] == 2.0
+    assert "existing-b" in state["localSatisfied"]
+
+
+def test_build_selection_state_ignores_unselected_lesson_options() -> None:
+    offering = _offering("10001", day="Sunday", time="08:30-10:30")
+
+    state = build_selection_state_from_existing_planned(
+        satisfied_course_ids=set(),
+        existing_planned=[
+            {
+                "courseId": "existing-a",
+                "courseNumber": "10001",
+                "credits": 4.0,
+                "isActive": True,
+                "selectedLessonEvents": [{"eventId": "non-matching-event", "type": "lecture"}],
+            }
+        ],
+        offerings_by_number={"10001": offering},
+    )
+
+    assert state["totalCredits"] == 4.0
+    assert state["occupiedSlots"] == []
+
+
 def test_select_conflict_aware_courses_uses_initial_state_for_credit_budget() -> None:
     mandatory = [
         {

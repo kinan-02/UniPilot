@@ -8,6 +8,7 @@ from app.schemas.semester_plan import (
     GenerateSemesterPlanRequest,
     ManualPlannedCourseInput,
     ManualSemesterInput,
+    SuggestSemesterCoursesForPlannerRequest,
     UpdateSemesterPlanRequest,
     validate_credit_load,
 )
@@ -90,6 +91,21 @@ class TestGenerateSemesterPlanRequest:
             GenerateSemesterPlanRequest.model_validate(
                 {"semesterCode": VALID_SEMESTER, "userId": "malicious"}
             )
+
+
+class TestSuggestSemesterCoursesForPlannerRequest:
+    def test_valid_request_without_max_credits_accepted(self):
+        req = SuggestSemesterCoursesForPlannerRequest(semesterCode=VALID_SEMESTER)
+        assert req.semesterCode == VALID_SEMESTER
+        assert req.maxCredits is None
+        assert req.existingPlannedCourses == []
+
+    def test_max_credits_none_explicitly_accepted(self):
+        req = SuggestSemesterCoursesForPlannerRequest(
+            semesterCode=VALID_SEMESTER,
+            maxCredits=None,
+        )
+        assert req.maxCredits is None
 
 
 class TestManualSemesterInput:
