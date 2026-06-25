@@ -61,6 +61,7 @@ services:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin
       MONGO_DB_NAME: ${MONGO_DB:-unipilot_python}
       LOG_LEVEL: ${DATA_ENGINEERING_LOG_LEVEL:-INFO}
+      CATALOG_VAULT_PATH: ${CATALOG_VAULT_PATH:-data/catalog_valut}
     depends_on:
       mongo:
         condition: service_healthy

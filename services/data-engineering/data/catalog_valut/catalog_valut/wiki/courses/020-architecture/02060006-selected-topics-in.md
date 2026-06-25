@@ -1,0 +1,36 @@
+---
+title: "02060006 — Selected Topics in (נושאים נבחרים בארכ' דיגיטלית)"
+title_he: נושאים נבחרים בארכ' דיגיטלית
+aliases: [נושאים נבחרים בארכ' דיגיטלית, Selected Topics in, 02060006]
+type: entity
+tags: [course, faculty-architecture-town-planning]
+faculty: faculty-architecture-town-planning
+course_code: "02060006"
+credits: "0.0"
+level: graduate
+sources: 1
+created: 2026-06-24
+updated: 2026-06-24
+---
+
+# 02060006 — Selected Topics in
+
+**Hebrew name:** נושאים נבחרים בארכ' דיגיטלית
+**Credits:** 0.0 נ"ז
+**Faculty:** [[faculty-architecture-town-planning]]
+
+## Description
+
+Selected Topics in course. See the faculty catalog for full syllabus and objectives.
+
+## פרטי הקורס בעברית
+
+**שם:** נושאים נבחרים בארכ' דיגיטלית
+**נקודות זכות:** 0.0 נ"ז
+**פקולטה:** [[faculty-architecture-town-planning]]
+
+**תיאור:** קורס נושאים נבחרים בארכ' דיגיטלית. לסילבוס ויעדי הלמידה המלאים ראה קטלוג הפקולטה.
+
+## Sources
+
+- [[technion-architecture-catalog-2025-2026]]

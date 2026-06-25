@@ -10,14 +10,18 @@ import pytest
 from app.importers.dds_catalog_staging_importer import import_dds_catalog_to_staging
 from app.models.catalog import ReviewedCuratedCatalogDocument
 from app.models.staging_catalog import Phase8ReadinessCheck
+from app.paths import catalog_vault_root, resolve_catalog_vault_wiki_root
 from app.vault.export_dds_catalog import export_vault_catalog, write_vault_catalog_export
 from app.vault.loader import load_wiki_page
 from app.vault.markdown_tables import parse_markdown_tables
 
 
-VAULT_ROOT = Path(__file__).resolve().parents[1] / "data" / "catalog_valut"
+VAULT_ROOT = catalog_vault_root()
 TRACK_PAGE = (
-    VAULT_ROOT / "wiki" / "entities" / "track-data-information-engineering.md"
+    resolve_catalog_vault_wiki_root(VAULT_ROOT)
+    / "entities"
+    / "tracks"
+    / "track-data-information-engineering.md"
 )
 
 
@@ -36,7 +40,7 @@ def test_parse_semester_table_from_track_page():
     semester_one = next(
         table
         for table in tables
-        if any(row and row[0].startswith("0940345") for row in table.rows)
+        if any(row and "0940345" in row[0] for row in table.rows)
     )
     assert "0940345" in semester_one.rows[0][0]
 

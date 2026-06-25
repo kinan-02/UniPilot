@@ -1,0 +1,34 @@
+---
+title: "02750726 — dentistry (רפואת שיניים)"
+title_he: רפואת שיניים
+aliases: [רפואת שיניים, dentistry, 02750726]
+type: entity
+tags: [course, faculty-medicine]
+faculty: faculty-medicine
+course_code: "02750726"
+credits: "0.0"
+level: graduate
+sources: 1
+created: 2026-06-24
+updated: 2026-06-24
+---
+
+# 02750726 — dentistry
+
+**Hebrew name:** רפואת שיניים
+**Credits:** 0.0 נ"ז
+**Faculty:** [[faculty-medicine]]
+
+## Description
+
+_No description available in catalog source._
+
+## פרטי הקורס בעברית
+
+**שם:** רפואת שיניים
+**נקודות זכות:** 0.0 נ"ז
+**פקולטה:** [[faculty-medicine]]
+
+## Sources
+
+- [[technion-medicine-catalog-2025-2026]]

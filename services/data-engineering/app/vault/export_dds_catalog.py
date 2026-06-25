@@ -18,7 +18,11 @@ from app.paths import (
     service_root,
 )
 from app.sources.technion_course_json_index import build_course_index, default_course_json_paths
-from app.utils.course_numbers import normalize_course_number
+from app.utils.course_numbers import (
+    collect_course_numbers_from_text,
+    normalize_course_number,
+    resolve_course_number_token,
+)
 from app.vault.loader import WikiPage, extract_field, load_pages_by_slug, wiki_root
 from app.vault.markdown_tables import MarkdownTable, find_table_with_header, parse_markdown_tables
 from app.vault.vault_signoff import apply_vault_signoff_to_catalog, build_readiness_after_vault_signoff
@@ -160,7 +164,7 @@ def _table_course_rows(table: MarkdownTable) -> list[dict[str, str | None]]:
         code = row[code_idx].strip()
         if not code or code.startswith("**") or "total" in code.lower():
             continue
-        if normalize_course_number(code) is None:
+        if resolve_course_number_token(code) is None:
             continue
         rows.append(
             {
@@ -189,7 +193,7 @@ def build_course_reference(
     source_page: Path | None = None,
     notes: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    course_number = normalize_course_number(code)
+    course_number = resolve_course_number_token(code)
     if course_number is None:
         return None
 
@@ -452,15 +456,7 @@ def _dne_starred_course_refs(pages: dict[str, WikiPage]) -> list[dict[str, Any]]
 
 
 def _collect_course_numbers(text: str) -> list[str]:
-    numbers: list[str] = []
-    seen: set[str] = set()
-    for match in COURSE_NUMBER_INLINE_PATTERN.finditer(text):
-        normalized = normalize_course_number(match.group(1))
-        if normalized is None or normalized in seen:
-            continue
-        seen.add(normalized)
-        numbers.append(normalized)
-    return numbers
+    return collect_course_numbers_from_text(text)
 
 
 def _focus_chain_section_end(

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+WIKILINK_PIPE_PLACEHOLDER = "\u241f"
+
 
 @dataclass(frozen=True)
 class MarkdownTable:
@@ -13,10 +15,22 @@ class MarkdownTable:
 
 
 TABLE_ROW_PATTERN = re.compile(r"^\s*\|(.+)\|\s*$")
+WIKILINK_PATTERN = re.compile(r"\[\[[^\]]+\]\]")
+
+
+def _protect_wikilink_pipes(line: str) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        return match.group(0).replace("|", WIKILINK_PIPE_PLACEHOLDER)
+
+    return WIKILINK_PATTERN.sub(_replace, line)
 
 
 def _split_cells(line: str) -> list[str]:
-    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+    protected = _protect_wikilink_pipes(line)
+    return [
+        cell.strip().replace(WIKILINK_PIPE_PLACEHOLDER, "|")
+        for cell in protected.strip().strip("|").split("|")
+    ]
 
 
 def _is_separator_row(cells: list[str]) -> bool:

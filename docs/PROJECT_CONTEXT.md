@@ -124,11 +124,11 @@ Phase 5 scope intentionally excludes production import, staging import of real d
 | Source | Path | Role |
 |--------|------|------|
 | Semester JSON | `data/raw/technion/courses_2025_{200,201,202}.json` | Semester planner — offerings only |
-| Catalog wiki vault | `data/catalog_valut/wiki/` | Programs, requirements, courses, regulations |
+| Catalog wiki vault | `data/catalog_valut/` (auto-resolves nested `catalog_valut/wiki/`) | Programs, requirements, courses, regulations (full Technion wiki; DDS exported first) |
 
 **Retired:** PDF extraction, docx markdown export, and markdown parser pipeline (`parse-dds-catalog-md`, `curate-dds-catalog`, `signoff-dds-catalog`). Raw catalog PDFs remain under `catalog_valut/raw/` for provenance.
 
-**Next:** `export-vault-catalog` CLI (planned) → existing staging import + production promotion. See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
+**Next:** `export-vault-catalog --faculty dds` (implemented) → staging import + production promotion. Additional faculties register in `vault_export_registry.py`. See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
 
 ### Python Phase 6–7.6 status (retired — superseded by catalog vault)
 

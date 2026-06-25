@@ -33,6 +33,12 @@ class TestSplitCells:
         assert "a" in result
         assert "b" in result
 
+    def test_preserves_pipes_inside_wikilinks(self):
+        result = _split_cells("| [[00940345-discrete-mathematics|0940345]] | מתמטיקה | **\\*** |")
+        assert result[0] == "[[00940345-discrete-mathematics|0940345]]"
+        assert result[1] == "מתמטיקה"
+        assert result[2] == "**\\***"
+
 
 # ---------------------------------------------------------------------------
 # _is_separator_row

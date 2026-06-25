@@ -1,0 +1,34 @@
+---
+title: "02060835 — Performalism - Performances in Digital Architecture (פרפורמליזם - ביצועים באדריכלות דיגיטלית)"
+title_he: פרפורמליזם - ביצועים באדריכלות דיגיטלית
+aliases: [פרפורמליזם - ביצועים באדריכלות דיגיטלית, Performalism - Performances in Digital Architecture, 02060835]
+type: entity
+tags: [course, faculty-architecture-town-planning]
+faculty: faculty-architecture-town-planning
+course_code: "02060835"
+credits: "0.0"
+level: graduate
+sources: 1
+created: 2026-06-24
+updated: 2026-06-24
+---
+
+# 02060835 — Performalism - Performances in Digital Architecture
+
+**Hebrew name:** פרפורמליזם - ביצועים באדריכלות דיגיטלית
+**Credits:** 0.0 נ"ז
+**Faculty:** [[faculty-architecture-town-planning]]
+
+## Description
+
+_No description available in catalog source._
+
+## פרטי הקורס בעברית
+
+**שם:** פרפורמליזם - ביצועים באדריכלות דיגיטלית
+**נקודות זכות:** 0.0 נ"ז
+**פקולטה:** [[faculty-architecture-town-planning]]
+
+## Sources
+
+- [[technion-architecture-catalog-2025-2026]]

@@ -9,6 +9,7 @@ from app.utils.hebrew_rtl import reverse_rtl_line_fragment
 COURSE_NUMBER_PATTERN = re.compile(
     r"(?<!\d)(0\d{6,8}|\d{7,8})(?!\d)",
 )
+WIKILINK_CELL_PATTERN = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 INLINE_COURSE_TITLE_PATTERN = re.compile(
     r"(?<!\d)(0\d{6,8}|\d{7,8})\s+([א-תA-Za-z0-9][^\n|+]{2,80}?)(?=\s{2,}0\d|\s*$|\||\n|\+)",
 )
@@ -73,6 +74,73 @@ def normalize_course_number(raw: str) -> str | None:
     if len(valid) == 1:
         return valid[0]
     return max(valid, key=lambda candidate: _score_candidate(candidate, raw_digits=digits))
+
+
+def resolve_course_number_token(raw: str) -> str | None:
+    """Normalize a table cell or inline token that may use Obsidian wikilinks."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+
+    if not text.startswith("[["):
+        direct = normalize_course_number(text)
+        if direct is not None:
+            return direct
+
+    for match in WIKILINK_CELL_PATTERN.finditer(text):
+        alias = (match.group(2) or "").strip()
+        slug = (match.group(1) or "").strip()
+        slug_prefix = slug.split("-", 1)[0] if slug else ""
+        for candidate in (alias, slug_prefix, slug):
+            if not candidate:
+                continue
+            normalized = normalize_course_number(candidate)
+            if normalized is not None:
+                return normalized
+
+    for match in COURSE_NUMBER_PATTERN.finditer(text):
+        normalized = normalize_course_number(match.group(1))
+        if normalized is not None:
+            return normalized
+
+    return None
+
+
+def collect_course_numbers_from_text(text: str) -> list[str]:
+    """Extract unique normalized course numbers from wiki body text."""
+    numbers: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str) -> None:
+        normalized = resolve_course_number_token(raw)
+        if normalized is None or normalized in seen:
+            return
+        seen.add(normalized)
+        numbers.append(normalized)
+
+    for match in WIKILINK_CELL_PATTERN.finditer(text):
+        alias = (match.group(2) or "").strip()
+        slug = (match.group(1) or "").strip()
+        slug_prefix = slug.split("-", 1)[0] if slug else ""
+        for candidate in (alias, slug_prefix):
+            if candidate:
+                add(candidate)
+
+    for match in COURSE_NUMBER_PATTERN.finditer(text):
+        add(match.group(1))
+
+    return numbers
+
+
+def strip_wikilinks_for_inline_scan(text: str) -> str:
+    """Replace wikilinks with alias/slug text so inline title regex does not see `]]`."""
+    def _replace(match: re.Match[str]) -> str:
+        alias = (match.group(2) or "").strip()
+        slug = (match.group(1) or "").strip()
+        slug_prefix = slug.split("-", 1)[0] if slug else slug
+        return alias or slug_prefix or ""
+
+    return WIKILINK_CELL_PATTERN.sub(_replace, text)
 
 
 def clean_cell_text(text: str) -> str:

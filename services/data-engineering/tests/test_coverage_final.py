@@ -1252,18 +1252,16 @@ class TestVaultLoaderGaps:
         assert _parse_scalar("'wrapped value'") == "wrapped value"
 
     def test_load_program_avivim_title_he(self):
-        from pathlib import Path
-
+        from app.paths import resolve_catalog_vault_wiki_root
         from app.vault.loader import load_wiki_page
 
-        page = load_wiki_page(
-            Path(__file__).resolve().parents[1]
-            / "data"
-            / "catalog_valut"
-            / "wiki"
-            / "entities"
-            / "program-avivim.md",
-        )
+        wiki_root = resolve_catalog_vault_wiki_root()
+        candidates = [
+            wiki_root / "entities" / "programs" / "program-avivim.md",
+            wiki_root / "entities" / "program-avivim.md",
+        ]
+        page_path = next(path for path in candidates if path.is_file())
+        page = load_wiki_page(page_path)
         assert page.title_he == 'תוכנית עילית "אביבים"'
     def test_parse_frontmatter_no_markers(self):
         """Line 62: returns ({}, text) when no frontmatter markers."""

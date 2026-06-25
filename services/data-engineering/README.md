@@ -9,7 +9,7 @@ See also: `docs/DATA_INGESTION_ARCHITECTURE.md`, `docs/data-sources/TECHNION_DDS
 | Source | Path | Used for |
 |--------|------|----------|
 | Semester course JSON | `data/raw/technion/courses_2025_{200,201,202}.json` | Semester planner — offerings, groups, schedules |
-| Catalog wiki vault | `data/catalog_valut/wiki/` | Programs, tracks, requirements, course metadata, regulations, future RAG |
+| Catalog wiki vault | `data/catalog_valut/` (auto-resolves nested `catalog_valut/wiki/`) | Programs, tracks, requirements, course metadata, regulations, future RAG |
 
 Large semester JSON files are **gitignored**. Catalog PDFs and parsed sources live under `catalog_valut/raw/` (immutable provenance).
 
@@ -102,7 +102,7 @@ CI vault export tests use a minimal wiki subset at `tests/fixtures/catalog_vault
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MONGO_URI` / `mongo_uri` | `mongodb://localhost:27017/unipilot_python` | MongoDB connection |
-| `CATALOG_VAULT_PATH` | `data/catalog_valut` | Wiki vault root |
+| `CATALOG_VAULT_PATH` | `data/catalog_valut` | Wiki vault root (nested `catalog_valut/wiki/` is auto-detected) |
 | `CATALOG_EXPORT_DIR` | `data/generated/technion/catalog` | Wiki export output |
 
 See `.env.example` at repo root.

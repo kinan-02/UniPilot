@@ -73,7 +73,8 @@
   "catalogVault": {
     "path": "data/catalog_valut",
     "scope": "degree programs, requirements, course metadata, regulations (all faculties; DDS ingested first)",
-    "wikiIndex": "data/catalog_valut/wiki/index.md"
+    "wikiIndex": "data/catalog_valut/catalog_valut/wiki/index.md",
+    "wikiResolution": "export CLI resolves the richest wiki tree under the vault root (prefers catalog_valut/wiki/ when nested)"
   },
   "notes": [
     "Semester JSON files feed the semester planner via import-technion-courses-staging.",

@@ -19,6 +19,31 @@ class TestPaths:
         assert isinstance(root, Path)
         assert root.is_dir()
 
+    def test_resolve_under_service_root_absolute(self, tmp_path):
+        from app.paths import _resolve_under_service_root
+
+        absolute = tmp_path / "absolute-vault"
+        absolute.mkdir()
+        assert _resolve_under_service_root(absolute) == absolute.resolve()
+
+    def test_wiki_root_candidates_dedupes_same_resolved_path(self, tmp_path):
+        from app.paths import _wiki_root_candidates
+
+        vault = tmp_path / "vault"
+        wiki = vault / "wiki"
+        wiki.mkdir(parents=True)
+        (vault / "catalog_valut").symlink_to(vault)
+        candidates = _wiki_root_candidates(vault)
+        assert len(candidates) == 1
+
+    def test_resolve_catalog_vault_wiki_root_raises_when_missing(self, tmp_path):
+        import pytest
+
+        from app.paths import resolve_catalog_vault_wiki_root
+
+        with pytest.raises(FileNotFoundError):
+            resolve_catalog_vault_wiki_root(tmp_path / "missing-vault")
+
     def test_catalog_vault_root(self):
         from app.paths import catalog_vault_root
         p = catalog_vault_root()
@@ -26,10 +51,12 @@ class TestPaths:
         assert "catalog_valut" in str(p)
 
     def test_catalog_vault_wiki_root(self):
-        from app.paths import catalog_vault_wiki_root
+        from app.paths import catalog_vault_wiki_root, resolve_catalog_vault_wiki_root
         p = catalog_vault_wiki_root()
         assert isinstance(p, Path)
         assert "wiki" in str(p)
+        assert (p / "entities" / "tracks").is_dir() or p.name == "wiki"
+        assert resolve_catalog_vault_wiki_root() == p
 
     def test_default_catalog_export_dir(self):
         from app.paths import default_catalog_export_dir
@@ -102,6 +129,14 @@ class TestCourseNumbers:
         from app.utils.course_numbers import normalize_course_number
         result = normalize_course_number("  01234567  ")
         assert result == "01234567"
+
+    def test_resolve_course_number_token_from_wikilink(self):
+        from app.utils.course_numbers import resolve_course_number_token
+
+        assert resolve_course_number_token("[[00940345-discrete-mathematics|0940345]]") == "00940345"
+        assert resolve_course_number_token("0940345") == "00940345"
+        assert resolve_course_number_token("[[-x|0940345]]") == "00940345"
+        assert resolve_course_number_token("[[-foo]]") is None
 
     def test_9_digit_number_invalid(self):
         from app.utils.course_numbers import normalize_course_number

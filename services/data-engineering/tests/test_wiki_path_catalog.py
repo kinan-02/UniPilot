@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.paths import catalog_vault_root, resolve_catalog_vault_wiki_root
 from app.vault.export_dds_catalog import DDS_TRACK_SLUGS, export_vault_catalog
 from app.vault.wiki_path_catalog import build_wiki_path_catalog
 
-VAULT_ROOT = Path(__file__).resolve().parents[1] / "data" / "catalog_valut"
+VAULT_ROOT = catalog_vault_root()
+WIKI_ROOT = resolve_catalog_vault_wiki_root(VAULT_ROOT)
 
 
 def test_build_wiki_path_catalog_includes_tracks_programs_and_graduate_areas():
     catalog = build_wiki_path_catalog(
-        wiki_path=VAULT_ROOT / "wiki",
+        wiki_path=WIKI_ROOT,
         track_program_codes={slug: config["programCode"] for slug, config in DDS_TRACK_SLUGS.items()},
         catalog_year=2025,
         catalog_version="2025-2026",

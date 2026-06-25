@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.utils.course_numbers import normalize_course_number
+from app.utils.course_numbers import (
+    normalize_course_number,
+    resolve_course_number_token,
+    strip_wikilinks_for_inline_scan,
+)
 from app.vault.loader import WikiPage
 from app.vault.markdown_tables import parse_markdown_tables
 
@@ -34,7 +38,7 @@ def _titles_from_tables(text: str, index: dict[str, str]) -> None:
         for row in table.rows:
             if code_idx >= len(row) or name_idx >= len(row):
                 continue
-            number = normalize_course_number(row[code_idx].strip())
+            number = resolve_course_number_token(row[code_idx].strip())
             name = row[name_idx].strip()
             if number and name and not name.startswith("**"):
                 index.setdefault(number, name)
@@ -64,7 +68,7 @@ def build_wiki_title_index(pages: dict[str, WikiPage]) -> dict[str, str]:
 
         for body in (page.english_body, page.body):
             _titles_from_tables(body, index)
-            _titles_from_inline(body, index)
+            _titles_from_inline(strip_wikilinks_for_inline_scan(body), index)
 
     return index
 

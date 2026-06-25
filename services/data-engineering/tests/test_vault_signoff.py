@@ -7,7 +7,9 @@ from pathlib import Path
 
 from app.vault.export_dds_catalog import export_vault_catalog
 
-VAULT_ROOT = Path(__file__).resolve().parents[1] / "data" / "catalog_valut"
+from app.paths import catalog_vault_root
+
+VAULT_ROOT = catalog_vault_root()
 
 
 def test_vault_signoff_derives_non_executable_groups():

@@ -1,0 +1,271 @@
+---
+title: Civil Engineering — Structures Track — Civil & Environmental Engineering
+title_he: מסלול הנדסה אזרחית – מבנים
+aliases: [הנדסה אזרחית מבנים, מסלול מבנים, Structural Engineering Track]
+type: entity
+tags: [track, bsc, faculty-civil-environmental-engineering]
+faculty: faculty-civil-environmental-engineering
+sources: 1
+created: 2026-06-21
+updated: 2026-06-21
+---
+
+# Civil Engineering — Structures Track
+
+- **Faculty:** [[faculty-civil-environmental-engineering]]
+- **Degree:** B.Sc. (מוסמך למדעים בהנדסה אזרחית – מבנים)
+- **Program Code:** 001401-1-000
+- **Total Credits:** 158.5 נ"ז
+- **Duration:** 4 years (8 semesters)
+
+## Description
+
+This track prepares structural engineers specializing in the design of building skeletons for residential, commercial, industrial buildings, bridges, silos, water towers, and more. Structural engineers focus on the strength, stability, and durability of structures under various loads including wind and earthquakes. The degree is recognized by the Engineers Register and permits registration in the structures division (מדור מבנים).
+
+## Credit Breakdown
+
+| Category | Credits |
+|---|---|
+| Mandatory Technion and faculty courses (מקצועות חובה-טכניוניים ופקולטיים) | 89.0 |
+| Track mandatory courses (מקצועות מסלול הבחירה) | 45.5 |
+| Track electives (מקצועות בחירה במסלול) | 12.0 |
+| General Technion electives (מקצועות בחירה כלל-טכניוניים) | 12.0 |
+
+General electives: 6 nq enrichment, 4 nq free, 2 nq physical education.
+
+## Semester-by-Semester Course Table (Mandatory Courses)
+
+### Semester 1
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140008-engineering-graphical-information|00140008]] | מידע גרפי הנדסי | 3.0 |
+| [[00140102-intro-engineering-mechanics|00140102]] | מבוא למכניקה הנדסית | 4.5 |
+| [[01040042-calculus-1m2|01040042]] | חדו"א 1מ2 | 5.0 |
+| [[01040019-linear-algebra-m|01040019]] | אלגברה ליניארית מ' | 4.5 |
+| [[01250001-general-chemistry|01250001]] | כימיה כללית | 3.0 |
+| [[03940800-physical-education|03940800]] | חינוך גופני | 1.0 |
+| **Semester total** | | **21.0** |
+
+> Note: Students without "physics 1 prerequisites" should take פיזיקה 1ל (1140077) instead, available winter semester only. Not recommended to study physics 1ל and מידע גרפי הנדסי simultaneously. מבוא למכניקה הנדסית may be deferred to Semester 2.
+
+### Semester 2
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140104-strength-of-materials-1|00140104]] | תורת החוזק 1 | 4.0 |
+| [[01040044-calculus-2m2|01040044]] | חדו"א 2מ2 | 5.0 |
+| [[01040131-ordinary-differential-equations|01040131]] | משוואות דיפ' רגילות/ח' | 2.5 |
+| [[01140051-physics-1|01140051]] | פיזיקה 1 | 2.5 |
+| [[02340128-intro-computer-python|02340128]] | מבוא למחשב – שפת פייתון | 4.0 |
+| [[03240033-technical-english-advanced-b|03240033]] | אנגלית טכנית מתקדמים ב' | 3.0 |
+| **Semester total** | | **21.0** |
+
+### Semester 3
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140003-statistics|00140003]] | סטטיסטיקה | 3.0 |
+| [[00140108-structural-statics|00140108]] | סטטיקת מבנים | 3.0 |
+| [[00140214-fundamentals-fluid-mechanics|00140214]] | יסודות מכניקת זורמים | 4.0 |
+| [[00140525-fundamentals-building-materials|00140525]] | יסודות חומרי בנייה | 5.0 |
+| [[01040228-partial-differential-equations-m|01040228]] | משוואות דיפ' חלקיות מ' | 3.0 |
+| [[01140052-physics-2|01140052]] | פיזיקה 2 | 3.5 |
+| **Semester total** | | **21.5** |
+
+> Note: Students without "physics 2 prerequisites" take פיזיקה 2ל (1140078); spring semester only.
+
+### Semester 4
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140005-engineering-laboratory|00140005]] | מעבדה הנדסית | 1.5 |
+| [[00140006-intro-numerical-methods|00140006]] | מבוא לשיטות נומריות | 3.0 |
+| [[00140153-concrete-structures-1|00140153]] | מבני בטון 1 | 4.0 |
+| [[00140405-engineering-geology|00140405]] | גיאולוגיה הנדסית | 2.0 |
+| [[00140603-engineering-economics-finance|00140603]] | כלכלה הנדסית ומימון | 2.5 |
+| [[00140618-intro-construction-management-safety|00140618]] | מבוא לניהול ובטיחות בבנייה | 4.0 |
+| *00140779 | תכן גיאומטרי ותפעול דרכים | 4.0 |
+| **Semester total** | | **21.0** |
+
+> *Alternatively: תכנון תחבורה (00140702)
+
+### Semester 5
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140143-computer-methods-structural-statics|00140143]] | שיטות מחשב בסטטיקת מבנים | 3.0 |
+| [[00140145-strength-of-materials-2|00140145]] | תורת החוזק 2 | 5.0 |
+| [[00140149-concrete-structures-2|00140149]] | מבני בטון 2 | 4.5 |
+| [[00140160-research-exposure-structural-eng|00140160]] | חשיפה למחקר בהנדסת מבנים וניהול הבנייה | 1.0 |
+| [[00140409-geomechanics|00140409]] | גיאומכניקה | 4.0 |
+| [[00140841-fundamentals-surveying-mapping-1|00140841]] | יסודות המיפוי והמדידה 1 | 3.5 |
+| [[03940800-physical-education|03940800]] | חינוך גופני | 1.0 |
+| **Semester total** | | **22.0** |
+
+### Semester 6
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140146-intro-structural-dynamics-earthquake|00140146]] | מבוא לדינמיקת מבנים והנדסת רעידות אדמה | 4.5 |
+| [[00140148-principles-structural-design|00140148]] | עיקרי תכן מבנים | 3.0 |
+| [[00140150-steel-structures-1|00140150]] | מבני פלדה 1 | 4.5 |
+| [[00140411-soil-engineering|00140411]] | הנדסת קרקע | 3.5 |
+| [[00940202-intro-data|00940202]] | מבוא לניתוח נתונים | 3.5 |
+| General electives | מקצועות בחירה כלל-טכניוניים | — |
+| **Semester total** | | **~21.0** |
+
+### Semester 7
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140004-systems-analysis|00140004]] | ניתוח מערכות | 3.0 |
+| [[00140163-foundations|00140163]] | יסודות | 3.0 |
+| [[00140147-structural-engineer-practicum|00140147]] | בניית המהנדס | 3.0 |
+| Group A+B electives | מקצועות מקבוצות א'+ב' | 8.0 |
+| General electives | מקצועות בחירה כלל-טכניוניים | 4.0 |
+| **Semester total** | | **~22.0** |
+
+### Semester 8
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| 00140131 + 00140132 | פרויקט מורחב בהנדסת מבנים חלק א'+ב' | 5.0 |
+| General electives | מקצועות בחירה כלל-טכניוניים | 4.0 |
+| Track electives | מקצועות בחירה | 3.5–4.0 |
+| **Semester total** | | **~12.0** |
+
+## Track Elective Requirements
+
+Students must choose electives from Group A and Group B such that the total from both groups is at least 8.0 nq.
+
+**Group A — at least 2 courses:**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140107-intro-theory-elasticity|00140107]] | מבוא לתורת האלסטיות | 2.5 |
+| [[00140151-personal-topic-structural-eng|00140151]] | נושא אישי בהנדסת מבנים | 2.5 |
+| [[00160111-prestressed-concrete|00160111]] | בטון דרוך | 3.0 |
+| [[00160122-structural-design-blast-impact-loads|00160122]] | תכן מבנים תחת עומסי הדף ואימפקט | 3.0 |
+| [[00160142-earthquake-engineering|00160142]] | הנדסת רעידות אדמה | 3.0 |
+| [[00160143-concrete-3|00160143]] | בטון 3 | 3.0 |
+| [[00160144-intro-finite-elements|00160144]] | מבוא לאלמנטים סופיים | 3.0 |
+
+**Group B — at least 1 course:**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140205-hydraulics|00140205]] | הידרוליקה | 3.0 |
+| [[00140212-intro-engineering-hydrology|00140212]] | מבוא להידרולוגיה הנדסית | 2.5 |
+| [[00140316-intro-environmental-engineering|00140316]] | מבוא להנדסת הסביבה | 2.5 |
+
+## Special Notes
+
+- The degree title "מוסמך למדעים בהנדסה אזרחית – מבנים" is recognized by the Engineers Register (רשם המהנדסים) and allows registration in the structures division (מדור מבנים).
+- After passing licensing exams (בחינות הרשם), graduates may obtain a structural engineering license.
+- The extended project (פרויקט מורחב) in Semester 8 spans two parts (חלק א'+ב') together worth 5.0 nq.
+
+---
+
+## נתונים בעברית
+
+### תכנית הלימודים בהנדסה אזרחית – הנדסת מבנים
+
+**מספר תכנית:** 001401-1-000
+
+על מנת להשלים את התואר יש לצבור 158.5 נקודות לפי הפרוט הבא:
+- 89.0 נק' מקצועות חובה-טכניוניים ופקולטיים
+- 45.5 נק' מקצועות מסלול הבחירה
+- 12.0 נק' מקצועות בחירה במסלול
+- 12.0 נק' מקצועות בחירה כלל-טכניוניים (6 נק' בחירה מתוך קורסי העשרה, 4 נק' בחירה כללית, 2 נק' בחירה מתוך קורסי חינוך גופני)
+
+#### מקצועות החובה – השיבוץ המומלץ לפי סמסטרים
+
+**סמסטר 1:**
+- 00140008 מידע גרפי הנדסי — 3.0 נק'
+- 00140102 מבוא למכניקה הנדסית — 4.5 נק'
+- 01040042 חדו"א 1מ2 — 5.0 נק'
+- 01040019 אלגברה ליניארית מ' — 4.5 נק'
+- 01250001 כימיה כללית — 3.0 נק'
+- 03940800 חינוך גופני — 1.0 נק'
+
+הערה: סטודנטים חסרי "השלמות פיזיקה 1" אינם יכולים ללמוד את המקצוע מבוא למכניקה הנדסית. סטודנטים אלה יכולים ללמוד את המקצוע פיזיקה 1ל 1140077 הכולל את ההשלמות בפיזיקה 1, במקום המקצוע פיזיקה 1. המקצוע ניתן בסמסטר חורף בלבד. מומלץ לא ללמוד במקביל את פיזיקה 1ל ומידע גרפי הנדסי. סטודנטים אלה יוכלו ללמוד את המקצוע מבוא למכניקה הנדסית בסמסטר 2.
+
+**סמסטר 2:**
+- 00140104 תורת החוזק 1 — 4.0 נק'
+- 01040044 חדו"א 2מ2 — 5.0 נק'
+- 01040131 משוואות דיפ' רגילות/ח' — 2.5 נק'
+- 01140051 פיזיקה 1 — 2.5 נק'
+- 02340128 מבוא למחשב – שפת פייתון — 4.0 נק'
+- 03240033 אנגלית טכנית מתקדמים ב' — 3.0 נק'
+
+**סמסטר 3:**
+- 00140003 סטטיסטיקה — 3.0 נק'
+- 00140108 סטטיקת מבנים — 3.0 נק'
+- 00140214 יסודות מכניקת זורמים — 4.0 נק'
+- 00140525 יסודות חומרי בנייה — 5.0 נק'
+- 01040228 משוואות דיפ' חלקיות מ' — 3.0 נק'
+- 01140052 פיזיקה 2 — 3.5 נק'
+
+הערה: סטודנטים חסרי "השלמות פיזיקה 2" אינם יכולים ללמוד את המקצוע פיזיקה 2. סטודנטים אלה יכולים ללמוד את המקצוע פיזיקה 2ל 1140078 הכולל את ההשלמות בפיזיקה 2. המקצוע ניתן בסמסטר אביב בלבד.
+
+**סמסטר 4:**
+- 00140005 מעבדה הנדסית — 1.5 נק'
+- 00140006 מבוא לשיטות נומריות — 3.0 נק'
+- 00140153 מבני בטון 1 — 4.0 נק'
+- 00140405 גיאולוגיה הנדסית — 2.0 נק'
+- 00140603 כלכלה הנדסית ומימון — 2.5 נק'
+- 00140618 מבוא לניהול ובטיחות בבנייה — 4.0 נק'
+- *00140779 תכן גיאומטרי ותפעול דרכים — 4.0 נק'
+  (*ניתן לחילופין ללמוד את המקצוע תכנון תחבורה 00140702)
+
+**סמסטר 5:**
+- 00140143 שיטות מחשב בסטטיקת מבנים — 3.0 נק'
+- 00140145 תורת החוזק 2 — 5.0 נק'
+- 00140149 מבני בטון 2 — 4.5 נק'
+- 00140160 חשיפה למחקר בהנדסת מבנים וניהול הבנייה — 1.0 נק'
+- 00140409 גיאומכניקה — 4.0 נק'
+- 00140841 יסודות המיפוי והמדידה 1 — 3.5 נק'
+- 03940800 חינוך גופני — 1.0 נק'
+
+**סמסטר 6:**
+- 00140146 מבוא לדינמיקת מבנים והנדסת רעידות אדמה — 4.5 נק'
+- 00140148 עיקרי תכן מבנים — 3.0 נק'
+- 00140150 מבני פלדה 1 — 4.5 נק'
+- 00140411 הנדסת קרקע — 3.5 נק'
+- 00940202 מבוא לניתוח נתונים — 3.5 נק' (עם מקצועות בחירה כלל-טכניוניים — 2.0 נק')
+
+**סמסטר 7:**
+- 00140004 ניתוח מערכות — 3.0 נק'
+- 00140163 יסודות — 3.0 נק'
+- 00140147 בניית המהנדס — 3.0 נק'
+- מקצועות מקבוצות א'+ב' — 8.0 נק'
+- מקצועות בחירה כלל-טכניוניים — 4.0 נק'
+
+**סמסטר 8:**
+- 00140131+00140132 פרויקט מורחב בהנדסת מבנים חלק א'+ב' — 5.0 נק'
+- מקצועות בחירה כלל-טכניוניים — 4.0 נק'
+- מקצועות בחירה — 3.5–4.0 נק'
+
+#### קבוצה א': לפחות שני קורסים מתוך הרשימה, ובלבד שסך הנקודות מקבוצות א' וב' לא יפחת מ-8.0
+- 00140107 מבוא לתורת האלסטיות — 2.5 נק'
+- 00140151 נושא אישי בהנדסת מבנים — 2.5 נק'
+- 00160111 בטון דרוך — 3.0 נק'
+- 00160122 תכן מבנים תחת עומסי הדף ואימפקט — 3.0 נק'
+- 00160142 הנדסת רעידות אדמה — 3.0 נק'
+- 00160143 בטון 3 — 3.0 נק'
+- 00160144 מבוא לאלמנטים סופיים — 3.0 נק'
+
+#### קבוצה ב': לפחות קורס אחד מתוך הרשימה, ובלבד שסך הנקודות מקבוצות א' וב' לא יפחת מ-8.0
+- 00140205 הידרוליקה — 3.0 נק'
+- 00140212 מבוא להידרולוגיה הנדסית — 2.5 נק'
+- 00140316 מבוא להנדסת הסביבה — 2.5 נק'
+
+### תיאור המסלול
+
+המסלול להנדסה אזרחית – מבנים מכשיר מהנדסים אזרחיים שעיסוקם העיקרי הוא תכן מבנים למגורים, תעשייה, פעילות ציבורית, גשרים, ממגורות, מגדלי מים, ועוד. מהנדסי מבנים מתמחים בתכנון השלד של מבנים: חוזקו, יציבותו, ועמידותו בהטרחות שונות, כגון רוחות ורעידות אדמה. תוכנית הלימודים מובילה להכשרה ממוקדת, הכוללת הקניית הכלים הדרושים לעיסוק בהנדסת מבנים ומקנה את התואר "מוסמך למדעים בהנדסה אזרחית – מבנים". תואר זה מוכר ע"י רשם המהנדסים, ומאפשר רישום במדור מבנים בפנקס המהנדסים. בהמשך ניתן לקבל רישיון בתחום הנדסת מבנים (לאחר מעבר בחינות הרשם).
+
+---
+
+## Sources
+- [[technion-full-catalog-2025-2026]]

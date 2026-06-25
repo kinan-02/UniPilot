@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.paths import catalog_vault_root
 from app.vault.loader import load_pages_by_slug, wiki_root
 from app.vault.title_index import build_wiki_title_index
 
-VAULT_ROOT = Path(__file__).resolve().parents[1] / "data" / "catalog_valut"
+VAULT_ROOT = catalog_vault_root()
 
 
 def test_wiki_title_index_includes_table_and_inline_titles():

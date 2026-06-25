@@ -20,6 +20,8 @@ Degree programs, requirements, course metadata, and regulations live in the **ca
 
 `services/data-engineering/data/catalog_valut/`
 
+The full Technion wiki lives under `catalog_valut/catalog_valut/wiki/` (2,700+ pages). The export CLI auto-detects the richest wiki tree under the vault root — no manual `--vault-path` needed.
+
 See `manifest.json`, `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`, and `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
 
 ## Git policy

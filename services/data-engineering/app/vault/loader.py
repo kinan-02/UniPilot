@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.paths import catalog_vault_wiki_root
+from app.paths import catalog_vault_root, resolve_catalog_vault_wiki_root
 
 FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 WIKILINK_PATTERN = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
@@ -102,9 +102,10 @@ def load_wiki_page(path: Path) -> WikiPage:
 
 def wiki_root(vault_path: Path | None = None) -> Path:
     if vault_path is not None:
-        candidate = vault_path / "wiki" if (vault_path / "wiki").is_dir() else vault_path
-        return candidate.resolve()
-    return catalog_vault_wiki_root().resolve()
+        if vault_path.name == "wiki" and vault_path.is_dir():
+            return vault_path.resolve()
+        return resolve_catalog_vault_wiki_root(vault_path)
+    return resolve_catalog_vault_wiki_root(catalog_vault_root())
 
 
 def iter_wiki_pages(root: Path, *, subdir: str | None = None) -> list[WikiPage]:
