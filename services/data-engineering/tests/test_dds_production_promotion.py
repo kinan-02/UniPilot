@@ -12,6 +12,7 @@ from app.importers.dds_catalog_staging_importer import PROMOTION_WRITE_COLLECTIO
 from app.main import run_promote_dds_to_production, run_rollback_dds_production_promotion
 from app.promotion.dds_production_promoter import (
     ProductionPromotionError,
+    _retire_superseded_catalog_rules,
     run_dds_production_promotion,
     run_dds_production_rollback,
     validate_production_collections_for_promotion,
@@ -354,3 +355,43 @@ def test_validate_production_collections_rejects_foreign_docs(mongo_database) ->
             catalog_version="2025-2026",
             source_name="technion-dds-catalog",
         )
+
+
+def test_retire_superseded_catalog_rules_is_faculty_scoped(mongo_database) -> None:
+    settings = get_settings()
+    collection = settings.production_catalog_rules_collection
+    mongo_database[collection].insert_many(
+        [
+            {
+                "productionKey": "technion-dds:advisory-rule:req:009216-1-000:semester-1-matrix:2025-2026",
+                "sourceName": "technion-dds-catalog",
+                "catalogVersion": "2025-2026",
+            },
+            {
+                "productionKey": "technion-computer-science:advisory-rule:req:023023-1-000:semester-1-matrix:2025-2026",
+                "sourceName": "technion-computer-science-catalog",
+                "catalogVersion": "2025-2026",
+            },
+        ]
+    )
+
+    removed = _retire_superseded_catalog_rules(
+        mongo_database,
+        settings=settings,
+        planned_production_keys={
+            "technion-computer-science:advisory-rule:req:023023-1-000:cs-spec-group-01:2025-2026"
+        },
+        catalog_version="2025-2026",
+        catalog_source_name="technion-computer-science-catalog",
+    )
+    assert removed == 1
+    assert (
+        mongo_database[collection].count_documents({"sourceName": "technion-dds-catalog"})
+        == 1
+    )
+    assert (
+        mongo_database[collection].count_documents(
+            {"sourceName": "technion-computer-science-catalog"}
+        )
+        == 0
+    )

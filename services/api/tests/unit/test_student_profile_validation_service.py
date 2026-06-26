@@ -131,3 +131,54 @@ async def test_validate_academic_path_allows_primary_path_option_degree_id(mongo
         str(graduate["_id"]),
         {"trackSlug": "track-data-information-engineering"},
     )
+
+
+@pytest.mark.asyncio
+async def test_validate_academic_path_resolves_linked_degree_from_path_option(mongo_database):
+    from tests.fixtures.graduation_progress_fixtures import seed_graduation_progress_fixtures
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    path_insert = await mongo_database[get_settings().catalog_path_options_collection].insert_one(
+        {
+            "optionKey": "technion:dds:track-data-information-engineering",
+            "institutionId": "technion",
+            "facultyId": "faculty-dds",
+            "wikiSlug": "track-data-information-engineering",
+            "kind": "bsc_track",
+            "name": "Data and Information Engineering",
+            "selectableAsPrimary": True,
+            "linkedDegreeProgramId": fixtures["programId"],
+            "linkedProgramCode": "009216-1-000",
+            "status": "published",
+        }
+    )
+    await validate_academic_path_for_profile(
+        mongo_database,
+        str(path_insert.inserted_id),
+        {"trackSlug": "track-data-information-engineering"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_academic_path_rejects_program_without_track_metadata(mongo_database):
+    program_insert = await mongo_database[get_settings().degree_programs_collection].insert_one(
+        {
+            "productionKey": "technion-test:program:999999-1-000:2025-2026",
+            "institutionId": "technion",
+            "programCode": "999999-1-000",
+            "name": "Test program without wiki metadata",
+            "totalCredits": 120.0,
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "metadata": {},
+            "status": "published",
+        }
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_academic_path_for_profile(
+            mongo_database,
+            str(program_insert.inserted_id),
+            {"trackSlug": "track-data-information-engineering"},
+        )
+    assert exc_info.value.status_code == 400
+    assert "unknown track slug" in exc_info.value.detail.lower()

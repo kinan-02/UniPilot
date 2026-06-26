@@ -253,7 +253,7 @@ def check_elective_chain_contract(audit: AuditResult) -> None:
         audit.deduct(10, "verify_elective_chains.py missing", blocker=True)
         return
     result = subprocess.run(
-        [sys.executable, str(script), "--faculty", "dds"],
+        [sys.executable, str(script), "--faculty", "all"],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,

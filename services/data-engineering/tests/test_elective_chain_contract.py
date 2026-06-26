@@ -342,6 +342,7 @@ def test_remove_stale_dds_staging_records_and_retire_superseded_rules():
             settings=settings,
             planned_production_keys=set(),
             catalog_version="2025-2026",
+            catalog_source_name="technion-dds-catalog",
         )
         == 0
     )

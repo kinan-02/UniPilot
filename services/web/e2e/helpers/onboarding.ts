@@ -63,7 +63,12 @@ export async function completeOnboarding(page: Page, options?: OnboardingOptions
         .locator('label:has(input[name="primary-program"])')
         .filter({ hasText: options.primaryProgramLabel })
         .first()
-    : page.locator('label:has(input[name="primary-program"])').first()
+    : programType === 'BSc'
+      ? page
+          .locator('label:has(input[name="primary-program"])')
+          .filter({ hasText: /Data.*Information Engineering|הנדסת נתונים ומידע/i })
+          .first()
+      : page.locator('label:has(input[name="primary-program"])').first()
   await expect(primaryProgramCard).toBeVisible({ timeout: 15_000 })
   await primaryProgramCard.click()
   await page.getByTestId('onboarding-continue').click()

@@ -582,14 +582,15 @@ def _retire_superseded_catalog_rules(
     settings: Settings,
     planned_production_keys: set[str],
     catalog_version: str,
+    catalog_source_name: str,
 ) -> int:
-    """Remove retired DDS advisory rules (e.g. renamed pool group ids) before re-promotion."""
+    """Remove superseded advisory rules for one faculty catalog source before re-promotion."""
     if not planned_production_keys:
         return 0
     result = database[settings.production_catalog_rules_collection].delete_many(
         {
             "catalogVersion": catalog_version,
-            "sourceName": DDS_CATALOG_SOURCE,
+            "sourceName": catalog_source_name,
             "productionKey": {"$nin": list(planned_production_keys)},
         }
     )
@@ -981,6 +982,7 @@ def run_dds_production_promotion(
             settings=settings,
             planned_production_keys=planned_keys.get(settings.production_catalog_rules_collection, set()),
             catalog_version=gate.catalogVersion or "2025-2026",
+            catalog_source_name=gate.sourceName,
         )
         retire_unplanned_production_documents(
             database,

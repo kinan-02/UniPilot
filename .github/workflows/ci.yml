@@ -64,7 +64,7 @@ jobs:
       - name: Run pytest with coverage gate
         run: pytest
       - name: Verify elective chain contract (vault export)
-        run: python ../../scripts/verify_elective_chains.py --faculty dds
+        run: python ../../scripts/verify_elective_chains.py --faculty all
 
   web:
     name: Web (Vitest + build)
