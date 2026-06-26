@@ -275,17 +275,26 @@ async def run_functional_verification(v: Verifier, client: httpx.AsyncClient) ->
         label="auth login",
     )
 
-    # Protected without token
-    for path in [
-        "/student-profile",
-        "/catalog/courses?limit=1",
-        "/completed-courses",
-        "/graduation-progress",
-        "/semester-plans",
-        "/semester-plans/generate",
-        "/academic-risks",
-    ]:
-        await v.request(client, "GET", path, expected=401, label=f"no auth {path}")
+    # Protected without token (fresh client — register/login sets HttpOnly cookies on shared client)
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as guest:
+        for method, path in [
+            ("GET", "/student-profile"),
+            ("GET", "/catalog/courses?limit=1"),
+            ("GET", "/completed-courses"),
+            ("GET", "/graduation-progress"),
+            ("GET", "/semester-plans"),
+            ("POST", "/semester-plans/generate"),
+            ("GET", "/academic-risks"),
+        ]:
+            json_body = {"semesterCode": "2025-1"} if path == "/semester-plans/generate" else None
+            await v.request(
+                guest,
+                method,
+                path,
+                json_body=json_body,
+                expected=401,
+                label=f"no auth {method} {path}",
+            )
 
     # Student profile CRUD
     await v.request(
