@@ -11,10 +11,35 @@ export class TranscriptPage extends BasePage {
   }
 
   async addCompletedCourse(courseNumber: string, semesterCode: string) {
+    const catalogSearch = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/catalog/courses') &&
+        response.request().method() === 'GET' &&
+        response.status() === 200,
+    )
+
     await this.courseSearch.fill(courseNumber)
+    await catalogSearch
     await expect(this.page.getByText(new RegExp(courseNumber))).toBeVisible({ timeout: 10_000 })
+
+    const suggestion = this.page
+      .getByRole('button')
+      .filter({ hasText: new RegExp(courseNumber) })
+      .first()
+    if (await suggestion.isVisible().catch(() => false)) {
+      await suggestion.click()
+    }
+
     await this.page.getByTestId('transcript-semester-custom').fill(semesterCode)
+    const createResponse = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/completed-courses') &&
+        response.request().method() === 'POST' &&
+        response.status() === 201,
+    )
     await this.page.getByTestId('transcript-add-button').click()
+    await createResponse
+
     await expect(
       this.page.getByText(/course added to your transcript|הקורס נוסף לגיליון הציונים/i),
     ).toBeVisible({ timeout: 15_000 })

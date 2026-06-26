@@ -1,7 +1,5 @@
 import { expect, test } from './fixtures/test'
-
-/** DNE data-science elective pool course present in promoted catalog_rules explorer lists. */
-const DNE_ELECTIVE_DS_COURSE = '00960200'
+import { E2E_DNE_ELECTIVE_COURSE } from './helpers/planner'
 
 test.describe('Transcript ↔ Graduation progress E2E', () => {
   test('adding a completed course updates progress summary and pool counts', async ({
@@ -13,9 +11,14 @@ test.describe('Transcript ↔ Graduation progress E2E', () => {
     const summaryBefore = await progressPage.summaryCard.innerText()
 
     await transcriptPage.gotoTranscript()
-    await transcriptPage.addCompletedCourse(DNE_ELECTIVE_DS_COURSE, '2020-2')
+    await transcriptPage.addCompletedCourse(E2E_DNE_ELECTIVE_COURSE, '2020-2')
 
+    const progressRefresh = page.waitForResponse(
+      (response) =>
+        response.url().includes('/graduation-progress') && response.status() === 200,
+    )
     await progressPage.gotoProgress()
+    await progressRefresh
     const summaryAfter = await progressPage.summaryCard.innerText()
     expect(summaryAfter).not.toEqual(summaryBefore)
 
@@ -29,7 +32,7 @@ test.describe('Transcript ↔ Graduation progress E2E', () => {
     if (await collapsedToggle.count()) {
       await collapsedToggle.click()
     }
-    const courseLink = poolCard.getByRole('link', { name: DNE_ELECTIVE_DS_COURSE })
+    const courseLink = poolCard.getByRole('link', { name: E2E_DNE_ELECTIVE_COURSE })
     await courseLink.scrollIntoViewIfNeeded()
     await expect(courseLink).toBeVisible({ timeout: 10_000 })
     await expect(poolCard.getByTestId('virtual-pool-course-list').getByText(/counted|נספר/i)).toBeVisible()

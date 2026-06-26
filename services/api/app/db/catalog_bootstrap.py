@@ -13,7 +13,8 @@ from app.catalog.excluded_courses import EXCLUDED_COURSE
 logger = logging.getLogger(__name__)
 
 KNOWN_COURSE = "00940345"
-DNE_ELECTIVE_DS_COURSE = "00960200"
+DNE_ELECTIVE_DS_COURSE = "00940411"
+DNE_ELECTIVE_DS_COURSE_ALT = "00960200"
 KNOWN_PROGRAM = "009216-1-000"
 CS_PROGRAM_CODE = "023023-1-000"
 HARD_REQUIREMENT_ID = "009216-1-000:core-mandatory"
@@ -27,7 +28,7 @@ ALL_PROGRAMS = (
 )
 E2E_ONBOARDING_PROGRAMS = (CS_PROGRAM_CODE,)
 
-SEEDED_COURSE_COUNT = 4
+SEEDED_COURSE_COUNT = 5
 SEEDED_PROGRAM_COUNT = len(ALL_PROGRAMS) + len(E2E_ONBOARDING_PROGRAMS)
 SEEDED_FACULTY_COUNT = 2
 
@@ -203,7 +204,8 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
             _course_doc(KNOWN_COURSE, "מתמטיקה דיסקרטית"),
             _course_doc("01040031", 'חדו"א 1'),
             _course_doc("02340117", "מבוא למדעי המחשב"),
-            _course_doc(DNE_ELECTIVE_DS_COURSE, "כלים מתמטיים למדעי הנתונים"),
+            _course_doc(DNE_ELECTIVE_DS_COURSE, "מבוא למדעי הנתונים"),
+            _course_doc(DNE_ELECTIVE_DS_COURSE_ALT, "כלים מתמטיים למדעי הנתונים"),
         ]
     )
     await database[resolved.course_offerings_collection].insert_many(
@@ -479,6 +481,10 @@ def _advisory_rule_doc(requirement_group_id: str) -> dict[str, Any]:
         course_refs = [
             {
                 "courseNumber": DNE_ELECTIVE_DS_COURSE,
+                "titleHint": "מבוא למדעי הנתונים",
+            },
+            {
+                "courseNumber": DNE_ELECTIVE_DS_COURSE_ALT,
                 "titleHint": "כלים מתמטיים למדעי הנתונים",
             },
         ]

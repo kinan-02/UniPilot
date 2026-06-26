@@ -1,7 +1,11 @@
 import pytest
 
 from app.config import Settings, get_settings
-from app.db.catalog_bootstrap import ensure_development_catalog, seed_minimal_catalog
+from app.db.catalog_bootstrap import (
+    DNE_ELECTIVE_DS_COURSE,
+    ensure_development_catalog,
+    seed_minimal_catalog,
+)
 
 
 @pytest.mark.asyncio
@@ -14,7 +18,7 @@ async def test_ensure_development_catalog_seeds_when_empty(mongo_database) -> No
     seeded = await ensure_development_catalog(mongo_database, settings)
     assert seeded is True
     assert await mongo_database.degree_programs.count_documents({}) == 4
-    assert await mongo_database.courses.count_documents({}) == 4
+    assert await mongo_database.courses.count_documents({}) == 5
     resolved = get_settings()
     assert (
         await mongo_database[resolved.catalog_rules_collection].count_documents({})
@@ -83,7 +87,7 @@ async def test_seed_minimal_catalog_includes_e2e_cs_faculty_and_ds_elective_cour
     )
     assert ds_pool is not None
     assert any(
-        ref.get("courseNumber") == "00960200"
+        ref.get("courseNumber") in {DNE_ELECTIVE_DS_COURSE, "00960200"}
         for ref in (ds_pool.get("courseReferences") or [])
     )
     assert await mongo_database[resolved.catalog_faculties_collection].count_documents(
