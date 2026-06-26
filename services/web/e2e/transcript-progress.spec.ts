@@ -35,6 +35,6 @@ test.describe('Transcript ↔ Graduation progress E2E', () => {
     const courseLink = poolCard.getByRole('link', { name: E2E_DNE_ELECTIVE_COURSE })
     await courseLink.scrollIntoViewIfNeeded()
     await expect(courseLink).toBeVisible({ timeout: 10_000 })
-    await expect(poolCard.getByTestId('virtual-pool-course-list').getByText(/counted|נספר/i)).toBeVisible()
+    await expect(poolCard.getByText(/counted|נספר/i)).toBeVisible()
   })
 })

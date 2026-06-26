@@ -20,9 +20,9 @@ export class TranscriptPage extends BasePage {
 
     await this.courseSearch.fill(courseNumber)
     await catalogSearch
-    await expect(this.page.getByText(new RegExp(courseNumber))).toBeVisible({ timeout: 10_000 })
+    await expect(this.addForm.getByText(new RegExp(courseNumber))).toBeVisible({ timeout: 10_000 })
 
-    const suggestion = this.page
+    const suggestion = this.addForm
       .getByRole('button')
       .filter({ hasText: new RegExp(courseNumber) })
       .first()
