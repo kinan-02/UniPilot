@@ -11,6 +11,11 @@ export class TranscriptPage extends BasePage {
   }
 
   async addCompletedCourse(courseNumber: string, semesterCode: string) {
+    const existingRow = this.page.getByTestId(`transcript-row-${courseNumber}`)
+    if (await existingRow.isVisible().catch(() => false)) {
+      return
+    }
+
     const catalogSearch = this.page.waitForResponse(
       (response) =>
         response.url().includes('/catalog/courses') &&
