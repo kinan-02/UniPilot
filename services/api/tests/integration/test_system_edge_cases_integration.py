@@ -8,6 +8,7 @@ from app.config import get_settings
 from tests.fixtures.catalog_production_fixtures import (
     KNOWN_COURSE,
     KNOWN_PROGRAM,
+    SEEDED_COURSE_COUNT,
     seed_catalog_production_fixtures,
 )
 from tests.integration.test_catalog_integration import register_access_token
@@ -47,7 +48,7 @@ async def test_pagination_offset_beyond_total_returns_empty_page(auth_client, mo
 
     assert response.status_code == 200
     body = response.json()["data"]
-    assert body["total"] == 3
+    assert body["total"] == SEEDED_COURSE_COUNT
     assert body["items"] == []
 
 

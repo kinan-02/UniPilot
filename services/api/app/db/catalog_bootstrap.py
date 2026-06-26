@@ -13,15 +13,23 @@ from app.catalog.excluded_courses import EXCLUDED_COURSE
 logger = logging.getLogger(__name__)
 
 KNOWN_COURSE = "00940345"
+DNE_ELECTIVE_DS_COURSE = "00960200"
 KNOWN_PROGRAM = "009216-1-000"
+CS_PROGRAM_CODE = "023023-1-000"
 HARD_REQUIREMENT_ID = "009216-1-000:core-mandatory"
 ADVISORY_RULE_ID = "009216-1-000:semester-1-matrix"
+DNE_ELECTIVE_DS_POOL_ID = "009216-1-000:elective-ds-pool"
 
 ALL_PROGRAMS = (
     "009216-1-000",
     "009009-1-000",
     "009118-1-000",
 )
+E2E_ONBOARDING_PROGRAMS = (CS_PROGRAM_CODE,)
+
+SEEDED_COURSE_COUNT = 4
+SEEDED_PROGRAM_COUNT = len(ALL_PROGRAMS) + len(E2E_ONBOARDING_PROGRAMS)
+SEEDED_FACULTY_COUNT = 2
 
 TOTAL_HARD_REQUIREMENTS = 16
 TOTAL_ADVISORY_RULES = 46
@@ -89,6 +97,12 @@ PROGRAM_METADATA: dict[str, dict[str, Any]] = {
         "nameEn": "Information Systems Engineering",
         "totalCredits": 155.0,
         "wikiPage": "track-information-systems-engineering",
+    },
+    CS_PROGRAM_CODE: {
+        "name": "מסלול כללי ארבע-שנתי במדעי המחשב",
+        "nameEn": "General Computer Science (4-year)",
+        "totalCredits": 155.0,
+        "wikiPage": "track-computer-science-general-4year",
     },
 }
 
@@ -189,6 +203,7 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
             _course_doc(KNOWN_COURSE, "מתמטיקה דיסקרטית"),
             _course_doc("01040031", 'חדו"א 1'),
             _course_doc("02340117", "מבוא למדעי המחשב"),
+            _course_doc(DNE_ELECTIVE_DS_COURSE, "כלים מתמטיים למדעי הנתונים"),
         ]
     )
     await database[resolved.course_offerings_collection].insert_many(
@@ -227,6 +242,7 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
     )
 
     program_docs = [_program_doc(program_code) for program_code in ALL_PROGRAMS]
+    program_docs.extend(_program_doc(program_code) for program_code in E2E_ONBOARDING_PROGRAMS)
     await database[resolved.degree_programs_collection].insert_many(program_docs)
 
     hard_docs = [
@@ -250,20 +266,35 @@ async def _seed_catalog_faculties_and_path_options(
     database: AsyncIOMotorDatabase,
     settings: Settings,
 ) -> None:
-    faculty_doc = {
-        "productionKey": "technion:faculty:faculty-dds:2025-2026",
-        "institutionId": "technion",
-        "facultyId": "faculty-dds",
-        "wikiSlug": "faculty-dds",
-        "name": "הפקולטה למדעי הנתונים וההחלטות",
-        "nameHe": "הפקולטה למדעי הנתונים וההחלטות",
-        "nameEn": "Faculty of Data Science and Decisions",
-        "aliases": ["DDS"],
-        "catalogYear": 2025,
-        "catalogVersion": "2025-2026",
-        "status": "published",
-    }
-    await database[settings.catalog_faculties_collection].insert_one(faculty_doc)
+    faculty_docs = [
+        {
+            "productionKey": "technion:faculty:faculty-dds:2025-2026",
+            "institutionId": "technion",
+            "facultyId": "faculty-dds",
+            "wikiSlug": "faculty-dds",
+            "name": "הפקולטה למדעי הנתונים וההחלטות",
+            "nameHe": "הפקולטה למדעי הנתונים וההחלטות",
+            "nameEn": "Faculty of Data Science and Decisions",
+            "aliases": ["DDS"],
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "status": "published",
+        },
+        {
+            "productionKey": "technion:faculty:faculty-computer-science:2025-2026",
+            "institutionId": "technion",
+            "facultyId": "faculty-computer-science",
+            "wikiSlug": "faculty-computer-science",
+            "name": "הפקולטה למדעי המחשב",
+            "nameHe": "הפקולטה למדעי המחשב",
+            "nameEn": "Faculty of Computer Science",
+            "aliases": ["CS"],
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "status": "published",
+        },
+    ]
+    await database[settings.catalog_faculties_collection].insert_many(faculty_docs)
 
     track_options = [
         (
@@ -308,6 +339,23 @@ async def _seed_catalog_faculties_and_path_options(
         )
     path_docs.extend(
         [
+            {
+                "productionKey": "technion:path-option:technion:cs:track-computer-science-general-4year:2025-2026",
+                "optionKey": "technion:cs:track-computer-science-general-4year",
+                "institutionId": "technion",
+                "facultyId": "faculty-computer-science",
+                "wikiSlug": "track-computer-science-general-4year",
+                "kind": "bsc_track",
+                "name": "מסלול כללי ארבע-שנתי במדעי המחשב",
+                "nameHe": "מסלול כללי ארבע-שנתי במדעי המחשב",
+                "nameEn": "General Computer Science (4-year)",
+                "studyLevels": ["BSc"],
+                "selectableAsPrimary": True,
+                "linkedProgramCode": CS_PROGRAM_CODE,
+                "catalogYear": 2025,
+                "catalogVersion": "2025-2026",
+                "status": "published",
+            },
             {
                 "productionKey": "technion:path-option:technion:dds:program-excellence:2025-2026",
                 "optionKey": "technion:dds:program-excellence",
@@ -364,8 +412,10 @@ async def _seed_catalog_faculties_and_path_options(
 
 def _program_doc(program_code: str) -> dict[str, Any]:
     meta = PROGRAM_METADATA[program_code]
+    faculty_id = "faculty-computer-science" if program_code == CS_PROGRAM_CODE else "faculty-dds"
+    faculty_slug = "computer-science" if program_code == CS_PROGRAM_CODE else "dds"
     return {
-        "productionKey": f"technion-dds:program:{program_code}:2025-2026",
+        "productionKey": f"technion-{faculty_slug}:program:{program_code}:2025-2026",
         "institutionId": "technion",
         "programCode": program_code,
         "name": meta["name"],
@@ -376,8 +426,8 @@ def _program_doc(program_code: str) -> dict[str, Any]:
         "status": "published",
         "paths": [],
         "metadata": {
-            "facultyId": "faculty-dds",
-            "faculty": "dds",
+            "facultyId": faculty_id,
+            "faculty": faculty_slug,
             "wikiPage": PROGRAM_METADATA[program_code].get("wikiPage"),
             "programKind": "bsc_track",
         },
@@ -425,6 +475,13 @@ def _advisory_rule_doc(requirement_group_id: str) -> dict[str, Any]:
     course_refs: list[dict[str, Any]] = []
     if requirement_group_id == ADVISORY_RULE_ID:
         course_refs = [{"courseNumber": KNOWN_COURSE, "titleHint": "מתמטיקה דיסקרטית"}]
+    elif requirement_group_id == DNE_ELECTIVE_DS_POOL_ID:
+        course_refs = [
+            {
+                "courseNumber": DNE_ELECTIVE_DS_COURSE,
+                "titleHint": "כלים מתמטיים למדעי הנתונים",
+            },
+        ]
 
     rule_type = "semester_matrix" if "semester-" in requirement_group_id else "course_pool"
     rule_expression: dict[str, Any] = (

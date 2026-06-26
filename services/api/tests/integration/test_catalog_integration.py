@@ -10,6 +10,8 @@ from tests.fixtures.catalog_production_fixtures import (
     HARD_REQUIREMENT_ID,
     KNOWN_COURSE,
     KNOWN_PROGRAM,
+    SEEDED_COURSE_COUNT,
+    SEEDED_PROGRAM_COUNT,
     TOTAL_ADVISORY_RULES,
     TOTAL_HARD_REQUIREMENTS,
     seed_catalog_production_fixtures,
@@ -64,7 +66,8 @@ async def test_list_academic_faculties(auth_client, mongo_database):
     body = response.json()
     assert body["success"] is True
     assert body["data"]["total"] >= 1
-    assert body["data"]["items"][0]["facultyId"] == "faculty-dds"
+    faculty_ids = {item["facultyId"] for item in body["data"]["items"]}
+    assert "faculty-dds" in faculty_ids
 
 
 @pytest.mark.asyncio
@@ -115,7 +118,7 @@ async def test_list_courses_pagination(auth_client, mongo_database):
     assert response.status_code == 200
     body = response.json()
     assert body["success"] is True
-    assert body["data"]["total"] == 3
+    assert body["data"]["total"] == SEEDED_COURSE_COUNT
     assert len(body["data"]["items"]) == 1
     assert body["data"]["limit"] == 1
 
@@ -235,35 +238,12 @@ async def test_list_degree_programs(auth_client, mongo_database):
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["total"] == len(ALL_PROGRAMS)
+    assert response.json()["data"]["total"] == SEEDED_PROGRAM_COUNT
 
 
 @pytest.mark.asyncio
 async def test_list_degree_programs_filters_by_faculty_id(auth_client, mongo_database):
     await seed_catalog_production_fixtures(mongo_database)
-    from app.config import get_settings
-
-    settings = get_settings()
-    await mongo_database[settings.degree_programs_collection].insert_one(
-        {
-            "productionKey": "technion-computer-science:program:023023-1-000:2025-2026",
-            "institutionId": "technion",
-            "programCode": "023023-1-000",
-            "name": "מדעי המחשב — מסלול כללי",
-            "nameEn": "General Computer Science",
-            "totalCredits": 155.0,
-            "catalogYear": 2025,
-            "catalogVersion": "2025-2026",
-            "status": "published",
-            "paths": [],
-            "metadata": {
-                "facultyId": "faculty-computer-science",
-                "faculty": "computer-science",
-                "wikiPage": "track-computer-science-general-4year",
-                "programKind": "bsc_track",
-            },
-        }
-    )
     token = await register_access_token(auth_client, "catalog-programs-cs-filter@example.com")
 
     response = await auth_client.get(

@@ -12,7 +12,11 @@ from app.repositories.catalog_repository import (
     course_summary_from_document,
 )
 from app.catalog.excluded_courses import EXCLUDED_COURSE, PRODUCTION_EXCLUDED_COURSE_NUMBERS
-from tests.fixtures.catalog_production_fixtures import KNOWN_COURSE, seed_catalog_production_fixtures
+from tests.fixtures.catalog_production_fixtures import (
+    KNOWN_COURSE,
+    SEEDED_COURSE_COUNT,
+    seed_catalog_production_fixtures,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +303,7 @@ async def test_repository_list_and_get_course(mongo_database):
     await seed_catalog_production_fixtures(mongo_database)
 
     items, total = await catalog_repository.list_courses(mongo_database, limit=10, offset=0)
-    assert total == 3
+    assert total == SEEDED_COURSE_COUNT
     assert any(item["courseNumber"] == KNOWN_COURSE for item in items)
 
     course = await catalog_repository.get_course_by_number(mongo_database, KNOWN_COURSE)
