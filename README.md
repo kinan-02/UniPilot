@@ -133,9 +133,10 @@ npm run test:e2e:a11y           # WCAG 2.x accessibility scans
 npm run test:e2e:report         # Open HTML report after a run
 ```
 
-Run a single Playwright project (after `auth.setup` runs via project dependencies):
+Run a single Playwright project (authenticated projects auto-register one student per parallel worker):
 
 ```bash
+PLAYWRIGHT_WORKERS=4 npm run test:e2e   # optional: default 4 in CI, ~50% CPU locally
 npm run test:e2e -- --project=smoke
 npm run test:e2e -- --project=onboarding
 npm run test:e2e -- --project=progress

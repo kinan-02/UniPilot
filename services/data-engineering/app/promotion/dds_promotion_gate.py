@@ -35,7 +35,7 @@ from app.quality.dds_staging_quality import (
     build_dds_staging_quality_report,
     default_json_report_path as default_quality_json_path,
 )
-from app.paths import service_root
+from app.paths import default_catalog_reviewed_path, service_root
 from app.sources.technion_course_json import SOURCE_NAME as COURSE_JSON_SOURCE, is_dds_faculty
 
 EXCLUDED_COURSE_SKIP_REASON = "production-excluded-by-catalog-signoff"
@@ -61,8 +61,8 @@ def default_promotion_md_path() -> Path:
     return service_root() / "data" / "reports" / "technion" / "dds_promotion_plan.md"
 
 
-def catalog_reviewed_json_path() -> Path:
-    return service_root() / "data" / "generated" / "technion" / "catalog" / "catalog_reviewed.json"
+def catalog_reviewed_json_path(faculty_id: str = "dds") -> Path:
+    return default_catalog_reviewed_path(faculty_id)
 
 
 def _utc_now_iso() -> str:
@@ -75,8 +75,12 @@ def _bounded_message(message: str, *, max_length: int = 500) -> str:
     return message[: max_length - 1] + "…"
 
 
-def _catalog_filter() -> dict[str, Any]:
-    return {"sourceName": DDS_CATALOG_SOURCE}
+def _catalog_filter(source_name: str | None = None) -> dict[str, Any]:
+    return {"sourceName": source_name or DDS_CATALOG_SOURCE}
+
+
+def _catalog_source_name(faculty_id: str) -> str:
+    return f"technion-{faculty_id}-catalog"
 
 
 def _course_filter() -> dict[str, Any]:
@@ -131,22 +135,28 @@ def build_promotion_gate_result(
     strict: bool = False,
     allow_warnings: bool = True,
     dry_run: bool = True,
+    faculty_id: str = "dds",
 ) -> PromotionGateResult:
     settings = settings or get_settings()
+    catalog_source = _catalog_source_name(faculty_id)
     checks: list[PromotionCheck] = []
     blockers: list[str] = []
     warnings: list[str] = []
     advisory_rule_ids: list[str] = []
 
-    programs = list(database[settings.staging_degree_programs_collection].find(_catalog_filter()))
+    programs = list(
+        database[settings.staging_degree_programs_collection].find(_catalog_filter(catalog_source))
+    )
     path_options = list(
-        database[settings.staging_catalog_path_options_collection].find(_catalog_filter())
+        database[settings.staging_catalog_path_options_collection].find(_catalog_filter(catalog_source))
     )
-    faculties = list(database[settings.staging_catalog_faculties_collection].find(_catalog_filter()))
+    faculties = list(
+        database[settings.staging_catalog_faculties_collection].find(_catalog_filter(catalog_source))
+    )
     requirements = list(
-        database[settings.staging_degree_requirements_collection].find(_catalog_filter())
+        database[settings.staging_degree_requirements_collection].find(_catalog_filter(catalog_source))
     )
-    rules = list(database[settings.staging_catalog_rules_collection].find(_catalog_filter()))
+    rules = list(database[settings.staging_catalog_rules_collection].find(_catalog_filter(catalog_source)))
     courses = list(database[settings.staging_courses_collection].find(_course_filter()))
     offerings = list(database[settings.staging_course_offerings_collection].find({}))
 
@@ -159,7 +169,11 @@ def build_promotion_gate_result(
         if group_id and not document.get("ruleIsExecutable", True):
             advisory_group_ids.add(group_id)
 
-    quality_live = build_dds_staging_quality_report(database, settings=settings)
+    quality_live = build_dds_staging_quality_report(
+        database,
+        settings=settings,
+        faculty_id=faculty_id,
+    )
     quality_file_summary = _load_quality_summary(quality_json_path)
 
     catalog_year: int | None = None
@@ -198,14 +212,25 @@ def build_promotion_gate_result(
 
     # --- Staging structure ---
     program_codes = {doc.get("programCode") for doc in programs}
+    if faculty_id == "dds":
+        expected_program_count = 3
+        expected_codes = set(EXPECTED_PROGRAM_CODES)
+        expected_credits = EXPECTED_TOTAL_CREDITS
+        min_requirement_groups = 41
+    else:
+        expected_program_count = 1
+        expected_codes = program_codes
+        expected_credits = None
+        min_requirement_groups = 1
+
     add_check(
         "staging.program_count",
-        len(programs) == 3,
-        f"Found {len(programs)} staged DDS programs (expected 3).",
+        len(programs) >= expected_program_count,
+        f"Found {len(programs)} staged {faculty_id} programs (expected at least {expected_program_count}).",
         severity="blocker",
         blocker=True,
     )
-    missing_codes = sorted(set(EXPECTED_PROGRAM_CODES) - program_codes)
+    missing_codes = sorted(expected_codes - program_codes) if faculty_id == "dds" else []
     add_check(
         "staging.program_codes",
         not missing_codes,
@@ -216,15 +241,18 @@ def build_promotion_gate_result(
         blocker=True,
         details={"missing": missing_codes},
     )
-    bad_credits = [
-        doc.get("programCode")
-        for doc in programs
-        if doc.get("totalCredits") != EXPECTED_TOTAL_CREDITS
-    ]
+    if expected_credits is None:
+        bad_credits = [doc.get("programCode") for doc in programs if not doc.get("totalCredits")]
+    else:
+        bad_credits = [
+            doc.get("programCode")
+            for doc in programs
+            if doc.get("totalCredits") != expected_credits
+        ]
     add_check(
         "staging.total_credits",
         not bad_credits,
-        "All programs have totalCredits=155.0."
+        "All programs have valid totalCredits."
         if not bad_credits
         else f"Invalid totalCredits for: {bad_credits}",
         severity="blocker",
@@ -232,10 +260,10 @@ def build_promotion_gate_result(
     )
     add_check(
         "staging.requirement_groups",
-        len(requirements) >= 41,
+        len(requirements) >= min_requirement_groups,
         f"Found {len(requirements)} staged requirement groups.",
-        severity="blocker" if len(requirements) < 41 else "info",
-        blocker=len(requirements) < 41,
+        severity="blocker" if len(requirements) < min_requirement_groups else "info",
+        blocker=len(requirements) < min_requirement_groups,
     )
     add_check(
         "staging.courses",
@@ -320,7 +348,7 @@ def build_promotion_gate_result(
         for doc in courses
         if doc.get("courseNumber") and is_dds_faculty(doc.get("faculty"))
     }
-    catalog_reviewed_path = catalog_reviewed_json_path()
+    catalog_reviewed_path = catalog_reviewed_json_path(faculty_id)
     if (
         catalog_signoff.get("signoffSource") == "vault-wiki"
         and catalog_reviewed_path.is_file()
@@ -457,6 +485,7 @@ def build_promotion_gate_result(
 
     # --- Build promotion plan ---
     plan = PromotionPlan()
+    wiki_faculty_scope = f"faculty-{faculty_id}"
     policies = PromotionPolicy(
         nonExecutableRulesPolicy=str(catalog_signoff.get("nonExecutableRulesPolicy", "advisory-only")),
         enforceNonExecutableRulesInProduction=bool(
@@ -485,6 +514,8 @@ def build_promotion_gate_result(
         )
 
     for option in path_options:
+        if option.get("facultyId") != wiki_faculty_scope:
+            continue
         option_key = option.get("optionKey", "")
         plan.catalogPathOptions.append(
             PromotionPlanItem(
@@ -499,14 +530,16 @@ def build_promotion_gate_result(
         )
 
     for faculty in faculties:
-        faculty_id = faculty.get("facultyId", "")
+        entry_faculty_id = faculty.get("facultyId", "")
+        if entry_faculty_id != wiki_faculty_scope:
+            continue
         plan.catalogFaculties.append(
             PromotionPlanItem(
                 itemType="catalog_faculty",
-                stagingKey=faculty.get("stagingKey", faculty_id),
+                stagingKey=faculty.get("stagingKey", entry_faculty_id),
                 productionCollection=PRODUCTION_TARGET_COLLECTIONS["catalogFaculties"],
                 action="upsert",
-                identifier=faculty_id,
+                identifier=entry_faculty_id,
                 enforceInGraduationProgress=False,
                 notes="Technion faculty registry entry from wiki vault.",
             )
@@ -682,7 +715,7 @@ def build_promotion_gate_result(
 
     return PromotionGateResult(
         generatedAt=_utc_now_iso(),
-        sourceName=DDS_CATALOG_SOURCE,
+        sourceName=catalog_source,
         catalogYear=catalog_year,
         catalogVersion=catalog_version,
         gateStatus=gate_status,  # type: ignore[arg-type]
@@ -823,6 +856,7 @@ def run_promotion_gate_plan(
     quality_json_path: Path | None = None,
     strict: bool = False,
     allow_warnings: bool = True,
+    faculty_id: str = "dds",
 ) -> PromotionReport:
     settings = settings or get_settings()
     gate = build_promotion_gate_result(
@@ -832,10 +866,11 @@ def run_promotion_gate_plan(
         strict=strict,
         allow_warnings=allow_warnings,
         dry_run=True,
+        faculty_id=faculty_id,
     )
     quality_summary = _load_quality_summary(quality_json_path)
     if not quality_summary:
-        live = build_dds_staging_quality_report(database, settings=settings)
+        live = build_dds_staging_quality_report(database, settings=settings, faculty_id=faculty_id)
         quality_summary = {
             "status": live.status,
             "recommendation": live.recommendation,

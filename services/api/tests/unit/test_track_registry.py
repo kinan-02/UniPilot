@@ -22,6 +22,16 @@ def test_resolve_track_slug_from_wiki_page_metadata():
     assert slug == "track-data-information-engineering"
 
 
+def test_resolve_track_slug_from_non_dds_wiki_page_metadata():
+    slug = resolve_track_slug_from_program(
+        {
+            "programCode": "023023-1-000",
+            "metadata": {"wikiPage": "track-computer-science-general-4year"},
+        }
+    )
+    assert slug == "track-computer-science-general-4year"
+
+
 def test_resolve_track_slug_from_program_code_fallback():
     slug = resolve_track_slug_from_program({"programCode": "009118-1-000", "metadata": {}})
     assert slug == "track-information-systems-engineering"

@@ -83,4 +83,18 @@ test.describe('Onboarding and profile routing', () => {
       page.getByRole('heading', { name: /What degree level are you in\?|באיזו רמת תואר אתה לומד\?/i }),
     ).not.toBeVisible()
   })
+
+  test('CS general 4-year onboarding path completes successfully', async ({ page }) => {
+    await registerUser(page, `cs-onboard-${Date.now()}@example.com`)
+    await completeOnboarding(page, {
+      facultyTestId: 'faculty-faculty-computer-science',
+      primaryProgramLabel: /General Computer Science|מסלול כללי ארבע-שנתי/i,
+    })
+
+    await page.getByRole('navigation').getByRole('link', { name: /לוח בקרה|Dashboard/i }).click()
+    await waitForDashboard(page)
+    await expect(
+      page.getByRole('heading', { name: /What degree level are you in\?|באיזו רמת תואר אתה לומד\?/i }),
+    ).not.toBeVisible()
+  })
 })

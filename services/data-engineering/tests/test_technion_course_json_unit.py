@@ -121,6 +121,9 @@ class TestIsDdsFaculty:
     def test_empty_returns_false(self):
         assert is_dds_faculty("") is False
 
+    def test_semester_json_short_faculty_name(self):
+        assert is_dds_faculty("מדעי הנתונים וההחלטות") is True
+
 
 # ---------------------------------------------------------------------------
 # _parse_credits

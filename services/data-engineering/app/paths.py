@@ -74,9 +74,16 @@ def default_catalog_export_dir() -> Path:
     return _resolve_under_service_root(Path(get_settings().dds_catalog_output_dir))
 
 
-def default_catalog_reviewed_path() -> Path:
-    return default_catalog_export_dir() / "catalog_reviewed.json"
+def faculty_catalog_export_dir(faculty_id: str = "dds") -> Path:
+    base = default_catalog_export_dir()
+    if faculty_id == "dds":
+        return base
+    return base.parent / faculty_id
 
 
-def default_readiness_path() -> Path:
-    return default_catalog_export_dir() / "catalog_phase8_readiness_check.json"
+def default_catalog_reviewed_path(faculty_id: str = "dds") -> Path:
+    return faculty_catalog_export_dir(faculty_id) / "catalog_reviewed.json"
+
+
+def default_readiness_path(faculty_id: str = "dds") -> Path:
+    return faculty_catalog_export_dir(faculty_id) / "catalog_phase8_readiness_check.json"

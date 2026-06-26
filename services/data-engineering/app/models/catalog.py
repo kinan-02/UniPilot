@@ -20,6 +20,21 @@ class CuratedCatalogSource(BaseModel):
         max_length=50,
         description="Technion faculty slug (e.g. dds) when export is faculty-scoped.",
     )
+    sourceName: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        description="Staging/production source name (e.g. technion-dds-catalog).",
+    )
+    expectedProgramCodes: list[str] = Field(
+        default_factory=list,
+        description="Program codes expected in this faculty export.",
+    )
+    exportMode: str | None = Field(
+        default=None,
+        max_length=50,
+        description="specialized (DDS) or generic faculty exporter.",
+    )
     sourceType: str = Field(min_length=1, max_length=100)
     catalogYear: int = Field(ge=1990, le=2100)
     catalogVersion: str = Field(min_length=1, max_length=50)

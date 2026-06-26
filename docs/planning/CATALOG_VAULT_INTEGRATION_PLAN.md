@@ -1,7 +1,7 @@
 # Catalog Vault Wiki — Integration Plan
 
-Last updated: 2026-06-22  
-Status: **Phase A + B implemented for DDS** — vault export with automatic wiki sign-off; **Phase D partially started** (faculty export registry + per-faculty elective chain contract); RAG deferred.
+Last updated: 2026-06-26  
+Status: **Phase A + B implemented for DDS** — vault export with automatic wiki sign-off; **Phase D implemented** (generic faculty exporter + registry; CS reference faculty); **D.6 RAG deferred**.
 
 Related: `services/data-engineering/data/catalog_valut/CLAUDE.md`, `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`, `docs/DATA_INGESTION_ARCHITECTURE.md`
 
@@ -93,20 +93,22 @@ courses_2025_*.json → import-technion-courses-staging → staging_courses / st
 | B.3 Vault sign-off | Done — applied automatically in `export-vault-catalog` (no `record-dds-human-signoff` step) |
 | B.4 Blocker cleanup refresh | Done — title enrichment from wiki course pages |
 
-**Deferred (later):** Phase D.4 RAG indexing; additional faculty exporters beyond DDS.
+**Deferred (later):** Phase D.6 RAG indexing; per-faculty specialized elective-chain exporters beyond generic Pass-1.
 
-### Phase D — Multi-faculty expansion (partially started)
+### Phase D — Multi-faculty expansion (implemented; RAG deferred)
 
 | Task | Status | Details |
 |------|--------|---------|
-| D.1 Faculty export registry | Done | `vault_export_registry.py` routes `export-vault-catalog --faculty <id>`; DDS registered; unsupported faculties fail with supported list |
+| D.1 Faculty export registry | Done | `vault_export_registry.py` routes `export-vault-catalog --faculty <id>`; DDS + 15 generic faculties registered |
 | D.2 Per-faculty elective chain contract | Done | `data/contracts/elective_chain_pools.json` (v2, `institutionId: technion`, `faculties.<id>.pools`); validated at export, staging quality, API/web regression |
 | D.3 Ops verification | Done | `scripts/verify_elective_chains.py` (+ CI + `production_audit.py`); `--faculty dds` or `--faculty all` |
-| D.4 Incremental faculty ingest | Todo | Add wiki batch + `export_<faculty>_vault_catalog()` + register spec when onboarding next faculty |
-| D.5 API catalog scope | Todo | Extend `/catalog/degree-programs` filters when non-DDS programs are promoted |
-| D.6 RAG index | Todo | Chunk `wiki/` pages for future AI advisor; cite `[[source]]` links |
+| D.4 Incremental faculty ingest | Done | `export_faculty_vault_catalog.py` (generic Pass-1); per-faculty output under `data/generated/technion/catalog/<faculty>/`; staging keys `technion-<faculty>:catalog:...` |
+| D.5 API catalog scope | Done | `/catalog/degree-programs?facultyId=` filter; `track_registry` + web `academicPath` resolve `metadata.wikiPage` for any `track-*` slug |
+| D.6 RAG index | Deferred | Chunk `wiki/` pages for future AI advisor; cite `[[source]]` links |
 
-**Onboarding a new faculty:** (1) expand `catalog_valut/wiki/`, (2) implement exporter + register in `vault_export_registry.py`, (3) add `faculties.<id>` contract block if chain pools exist, (4) export → import → quality → promote.
+**Reference second faculty:** Computer Science (`--faculty computer-science`) — 7 BSc track programs exported (e.g. `023023-1-000`).
+
+**Onboarding a new faculty:** (1) expand `catalog_valut/wiki/`, (2) register in `vault_export_registry.py` (or use generic exporter if track pages follow the schema), (3) add `faculties.<id>` contract block if chain pools exist, (4) export → import → quality → promote with `--faculty <id>`.
 
 ### Phase C — Staging & production (complete)
 
@@ -121,6 +123,19 @@ docker compose run --rm data-engineering python -m app.main validate-dds-staging
 docker compose run --rm data-engineering python -m app.main plan-dds-production-promotion --allow-warnings
 docker compose run --rm data-engineering python -m app.main promote-dds-to-production \
   --i-confirm-dangerous-production-write --allow-warnings
+```
+
+**Computer Science (second faculty) — same pipeline with explicit paths and `--faculty`:**
+
+```bash
+docker compose run --rm data-engineering python -m app.main export-vault-catalog --faculty computer-science
+docker compose run --rm data-engineering python -m app.main import-dds-catalog-staging \
+  --catalog-path data/generated/technion/computer-science/catalog_reviewed.json \
+  --readiness-path data/generated/technion/computer-science/catalog_phase8_readiness_check.json
+docker compose run --rm data-engineering python -m app.main validate-dds-staging-quality --faculty computer-science
+docker compose run --rm data-engineering python -m app.main plan-dds-production-promotion --faculty computer-science --allow-warnings
+docker compose run --rm data-engineering python -m app.main promote-dds-to-production \
+  --faculty computer-science --i-confirm-dangerous-production-write --allow-warnings
 ```
 
 **Production promotion run:** `dds-promotion-ece45363bbf2` (2026-06-21; supersedes `dds-promotion-8aeb5595517d`)

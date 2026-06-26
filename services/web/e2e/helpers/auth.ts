@@ -13,8 +13,10 @@ export { DEFAULT_E2E_PASSWORD }
 export async function isGoogleAuthEnabled(request: APIRequestContext): Promise<boolean> {
   const response = await request.get('/api/auth/providers')
   if (!response.ok()) return false
-  const body = (await response.json()) as { data?: { google?: boolean } }
-  return body.data?.google === true
+  const body = (await response.json()) as {
+    data?: { google?: boolean; googleE2eStub?: boolean }
+  }
+  return body.data?.google === true && body.data?.googleE2eStub === true
 }
 
 export async function signOut(page: Page) {

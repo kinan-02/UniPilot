@@ -32,7 +32,7 @@ def resolve_track_slug_from_program(
 
     metadata = program_document.get("metadata") or {}
     wiki_page = metadata.get("wikiPage")
-    if isinstance(wiki_page, str) and wiki_page in DDS_TRACK_BY_SLUG:
+    if isinstance(wiki_page, str) and wiki_page.startswith("track-"):
         return wiki_page
 
     program_code = program_document.get("programCode")

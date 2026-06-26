@@ -25,7 +25,7 @@ def isolate_tests_from_local_catalog_export(monkeypatch):
     """Tests seed their own staging; ignore a developer's vault export artifact on disk."""
     monkeypatch.setattr(
         "app.promotion.dds_promotion_gate.catalog_reviewed_json_path",
-        lambda: Path("/nonexistent/catalog_reviewed.json"),
+        lambda faculty_id="dds": Path("/nonexistent/catalog_reviewed.json"),
     )
 
 

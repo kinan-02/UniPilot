@@ -311,6 +311,7 @@ def run_validate_dds_staging_quality(
     output_json: str | None,
     output_md: str | None,
     write_staging_audit: bool,
+    faculty: str = "dds",
 ) -> int:
     if check_mongo_connectivity() != "connected":
         print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
@@ -328,6 +329,7 @@ def run_validate_dds_staging_quality(
             json_path=json_path,
             md_path=md_path,
             write_staging_audit=write_staging_audit,
+            faculty_id=faculty,
         )
     except Exception as exc:
         print(json.dumps({"error": str(exc)}, indent=2))
@@ -360,6 +362,7 @@ def run_plan_dds_production_promotion(
     output_md: str | None,
     strict: bool,
     allow_warnings: bool,
+    faculty: str = "dds",
 ) -> int:
     if check_mongo_connectivity() != "connected":
         print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
@@ -382,6 +385,7 @@ def run_plan_dds_production_promotion(
             md_path=md_path,
             strict=strict,
             allow_warnings=allow_warnings,
+            faculty_id=faculty,
         )
     except Exception as exc:
         print(json.dumps({"error": str(exc)}, indent=2))
@@ -422,6 +426,7 @@ def run_promote_dds_to_production(
     allow_warnings: bool,
     output_json: str | None,
     output_md: str | None,
+    faculty: str = "dds",
 ) -> int:
     if check_mongo_connectivity() != "connected":
         print(json.dumps({"error": "MongoDB is not connected"}, indent=2))
@@ -444,6 +449,7 @@ def run_promote_dds_to_production(
         allow_warnings=allow_warnings,
         json_path=json_path,
         md_path=md_path,
+        faculty_id=faculty,
     )
 
     counts_after = {
@@ -630,7 +636,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--faculty",
         dest="faculty",
         default="dds",
-        help="Faculty slug to export (currently only dds)",
+        help="Faculty slug for vault export and faculty-scoped staging quality/promotion (e.g. dds, computer-science)",
     )
     parser.add_argument(
         "--output",
@@ -758,6 +764,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.output_json,
                 args.output_md,
                 args.write_staging_audit,
+                args.faculty,
             )
         if args.command == "plan-dds-production-promotion":
             return run_plan_dds_production_promotion(
@@ -765,6 +772,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.output_md,
                 args.strict,
                 args.allow_warnings,
+                args.faculty,
             )
         if args.command == "promote-dds-to-production":
             return run_promote_dds_to_production(
@@ -773,6 +781,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.allow_warnings,
                 args.output_json,
                 args.output_md,
+                args.faculty,
             )
         if args.command == "rollback-dds-production-promotion":
             return run_rollback_dds_production_promotion(

@@ -61,14 +61,17 @@ async def test_validate_academic_path_allows_missing_track_slug(mongo_database):
 
 @pytest.mark.asyncio
 async def test_validate_academic_path_rejects_unknown_track_slug(mongo_database):
+    from tests.fixtures.graduation_progress_fixtures import seed_graduation_progress_fixtures
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
     with pytest.raises(HTTPException) as exc_info:
         await validate_academic_path_for_profile(
             mongo_database,
-            "665f2b0f2a3f7b2a1a9a7fff",
+            fixtures["programId"],
             {"trackSlug": "track-unknown"},
         )
     assert exc_info.value.status_code == 400
-    assert "unknown" in exc_info.value.detail.lower()
+    assert "does not match" in exc_info.value.detail.lower()
 
 
 @pytest.mark.asyncio

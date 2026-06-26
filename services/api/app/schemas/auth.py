@@ -66,3 +66,4 @@ class AuthProvidersResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     google: bool
+    googleE2eStub: bool = False

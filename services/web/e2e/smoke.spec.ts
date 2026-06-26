@@ -155,6 +155,9 @@ test.describe('UniPilot smoke flow', () => {
     await completeOnboarding(page)
 
     await page.getByRole('button', { name: /התנתקות|Sign out/i }).click()
+    await expect(page.getByRole('button', { name: /התחברות|Sign in/i })).toBeVisible({
+      timeout: 15_000,
+    })
     await page.goto('/login')
     await page.getByLabel(/אימייל|Email/i).fill(userA)
     await page.getByLabel(/^סיסמה$|^Password$/i).fill(password)

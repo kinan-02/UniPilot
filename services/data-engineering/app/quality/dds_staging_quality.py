@@ -109,8 +109,12 @@ def find_ocr_suspect_neighbors(missing_number: str, staged_numbers: set[str]) ->
     return neighbors
 
 
-def _catalog_filter() -> dict[str, str]:
-    return {"sourceName": DDS_CATALOG_SOURCE}
+def _catalog_filter(source_name: str | None = None) -> dict[str, str]:
+    return {"sourceName": source_name or DDS_CATALOG_SOURCE}
+
+
+def _catalog_source_name(faculty_id: str) -> str:
+    return f"technion-{faculty_id}-catalog"
 
 
 def _course_filter() -> dict[str, str]:
@@ -178,8 +182,11 @@ def _count_manual_review_items(
 def build_dds_staging_quality_report(
     database: Database,
     settings: Settings | None = None,
+    *,
+    faculty_id: str = "dds",
 ) -> DdsStagingQualityReport:
     settings = settings or get_settings()
+    catalog_source = _catalog_source_name(faculty_id)
     findings: list[QualityFinding] = []
     checks: list[QualityCheckResult] = []
     warnings: list[str] = []
@@ -187,11 +194,13 @@ def build_dds_staging_quality_report(
     api_blockers: list[str] = []
     recommendations: list[str] = []
 
-    programs = list(database[settings.staging_degree_programs_collection].find(_catalog_filter()))
-    requirements = list(
-        database[settings.staging_degree_requirements_collection].find(_catalog_filter())
+    programs = list(
+        database[settings.staging_degree_programs_collection].find(_catalog_filter(catalog_source))
     )
-    rules = list(database[settings.staging_catalog_rules_collection].find(_catalog_filter()))
+    requirements = list(
+        database[settings.staging_degree_requirements_collection].find(_catalog_filter(catalog_source))
+    )
+    rules = list(database[settings.staging_catalog_rules_collection].find(_catalog_filter(catalog_source)))
     courses = list(database[settings.staging_courses_collection].find(_course_filter()))
     offerings = list(database[settings.staging_course_offerings_collection].find({}))
     staged_course_numbers = {doc.get("courseNumber") for doc in courses if doc.get("courseNumber")}
@@ -228,17 +237,26 @@ def build_dds_staging_quality_report(
 
     # --- Catalog structure ---
     program_codes = [doc.get("programCode") for doc in programs]
-    programs_ok = len(programs) == 3 and program_codes == EXPECTED_PROGRAM_CODES
+    if faculty_id == "dds":
+        programs_ok = len(programs) == 3 and program_codes == EXPECTED_PROGRAM_CODES
+        programs_message = (
+            f"Found {len(programs)} DDS programs (expected 3)."
+            if programs_ok
+            else f"Expected 3 DDS programs with codes {EXPECTED_PROGRAM_CODES}, found {program_codes}."
+        )
+    else:
+        programs_ok = len(programs) >= 1 and all(program_codes)
+        programs_message = (
+            f"Found {len(programs)} staged programs for {faculty_id}."
+            if programs_ok
+            else f"Expected at least one program for {faculty_id}, found {program_codes}."
+        )
     checks.append(
         QualityCheckResult(
             checkId="catalog.program_count",
             passed=programs_ok,
             severity="staging-blocker" if not programs_ok else "info",
-            message=(
-                f"Found {len(programs)} DDS programs (expected 3)."
-                if programs_ok
-                else f"Expected 3 DDS programs with codes {EXPECTED_PROGRAM_CODES}, found {program_codes}."
-            ),
+            message=programs_message,
         )
     )
     if not programs_ok:
@@ -246,11 +264,14 @@ def build_dds_staging_quality_report(
             "catalog.program_count",
             "staging-blocker",
             "catalog_structure",
-            "DDS staging programs missing or incorrect.",
+            f"{faculty_id} staging programs missing or incorrect.",
             {"found": program_codes},
         )
 
-    credits_ok = all(doc.get("totalCredits") == EXPECTED_TOTAL_CREDITS for doc in programs)
+    if faculty_id == "dds":
+        credits_ok = all(doc.get("totalCredits") == EXPECTED_TOTAL_CREDITS for doc in programs)
+    else:
+        credits_ok = all((doc.get("totalCredits") or 0) > 0 for doc in programs)
     checks.append(
         QualityCheckResult(
             checkId="catalog.total_credits",
@@ -262,13 +283,20 @@ def build_dds_staging_quality_report(
         )
     )
 
-    requirements_ok = len(requirements) == EXPECTED_REQUIREMENT_GROUPS
+    if faculty_id == "dds":
+        requirements_ok = len(requirements) == EXPECTED_REQUIREMENT_GROUPS
+        requirements_message = (
+            f"Found {len(requirements)} requirement groups (expected {EXPECTED_REQUIREMENT_GROUPS})."
+        )
+    else:
+        requirements_ok = len(requirements) > 0
+        requirements_message = f"Found {len(requirements)} requirement groups for {faculty_id}."
     checks.append(
         QualityCheckResult(
             checkId="catalog.requirement_groups",
             passed=requirements_ok,
             severity="staging-blocker" if not requirements_ok else "info",
-            message=f"Found {len(requirements)} requirement groups (expected {EXPECTED_REQUIREMENT_GROUPS}).",
+            message=requirements_message,
         )
     )
     if not requirements_ok and programs:
@@ -276,16 +304,21 @@ def build_dds_staging_quality_report(
             "catalog.requirement_groups",
             "warning" if len(requirements) > 0 else "staging-blocker",
             "catalog_structure",
-            f"Requirement group count is {len(requirements)}, expected {EXPECTED_REQUIREMENT_GROUPS}.",
+            requirements_message,
         )
 
-    rules_ok = len(rules) == EXPECTED_CATALOG_RULES
+    if faculty_id == "dds":
+        rules_ok = len(rules) == EXPECTED_CATALOG_RULES
+        rules_message = f"Found {len(rules)} catalog rules (expected {EXPECTED_CATALOG_RULES})."
+    else:
+        rules_ok = True
+        rules_message = f"Found {len(rules)} catalog rules for {faculty_id}."
     checks.append(
         QualityCheckResult(
             checkId="catalog.non_executable_rules",
             passed=rules_ok,
             severity="warning" if not rules_ok and rules else "info",
-            message=f"Found {len(rules)} catalog rules (expected {EXPECTED_CATALOG_RULES}).",
+            message=rules_message,
         )
     )
 
@@ -942,9 +975,10 @@ def run_dds_staging_quality_review(
     json_path: Path | None = None,
     md_path: Path | None = None,
     write_staging_audit: bool = False,
+    faculty_id: str = "dds",
 ) -> DdsStagingQualityReport:
     settings = settings or get_settings()
-    report = build_dds_staging_quality_report(database, settings)
+    report = build_dds_staging_quality_report(database, settings, faculty_id=faculty_id)
     write_quality_report_files(
         report,
         json_path=json_path or default_json_report_path(),

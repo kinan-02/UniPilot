@@ -369,9 +369,44 @@ def test_strict_mode_fails_on_warnings(mongo_database) -> None:
         assert gate.canPromote is False
 
 
+def test_promotion_gate_non_dds_structure_checks(mongo_database) -> None:
+    from app.config import get_settings
+    from app.promotion.dds_promotion_gate import build_promotion_gate_result
+
+    settings = get_settings()
+    source = "technion-math-catalog"
+    mongo_database[settings.staging_degree_programs_collection].insert_one(
+        {
+            "sourceName": source,
+            "programCode": "010001-1-000",
+            "totalCredits": None,
+            "catalogVersion": "2025-2026",
+            "isStaging": True,
+            "productionEligible": False,
+        }
+    )
+    mongo_database[settings.staging_degree_requirements_collection].delete_many({})
+    mongo_database[settings.staging_courses_collection].insert_one(
+        {"sourceName": "technion-course-json", "courseNumber": "01000101"}
+    )
+    mongo_database[settings.staging_course_offerings_collection].insert_one(
+        {"courseNumber": "01000101", "stagingKey": "technion:offering:01000101"}
+    )
+    gate = build_promotion_gate_result(
+        mongo_database,
+        settings=settings,
+        faculty_id="math",
+        allow_warnings=True,
+    )
+    assert gate.sourceName == source
+    assert any(check.checkId == "staging.total_credits" and not check.passed for check in gate.checks)
+
+
 def test_catalog_reviewed_json_path_points_to_generated_catalog() -> None:
     path = catalog_reviewed_json_path()
     assert path.as_posix().endswith("generated/technion/catalog/catalog_reviewed.json")
+    cs_path = catalog_reviewed_json_path("computer-science")
+    assert cs_path.as_posix().endswith("generated/technion/computer-science/catalog_reviewed.json")
 
 
 def test_gate_recomputes_excluded_courses_from_vault_export(
@@ -401,7 +436,7 @@ def test_gate_recomputes_excluded_courses_from_vault_export(
     )
     monkeypatch.setattr(
         "app.promotion.dds_promotion_gate.catalog_reviewed_json_path",
-        lambda: reviewed_path,
+        lambda faculty_id="dds": reviewed_path,
     )
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()

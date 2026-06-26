@@ -99,6 +99,7 @@ jobs:
           echo "GOOGLE_OAUTH_CLIENT_ID=e2e-stub-client" >> .env
           echo "GOOGLE_OAUTH_CLIENT_SECRET=e2e-stub-secret" >> .env
           echo "E2E_GOOGLE_OAUTH_STUB=true" >> .env
+          echo "AUTH_RATE_LIMIT_MAX=120" >> .env
       - name: Start Docker stack
         run: docker compose up --build -d
       - name: Wait for web UI
@@ -129,6 +130,7 @@ jobs:
         working-directory: services/web
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
+          PLAYWRIGHT_WORKERS: 4
         run: npm run test:e2e
       - name: Upload Playwright HTML report
         if: always()

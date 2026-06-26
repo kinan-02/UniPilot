@@ -89,6 +89,164 @@
           "requiresCatalogDescription": true
         }
       ]
+    },
+    "computer-science": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-science-chain-physics-mm",
+          "operator": "choose_chain",
+          "minCourseRefs": 1,
+          "maxCourseRefs": 1,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-science-chain-physics-23",
+          "operator": "choose_chain",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-science-chain-biology",
+          "operator": "choose_chain",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-science-chain-chemistry",
+          "operator": "choose_chain",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-science-chain-physics-chemistry",
+          "operator": "choose_chain",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-01",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360313"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-02",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-03",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-04",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360309", "02360506"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-05",
+          "operator": "choose_n",
+          "minCourseRefs": 20,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360319"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-06",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360334", "02360370"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-07",
+          "operator": "choose_n",
+          "minCourseRefs": 21,
+          "maxCourseRefs": 21,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360363"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-08",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360201"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-09",
+          "operator": "choose_n",
+          "minCourseRefs": 11,
+          "maxCourseRefs": 11,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360216"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-10",
+          "operator": "choose_n",
+          "minCourseRefs": 23,
+          "maxCourseRefs": 23,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360501"]
+        },
+        {
+          "programCode": "023023-1-000",
+          "trackSlug": "track-computer-science-general-4year",
+          "suffix": "cs-spec-group-11",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": ["02360522", "00940423"]
+        }
+      ]
     }
   }
 }

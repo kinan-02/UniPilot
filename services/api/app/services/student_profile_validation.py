@@ -7,10 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.curriculum.track_registry import (
-    program_code_for_track_slug,
-    resolve_track_slug_from_program,
-)
+from app.curriculum.track_registry import resolve_track_slug_from_program
 from app.repositories import catalog_repository
 
 
@@ -47,13 +44,6 @@ async def validate_academic_path_for_profile(
     if not track_slug:
         return
 
-    expected_program_code = program_code_for_track_slug(track_slug)
-    if expected_program_code is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Unknown DDS track slug",
-        )
-
     if degree_id is None:
         raise HTTPException(
             status_code=400,
@@ -64,15 +54,27 @@ async def validate_academic_path_for_profile(
     if not program:
         path_option = await catalog_repository.find_path_option_by_id(database, degree_id)
         if path_option and path_option.get("selectableAsPrimary"):
-            return
+            linked_degree_id = path_option.get("linkedDegreeProgramId")
+            if linked_degree_id:
+                program = await catalog_repository.find_degree_program_by_id(
+                    database,
+                    str(linked_degree_id),
+                )
+            else:
+                return
+        if not program:
+            raise HTTPException(
+                status_code=400,
+                detail="Referenced degree program was not found in the catalog",
+            )
+
+    resolved_slug = resolve_track_slug_from_program(program)
+    if resolved_slug is None:
         raise HTTPException(
             status_code=400,
-            detail="Referenced degree program was not found in the catalog",
+            detail="Unknown track slug for the selected degree program",
         )
-
-    program_code = program.get("programCode")
-    resolved_slug = resolve_track_slug_from_program(program)
-    if program_code != expected_program_code and resolved_slug != track_slug:
+    if resolved_slug != track_slug:
         raise HTTPException(
             status_code=400,
             detail="Selected track does not match the chosen degree program",

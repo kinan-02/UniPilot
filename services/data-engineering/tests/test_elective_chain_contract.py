@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from app.config import get_settings
 from app.importers.dds_catalog_staging_importer import (
-    _remove_stale_dds_staging_records,
+    _remove_stale_faculty_staging_records,
     import_dds_catalog_to_staging,
     load_reviewed_catalog,
 )
@@ -326,9 +326,10 @@ def test_remove_stale_dds_staging_records_and_retire_superseded_rules():
     collection.delete_many.return_value = delete_result
     database.__getitem__.return_value = collection
 
-    removed = _remove_stale_dds_staging_records(
+    removed = _remove_stale_faculty_staging_records(
         database,
         settings=settings,
+        faculty_id="dds",
         catalog_version="2025-2026",
         active_staging_keys=active_keys,
     )

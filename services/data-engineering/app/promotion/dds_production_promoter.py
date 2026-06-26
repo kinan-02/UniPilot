@@ -12,6 +12,13 @@ from pymongo import ReplaceOne
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
+from app.catalog.faculty_catalog_context import (
+    FacultyCatalogContext,
+    faculty_catalog_context_from_staging_program,
+    production_advisory_requirement_key,
+    production_program_key,
+    production_requirement_key,
+)
 from app.promotion.dds_promotion_gate import EXCLUDED_COURSE_SKIP_REASON
 from app.importers.dds_catalog_staging_importer import (
     PROMOTION_WRITE_COLLECTIONS,
@@ -88,16 +95,17 @@ def _new_promotion_run_id() -> str:
     return f"dds-promotion-{uuid.uuid4().hex[:12]}"
 
 
-def production_program_key(program_code: str, catalog_version: str) -> str:
-    return f"technion-dds:program:{program_code}:{catalog_version}"
-
-
-def production_requirement_key(group_id: str, catalog_version: str) -> str:
-    return f"technion-dds:requirement:{group_id}:{catalog_version}"
-
-
-def production_advisory_requirement_key(group_id: str, catalog_version: str) -> str:
-    return f"technion-dds:advisory-rule:req:{group_id}:{catalog_version}"
+def _staging_catalog_context(staging: dict[str, Any]) -> FacultyCatalogContext:
+    context = faculty_catalog_context_from_staging_program(staging)
+    if context is not None:
+        return context
+    return FacultyCatalogContext(
+        faculty_id="dds",
+        source_name=DDS_CATALOG_SOURCE,
+        source_type="dds_catalog_curated_reviewed",
+        expected_program_codes=tuple(),
+        export_mode="specialized",
+    )
 
 
 def production_course_key(course_number: str) -> str:
@@ -145,7 +153,12 @@ def map_staging_program_to_production(
     catalog_version: str,
 ) -> dict[str, Any]:
     program_code = staging.get("programCode", "")
-    production_key = production_program_key(program_code, catalog_version)
+    catalog_context = _staging_catalog_context(staging)
+    production_key = production_program_key(
+        catalog_context.faculty_id,
+        program_code,
+        catalog_version,
+    )
     document = {
         "productionKey": production_key,
         "institutionId": staging.get("institutionId", "technion"),
@@ -157,8 +170,8 @@ def map_staging_program_to_production(
         "catalogVersion": catalog_version,
         "paths": staging.get("paths", []),
         "metadata": staging.get("metadata", {}),
-        "sourceName": DDS_CATALOG_SOURCE,
-        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "sourceName": catalog_context.source_name,
+        "sourceType": staging.get("sourceType", catalog_context.source_type),
         "sourceVersion": staging.get("sourceVersion", catalog_version),
         "sourceMetadata": {
             "curationStatus": staging.get("curationStatus"),
@@ -191,6 +204,7 @@ def map_staging_path_option_to_production(
     catalog_version: str,
 ) -> dict[str, Any]:
     option_key = staging.get("optionKey", "")
+    catalog_context = _staging_catalog_context(staging)
     document = {
         "productionKey": production_path_option_key(option_key, catalog_version),
         "institutionId": staging.get("institutionId", "technion"),
@@ -209,8 +223,8 @@ def map_staging_path_option_to_production(
         "totalCreditsRequired": staging.get("totalCreditsRequired"),
         "catalogYear": staging.get("catalogYear"),
         "catalogVersion": catalog_version,
-        "sourceName": DDS_CATALOG_SOURCE,
-        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "sourceName": catalog_context.source_name,
+        "sourceType": staging.get("sourceType", catalog_context.source_type),
         "status": "published",
         "promotedAt": promoted_at,
         "promotionRunId": promotion_run_id,
@@ -228,6 +242,7 @@ def map_staging_faculty_to_production(
     catalog_version: str,
 ) -> dict[str, Any]:
     faculty_id = staging.get("facultyId", "")
+    catalog_context = _staging_catalog_context(staging)
     document = {
         "productionKey": production_faculty_key(faculty_id, catalog_version),
         "institutionId": staging.get("institutionId", "technion"),
@@ -240,8 +255,8 @@ def map_staging_faculty_to_production(
         "catalogPrefix": staging.get("catalogPrefix"),
         "catalogYear": staging.get("catalogYear"),
         "catalogVersion": catalog_version,
-        "sourceName": DDS_CATALOG_SOURCE,
-        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "sourceName": catalog_context.source_name,
+        "sourceType": staging.get("sourceType", catalog_context.source_type),
         "status": "published",
         "promotedAt": promoted_at,
         "promotionRunId": promotion_run_id,
@@ -260,9 +275,14 @@ def map_staging_requirement_to_production(
 ) -> dict[str, Any]:
     group = staging.get("requirementGroup", {})
     group_id = group.get("groupId", "")
+    catalog_context = _staging_catalog_context(staging)
     if not _is_hard_requirement(staging):
         raise ProductionPromotionError(f"Refusing to promote non-executable requirement {group_id} as hard.")
-    production_key = production_requirement_key(group_id, catalog_version)
+    production_key = production_requirement_key(
+        catalog_context.faculty_id,
+        group_id,
+        catalog_version,
+    )
     document = {
         "productionKey": production_key,
         "institutionId": staging.get("institutionId", "technion"),
@@ -279,8 +299,8 @@ def map_staging_requirement_to_production(
         "advisoryOnly": False,
         "catalogYear": staging.get("catalogYear"),
         "catalogVersion": catalog_version,
-        "sourceName": DDS_CATALOG_SOURCE,
-        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "sourceName": catalog_context.source_name,
+        "sourceType": staging.get("sourceType", catalog_context.source_type),
         "sourceMetadata": {
             "stagingKey": staging.get("stagingKey"),
             "manualReviewRequired": group.get("manualReviewRequired"),
@@ -305,7 +325,12 @@ def map_staging_advisory_requirement_to_production(
 ) -> dict[str, Any]:
     group = staging.get("requirementGroup", {})
     group_id = group.get("groupId", "")
-    production_key = production_advisory_requirement_key(group_id, catalog_version)
+    catalog_context = _staging_catalog_context(staging)
+    production_key = production_advisory_requirement_key(
+        catalog_context.faculty_id,
+        group_id,
+        catalog_version,
+    )
     linked_credit_bucket_id = linked_credit_bucket_for_pool(group_id)
     source_metadata: dict[str, Any] = {
         "stagingKey": staging.get("stagingKey"),
@@ -333,8 +358,8 @@ def map_staging_advisory_requirement_to_production(
         "isMandatory": False,
         "catalogYear": staging.get("catalogYear"),
         "catalogVersion": catalog_version,
-        "sourceName": DDS_CATALOG_SOURCE,
-        "sourceType": staging.get("sourceType", "dds_catalog_curated_reviewed"),
+        "sourceName": catalog_context.source_name,
+        "sourceType": staging.get("sourceType", catalog_context.source_type),
         "sourceMetadata": source_metadata,
         "sourceRefs": _source_refs(*(staging.get("sourceFiles") or [])),
         "status": "published",
@@ -468,17 +493,33 @@ def retire_unplanned_production_documents(
     database: Database,
     *,
     planned_keys_by_collection: dict[str, set[str]],
+    catalog_source_name: str,
 ) -> dict[str, int]:
-    """Remove legacy/manual production rows so vault re-promotion can replace the full snapshot."""
+    """Remove superseded production rows for one faculty catalog source only.
+
+    Shared Technion course/offerings collections are upserted but never bulk-deleted
+    here — other faculties may still reference the same course numbers.
+    """
     retired: dict[str, int] = {}
+    shared_course_collections = frozenset({"courses", "course_offerings"})
     for collection in sorted(PROMOTION_WRITE_COLLECTIONS):
+        if collection in shared_course_collections:
+            continue
         planned_keys = planned_keys_by_collection.get(collection, set())
+        if not planned_keys:
+            continue
         result = database[collection].delete_many(
             {
                 "$or": [
-                    {"productionKey": {"$exists": False}},
-                    {"productionKey": {"$nin": list(planned_keys)}},
-                ]
+                    {"productionKey": {"$in": list(planned_keys)}},
+                    {
+                        "sourceName": catalog_source_name,
+                        "$or": [
+                            {"productionKey": {"$exists": False}},
+                            {"productionKey": {"$nin": list(planned_keys)}},
+                        ],
+                    },
+                ],
             }
         )
         retired[collection] = int(result.deleted_count)
@@ -499,18 +540,23 @@ def validate_production_collections_for_promotion(
         if existing_count == 0:
             continue
 
+        if collection in frozenset({"courses", "course_offerings"}):
+            # Shared Technion semester JSON pool — additive upsert only.
+            continue
+
         foreign_filter = {
+            "sourceName": source_name,
             "$or": [
                 {"productionKey": {"$exists": False}},
                 {"productionKey": {"$nin": list(planned_keys)}},
-            ]
+            ],
         }
         foreign_count = database[collection].count_documents(foreign_filter)
         if foreign_count > 0:
             raise ProductionPromotionError(
                 f"Production collection `{collection}` contains {foreign_count} document(s) "
-                "outside this promotion plan. Phase 12 requires empty collections or idempotent "
-                "re-promotion of the same stable keys."
+                f"for source {source_name!r} outside this promotion plan. "
+                "Re-promotion must replace only the same faculty catalog source."
             )
 
         expected_source = PROMOTION_COLLECTION_SOURCE_NAMES.get(collection, source_name)
@@ -836,6 +882,7 @@ def run_dds_production_promotion(
     allow_warnings: bool = True,
     json_path: Path | None = None,
     md_path: Path | None = None,
+    faculty_id: str = "dds",
 ) -> ProductionPromotionResult:
     settings = settings or get_settings()
     started_at = _utc_now_iso()
@@ -847,6 +894,7 @@ def run_dds_production_promotion(
         settings=settings,
         allow_warnings=allow_warnings,
         dry_run=dry_run,
+        faculty_id=faculty_id,
     )
 
     skipped_items = list(gate.plannedWrites.skippedItems)
@@ -937,6 +985,7 @@ def run_dds_production_promotion(
         retire_unplanned_production_documents(
             database,
             planned_keys_by_collection=planned_keys,
+            catalog_source_name=gate.sourceName,
         )
 
         validate_production_collections_for_promotion(

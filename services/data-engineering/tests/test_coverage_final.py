@@ -1978,8 +1978,20 @@ class TestDdsCatalogImporterAdditional:
 
     def _make_doc(self, programs):
         """Helper to make a mock ReviewedCuratedCatalogDocument."""
+        from app.importers.dds_catalog_staging_importer import EXPECTED_PROGRAM_CODES
+
         doc = MagicMock()
         doc.programs = programs
+        doc.model_dump.return_value = {
+            "source": {
+                "facultyId": "dds",
+                "sourceName": "technion-dds-catalog",
+                "sourceType": "dds_catalog_curated_reviewed",
+                "exportMode": "specialized",
+                "expectedProgramCodes": list(EXPECTED_PROGRAM_CODES),
+            },
+            "programs": [{"programCode": program.programCode} for program in programs],
+        }
         return doc
 
     def _make_program(self, code, credits=155.0, groups=None):
@@ -1992,12 +2004,20 @@ class TestDdsCatalogImporterAdditional:
 
     def test_validate_catalog_structure_wrong_count(self):
         """Line 207: raises when program count != 3."""
+        from app.catalog.faculty_catalog_context import FacultyCatalogContext
         from app.importers.dds_catalog_staging_importer import (
             validate_catalog_structure, CatalogStagingImportError,
         )
         doc = self._make_doc([self._make_program("009216-1-000")])  # only 1 program
+        dds_context = FacultyCatalogContext(
+            faculty_id="dds",
+            source_name="technion-dds-catalog",
+            source_type="dds_catalog_curated_reviewed",
+            expected_program_codes=("009216-1-000",),
+            export_mode="specialized",
+        )
         with pytest.raises(CatalogStagingImportError, match="Expected exactly 3"):
-            validate_catalog_structure(doc)
+            validate_catalog_structure(doc, context=dds_context)
 
     def test_validate_catalog_structure_wrong_codes(self):
         """Lines 211-213: raises when program codes mismatch."""

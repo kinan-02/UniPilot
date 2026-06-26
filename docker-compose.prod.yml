@@ -6,3 +6,5 @@
 services:
   api:
     ports: !reset []
+    environment:
+      E2E_GOOGLE_OAUTH_STUB: "false"

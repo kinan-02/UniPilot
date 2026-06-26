@@ -4,6 +4,7 @@ import { CatalogPage } from '../pages/CatalogPage'
 import { PlannerPage } from '../pages/PlannerPage'
 import { ProgressPage } from '../pages/ProgressPage'
 import { TranscriptPage } from '../pages/TranscriptPage'
+import { ensureWorkerAuthState } from '../helpers/worker-auth'
 
 type E2EFixtures = {
   authPage: AuthPage
@@ -13,7 +14,23 @@ type E2EFixtures = {
   transcriptPage: TranscriptPage
 }
 
-export const test = base.extend<E2EFixtures>({
+type WorkerFixtures = {
+  workerStorageState: string
+}
+
+export const test = base.extend<E2EFixtures, WorkerFixtures>({
+  storageState: async ({ workerStorageState }, use) => {
+    await use(workerStorageState)
+  },
+
+  workerStorageState: [
+    async ({ browser }, use, workerInfo) => {
+      const authFile = await ensureWorkerAuthState(browser, workerInfo.parallelIndex)
+      await use(authFile)
+    },
+    { scope: 'worker' },
+  ],
+
   authPage: async ({ page }, use) => {
     await use(new AuthPage(page))
   },

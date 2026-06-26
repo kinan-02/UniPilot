@@ -19,6 +19,8 @@ DDS_FACULTY_VARIANTS = frozenset(
     {
         DDS_FACULTY_HEBREW,
         "פקולטה למדעי הנתונים וההחלטות",
+        # Semester JSON often omits the "הפקולטה ל" prefix.
+        "מדעי הנתונים וההחלטות",
     }
 )
 

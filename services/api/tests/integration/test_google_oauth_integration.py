@@ -25,7 +25,9 @@ def _enable_google_oauth(monkeypatch) -> None:
 async def test_providers_reports_google_disabled_by_default(auth_client):
     response = await auth_client.get("/auth/providers")
     assert response.status_code == 200
-    assert response.json()["data"]["google"] is False
+    payload = response.json()["data"]
+    assert payload["google"] is False
+    assert payload["googleE2eStub"] is False
 
 
 @pytest.mark.asyncio
@@ -160,7 +162,20 @@ async def test_providers_reports_google_enabled_when_configured(auth_client, mon
 
     response = await auth_client.get("/auth/providers")
     assert response.status_code == 200
-    assert response.json()["data"]["google"] is True
+    payload = response.json()["data"]
+    assert payload["google"] is True
+    assert payload["googleE2eStub"] is False
+
+
+@pytest.mark.asyncio
+async def test_providers_reports_google_e2e_stub_when_enabled(auth_client, monkeypatch):
+    _enable_e2e_google_stub(monkeypatch)
+
+    response = await auth_client.get("/auth/providers")
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["google"] is True
+    assert payload["googleE2eStub"] is True
 
 
 @pytest.mark.asyncio

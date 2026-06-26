@@ -10,7 +10,7 @@ Industry-grade Playwright suite for full-stack verification against the Docker s
 | Custom fixtures | `e2e/fixtures/test.ts` — inject page objects per test |
 | Stable selectors | `data-testid`, roles, and accessible labels (bilingual he/en) |
 | No arbitrary sleeps | `waitForApiResponse()` and Playwright auto-waiting |
-| Auth reuse | `auth.setup.ts` → `e2e/.auth/user.json` storage state |
+| Auth reuse | Per-worker fixture in `fixtures/test.ts` → `e2e/.auth/user-{n}.json` |
 | Global health gate | `global-setup.ts` waits for web UI before any spec |
 | Failure artifacts | trace (retry), screenshot, video (CI + local) |
 | Accessibility gate | `@axe-core/playwright` — WCAG 2.x Level A/AA (`@a11y` project) |
@@ -25,7 +25,7 @@ e2e/
 ├── pages/                # Page Object Model
 ├── helpers/              # onboarding, planner, api, a11y
 ├── global-setup.ts       # Stack health check
-├── auth.setup.ts         # Shared authenticated session
+├── helpers/worker-auth.ts # One registered user per parallel worker
 ├── smoke.spec.ts         # Register/login/onboarding (no shared auth)
 ├── accessibility.spec.ts # WCAG scans on core routes
 ├── critical-paths.spec.ts# End-to-end student journey (@critical)
@@ -62,7 +62,19 @@ npm run test:e2e:report         # Open last HTML report
 3. Prefer `data-testid` for product-specific elements; use roles/labels for standard controls.
 4. Wait on network: `waitForApiResponse(page, /\/catalog\/courses/, { method: 'GET' })`.
 5. Tag long journeys with `@critical` or domain tags for selective CI sharding later.
-6. Cross-feature journeys (`critical-paths.spec.ts`) register a **fresh user** so they stay isolated from shared `auth.setup` state.
+6. Cross-feature journeys (`critical-paths.spec.ts`) register a **fresh user** so they stay isolated from per-worker auth state.
+
+## Parallel execution
+
+Each Playwright worker gets its own onboarded student (`e2e/.auth/user-{parallelIndex}.json`) so specs can run in parallel without clobbering plans, transcript, or profile data.
+
+```bash
+# Default: ~50% CPU cores locally, 4 workers in CI
+npm run test:e2e
+
+# Override worker count
+PLAYWRIGHT_WORKERS=6 npm run test:e2e
+```
 
 ## CI
 

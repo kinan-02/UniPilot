@@ -164,7 +164,10 @@ async def _resolve_google_user_from_callback(code: str, *, settings) -> GoogleUs
 @router.get("/providers")
 async def get_auth_providers() -> dict[str, Any]:
     settings = get_settings()
-    providers = AuthProvidersResponse(google=settings.google_oauth_enabled())
+    providers = AuthProvidersResponse(
+        google=settings.google_oauth_enabled(),
+        googleE2eStub=settings.e2e_google_oauth_stub_enabled(),
+    )
     return success_response(providers.model_dump())
 
 

@@ -7,6 +7,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.catalog.faculty_catalog_context import (
+    production_advisory_requirement_key,
+    production_program_key,
+    production_requirement_key,
+)
 from app.promotion.dds_production_promoter import (
     STAGING_FIELDS_TO_STRIP,
     ProductionPromotionError,
@@ -17,11 +22,8 @@ from app.promotion.dds_production_promoter import (
     default_production_promotion_json_path,
     default_production_promotion_md_path,
     map_staging_program_to_production,
-    production_advisory_requirement_key,
     production_course_key,
     production_offering_key,
-    production_program_key,
-    production_requirement_key,
 )
 from app.promotion.dds_promotion_gate import (
     _is_advisory_requirement,
@@ -38,15 +40,15 @@ from app.promotion.dds_promotion_gate import (
 
 class TestProductionKeyHelpers:
     def test_program_key_format(self):
-        key = production_program_key("009216-1-000", "2025a")
+        key = production_program_key("dds", "009216-1-000", "2025a")
         assert key == "technion-dds:program:009216-1-000:2025a"
 
     def test_requirement_key_format(self):
-        key = production_requirement_key("G001", "2025a")
+        key = production_requirement_key("dds", "G001", "2025a")
         assert key == "technion-dds:requirement:G001:2025a"
 
     def test_advisory_requirement_key_format(self):
-        key = production_advisory_requirement_key("G001", "2025a")
+        key = production_advisory_requirement_key("dds", "G001", "2025a")
         assert key == "technion-dds:advisory-rule:req:G001:2025a"
 
     def test_course_key_format(self):

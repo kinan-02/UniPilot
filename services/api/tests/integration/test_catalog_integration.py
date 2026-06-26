@@ -239,6 +239,47 @@ async def test_list_degree_programs(auth_client, mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_list_degree_programs_filters_by_faculty_id(auth_client, mongo_database):
+    await seed_catalog_production_fixtures(mongo_database)
+    from app.config import get_settings
+
+    settings = get_settings()
+    await mongo_database[settings.degree_programs_collection].insert_one(
+        {
+            "productionKey": "technion-computer-science:program:023023-1-000:2025-2026",
+            "institutionId": "technion",
+            "programCode": "023023-1-000",
+            "name": "מדעי המחשב — מסלול כללי",
+            "nameEn": "General Computer Science",
+            "totalCredits": 155.0,
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "status": "published",
+            "paths": [],
+            "metadata": {
+                "facultyId": "faculty-computer-science",
+                "faculty": "computer-science",
+                "wikiPage": "track-computer-science-general-4year",
+                "programKind": "bsc_track",
+            },
+        }
+    )
+    token = await register_access_token(auth_client, "catalog-programs-cs-filter@example.com")
+
+    response = await auth_client.get(
+        "/catalog/degree-programs?facultyId=faculty-computer-science",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["total"] == 1
+    assert body["data"]["items"][0]["programCode"] == "023023-1-000"
+    assert body["data"]["items"][0]["metadata"]["wikiPage"] == "track-computer-science-general-4year"
+
+
+@pytest.mark.asyncio
 async def test_get_degree_program(auth_client, mongo_database):
     await seed_catalog_production_fixtures(mongo_database)
     token = await register_access_token(auth_client, "catalog-program@example.com")

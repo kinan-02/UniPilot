@@ -28,10 +28,15 @@ export async function registerUser(
   return { email, password }
 }
 
-export async function completeOnboarding(
-  page: Page,
-  options?: { programType?: OnboardingProgramType },
-) {
+export type OnboardingOptions = {
+  programType?: OnboardingProgramType
+  /** Full data-testid value, e.g. `faculty-faculty-computer-science` */
+  facultyTestId?: string
+  /** Match primary program card label (Hebrew or English) */
+  primaryProgramLabel?: RegExp | string
+}
+
+export async function completeOnboarding(page: Page, options?: OnboardingOptions) {
   const programType = options?.programType ?? 'BSc'
   await waitForOnboardingPage(page)
 
@@ -45,13 +50,20 @@ export async function completeOnboarding(
     page.getByRole('heading', { name: /Which faculty\?|באיזו פקולטה\?/i }),
   ).toBeVisible({ timeout: 15_000 })
 
-  const firstFaculty = page.locator('[data-testid^="faculty-"]').first()
-  await expect(firstFaculty).toBeVisible({ timeout: 15_000 })
-  await firstFaculty.click()
+  const facultyLocator = options?.facultyTestId
+    ? page.getByTestId(options.facultyTestId)
+    : page.getByTestId('faculty-faculty-dds')
+  await expect(facultyLocator).toBeVisible({ timeout: 15_000 })
+  await facultyLocator.click()
   await expect(page.getByTestId('onboarding-continue')).toBeEnabled({ timeout: 15_000 })
   await page.getByTestId('onboarding-continue').click()
 
-  const primaryProgramCard = page.locator('label:has(input[name="primary-program"])').first()
+  const primaryProgramCard = options?.primaryProgramLabel
+    ? page
+        .locator('label:has(input[name="primary-program"])')
+        .filter({ hasText: options.primaryProgramLabel })
+        .first()
+    : page.locator('label:has(input[name="primary-program"])').first()
   await expect(primaryProgramCard).toBeVisible({ timeout: 15_000 })
   await primaryProgramCard.click()
   await page.getByTestId('onboarding-continue').click()

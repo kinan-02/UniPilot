@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/test'
 
 test.describe('Graduation progress — industry E2E', () => {
   test.beforeEach(async ({ page }) => {

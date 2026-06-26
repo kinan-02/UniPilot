@@ -1049,7 +1049,12 @@ def export_dds_vault_catalog(
         "source": {
             "institutionId": INSTITUTION_ID,
             "facultyId": faculty,
+            "sourceName": "technion-dds-catalog",
             "sourceType": "dds_catalog_curated_reviewed",
+            "exportMode": "specialized",
+            "expectedProgramCodes": sorted(
+                config["programCode"] for config in DDS_TRACK_SLUGS.values()
+            ),
             "catalogYear": CATALOG_YEAR,
             "catalogVersion": CATALOG_VERSION,
             "sourceFile": wiki_source,
@@ -1146,8 +1151,8 @@ def write_vault_catalog_export(
         course_json_paths=course_json_paths,
     )
 
-    catalog_path = output_path or default_catalog_reviewed_path()
-    readiness_file = readiness_path or default_readiness_path()
+    catalog_path = output_path or default_catalog_reviewed_path(faculty)
+    readiness_file = readiness_path or default_readiness_path(faculty)
     catalog_path.parent.mkdir(parents=True, exist_ok=True)
     readiness_file.parent.mkdir(parents=True, exist_ok=True)
 

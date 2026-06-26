@@ -13,8 +13,20 @@ from app.vault.vault_export_registry import (
 )
 
 
-def test_supported_faculties_includes_dds():
-    assert "dds" in supported_export_faculties()
+def test_supported_faculties_includes_dds_and_computer_science():
+    faculties = supported_export_faculties()
+    assert "dds" in faculties
+    assert "computer-science" in faculties
+
+
+def test_computer_science_export_produces_track_programs():
+    document, readiness = export_vault_catalog(vault_path=wiki_root(), faculty="computer-science")
+    assert document["source"]["facultyId"] == "computer-science"
+    assert document["source"]["exportMode"] == "generic"
+    assert len(document["programs"]) >= 1
+    assert readiness["canImportToStaging"] is True
+    program_codes = {program["programCode"] for program in document["programs"]}
+    assert "023023-1-000" in program_codes
 
 
 def test_unsupported_faculty_raises_with_supported_list():

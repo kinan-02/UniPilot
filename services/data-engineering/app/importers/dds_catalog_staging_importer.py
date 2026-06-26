@@ -13,6 +13,10 @@ from typing import Any
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
+from app.catalog.faculty_catalog_context import (
+    FacultyCatalogContext,
+    faculty_catalog_context_from_document,
+)
 from app.models.catalog import ReviewedCuratedCatalogDocument
 from app.models.ingestion_run import IngestionRun
 from app.models.staging_catalog import (
@@ -29,6 +33,27 @@ SOURCE_TYPE = "dds_catalog_curated_reviewed"
 
 EXPECTED_PROGRAM_CODES = ["009216-1-000", "009009-1-000", "009118-1-000"]
 EXPECTED_TOTAL_CREDITS = 155.0
+DDS_FACULTY_ID = "dds"
+
+
+def catalog_staging_prefix(faculty_id: str) -> str:
+    return f"technion-{faculty_id}"
+
+
+def program_staging_key(faculty_id: str, catalog_version: str, program_code: str) -> str:
+    return f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:program:{program_code}"
+
+
+def requirement_staging_key(faculty_id: str, catalog_version: str, group_id: str) -> str:
+    return f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:requirement:{group_id}"
+
+
+def path_option_staging_key(faculty_id: str, catalog_version: str, option_key: str) -> str:
+    return f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:path:{option_key}"
+
+
+def faculty_staging_key(faculty_id: str, catalog_version: str, wiki_faculty_id: str) -> str:
+    return f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:faculty:{wiki_faculty_id}"
 
 ALLOWED_CURATION_STATUSES = {
     "ready-for-staging-with-review-flags",
@@ -105,22 +130,6 @@ def _utc_now() -> datetime:
 
 def _utc_now_iso() -> str:
     return _utc_now().replace(microsecond=0).isoformat()
-
-
-def program_staging_key(catalog_version: str, program_code: str) -> str:
-    return f"technion-dds:catalog:{catalog_version}:program:{program_code}"
-
-
-def requirement_staging_key(catalog_version: str, group_id: str) -> str:
-    return f"technion-dds:catalog:{catalog_version}:requirement:{group_id}"
-
-
-def path_option_staging_key(catalog_version: str, option_key: str) -> str:
-    return f"technion-dds:catalog:{catalog_version}:path:{option_key}"
-
-
-def faculty_staging_key(catalog_version: str, faculty_id: str) -> str:
-    return f"technion-dds:catalog:{catalog_version}:faculty:{faculty_id}"
 
 
 def assert_staging_collection_name(collection_name: str) -> None:
@@ -215,23 +224,43 @@ def _count_manual_review_items(document: ReviewedCuratedCatalogDocument) -> int:
     return count
 
 
-def validate_catalog_structure(document: ReviewedCuratedCatalogDocument) -> None:
+def validate_catalog_structure(
+    document: ReviewedCuratedCatalogDocument,
+    *,
+    context: FacultyCatalogContext | None = None,
+) -> None:
+    catalog_context = context or faculty_catalog_context_from_document(
+        document.model_dump(mode="json")
+    )
     programs = document.programs
-    if len(programs) != 3:
-        raise CatalogStagingImportError(f"Expected exactly 3 programs, found {len(programs)}")
-
+    expected_codes = list(catalog_context.expected_program_codes)
     codes = [program.programCode for program in programs]
-    if codes != EXPECTED_PROGRAM_CODES:
+
+    if not programs:
+        raise CatalogStagingImportError("Expected at least one program, found 0.")
+
+    if expected_codes and sorted(codes) != sorted(expected_codes):
         raise CatalogStagingImportError(
-            f"Unexpected program codes: {codes}; expected {EXPECTED_PROGRAM_CODES}",
+            f"Unexpected program codes: {codes}; expected {expected_codes}",
         )
 
+    if catalog_context.faculty_id == DDS_FACULTY_ID:
+        if len(programs) != 3:
+            raise CatalogStagingImportError(f"Expected exactly 3 programs, found {len(programs)}")
+        for program in programs:
+            if program.totalCredits != EXPECTED_TOTAL_CREDITS:
+                raise CatalogStagingImportError(
+                    f"{program.programCode}: totalCredits must be {EXPECTED_TOTAL_CREDITS}, "
+                    f"found {program.totalCredits}",
+                )
+    else:
+        for program in programs:
+            if not program.totalCredits or program.totalCredits <= 0:
+                raise CatalogStagingImportError(
+                    f"{program.programCode}: totalCredits must be a positive number.",
+                )
+
     for program in programs:
-        if program.totalCredits != EXPECTED_TOTAL_CREDITS:
-            raise CatalogStagingImportError(
-                f"{program.programCode}: totalCredits must be {EXPECTED_TOTAL_CREDITS}, "
-                f"found {program.totalCredits}",
-            )
         if not program.programCode:
             raise CatalogStagingImportError("Program missing programCode.")
         for group in program.requirementGroups:
@@ -239,7 +268,6 @@ def validate_catalog_structure(document: ReviewedCuratedCatalogDocument) -> None
                 raise CatalogStagingImportError(
                     f"{program.programCode}: requirement group missing groupId.",
                 )
-            rule_expression = group.ruleExpression
             for ref in group.courseReferences:
                 if not COURSE_NUMBER_PATTERN.fullmatch(ref.courseNumber):
                     raise CatalogStagingImportError(
@@ -254,6 +282,7 @@ def build_import_metadata(
     import_run_id: str,
     catalog_path: Path,
     readiness_path: Path,
+    context: FacultyCatalogContext,
 ) -> StagingCatalogImportMetadata:
     signoff = document.signoffReview
     source_files = [str(catalog_path), str(readiness_path)]
@@ -262,8 +291,8 @@ def build_import_metadata(
 
     return StagingCatalogImportMetadata(
         stagingKey=staging_key,
-        sourceName=SOURCE_NAME,
-        sourceType=SOURCE_TYPE,
+        sourceName=context.source_name,
+        sourceType=context.source_type,
         sourceVersion=document.source.catalogVersion,
         catalogYear=document.source.catalogYear,
         importedAt=_utc_now_iso(),
@@ -289,9 +318,11 @@ def build_catalog_staging_plan(
     assert_staging_settings(settings)
     validate_readiness_gate(readiness)
     validate_curation_status(document)
-    validate_catalog_structure(document)
+    catalog_context = faculty_catalog_context_from_document(document.model_dump(mode="json"))
+    validate_catalog_structure(document, context=catalog_context)
 
     catalog_version = document.source.catalogVersion
+    faculty_id = catalog_context.faculty_id
     dry_run_run_id = "dry-run"
     course_refs_observed = 0
     manual_review_items = _count_manual_review_items(document)
@@ -318,13 +349,14 @@ def build_catalog_staging_plan(
     }
 
     for program in document.programs:
-        program_key = program_staging_key(catalog_version, program.programCode)
+        program_key = program_staging_key(faculty_id, catalog_version, program.programCode)
         import_meta = build_import_metadata(
             staging_key=program_key,
             document=document,
             import_run_id=dry_run_run_id,
             catalog_path=catalog_path,
             readiness_path=readiness_path,
+            context=catalog_context,
         )
         program_documents.append(
             {
@@ -336,7 +368,7 @@ def build_catalog_staging_plan(
         )
 
         for group in program.requirementGroups:
-            group_key = requirement_staging_key(catalog_version, group.groupId)
+            group_key = requirement_staging_key(faculty_id, catalog_version, group.groupId)
             rule_expression = group.ruleExpression
             executable = is_rule_executable(rule_expression)
             requirement_import_meta = build_import_metadata(
@@ -345,6 +377,7 @@ def build_catalog_staging_plan(
                 import_run_id=dry_run_run_id,
                 catalog_path=catalog_path,
                 readiness_path=readiness_path,
+                context=catalog_context,
             )
             course_refs_observed += len(group.courseReferences)
             requirement_documents.append(
@@ -361,13 +394,14 @@ def build_catalog_staging_plan(
             )
 
     for faculty in document.faculties:
-        faculty_key = faculty_staging_key(catalog_version, faculty.facultyId)
+        faculty_key = faculty_staging_key(faculty_id, catalog_version, faculty.facultyId)
         import_meta = build_import_metadata(
             staging_key=faculty_key,
             document=document,
             import_run_id=dry_run_run_id,
             catalog_path=catalog_path,
             readiness_path=readiness_path,
+            context=catalog_context,
         )
         faculty_documents.append(
             {
@@ -379,13 +413,14 @@ def build_catalog_staging_plan(
         )
 
     for option in document.pathOptions:
-        option_key = path_option_staging_key(catalog_version, option.optionKey)
+        option_key = path_option_staging_key(faculty_id, catalog_version, option.optionKey)
         import_meta = build_import_metadata(
             staging_key=option_key,
             document=document,
             import_run_id=dry_run_run_id,
             catalog_path=catalog_path,
             readiness_path=readiness_path,
+            context=catalog_context,
         )
         path_option_documents.append(
             {
@@ -459,11 +494,17 @@ def ensure_dds_catalog_staging_indexes(database: Database, settings: Settings) -
     )
 
 
-def _start_ingestion_run(database: Database, settings: Settings) -> tuple[Any, IngestionRun]:
+def _start_ingestion_run(
+    database: Database,
+    settings: Settings,
+    *,
+    source_name: str,
+    source_type: str,
+) -> tuple[Any, IngestionRun]:
     started_at = _utc_now()
     run = IngestionRun(
-        sourceName=SOURCE_NAME,
-        sourceType=SOURCE_TYPE,
+        sourceName=source_name,
+        sourceType=source_type,
         status="running",
         startedAt=started_at,
     )
@@ -508,15 +549,16 @@ def _upsert_documents(
     return len(documents)
 
 
-def _remove_stale_dds_staging_records(
+def _remove_stale_faculty_staging_records(
     database: Database,
     *,
     settings: Settings,
+    faculty_id: str,
     catalog_version: str,
     active_staging_keys: set[str],
 ) -> int:
-    """Drop superseded DDS catalog staging rows (e.g. renamed requirement groups)."""
-    prefix = f"technion-dds:catalog:{catalog_version}:"
+    """Drop superseded faculty catalog staging rows (e.g. renamed requirement groups)."""
+    prefix = f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:"
     removed = 0
     for collection_name in (
         settings.staging_degree_requirements_collection,
@@ -548,6 +590,7 @@ def import_dds_catalog_to_staging(
 
     document = load_reviewed_catalog(catalog_file)
     readiness = load_phase8_readiness(readiness_file)
+    catalog_context = faculty_catalog_context_from_document(document.model_dump(mode="json"))
 
     plan = build_catalog_staging_plan(
         document,
@@ -566,7 +609,12 @@ def import_dds_catalog_to_staging(
         raise CatalogStagingImportError("Database connection is required for staging import.")
     ensure_dds_catalog_staging_indexes(database, settings)
 
-    run_id, run = _start_ingestion_run(database, settings)
+    run_id, run = _start_ingestion_run(
+        database,
+        settings,
+        source_name=catalog_context.source_name,
+        source_type=catalog_context.source_type,
+    )
     run_id_str = str(run_id)
 
     for doc in plan.program_documents:
@@ -630,9 +678,10 @@ def import_dds_catalog_to_staging(
             + plan.faculty_documents
         )
     }
-    stale_removed = _remove_stale_dds_staging_records(
+    stale_removed = _remove_stale_faculty_staging_records(
         database,
         settings=settings,
+        faculty_id=catalog_context.faculty_id,
         catalog_version=document.source.catalogVersion,
         active_staging_keys=active_staging_keys,
     )

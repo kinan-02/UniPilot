@@ -11,9 +11,29 @@ from app.vault.elective_chain_contract import (
     apply_elective_chain_violations,
     validate_elective_chain_export,
 )
+from app.vault.export_faculty_vault_catalog import export_faculty_vault_catalog
 from app.vault.vault_signoff import finalize_export_quality_metadata
 
 VaultExportFn = Callable[..., tuple[dict[str, Any], dict[str, Any]]]
+
+GENERIC_EXPORT_FACULTY_IDS: tuple[str, ...] = (
+    "computer-science",
+    "electrical-computer-engineering",
+    "civil-environmental-engineering",
+    "mechanical-engineering",
+    "chemical-engineering",
+    "aerospace-engineering",
+    "biomedical-engineering",
+    "biotechnology-food-engineering",
+    "materials-science-engineering",
+    "mathematics",
+    "physics",
+    "chemistry",
+    "biology",
+    "medicine",
+    "education-science-technology",
+    "architecture-town-planning",
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +41,27 @@ class FacultyVaultExportSpec:
     faculty_id: str
     expected_program_codes: frozenset[str]
     export: VaultExportFn
+    export_mode: str = "specialized"
+
+
+def _make_generic_spec(faculty_id: str) -> FacultyVaultExportSpec:
+    def _export(
+        *,
+        vault_path: Path | None = None,
+        course_json_paths: list[Path] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return export_faculty_vault_catalog(
+            faculty_id=faculty_id,
+            vault_path=vault_path,
+            course_json_paths=course_json_paths,
+        )
+
+    return FacultyVaultExportSpec(
+        faculty_id=faculty_id,
+        expected_program_codes=frozenset(),
+        export=_export,
+        export_mode="generic",
+    )
 
 
 def _load_dds_spec() -> FacultyVaultExportSpec:
@@ -30,7 +71,15 @@ def _load_dds_spec() -> FacultyVaultExportSpec:
         faculty_id="dds",
         expected_program_codes=frozenset({"009216-1-000", "009009-1-000", "009118-1-000"}),
         export=export_dds_vault_catalog,
+        export_mode="specialized",
     )
+
+
+def _build_faculty_specs() -> dict[str, FacultyVaultExportSpec]:
+    specs: dict[str, FacultyVaultExportSpec] = {"dds": _load_dds_spec()}
+    for faculty_id in GENERIC_EXPORT_FACULTY_IDS:
+        specs[faculty_id] = _make_generic_spec(faculty_id)
+    return specs
 
 
 _FACULTY_SPECS: dict[str, FacultyVaultExportSpec] | None = None
@@ -39,8 +88,7 @@ _FACULTY_SPECS: dict[str, FacultyVaultExportSpec] | None = None
 def faculty_export_specs() -> dict[str, FacultyVaultExportSpec]:
     global _FACULTY_SPECS
     if _FACULTY_SPECS is None:
-        dds_spec = _load_dds_spec()
-        _FACULTY_SPECS = {dds_spec.faculty_id: dds_spec}
+        _FACULTY_SPECS = _build_faculty_specs()
     return _FACULTY_SPECS
 
 
