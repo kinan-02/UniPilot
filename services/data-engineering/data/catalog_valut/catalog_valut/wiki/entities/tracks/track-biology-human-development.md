@@ -13,6 +13,7 @@ updated: 2026-06-21
 # Research Track: Human Biology and Development (המגמה המחקרית בביולוגיה של האדם וההתפתחות)
 
 **Faculty:** [[faculty-biology]]
+**Program code:** 013043-1-000
 **Degree:** בוגר למדעים בביולוגיה (B.Sc. in Biology)
 **Duration:** 3 years (6 semesters)
 **Total credits:** 126.5

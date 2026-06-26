@@ -13,6 +13,7 @@ updated: 2026-06-22
 # Cyber & Systems Security Concentration (within 4-year CS track)
 
 **Faculty:** [[faculty-computer-science]]
+**Program code:** 023023-1-000
 **Parent Track:** [[track-computer-science-general-4year]]
 **Degree:** מוסמך למדעים (B.Sc.) במדעי המחשב
 **Duration:** 4 years

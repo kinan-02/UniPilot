@@ -1,11 +1,11 @@
 {
   "promotionRun": {
-    "promotionRunId": "dds-promotion-ebef1b147c10",
+    "promotionRunId": "dds-promotion-5c304376a2b2",
     "sourceName": "technion-dds-catalog",
     "catalogYear": 2025,
     "catalogVersion": "2025-2026",
-    "startedAt": "2026-06-21T23:42:40+00:00",
-    "finishedAt": "2026-06-21T23:42:40+00:00",
+    "startedAt": "2026-06-26T20:47:53+00:00",
+    "finishedAt": "2026-06-26T20:47:53+00:00",
     "status": "failed",
     "gateStatus": "pass",
     "dryRun": false,
@@ -13,12 +13,14 @@
     "triggeredBy": "data-engineering-cli",
     "countsPlanned": {
       "degreePrograms": 3,
+      "catalogPathOptions": 0,
+      "catalogFaculties": 0,
       "hardDegreeRequirements": 19,
-      "advisoryCatalogRules": 35,
-      "courses": 3,
-      "courseOfferings": 3,
-      "skippedItems": 36,
-      "skippedExcludedCourses": 1
+      "advisoryCatalogRules": 37,
+      "courses": 38,
+      "courseOfferings": 38,
+      "skippedItems": 42,
+      "skippedExcludedCourses": 5
     },
     "countsWritten": {},
     "skippedItems": [
@@ -192,7 +194,23 @@
       },
       {
         "itemType": "degree_requirement",
-        "identifier": "009009-1-000:ie-focus-chain",
+        "identifier": "009009-1-000:ie-focus-chain-game-theory",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:ie-focus-chain-advanced-industry",
+        "reason": "advisory-only-non-executable",
+        "details": {
+          "enforceInGraduationProgress": false
+        }
+      },
+      {
+        "itemType": "degree_requirement",
+        "identifier": "009009-1-000:ie-focus-chain-operations-research",
         "reason": "advisory-only-non-executable",
         "details": {
           "enforceInGraduationProgress": false
@@ -309,6 +327,38 @@
         "details": {
           "note": "May remain in catalog refs as reference-only; no production course row."
         }
+      },
+      {
+        "itemType": "catalog_course_reference",
+        "identifier": "00960311",
+        "reason": "production-excluded-by-catalog-signoff",
+        "details": {
+          "note": "May remain in catalog refs as reference-only; no production course row."
+        }
+      },
+      {
+        "itemType": "catalog_course_reference",
+        "identifier": "00960335",
+        "reason": "production-excluded-by-catalog-signoff",
+        "details": {
+          "note": "May remain in catalog refs as reference-only; no production course row."
+        }
+      },
+      {
+        "itemType": "catalog_course_reference",
+        "identifier": "00960351",
+        "reason": "production-excluded-by-catalog-signoff",
+        "details": {
+          "note": "May remain in catalog refs as reference-only; no production course row."
+        }
+      },
+      {
+        "itemType": "catalog_course_reference",
+        "identifier": "00970280",
+        "reason": "production-excluded-by-catalog-signoff",
+        "details": {
+          "note": "May remain in catalog refs as reference-only; no production course row."
+        }
       }
     ],
     "policiesApplied": {
@@ -316,13 +366,28 @@
       "enforceNonExecutableRulesInProduction": false,
       "productionExcludedCoursePolicy": "omit-from-production-do-not-ingest",
       "productionExcludedCourseNumbers": [
-        "00960226"
+        "00960226",
+        "00960244",
+        "00960251",
+        "00960293",
+        "00960311",
+        "00960335",
+        "00960351",
+        "00960470",
+        "00970211",
+        "00970280",
+        "00970329",
+        "00980312",
+        "00980455",
+        "02740300"
       ],
       "signedOffBy": "test-reviewer",
-      "signedOffAt": "2026-06-21T23:42:40+00:00"
+      "signedOffAt": "2026-06-26T20:47:53+00:00"
     },
     "productionCollectionsTouched": [],
     "productionCollectionCountsBefore": {
+      "catalog_faculties": 0,
+      "catalog_path_options": 0,
       "catalog_rules": 0,
       "course_offerings": 0,
       "courses": 0,
@@ -333,7 +398,7 @@
     "productionCollectionCountsAfter": {},
     "plannedProductionKeys": {},
     "rollbackNotes": [
-      "Delete production docs with promotionRunId=dds-promotion-ebef1b147c10 to roll back this run.",
+      "Delete production docs with promotionRunId=dds-promotion-5c304376a2b2 to roll back this run.",
       "Do not delete staging data.",
       "Advisory catalog rules remain non-enforced in graduation progress."
     ],
@@ -342,7 +407,7 @@
     ]
   },
   "gate": {
-    "generatedAt": "2026-06-21T23:42:40+00:00",
+    "generatedAt": "2026-06-26T20:47:53+00:00",
     "sourceName": "technion-dds-catalog",
     "catalogYear": 2025,
     "catalogVersion": "2025-2026",
@@ -354,7 +419,7 @@
         "checkId": "staging.program_count",
         "passed": true,
         "severity": "blocker",
-        "message": "Found 3 staged DDS programs (expected 3).",
+        "message": "Found 3 staged dds programs (expected at least 3).",
         "details": {}
       },
       {
@@ -370,28 +435,28 @@
         "checkId": "staging.total_credits",
         "passed": true,
         "severity": "blocker",
-        "message": "All programs have totalCredits=155.0.",
+        "message": "All programs have valid totalCredits.",
         "details": {}
       },
       {
         "checkId": "staging.requirement_groups",
         "passed": true,
         "severity": "info",
-        "message": "Found 54 staged requirement groups.",
+        "message": "Found 56 staged requirement groups.",
         "details": {}
       },
       {
         "checkId": "staging.courses",
         "passed": true,
         "severity": "blocker",
-        "message": "Found 3 staged courses.",
+        "message": "Found 38 staged courses.",
         "details": {}
       },
       {
         "checkId": "staging.offerings",
         "passed": true,
         "severity": "blocker",
-        "message": "Found 3 staged course offerings.",
+        "message": "Found 38 staged course offerings.",
         "details": {}
       },
       {
@@ -436,11 +501,21 @@
         "message": "Production-excluded course list matches catalog refs absent from semester JSON staging.",
         "details": {
           "expected": [
-            "00960226"
+            "00960226",
+            "00960311",
+            "00960335",
+            "00960351",
+            "00970280"
           ],
           "actual": [
-            "00960226"
-          ]
+            "00960226",
+            "00960311",
+            "00960335",
+            "00960351",
+            "00970280"
+          ],
+          "extra": [],
+          "missing": []
         }
       },
       {
@@ -512,10 +587,23 @@
       "enforceNonExecutableRulesInProduction": false,
       "productionExcludedCoursePolicy": "omit-from-production-do-not-ingest",
       "productionExcludedCourseNumbers": [
-        "00960226"
+        "00960226",
+        "00960244",
+        "00960251",
+        "00960293",
+        "00960311",
+        "00960335",
+        "00960351",
+        "00960470",
+        "00970211",
+        "00970280",
+        "00970329",
+        "00980312",
+        "00980455",
+        "02740300"
       ],
       "signedOffBy": "test-reviewer",
-      "signedOffAt": "2026-06-21T23:42:40+00:00"
+      "signedOffAt": "2026-06-26T20:47:53+00:00"
     },
     "plannedWrites": {
       "degreePrograms": [
@@ -547,6 +635,8 @@
           "notes": "Promote program shell with catalog metadata."
         }
       ],
+      "catalogPathOptions": [],
+      "catalogFaculties": [],
       "hardDegreeRequirements": [
         {
           "itemType": "degree_requirement",
@@ -912,10 +1002,28 @@
         },
         {
           "itemType": "advisory_requirement_group",
-          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain-game-theory",
           "productionCollection": "catalog_rules",
           "action": "advisory-only",
-          "identifier": "009009-1-000:ie-focus-chain",
+          "identifier": "009009-1-000:ie-focus-chain-game-theory",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain-advanced-industry",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-focus-chain-advanced-industry",
+          "enforceInGraduationProgress": false,
+          "notes": "Non-executable group promoted as advisory metadata only."
+        },
+        {
+          "itemType": "advisory_requirement_group",
+          "stagingKey": "technion-dds:catalog:2025-2026:requirement:009009-1-000:ie-focus-chain-operations-research",
+          "productionCollection": "catalog_rules",
+          "action": "advisory-only",
+          "identifier": "009009-1-000:ie-focus-chain-operations-research",
           "enforceInGraduationProgress": false,
           "notes": "Non-executable group promoted as advisory metadata only."
         },
@@ -1040,10 +1148,325 @@
       "courses": [
         {
           "itemType": "course",
+          "stagingKey": "technion:course:00940222",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00940222",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
           "stagingKey": "technion:course:00940345",
           "productionCollection": "courses",
           "action": "upsert",
           "identifier": "00940345",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00950111",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00950111",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960210",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960210",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960212",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960212",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960222",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960222",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960231",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960231",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960235",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960235",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960262",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960262",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960324",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960324",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960327",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960327",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960411",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960411",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960414",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960414",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960415",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960415",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960425",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960425",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960450",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960450",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960465",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960465",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960475",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960475",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960570",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960570",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960578",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960578",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960600",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960600",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960606",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960606",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960617",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960617",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960620",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960620",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960690",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960690",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00960693",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00960693",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970135",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970135",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970200",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970200",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970209",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970209",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970215",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970215",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970216",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970216",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970222",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970222",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970317",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970317",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970414",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970414",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00970449",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00970449",
+          "enforceInGraduationProgress": false,
+          "notes": "Course metadata from semester JSON staging import."
+        },
+        {
+          "itemType": "course",
+          "stagingKey": "technion:course:00980413",
+          "productionCollection": "courses",
+          "action": "upsert",
+          "identifier": "00980413",
           "enforceInGraduationProgress": false,
           "notes": "Course metadata from semester JSON staging import."
         },
@@ -1069,10 +1492,325 @@
       "courseOfferings": [
         {
           "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00940222:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00940222:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
           "stagingKey": "technion:course-offering:00940345:2025:201",
           "productionCollection": "course_offerings",
           "action": "upsert",
           "identifier": "technion:course-offering:00940345:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00950111:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00950111:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960210:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960210:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960212:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960212:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960222:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960222:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960231:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960231:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960235:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960235:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960262:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960262:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960324:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960324:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960327:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960327:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960411:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960411:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960414:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960414:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960415:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960415:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960425:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960425:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960450:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960450:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960465:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960465:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960475:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960475:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960570:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960570:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960578:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960578:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960600:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960600:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960606:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960606:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960617:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960617:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960620:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960620:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960690:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960690:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00960693:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00960693:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970135:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970135:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970200:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970200:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970209:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970209:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970215:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970215:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970216:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970216:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970222:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970222:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970317:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970317:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970414:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970414:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00970449:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00970449:2025:201",
+          "enforceInGraduationProgress": false,
+          "notes": null
+        },
+        {
+          "itemType": "course_offering",
+          "stagingKey": "technion:course-offering:00980413:2025:201",
+          "productionCollection": "course_offerings",
+          "action": "upsert",
+          "identifier": "technion:course-offering:00980413:2025:201",
           "enforceInGraduationProgress": false,
           "notes": null
         },
@@ -1266,7 +2004,23 @@
         },
         {
           "itemType": "degree_requirement",
-          "identifier": "009009-1-000:ie-focus-chain",
+          "identifier": "009009-1-000:ie-focus-chain-game-theory",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:ie-focus-chain-advanced-industry",
+          "reason": "advisory-only-non-executable",
+          "details": {
+            "enforceInGraduationProgress": false
+          }
+        },
+        {
+          "itemType": "degree_requirement",
+          "identifier": "009009-1-000:ie-focus-chain-operations-research",
           "reason": "advisory-only-non-executable",
           "details": {
             "enforceInGraduationProgress": false
@@ -1383,22 +2137,58 @@
           "details": {
             "note": "May remain in catalog refs as reference-only; no production course row."
           }
+        },
+        {
+          "itemType": "catalog_course_reference",
+          "identifier": "00960311",
+          "reason": "production-excluded-by-catalog-signoff",
+          "details": {
+            "note": "May remain in catalog refs as reference-only; no production course row."
+          }
+        },
+        {
+          "itemType": "catalog_course_reference",
+          "identifier": "00960335",
+          "reason": "production-excluded-by-catalog-signoff",
+          "details": {
+            "note": "May remain in catalog refs as reference-only; no production course row."
+          }
+        },
+        {
+          "itemType": "catalog_course_reference",
+          "identifier": "00960351",
+          "reason": "production-excluded-by-catalog-signoff",
+          "details": {
+            "note": "May remain in catalog refs as reference-only; no production course row."
+          }
+        },
+        {
+          "itemType": "catalog_course_reference",
+          "identifier": "00970280",
+          "reason": "production-excluded-by-catalog-signoff",
+          "details": {
+            "note": "May remain in catalog refs as reference-only; no production course row."
+          }
         }
       ],
       "counts": {
         "degreePrograms": 3,
+        "catalogPathOptions": 0,
+        "catalogFaculties": 0,
         "hardDegreeRequirements": 19,
-        "advisoryCatalogRules": 35,
-        "courses": 3,
-        "courseOfferings": 3,
-        "skippedItems": 36,
-        "skippedExcludedCourses": 1
+        "advisoryCatalogRules": 37,
+        "courses": 38,
+        "courseOfferings": 38,
+        "skippedItems": 42,
+        "skippedExcludedCourses": 5
       }
     },
     "advisoryRules": [
       "009009-1-000:ie-additional-faculty-electives",
       "009009-1-000:ie-behavior-science-chain",
-      "009009-1-000:ie-focus-chain",
+      "009009-1-000:ie-focus-chain-advanced-industry",
+      "009009-1-000:ie-focus-chain-game-theory",
+      "009009-1-000:ie-focus-chain-operations-research",
       "009009-1-000:ie-statistics-elective-chain",
       "009009-1-000:semester-1-matrix",
       "009009-1-000:semester-2-matrix",

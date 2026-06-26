@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Education in Electronics and Electricity
 
 **Faculty:** [[faculty-education-science-technology]]
+**Program code:** 021025-1-000
 **Degree:** B.Sc. in Education in Science and Technology
 **Total Credits:** 155 נ"ז
 **Distribution:** 124.5 required | 18.5 track electives | 6 enrichment | 2 PE | 4 general electives

@@ -1,6 +1,6 @@
 # DDS Production Promotion Plan (Phase 11 — Dry Run)
 
-Generated: 2026-06-22T19:23:31+00:00
+Generated: 2026-06-26T13:05:27+00:00
 Gate status: **pass-with-warnings**
 Can promote (future Phase 12): **True**
 
@@ -13,58 +13,62 @@ Gate passed with warnings. Phase 12 may implement promote-dds-to-production with
 - nonExecutableRulesPolicy: `advisory-only`
 - enforceNonExecutableRulesInProduction: `False`
 - productionExcludedCoursePolicy: `omit-from-production-do-not-ingest`
-- productionExcludedCourseNumbers: 42 courses
-- signedOffBy: vault-wiki at 2026-06-22T19:23:04+00:00
+- productionExcludedCourseNumbers: 183 courses
+- signedOffBy: vault-wiki at 2026-06-26T13:05:21+00:00
 
 ## Planned production writes (counts)
-- degreePrograms: 3
-- hardDegreeRequirements: 16
-- advisoryCatalogRules: 46
-- courses: 2068
-- courseOfferings: 2638
-- skippedItems: 88
-- skippedExcludedCourses: 42
+- degreePrograms: 7
+- catalogPathOptions: 18
+- catalogFaculties: 1
+- hardDegreeRequirements: 20
+- advisoryCatalogRules: 71
+- courses: 2466
+- courseOfferings: 6004
+- skippedItems: 254
+- skippedExcludedCourses: 183
 
 ## Target collections
 - degreePrograms → `degree_programs`
+- catalogPathOptions → `catalog_path_options`
+- catalogFaculties → `catalog_faculties`
 - hardDegreeRequirements → `degree_requirements`
 - advisoryCatalogRules → `catalog_rules`
 - courses → `courses`
 - courseOfferings → `course_offerings`
 
 ## Advisory rule handling
-- 46 rule/group identifiers promoted as **advisory-only** (enforceInGraduationProgress=false).
+- 71 rule/group identifiers promoted as **advisory-only** (enforceInGraduationProgress=false).
 
 ## Skipped / excluded courses
-- `00400314` — production-excluded-by-catalog-signoff
-- `00401222` — production-excluded-by-catalog-signoff
-- `00401422` — production-excluded-by-catalog-signoff
-- `00401652` — production-excluded-by-catalog-signoff
-- `00402731` — production-excluded-by-catalog-signoff
-- `00402851` — production-excluded-by-catalog-signoff
-- `00940179` — production-excluded-by-catalog-signoff
-- `00940197` — production-excluded-by-catalog-signoff
-- `00960221` — production-excluded-by-catalog-signoff
-- `00960226` — production-excluded-by-catalog-signoff
-- `00960244` — production-excluded-by-catalog-signoff
-- `00960251` — production-excluded-by-catalog-signoff
-- `00960292` — production-excluded-by-catalog-signoff
-- `00960293` — production-excluded-by-catalog-signoff
-- `00960311` — production-excluded-by-catalog-signoff
-- `00960335` — production-excluded-by-catalog-signoff
-- `00960351` — production-excluded-by-catalog-signoff
-- `00960401` — production-excluded-by-catalog-signoff
-- `00960425` — production-excluded-by-catalog-signoff
-- `00960465` — production-excluded-by-catalog-signoff
-- ... and 22 more
+- `00440102` — production-excluded-by-catalog-signoff
+- `00440105` — production-excluded-by-catalog-signoff
+- `00440127` — production-excluded-by-catalog-signoff
+- `00440131` — production-excluded-by-catalog-signoff
+- `00440137` — production-excluded-by-catalog-signoff
+- `00440157` — production-excluded-by-catalog-signoff
+- `00440167` — production-excluded-by-catalog-signoff
+- `00440169` — production-excluded-by-catalog-signoff
+- `00460210` — production-excluded-by-catalog-signoff
+- `01040012` — production-excluded-by-catalog-signoff
+- `01040013` — production-excluded-by-catalog-signoff
+- `01040016` — production-excluded-by-catalog-signoff
+- `01040031` — production-excluded-by-catalog-signoff
+- `01040032` — production-excluded-by-catalog-signoff
+- `01040033` — production-excluded-by-catalog-signoff
+- `01040034` — production-excluded-by-catalog-signoff
+- `01040066` — production-excluded-by-catalog-signoff
+- `01040122` — production-excluded-by-catalog-signoff
+- `01040134` — production-excluded-by-catalog-signoff
+- `01040135` — production-excluded-by-catalog-signoff
+- ... and 163 more
 
 ## Gate checks
-- [PASS] staging.program_count: Found 3 staged DDS programs (expected 3).
+- [PASS] staging.program_count: Found 7 staged computer-science programs (expected at least 1).
 - [PASS] staging.program_codes: All expected program codes present.
-- [PASS] staging.total_credits: All programs have totalCredits=155.0.
-- [PASS] staging.requirement_groups: Found 62 staged requirement groups.
-- [PASS] staging.courses: Found 2068 staged courses.
-- [PASS] staging.offerings: Found 2638 staged course offerings.
+- [PASS] staging.total_credits: All programs have valid totalCredits.
+- [PASS] staging.requirement_groups: Found 91 staged requirement groups.
+- [PASS] staging.courses: Found 2620 staged courses.
+- [PASS] staging.offerings: Found 6590 staged course offerings.
 - [PASS] staging.safety_flags: All staging documents have isStaging=true and productionEligible=false.
 - [PASS] policy.catalog_signoff_present: vaultSignoff metadata present on staged programs.
 - [PASS] policy.non_executable_advisory: nonExecutableRulesPolicy is advisory-only.
@@ -78,16 +82,16 @@ Gate passed with warnings. Phase 12 may implement promote-dds-to-production with
 - [PASS] quality.chain_rules_preserved: No chain/focus rule violations.
 - [PASS] quality.ocr_suspects: No known OCR suspect gaps.
 - [PASS] production.collections_read_only: Dry-run performed without production writes.
-- [FAIL] production.existing_data: Production collections already contain data: {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}
+- [FAIL] production.existing_data: Production collections already contain data: {'catalog_rules': 71, 'completed_courses': 31, 'course_offerings': 6557, 'courses': 2614, 'degree_programs': 10, 'degree_requirements': 36, 'promotion_runs': 12, 'semester_plans': 86}
 - [PASS] plan.no_excluded_courses_in_writes: Excluded courses are not in planned course writes.
 - [PASS] plan.advisory_rules_not_mandatory: All advisory catalog rules have enforceInGraduationProgress=false.
 
 ## Warnings
-- Production collections already contain data: {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}
+- Production collections already contain data: {'catalog_rules': 71, 'completed_courses': 31, 'course_offerings': 6557, 'courses': 2614, 'degree_programs': 10, 'degree_requirements': 36, 'promotion_runs': 12, 'semester_plans': 86}
 
 ## Production safety
 - **No production collection writes occurred.**
-- Existing production data (review only): {'catalog_rules': 37, 'completed_courses': 8, 'course_offerings': 2638, 'courses': 2068, 'degree_programs': 3, 'degree_requirements': 16, 'promotion_runs': 5, 'semester_plans': 130}
+- Existing production data (review only): {'catalog_rules': 71, 'completed_courses': 31, 'course_offerings': 6557, 'courses': 2614, 'degree_programs': 10, 'degree_requirements': 36, 'promotion_runs': 12, 'semester_plans': 86}
 
 ## Rollback notes
 - Phase 11 dry-run only — no production documents were written.

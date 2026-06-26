@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Chemistry — Biochemistry Dual Track
 
 **Faculty:** [[faculty-chemistry]]
+**Program code:** 012124-1-000
 **Total Credits:** ~155 נ"ז
 
 ## Overview

@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Materials Engineering and Biology Combined Track
 
 **Faculty:** [[faculty-materials-science-engineering]]
+**Program code:** 031313-1-000
 **Total Credits:** ~160 נ"ז
 
 ## Overview

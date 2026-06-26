@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Chemistry — Chemistry and Materials Science Combined
 
 **Faculty:** [[faculty-chemistry]]
+**Program code:** 031286-1-000
 **Total Credits:** ~160 נ"ז
 
 ## Overview

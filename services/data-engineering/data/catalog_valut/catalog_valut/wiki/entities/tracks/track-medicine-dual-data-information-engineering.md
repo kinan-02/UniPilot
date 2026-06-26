@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Medicine + Data and Information Engineering Dual Track
 
 **Faculty:** [[faculty-medicine]]
+**Program code:** 027396-1-000
 **Total Credits:** ~223.5 נ"ז
 
 ## Overview

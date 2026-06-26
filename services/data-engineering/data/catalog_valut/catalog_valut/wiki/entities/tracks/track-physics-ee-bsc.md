@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Physics + Electrical Engineering — Joint B.Sc./M.Sc.
 
 **Faculty:** [[faculty-physics]]
+**Program code:** 011142-1-000
 **Total Credits:** 159-178 נ"ז
 
 ## Overview

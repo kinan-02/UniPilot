@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "description": "Curated Technion program codes for wiki track pages missing a full 0XXXXX-1-000 field. Faculty wiki tables are parsed first; these entries win when the track page itself has no code.",
+  "overrides": {
+    "track-mechanical-engineering": "034034-1-000",
+    "track-mechanical-engineering-barak": "034034-2-000",
+    "track-computer-science-cyber": "023023-1-000",
+    "track-computer-science-data-ml": "023044-1-000",
+    "track-computer-science-bioinformatics": "023044-1-000",
+    "track-civil-engineering-construction-management": "001404-1-000",
+    "track-environmental-engineering": "001101-1-000",
+    "track-mapping-geoinformation-3year": "001046-1-000",
+    "track-mapping-geoinformation-4year": "001024-1-000",
+    "track-materials-engineering-biology": "031313-1-000",
+    "track-materials-engineering-chemistry": "031286-1-000",
+    "track-physics-applied-optics": "011155-1-000",
+    "track-physics-ee-bsc": "011142-1-000",
+    "track-biology-biochem-molecular": "013043-1-000",
+    "track-biology-chemistry-dual": "012124-1-000",
+    "track-biology-human-development": "013043-1-000",
+    "track-biology-microbiology-ecology": "013043-1-000",
+    "track-chemistry-biochemistry-dual": "012124-1-000",
+    "track-chemistry-haznek": "012154-1-000",
+    "track-chemistry-materials-combined": "031286-1-000",
+    "track-medicine-dual-data-information-engineering": "027396-1-000",
+    "track-medicine-occupational-therapy": "027280-1-000",
+    "track-education-electronics-electricity": "021025-1-000",
+    "track-education-technology-machines": "021026-1-000"
+  }
+}

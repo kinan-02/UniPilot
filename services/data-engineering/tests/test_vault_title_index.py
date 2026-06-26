@@ -22,3 +22,21 @@ def test_wiki_title_index_includes_course_pages():
     pages = load_pages_by_slug(wiki_root(VAULT_ROOT))
     index = build_wiki_title_index(pages)
     assert "00940345" in index
+
+
+def test_wiki_title_index_reads_course_column_header() -> None:
+    from app.vault.loader import WikiPage
+
+    page = WikiPage(
+        slug="track-test",
+        path=Path("/tmp/track-test.md"),
+        frontmatter={},
+        body="",
+        english_body=(
+            "| Code | Course | Credits |\n"
+            "|---|---|---|\n"
+            "| 00140411 | Soil Engineering | 3.5 |\n"
+        ),
+    )
+    index = build_wiki_title_index({page.slug: page})
+    assert index["00140411"] == "Soil Engineering"

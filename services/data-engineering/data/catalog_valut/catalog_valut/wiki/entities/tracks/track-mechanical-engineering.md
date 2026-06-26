@@ -14,7 +14,7 @@ updated: 2026-06-21
 
 **Faculty:** [[faculty-mechanical-engineering]]
 **Degree:** B.Sc. in Mechanical Engineering
-**Program code:** 03
+**Program code:** 034034-1-000
 **Total credits required:** 157.5 נקודות
 
 ## Credit Structure

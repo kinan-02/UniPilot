@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Occupational Therapy Track
 
 **Faculty:** [[faculty-medicine]]
+**Program code:** 027280-1-000
 **Total Credits:** ~155 נ"ז
 
 ## Overview

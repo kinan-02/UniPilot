@@ -23,6 +23,9 @@ from app.paths import faculty_catalog_export_dir
 from app.quality.dds_staging_quality import build_dds_staging_quality_report
 from app.vault.export_faculty_vault_catalog import (
     _bucket_requirement_type,
+    _canonical_bucket_slug,
+    _dedupe_requirement_groups,
+    _missing_standard_technion_bucket_slugs,
     _slugify_bucket_label,
     build_generic_program,
     export_faculty_vault_catalog,
@@ -54,12 +57,12 @@ def test_faculty_context_from_staging_program_variants() -> None:
             "metadata": {"facultyId": "faculty-biology"},
             "sourceName": "technion-biology-catalog",
             "programCode": "010002-1-000",
-            "sourceMetadata": {"exportMode": "generic"},
+            "sourceMetadata": {"exportMode": "specialized"},
         }
     )
     assert context2 is not None
     assert context2.faculty_id == "biology"
-    assert context2.export_mode == "generic"
+    assert context2.export_mode == "specialized"
 
 
 def test_faculty_context_production_key_prefix() -> None:
@@ -98,7 +101,7 @@ def test_validate_catalog_structure_generic_faculty_paths() -> None:
         source_name="technion-computer-science-catalog",
         source_type="computer-science_catalog_curated_reviewed",
         expected_program_codes=("023023-1-000",),
-        export_mode="generic",
+        export_mode="specialized",
     )
     with pytest.raises(CatalogStagingImportError, match="totalCredits must be a positive"):
         validate_catalog_structure(doc, context=context)
@@ -111,10 +114,40 @@ def test_validate_catalog_structure_generic_faculty_paths() -> None:
 
 
 def test_generic_bucket_helpers() -> None:
-    assert _slugify_bucket_label("מקצועות חובה") != ""
+    assert _slugify_bucket_label("מקצועות חובה") == "required-courses"
+    assert _slugify_bucket_label("מקצועות העשרה") == "enrichment"
+    assert _slugify_bucket_label("Free electives") == "free-elective"
+    assert _canonical_bucket_slug("free-electives") == "free-elective"
+    assert _missing_standard_technion_bucket_slugs({"enrichment", "physical-education", "free-electives"}) == set()
     assert _bucket_requirement_type("Physical education") == "enrichment"
     assert _bucket_requirement_type("Faculty electives") == "elective"
     assert _bucket_requirement_type("Core required") == "core"
+
+
+def test_dedupe_requirement_groups_merges_course_refs_and_skips_blank_ids() -> None:
+    merged = _dedupe_requirement_groups(
+        [
+            {"groupId": "", "courseReferences": [{"courseNumber": "01040001"}]},
+            {
+                "groupId": "010040-1-000:semester-1-matrix",
+                "courseReferences": [{"courseNumber": "01040001"}],
+            },
+            {
+                "groupId": "010040-1-000:semester-1-matrix",
+                "courseReferences": [{"courseNumber": "01040002"}],
+            },
+        ]
+    )
+    assert len(merged) == 1
+    assert {ref["courseNumber"] for ref in merged[0]["courseReferences"]} == {
+        "01040001",
+        "01040002",
+    }
+
+
+def test_slugify_bucket_label_falls_back_to_hash_for_unknown_hebrew() -> None:
+    slug = _slugify_bucket_label("קטגוריה לא מוכרת")
+    assert slug.startswith("bucket-")
 
 
 def test_build_generic_program_without_program_code() -> None:
@@ -318,6 +351,24 @@ def test_extract_program_code_falls_back_to_body_pattern(monkeypatch) -> None:
     assert extract_program_code(page) == "010001-1-000"
 
 
+def test_extract_program_code_falls_back_to_body_pattern_when_english_body_empty(monkeypatch) -> None:
+    from app.vault.export_faculty_vault_catalog import extract_program_code
+    from app.vault.loader import WikiPage
+
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.extract_field",
+        lambda text, label: None,
+    )
+    page = WikiPage(
+        slug="track-test",
+        path=Path("/tmp/track-test.md"),
+        frontmatter={},
+        body="**Program code:** 010002-1-000\n",
+        english_body="",
+    )
+    assert extract_program_code(page) == "010002-1-000"
+
+
 def test_build_generic_program_splits_technion_wide_electives_into_standard_buckets() -> None:
     from app.paths import catalog_vault_root
     from app.vault.loader import load_pages_by_slug, wiki_root
@@ -338,3 +389,48 @@ def test_build_generic_program_splits_technion_wide_electives_into_standard_buck
 
     assert technion_wide_elective_credit_split(12.0) == (6.0, 4.0, 2.0)
     assert technion_wide_elective_credit_split(10.0) == (6.0, 2.0, 2.0)
+
+
+def _assert_no_duplicate_group_ids(program: dict) -> None:
+    from collections import Counter
+
+    group_ids = [group["groupId"] for group in program["requirementGroups"]]
+    duplicates = [group_id for group_id, count in Counter(group_ids).items() if count > 1]
+    assert duplicates == []
+
+
+def test_build_generic_program_dedupes_hebrew_credit_buckets_and_standard_technion_buckets() -> None:
+    from app.paths import catalog_vault_root
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root(catalog_vault_root()))
+    education = build_generic_program(
+        pages["track-education-computer-science"],
+        faculty_id="education-science-technology",
+        pages=pages,
+    )
+    mathematics = build_generic_program(
+        pages["track-mathematics-bsc"],
+        faculty_id="mathematics",
+        pages=pages,
+    )
+    assert education is not None and mathematics is not None
+    _assert_no_duplicate_group_ids(education)
+    _assert_no_duplicate_group_ids(mathematics)
+    assert any(
+        group["groupId"].endswith(":required-courses")
+        for group in education["requirementGroups"]
+    )
+
+
+def test_semester_matrix_groups_merge_variant_headings() -> None:
+    from app.paths import catalog_vault_root
+    from app.vault.export_dds_catalog import _semester_matrix_groups
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root(catalog_vault_root()))
+    page = pages["track-electrical-engineering-physics"]
+    groups = _semester_matrix_groups(page, "004141-1-000")
+    semester_six = [group for group in groups if group["groupId"].endswith("semester-6-matrix")]
+    assert len(semester_six) == 1
+    assert len(semester_six[0]["courseReferences"]) > 0

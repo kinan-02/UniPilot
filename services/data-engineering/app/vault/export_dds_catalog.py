@@ -153,7 +153,7 @@ def _table_course_rows(table: MarkdownTable) -> list[dict[str, str | None]]:
     if code_idx is None:
         return []
 
-    name_idx = _column_index(table.headers, "name", "שם")
+    name_idx = _column_index(table.headers, "name", "course", "שם")
     credits_idx = _column_index(table.headers, "credit", "נ\"ז", "נז")
     notes_idx = _column_index(table.headers, "notes", "הערות")
 
@@ -368,7 +368,19 @@ def _semester_matrix_groups(page: WikiPage, program_code: str) -> list[dict[str,
                 "confidence": "medium",
             }
         )
-    return groups
+
+    by_semester: dict[int, dict[str, Any]] = {}
+    for group in groups:
+        semester = int((group.get("ruleExpression") or {}).get("semester") or 0)
+        existing = by_semester.get(semester)
+        if existing is None:
+            by_semester[semester] = group
+            continue
+        existing["courseReferences"] = _merge_unique_course_refs(
+            existing.get("courseReferences") or [],
+            group.get("courseReferences") or [],
+        )
+    return list(by_semester.values())
 
 
 def _course_pool_group(

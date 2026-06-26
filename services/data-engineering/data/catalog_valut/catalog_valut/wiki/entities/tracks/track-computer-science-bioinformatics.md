@@ -13,6 +13,7 @@ updated: 2026-06-22
 # CS with Bioinformatics Concentration
 
 **Faculty:** [[faculty-computer-science]] (joint with Faculty of Biology)
+**Program code:** 023044-1-000
 **Degree:** בוגר למדעים (B.Sc.) במדעי המחשב
 **Duration:** 3 years (6 semesters)
 **Total credits required:** 124.0

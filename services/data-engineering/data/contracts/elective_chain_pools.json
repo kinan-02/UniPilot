@@ -4,7 +4,9 @@
   "description": "Per-faculty elective chain pool invariants for vault export, staging quality, and /progress UI.",
   "faculties": {
     "dds": {
-      "deprecatedPoolSuffixes": ["ie-focus-chain"],
+      "deprecatedPoolSuffixes": [
+        "ie-focus-chain"
+      ],
       "pools": [
         {
           "programCode": "009009-1-000",
@@ -77,7 +79,10 @@
           "minCourseRefs": 15,
           "maxCourseRefs": 25,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["0970209", "0970215"]
+          "mustIncludeCourseNumbers": [
+            "0970209",
+            "0970215"
+          ]
         },
         {
           "programCode": "009118-1-000",
@@ -146,7 +151,9 @@
           "minCourseRefs": 16,
           "maxCourseRefs": 16,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360313"]
+          "mustIncludeCourseNumbers": [
+            "02360313"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -174,7 +181,10 @@
           "minCourseRefs": 9,
           "maxCourseRefs": 9,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360309", "02360506"]
+          "mustIncludeCourseNumbers": [
+            "02360309",
+            "02360506"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -184,7 +194,9 @@
           "minCourseRefs": 20,
           "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360319"]
+          "mustIncludeCourseNumbers": [
+            "02360319"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -194,7 +206,10 @@
           "minCourseRefs": 16,
           "maxCourseRefs": 16,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360334", "02360370"]
+          "mustIncludeCourseNumbers": [
+            "02360334",
+            "02360370"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -204,7 +219,9 @@
           "minCourseRefs": 21,
           "maxCourseRefs": 21,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360363"]
+          "mustIncludeCourseNumbers": [
+            "02360363"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -214,7 +231,9 @@
           "minCourseRefs": 19,
           "maxCourseRefs": 19,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360201"]
+          "mustIncludeCourseNumbers": [
+            "02360201"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -224,7 +243,9 @@
           "minCourseRefs": 11,
           "maxCourseRefs": 11,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360216"]
+          "mustIncludeCourseNumbers": [
+            "02360216"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -234,7 +255,9 @@
           "minCourseRefs": 23,
           "maxCourseRefs": 23,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360501"]
+          "mustIncludeCourseNumbers": [
+            "02360501"
+          ]
         },
         {
           "programCode": "023023-1-000",
@@ -244,7 +267,1970 @@
           "minCourseRefs": 10,
           "maxCourseRefs": 10,
           "requiresCatalogDescription": true,
-          "mustIncludeCourseNumbers": ["02360522", "00940423"]
+          "mustIncludeCourseNumbers": [
+            "02360522",
+            "00940423"
+          ]
+        }
+      ]
+    },
+    "aerospace-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 98,
+          "maxCourseRefs": 98,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-1-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 24,
+          "maxCourseRefs": 24,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-2-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-3-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-4-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 20,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-5-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-6-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008008-1-000",
+          "trackSlug": "track-aerospace-engineering",
+          "suffix": "aero-cluster-7-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008181-1-000",
+          "trackSlug": "track-aerospace-physics-dual",
+          "suffix": "aero-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008181-1-000",
+          "trackSlug": "track-aerospace-physics-dual",
+          "suffix": "aero-list-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008181-1-000",
+          "trackSlug": "track-aerospace-physics-dual",
+          "suffix": "aero-list-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 43,
+          "maxCourseRefs": 43,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "008181-1-000",
+          "trackSlug": "track-aerospace-physics-dual",
+          "suffix": "aero-elective-physics-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "architecture-town-planning": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "020220-1-000",
+          "trackSlug": "track-architecture",
+          "suffix": "arch-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 18,
+          "maxCourseRefs": 18,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020220-1-000",
+          "trackSlug": "track-architecture",
+          "suffix": "arch-elective-social-sciences-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020220-1-000",
+          "trackSlug": "track-architecture",
+          "suffix": "arch-elective-technology-and-sciences-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020220-1-000",
+          "trackSlug": "track-architecture",
+          "suffix": "arch-elective-basic-design-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 11,
+          "maxCourseRefs": 11,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020028-1-000",
+          "trackSlug": "track-landscape-architecture",
+          "suffix": "arch-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020028-1-000",
+          "trackSlug": "track-landscape-architecture",
+          "suffix": "arch-elective-social-sciences-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020028-1-000",
+          "trackSlug": "track-landscape-architecture",
+          "suffix": "arch-elective-advanced-theories-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "020028-1-000",
+          "trackSlug": "track-landscape-architecture",
+          "suffix": "arch-elective-digital-tools-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "biology": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "013043-1-000",
+          "trackSlug": "track-biology-human-development",
+          "suffix": "biology-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "013043-1-000",
+          "trackSlug": "track-biology-general",
+          "suffix": "biology-list-a-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "013043-1-000",
+          "trackSlug": "track-biology-general",
+          "suffix": "biology-list-b-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "013043-1-000",
+          "trackSlug": "track-biology-human-development",
+          "suffix": "biology-list-a1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "013043-1-000",
+          "trackSlug": "track-biology-human-development",
+          "suffix": "biology-list-b1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 11,
+          "maxCourseRefs": 11,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "biomedical-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "033033-1-000",
+          "trackSlug": "track-biomedical-engineering",
+          "suffix": "bme-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "033033-1-000",
+          "trackSlug": "track-biomedical-engineering",
+          "suffix": "bme-elective-group-1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "033033-1-000",
+          "trackSlug": "track-biomedical-engineering",
+          "suffix": "bme-elective-group-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "033033-1-000",
+          "trackSlug": "track-biomedical-engineering",
+          "suffix": "bme-elective-group-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "033033-1-000",
+          "trackSlug": "track-biomedical-engineering",
+          "suffix": "bme-elective-group-4-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "033033-1-000",
+          "trackSlug": "track-biomedical-engineering",
+          "suffix": "bme-elective-elective-groups-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "027399-1-000",
+          "trackSlug": "track-biomedical-engineering-medicine-dual",
+          "suffix": "bme-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "027399-1-000",
+          "trackSlug": "track-biomedical-engineering-medicine-dual",
+          "suffix": "bme-elective-engineering-faculty-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "027399-1-000",
+          "trackSlug": "track-biomedical-engineering-medicine-dual",
+          "suffix": "bme-elective-medicine-electives-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 1,
+          "maxCourseRefs": 1,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "033133-1-000",
+          "trackSlug": "track-biomedical-engineering-physics",
+          "suffix": "bme-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "biotechnology-food-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-a-theory-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-a-experience-and-research-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-b-theory-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-b-experience-and-research-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-c-theory-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-c-experience-and-research-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 5,
+          "maxCourseRefs": 5,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-d-theory-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-d-experience-and-research-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-e-theory-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "006006-1-000",
+          "trackSlug": "track-biotechnology-food-engineering",
+          "suffix": "biotech-track-e-experience-and-research-cluster-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 50,
+          "maxCourseRefs": 50,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "chemical-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "005205-1-000",
+          "trackSlug": "track-biochemical-engineering",
+          "suffix": "chem-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005205-1-000",
+          "trackSlug": "track-biochemical-engineering",
+          "suffix": "chem-elective-list-a-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 24,
+          "maxCourseRefs": 24,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-track-general-list-1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-track-materials-list-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-track-sustainable-world-list-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-track-analytical-tools-and-computation-list-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-track-pharma-engineering-list-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 5,
+          "maxCourseRefs": 5,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "005005-1-000",
+          "trackSlug": "track-chemical-engineering",
+          "suffix": "chem-track-pharma-engineering-list-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "chemistry": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "012042-1-000",
+          "trackSlug": "track-chemistry-chemistry",
+          "suffix": "chemistry-hebrew-elective-א-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "012042-1-000",
+          "trackSlug": "track-chemistry-chemistry",
+          "suffix": "chemistry-hebrew-elective-ב-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 45,
+          "maxCourseRefs": 45,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "012042-1-000",
+          "trackSlug": "track-chemistry-chemistry",
+          "suffix": "chemistry-hebrew-elective-subsection-03-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "civil-environmental-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "001401-1-000",
+          "trackSlug": "track-civil-engineering-structures",
+          "suffix": "civil-hebrew-group-א-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "001401-1-000",
+          "trackSlug": "track-civil-engineering-structures",
+          "suffix": "civil-hebrew-group-ב-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "001201-1-000",
+          "trackSlug": "track-civil-engineering-water-transport",
+          "suffix": "civil-spec-1-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 21,
+          "maxCourseRefs": 21,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "001201-1-000",
+          "trackSlug": "track-civil-engineering-water-transport",
+          "suffix": "civil-spec-2-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 24,
+          "maxCourseRefs": 24,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "education-science-technology": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "021239-1-000",
+          "trackSlug": "track-education-biology",
+          "suffix": "edu-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 22,
+          "maxCourseRefs": 22,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021239-1-000",
+          "trackSlug": "track-education-biology",
+          "suffix": "edu-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021239-1-000",
+          "trackSlug": "track-education-biology",
+          "suffix": "edu-elective-subsection-02-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 5,
+          "maxCourseRefs": 5,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021239-1-000",
+          "trackSlug": "track-education-biology",
+          "suffix": "edu-elective-subsection-03-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021095-1-000",
+          "trackSlug": "track-education-chemistry",
+          "suffix": "edu-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021095-1-000",
+          "trackSlug": "track-education-chemistry",
+          "suffix": "edu-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021095-1-000",
+          "trackSlug": "track-education-chemistry",
+          "suffix": "edu-elective-subsection-03-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-elective-list-א-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-elective-list-ב-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 1,
+          "maxCourseRefs": 1,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-elective-list-ג-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-elective-subsection-02-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 1,
+          "maxCourseRefs": 1,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021143-1-000",
+          "trackSlug": "track-education-computer-science",
+          "suffix": "edu-elective-subsection-03-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 5,
+          "maxCourseRefs": 5,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021121-1-000",
+          "trackSlug": "track-education-mathematics",
+          "suffix": "edu-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021121-1-000",
+          "trackSlug": "track-education-mathematics",
+          "suffix": "edu-elective-list-א-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021121-1-000",
+          "trackSlug": "track-education-mathematics",
+          "suffix": "edu-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021111-1-000",
+          "trackSlug": "track-education-physics",
+          "suffix": "edu-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021111-1-000",
+          "trackSlug": "track-education-physics",
+          "suffix": "edu-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021111-1-000",
+          "trackSlug": "track-education-physics",
+          "suffix": "edu-elective-subsection-02-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "021111-1-000",
+          "trackSlug": "track-education-physics",
+          "suffix": "edu-elective-subsection-03-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 4,
+          "maxCourseRefs": 4,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "electrical-computer-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-01",
+          "operator": "choose_n",
+          "minCourseRefs": 19,
+          "maxCourseRefs": 19,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460005"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-02",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440202",
+            "00460204",
+            "00460206"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-03",
+          "operator": "choose_n",
+          "minCourseRefs": 18,
+          "maxCourseRefs": 18,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440198",
+            "00460200"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-04",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460237"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-05",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460192",
+            "00460212"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-06",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-07",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-08",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460195",
+            "00460202",
+            "00460203",
+            "00460217"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-09",
+          "operator": "choose_n",
+          "minCourseRefs": 13,
+          "maxCourseRefs": 13,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460243",
+            "00460734",
+            "01160031",
+            "02360990"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-10",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00340034",
+            "00440139",
+            "00460042"
+          ]
+        },
+        {
+          "programCode": "004114-1-000",
+          "trackSlug": "track-computer-engineering-software",
+          "suffix": "ece-spec-group-11",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "01040142",
+            "01040158",
+            "01040165",
+            "01040291"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-01",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440334",
+            "00460005"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-02",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460192",
+            "00460212"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-03",
+          "operator": "choose_n",
+          "minCourseRefs": 18,
+          "maxCourseRefs": 18,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460204",
+            "00460205",
+            "00460206",
+            "00460208",
+            "00460733",
+            "02360309"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-04",
+          "operator": "choose_n",
+          "minCourseRefs": 18,
+          "maxCourseRefs": 18,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440231",
+            "00460225"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-05",
+          "operator": "choose_n",
+          "minCourseRefs": 20,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460248",
+            "00460256"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-06",
+          "operator": "choose_n",
+          "minCourseRefs": 27,
+          "maxCourseRefs": 27,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460002",
+            "00460209",
+            "00460267"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-07",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460326",
+            "00460332",
+            "03360522"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-08",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440198",
+            "00460200"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-09",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460237"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-10",
+          "operator": "choose_n",
+          "minCourseRefs": 11,
+          "maxCourseRefs": 11,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "01040142",
+            "01040158",
+            "01040165",
+            "01040286"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-11",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460195",
+            "00460202",
+            "00460203",
+            "00460217"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-12",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00340034",
+            "00440139",
+            "00460042"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-spec-group-13",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460243",
+            "00460734",
+            "01160031",
+            "02360990"
+          ]
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-lab-courses-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 21,
+          "maxCourseRefs": 21,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004004-1-000",
+          "trackSlug": "track-electrical-engineering",
+          "suffix": "ece-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 88,
+          "maxCourseRefs": 88,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-01",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440334",
+            "00460005"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-02",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460192",
+            "00460212"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-03",
+          "operator": "choose_n",
+          "minCourseRefs": 18,
+          "maxCourseRefs": 18,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460204",
+            "00460205",
+            "00460206",
+            "00460208",
+            "00460733",
+            "02360309"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-04",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440124",
+            "01140073"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-05",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460248",
+            "00460256"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-06",
+          "operator": "choose_n",
+          "minCourseRefs": 27,
+          "maxCourseRefs": 27,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460002",
+            "00460209",
+            "00460267"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-07",
+          "operator": "choose_n",
+          "minCourseRefs": 11,
+          "maxCourseRefs": 11,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460326",
+            "00460332",
+            "03360522"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-08",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440198",
+            "00460200"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-09",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460237"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-10",
+          "operator": "choose_n",
+          "minCourseRefs": 1,
+          "maxCourseRefs": 1,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-11",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460195",
+            "00460202",
+            "00460203",
+            "00460217"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-12",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00340034",
+            "00440139",
+            "00460042"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-spec-group-13",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460243",
+            "00460734",
+            "01160031",
+            "02360990"
+          ]
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-lab-courses-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 21,
+          "maxCourseRefs": 21,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 36,
+          "maxCourseRefs": 36,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 5,
+          "maxCourseRefs": 5,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-4-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-5-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-6-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004414-1-000",
+          "trackSlug": "track-electrical-engineering-mathematics",
+          "suffix": "ece-elective-semester-7-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-01",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440334",
+            "00460005"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-02",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460192",
+            "00460212"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-03",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460204",
+            "00460205",
+            "00460206",
+            "00460208",
+            "00460733",
+            "02360309"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-04",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440231",
+            "00460225"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-05",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460248",
+            "00460256"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-06",
+          "operator": "choose_n",
+          "minCourseRefs": 27,
+          "maxCourseRefs": 27,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460002",
+            "00460209",
+            "00460267"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-07",
+          "operator": "choose_n",
+          "minCourseRefs": 12,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440191",
+            "00460326",
+            "00460332",
+            "03360522"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-08",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00440198",
+            "00460200"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-09",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460237"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-10",
+          "operator": "choose_n",
+          "minCourseRefs": 17,
+          "maxCourseRefs": 17,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460195",
+            "00460202",
+            "00460203",
+            "00460217"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-11",
+          "operator": "choose_n",
+          "minCourseRefs": 9,
+          "maxCourseRefs": 9,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00340034",
+            "00440139",
+            "00460042"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-spec-group-12",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true,
+          "mustIncludeCourseNumbers": [
+            "00460243",
+            "00460734",
+            "01160031",
+            "02360990"
+          ]
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-lab-courses-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 21,
+          "maxCourseRefs": 21,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 41,
+          "maxCourseRefs": 41,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-4-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-5-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-6-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-7-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "004141-1-000",
+          "trackSlug": "track-electrical-engineering-physics",
+          "suffix": "ece-elective-semester-8-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 2,
+          "maxCourseRefs": 2,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "materials-science-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "031131-1-000",
+          "trackSlug": "track-materials-engineering",
+          "suffix": "matsci-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 77,
+          "maxCourseRefs": 77,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "031131-1-000",
+          "trackSlug": "track-materials-engineering",
+          "suffix": "matsci-hebrew-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 39,
+          "maxCourseRefs": 39,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "mathematics": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "010040-1-000",
+          "trackSlug": "track-mathematics-bsc",
+          "suffix": "math-required-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 133,
+          "maxCourseRefs": 133,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "010040-1-000",
+          "trackSlug": "track-mathematics-bsc",
+          "suffix": "math-science-elective-chain",
+          "operator": "choose_chain",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "010040-1-000",
+          "trackSlug": "track-mathematics-bsc",
+          "suffix": "math-elective-list-א-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 133,
+          "maxCourseRefs": 133,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "010088-1-000",
+          "trackSlug": "track-mathematics-physics",
+          "suffix": "math-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "010088-1-000",
+          "trackSlug": "track-mathematics-physics",
+          "suffix": "math-elective-lab-project-requirement-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "010088-1-000",
+          "trackSlug": "track-mathematics-physics",
+          "suffix": "math-elective-advanced-physics-elective-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "mechanical-engineering": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 147,
+          "maxCourseRefs": 147,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-list-א-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-list-ב-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-list-ג-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-list-ד-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-list-ה-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 101,
+          "maxCourseRefs": 101,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-subsection-01-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 6,
+          "maxCourseRefs": 6,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-subsection-02-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 16,
+          "maxCourseRefs": 16,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-subsection-03-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 15,
+          "maxCourseRefs": 15,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-subsection-04-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 10,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "034034-1-000",
+          "trackSlug": "track-mechanical-engineering",
+          "suffix": "mech-elective-subsection-05-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 101,
+          "maxCourseRefs": 101,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "medicine": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "027197-1-000",
+          "trackSlug": "track-medicine-bsc",
+          "suffix": "medicine-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 36,
+          "maxCourseRefs": 36,
+          "requiresCatalogDescription": true
+        }
+      ]
+    },
+    "physics": {
+      "deprecatedPoolSuffixes": [],
+      "pools": [
+        {
+          "programCode": "023325-1-000",
+          "trackSlug": "track-cs-physics",
+          "suffix": "physics-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "023325-1-000",
+          "trackSlug": "track-cs-physics",
+          "suffix": "physics-elective-physics-list-1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 8,
+          "maxCourseRefs": 8,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011087-1-000",
+          "trackSlug": "track-physics-math",
+          "suffix": "physics-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 14,
+          "maxCourseRefs": 14,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011087-1-000",
+          "trackSlug": "track-physics-math",
+          "suffix": "physics-elective-list-a-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011087-1-000",
+          "trackSlug": "track-physics-math",
+          "suffix": "physics-elective-list-b-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011087-1-000",
+          "trackSlug": "track-physics-math",
+          "suffix": "physics-elective-list-c-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011041-1-000",
+          "trackSlug": "track-physics-three-year",
+          "suffix": "physics-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 47,
+          "maxCourseRefs": 47,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011041-1-000",
+          "trackSlug": "track-physics-three-year",
+          "suffix": "physics-elective-list-1-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 3,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011041-1-000",
+          "trackSlug": "track-physics-three-year",
+          "suffix": "physics-elective-list-2-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011041-1-000",
+          "trackSlug": "track-physics-three-year",
+          "suffix": "physics-elective-list-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 40,
+          "maxCourseRefs": 40,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011041-1-000",
+          "trackSlug": "track-physics-three-year",
+          "suffix": "physics-elective-semesters-5-6-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "011041-1-000",
+          "trackSlug": "track-physics-three-year",
+          "suffix": "physics-elective-3-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 40,
+          "maxCourseRefs": 40,
+          "requiresCatalogDescription": true
         }
       ]
     }

@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Physics — Applied Optics Specialization
 
 **Faculty:** [[faculty-physics]]
+**Program code:** 011155-1-000
 **Degree:** M.Sc. in Physics (Applied Optics specialization)
 **Total Credits:** 155 נ"ז
 **Code:** 011 (Physics) + Applied Optics מגמה

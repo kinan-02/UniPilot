@@ -90,6 +90,46 @@ def _group_index(program: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+def _programs_by_code_and_track(
+    document: dict[str, Any],
+) -> tuple[dict[str, list[dict[str, Any]]], dict[tuple[str, str], dict[str, Any]]]:
+    by_code: dict[str, list[dict[str, Any]]] = {}
+    by_code_track: dict[tuple[str, str], dict[str, Any]] = {}
+    for program in document.get("programs") or []:
+        code = str(program.get("programCode") or "")
+        by_code.setdefault(code, []).append(program)
+        wiki_page = (program.get("metadata") or {}).get("wikiPage")
+        if wiki_page:
+            by_code_track[(code, str(wiki_page))] = program
+    return by_code, by_code_track
+
+
+def _resolve_program_for_entry(
+    entry: dict[str, Any],
+    *,
+    by_code: dict[str, list[dict[str, Any]]],
+    by_code_track: dict[tuple[str, str], dict[str, Any]],
+) -> dict[str, Any] | None:
+    program_code = str(entry["programCode"])
+    suffix = str(entry["suffix"])
+    track_slug = str(entry.get("trackSlug") or "") or None
+
+    if track_slug:
+        program = by_code_track.get((program_code, track_slug))
+        if program is not None:
+            return program
+
+    candidates = by_code.get(program_code) or []
+    if len(candidates) == 1:
+        return candidates[0]
+
+    for program in candidates:
+        if suffix in _group_index(program):
+            return program
+
+    return None if track_slug else (candidates[0] if candidates else None)
+
+
 def _validate_pools_for_faculty(
     document: dict[str, Any],
     *,
@@ -98,16 +138,15 @@ def _validate_pools_for_faculty(
     deprecated: set[str],
 ) -> list[str]:
     violations: list[str] = []
-    programs_by_code = {
-        str(program.get("programCode")): program for program in document.get("programs") or []
-    }
+    by_code, by_code_track = _programs_by_code_and_track(document)
 
     for entry in pools:
         program_code = str(entry["programCode"])
         suffix = str(entry["suffix"])
-        program = programs_by_code.get(program_code)
+        program = _resolve_program_for_entry(entry, by_code=by_code, by_code_track=by_code_track)
         if program is None:
-            violations.append(f"missing program {program_code} for pool {suffix}")
+            track_hint = f" ({entry['trackSlug']})" if entry.get("trackSlug") else ""
+            violations.append(f"missing program {program_code}{track_hint} for pool {suffix}")
             continue
 
         groups = _group_index(program)
@@ -210,14 +249,25 @@ def validate_staging_requirement_group(requirement_doc: dict[str, Any]) -> list[
 
     suffix = group_id.split(":")[-1]
     program_code = group_id.split(":")[0] if ":" in group_id else ""
-    entry = next(
-        (
-            item
-            for item in iter_contract_pools()
-            if item.get("suffix") == suffix and item.get("programCode") == program_code
-        ),
-        None,
+    wiki_page = str(
+        (requirement_doc.get("metadata") or {}).get("wikiPage")
+        or (requirement_doc.get("programMetadata") or {}).get("wikiPage")
+        or ""
     )
+    matching_entries = [
+        item
+        for item in iter_contract_pools()
+        if item.get("suffix") == suffix and item.get("programCode") == program_code
+    ]
+    if wiki_page:
+        entry = next(
+            (item for item in matching_entries if item.get("trackSlug") == wiki_page),
+            None,
+        )
+    else:
+        entry = matching_entries[0] if len(matching_entries) == 1 else None
+    if entry is None and len(matching_entries) == 1:
+        entry = matching_entries[0]
     if entry is None:
         return []
 

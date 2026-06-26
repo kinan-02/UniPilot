@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Civil Engineering — Construction Management Track
 
 **Faculty:** [[faculty-civil-environmental-engineering]]
+**Program code:** 001404-1-000
 **Total Credits:** 159.5 נ"ז
 
 ## Overview

@@ -14,6 +14,8 @@ from app.importers.dds_catalog_staging_importer import (
 from app.promotion.dds_production_promoter import _retire_superseded_catalog_rules
 from app.vault.elective_chain_contract import (
     _normalize_contract,
+    _programs_by_code_and_track,
+    _resolve_program_for_entry,
     _validate_pools_for_faculty,
     apply_elective_chain_violations,
     contracted_faculty_ids,
@@ -232,6 +234,135 @@ def test_validate_staging_requirement_group_contract_rules():
         }
     )
     assert any("treats chain courses as mandatory" in item for item in mandatory_flag)
+
+
+def test_validate_elective_chain_export_resolves_shared_program_codes_by_track_slug():
+    document = {
+        "programs": [
+            {
+                "programCode": "013043-1-000",
+                "metadata": {"wikiPage": "track-biology-general"},
+                "requirementGroups": [
+                    {
+                        "groupId": "013043-1-000:biology-faculty-elective-list-pool",
+                        "ruleExpression": {"operator": "choose_n"},
+                        "courseReferences": [{"courseNumber": f"0134006{i}"} for i in range(7)],
+                        "catalogDescription": "List A",
+                    }
+                ],
+            },
+            {
+                "programCode": "013043-1-000",
+                "metadata": {"wikiPage": "track-biology-human-development"},
+                "requirementGroups": [
+                    {
+                        "groupId": "013043-1-000:biology-list-a1-pool",
+                        "ruleExpression": {"operator": "choose_n"},
+                        "courseReferences": [{"courseNumber": f"0134015{i}"} for i in range(3)],
+                        "catalogDescription": "List A1",
+                    }
+                ],
+            },
+        ]
+    }
+    pools = [
+        {
+            "programCode": "013043-1-000",
+            "trackSlug": "track-biology-general",
+            "suffix": "biology-faculty-elective-list-pool",
+            "operator": "choose_n",
+            "minCourseRefs": 7,
+            "maxCourseRefs": 7,
+            "requiresCatalogDescription": True,
+        },
+        {
+            "programCode": "013043-1-000",
+            "trackSlug": "track-biology-human-development",
+            "suffix": "biology-list-a1-pool",
+            "operator": "choose_n",
+            "minCourseRefs": 3,
+            "maxCourseRefs": 3,
+            "requiresCatalogDescription": True,
+        },
+    ]
+    violations = _validate_pools_for_faculty(
+        document,
+        faculty_id="biology",
+        pools=pools,
+        deprecated=set(),
+    )
+    assert violations == []
+
+
+def test_resolve_program_for_entry_falls_back_to_suffix_match_without_track_slug():
+    document = {
+        "programs": [
+            {
+                "programCode": "013043-1-000",
+                "metadata": {"wikiPage": "track-a"},
+                "requirementGroups": [],
+            },
+            {
+                "programCode": "013043-1-000",
+                "metadata": {"wikiPage": "track-b"},
+                "requirementGroups": [
+                    {
+                        "groupId": "013043-1-000:biology-list-a-pool",
+                        "ruleExpression": {"operator": "choose_n"},
+                        "courseReferences": [{"courseNumber": "01340069"}],
+                    }
+                ],
+            },
+        ]
+    }
+    by_code, by_code_track = _programs_by_code_and_track(document)
+    program = _resolve_program_for_entry(
+        {
+            "programCode": "013043-1-000",
+            "suffix": "biology-list-a-pool",
+        },
+        by_code=by_code,
+        by_code_track=by_code_track,
+    )
+    assert program is not None
+    assert program["metadata"]["wikiPage"] == "track-b"
+
+
+def test_validate_staging_requirement_group_matches_track_slug_when_codes_collide():
+    entry = next(
+        item
+        for item in iter_contract_pools(faculty_id="biology")
+        if item.get("trackSlug") == "track-biology-general"
+        and item.get("suffix") == "biology-list-a-pool"
+    )
+    ref_count = int(entry["minCourseRefs"])
+    violations = validate_staging_requirement_group(
+        {
+            "metadata": {"wikiPage": "track-biology-general"},
+            "requirementGroup": {
+                "groupId": "013043-1-000:biology-list-a-pool",
+                "courseReferences": [
+                    {"courseNumber": f"0134006{i}"} for i in range(ref_count)
+                ],
+                "catalogDescription": "Faculty electives",
+            },
+        }
+    )
+    assert violations == []
+
+
+def test_validate_staging_requirement_group_falls_back_to_single_contract_entry():
+    violations = validate_staging_requirement_group(
+        {
+            "metadata": {"wikiPage": "track-unknown"},
+            "requirementGroup": {
+                "groupId": "009009-1-000:ie-statistics-elective-chain",
+                "courseReferences": [{"courseNumber": f"0094034{i}"} for i in range(8)],
+                "catalogDescription": "Statistics chain",
+            },
+        }
+    )
+    assert violations == []
 
 
 def test_validate_deprecated_pool_entry_in_contract_list():

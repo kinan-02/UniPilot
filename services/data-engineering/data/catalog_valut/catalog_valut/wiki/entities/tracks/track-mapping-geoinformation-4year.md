@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Mapping and Geo-Information Engineering (4-Year)
 
 **Faculty:** [[faculty-civil-environmental-engineering]]
+**Program code:** 001024-1-000
 **Total Credits:** 157 נ"ז
 
 ## Overview

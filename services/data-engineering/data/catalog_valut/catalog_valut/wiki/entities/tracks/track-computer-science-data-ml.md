@@ -13,6 +13,7 @@ updated: 2026-06-22
 # Data Analysis & Machine Learning Concentration
 
 **Faculty:** [[faculty-computer-science]]
+**Program code:** 023044-1-000
 **Parent Tracks:** [[track-computer-science-general-3year]] (primary), also available within [[track-computer-science-general-4year]] and [[track-software-engineering]]
 **Degree:** בוגר למדעים (B.Sc.) במדעי המחשב
 **Duration:** 3 years (as a standalone concentration on the 3-year track)

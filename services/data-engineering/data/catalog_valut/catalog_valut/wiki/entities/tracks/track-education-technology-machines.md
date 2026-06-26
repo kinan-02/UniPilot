@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Education in Technology and Mechanical Systems
 
 **Faculty:** [[faculty-education-science-technology]]
+**Program code:** 021026-1-000
 **Degree:** B.Sc. in Education in Science and Technology
 **Total Credits:** 155 נ"ז
 **Distribution:** 120 required | 23 track electives | 6 enrichment | 2 PE | 4 general electives

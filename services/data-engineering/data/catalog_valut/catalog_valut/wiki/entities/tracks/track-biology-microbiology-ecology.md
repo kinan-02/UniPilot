@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Biology — Microbiology, Ecology and Environment Specialization
 
 **Faculty:** [[faculty-biology]]
+**Program code:** 013043-1-000
 **Total Credits:** ~126.5 נ"ז
 
 ## Overview

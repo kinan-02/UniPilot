@@ -60,7 +60,7 @@ def _make_generic_spec(faculty_id: str) -> FacultyVaultExportSpec:
         faculty_id=faculty_id,
         expected_program_codes=frozenset(),
         export=_export,
-        export_mode="generic",
+        export_mode="specialized",
     )
 
 

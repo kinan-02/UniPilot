@@ -1,7 +1,8 @@
-"""Generic Pass-1 faculty catalog export from the Technion wiki vault (Phase D)."""
+"""Specialized faculty catalog export from the Technion wiki vault (Phase D)."""
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from app.models.catalog import ReviewedCuratedCatalogDocument
 from app.models.staging_catalog import Phase8ReadinessCheck
 from app.paths import catalog_vault_root
 from app.sources.technion_course_json_index import build_course_index, default_course_json_paths
-from app.vault.export_cs_electives import cs_elective_groups
+from app.vault.faculty_elective_enrichers import faculty_elective_groups
 from app.vault.export_dds_catalog import (
     CATALOG_VERSION,
     CATALOG_YEAR,
@@ -19,6 +20,7 @@ from app.vault.export_dds_catalog import (
     DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL,
     _general_technion_credit_bucket_groups,
     _general_technion_elective_groups,
+    _merge_unique_course_refs,
     _relative_vault_path,
     _semester_matrix_groups,
     _utc_now_iso,
@@ -28,6 +30,7 @@ from app.vault.export_dds_catalog import (
 )
 from app.vault.loader import WikiPage, extract_field, load_pages_by_slug, wiki_root
 from app.vault.markdown_tables import parse_markdown_tables
+from app.vault.track_program_codes import resolve_program_code
 from app.vault.vault_signoff import apply_vault_signoff_to_catalog, build_readiness_after_vault_signoff
 from app.vault.wiki_path_catalog import build_wiki_path_catalog
 
@@ -58,23 +61,81 @@ def discover_faculty_track_slugs(pages: dict[str, WikiPage], faculty_id: str) ->
 
 
 def extract_program_code(page: WikiPage) -> str | None:
-    for label in ("Track code", "Program code"):
-        raw = extract_field(page.english_body, label)
+    extracted: str | None = None
+    for label in ("Track code", "Program code", "קוד תכנית", "מספר תכנית"):
+        raw = extract_field(page.english_body, label) or extract_field(page.body, label)
         if raw:
             match = re.search(r"(0\d{5}-\d-\d{3})", raw)
             if match:
-                return match.group(1)
-    body_match = PROGRAM_CODE_FIELD_PATTERN.search(page.english_body)
-    if body_match:
-        return body_match.group(1)
-    return None
+                extracted = match.group(1)
+                break
+    if extracted is None:
+        body_match = PROGRAM_CODE_FIELD_PATTERN.search(page.english_body)
+        if body_match:
+            extracted = body_match.group(1)
+        else:
+            body_match = PROGRAM_CODE_FIELD_PATTERN.search(page.body)
+            if body_match:
+                extracted = body_match.group(1)
+    return resolve_program_code(page, extracted)
+
+
+_BUCKET_SLUG_ALIASES: dict[str, str] = {
+    "free-electives": "free-elective",
+}
+
+_HEBREW_BUCKET_KEYWORDS: tuple[tuple[str, str], ...] = (
+    ("מקצועות חובה", "required-courses"),
+    ("חובה", "required-courses"),
+    ("בחירה מדעיים", "science-electives"),
+    ("בחירה מומלצת", "recommended-electives"),
+    ("מקצועות העשרה", "enrichment"),
+    ("העשרה", "enrichment"),
+    ("חינוך גופני", "physical-education"),
+    ("גופני", "physical-education"),
+    ("כלל טכניונית", "technion-wide-electives"),
+    ("בחירה פקולטי", "faculty-electives"),
+    ("בחירה חופשית", "free-electives"),
+)
+
+_STANDARD_TECHNION_BUCKET_SLUGS = frozenset({"enrichment", "free-elective", "physical-education"})
+
+
+def _canonical_bucket_slug(slug: str) -> str:
+    return _BUCKET_SLUG_ALIASES.get(slug, slug)
 
 
 def _slugify_bucket_label(label: str) -> str:
     ascii_label = re.sub(r"[^a-zA-Z0-9]+", "-", label.lower()).strip("-")
-    if not ascii_label:
-        return "bucket"
-    return ascii_label[:48]
+    if ascii_label:
+        return _canonical_bucket_slug(ascii_label[:48])
+    for keyword, slug in _HEBREW_BUCKET_KEYWORDS:
+        if keyword in label:
+            return slug
+    digest = hashlib.sha256(label.encode("utf-8")).hexdigest()[:8]
+    return f"bucket-{digest}"
+
+
+def _missing_standard_technion_bucket_slugs(existing_bucket_slugs: set[str]) -> set[str]:
+    canonical_existing = {_canonical_bucket_slug(slug) for slug in existing_bucket_slugs}
+    return _STANDARD_TECHNION_BUCKET_SLUGS - canonical_existing
+
+
+def _dedupe_requirement_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for group in groups:
+        group_id = str(group.get("groupId") or "")
+        if not group_id:
+            continue
+        existing = merged.get(group_id)
+        if existing is None:
+            merged[group_id] = group
+            continue
+        existing_refs = existing.get("courseReferences") or []
+        incoming_refs = group.get("courseReferences") or []
+        if incoming_refs:
+            existing["courseReferences"] = _merge_unique_course_refs(existing_refs, incoming_refs)
+    return list(merged.values())
 
 
 def _bucket_requirement_type(label: str) -> str:
@@ -178,21 +239,25 @@ def build_generic_program(
             existing_bucket_slugs.add(slug)
     requirement_groups = filtered_groups
 
-    standard_technion_buckets = {"enrichment", "free-elective", "physical-education"}
-    if not standard_technion_buckets.issubset(existing_bucket_slugs):
-        requirement_groups.extend(
-            _general_technion_credit_bucket_groups(
-                program_code,
-                technion_wide_total=technion_wide_total,
-            )
-        )
+    standard_technion_buckets = _STANDARD_TECHNION_BUCKET_SLUGS
+    missing_standard_buckets = _missing_standard_technion_bucket_slugs(existing_bucket_slugs)
+    if missing_standard_buckets:
+        for group in _general_technion_credit_bucket_groups(
+            program_code,
+            technion_wide_total=technion_wide_total,
+        ):
+            slug = group["groupId"].split(":", 1)[-1]
+            if slug in missing_standard_buckets:
+                requirement_groups.append(group)
 
     requirement_groups.extend(_semester_matrix_groups(page, program_code))
     requirement_groups.extend(
         _general_technion_elective_groups(program_code, technion_wide_total=technion_wide_total)
     )
-    if faculty_id == "computer-science":
-        requirement_groups.extend(cs_elective_groups(page, program_code))
+    requirement_groups.extend(
+        faculty_elective_groups(page, program_code, faculty_id, pages=pages)
+    )
+    requirement_groups = _dedupe_requirement_groups(requirement_groups)
 
     return {
         "institutionId": INSTITUTION_ID,
@@ -277,7 +342,7 @@ def export_faculty_vault_catalog(
     expected_codes = frozenset(program["programCode"] for program in programs)
     wiki_source = _relative_vault_path(root)
     export_report = {
-        "exporter": "vault-export-generic",
+        "exporter": "vault-export-specialized",
         "faculty": faculty_id,
         "wikiRoot": wiki_source,
         "trackPagesExported": [program["metadata"]["wikiPage"] for program in programs],
@@ -298,7 +363,7 @@ def export_faculty_vault_catalog(
             "facultyId": faculty_id,
             "sourceName": f"technion-{faculty_id}-catalog",
             "sourceType": f"{faculty_id}_catalog_curated_reviewed",
-            "exportMode": "generic",
+            "exportMode": "specialized",
             "expectedProgramCodes": sorted(expected_codes),
             "catalogYear": CATALOG_YEAR,
             "catalogVersion": CATALOG_VERSION,
@@ -307,8 +372,8 @@ def export_faculty_vault_catalog(
             "manualReviewRequired": True,
             "confidence": "medium",
             "notes": [
-                "Exported deterministically from catalog_valut wiki pages (generic faculty exporter).",
-                "Computer Science general 4-year track includes specialized elective-chain pools.",
+                "Exported deterministically from catalog_valut wiki pages (specialized faculty exporter).",
+                "Elective-chain pools are parsed from wiki specialization groups, tables, and group sections.",
             ],
         },
         "programs": programs,
@@ -320,15 +385,16 @@ def export_faculty_vault_catalog(
             "facultiesExported": len(path_catalog["faculties"]),
         },
         "curationMetadata": {
-            "curatedBy": "vault-export-generic",
+            "curatedBy": "vault-export-specialized",
             "curatedAt": _utc_now_iso(),
             "sourceDraftPath": wiki_source,
             "sourceMarkdownPath": wiki_source,
             "courseJsonSources": export_report["courseJsonSources"],
             "curationStatus": "ready-for-staging-with-review-flags",
             "knownLimitations": [
-                "Generic exporter: focus-chain choose-N semantics are encoded as non-executable pools when present.",
+                "Focus-chain choose-N semantics are encoded as non-executable pools when present.",
                 "Science placeholder rows without course codes are omitted.",
+                "Tracks without a full Technion program code require overrides in track_program_code_overrides.json.",
             ],
             "countsBefore": {},
             "countsAfter": counts,
@@ -336,7 +402,7 @@ def export_faculty_vault_catalog(
         },
         "curationReport": {"warnings": unresolved},
         "signoffReview": {
-            "reviewedBy": "vault-export-generic",
+            "reviewedBy": "vault-export-specialized",
             "reviewedAt": _utc_now_iso(),
             "reviewStatus": "ready-for-staging-with-review-flags",
             "sourceFilesReviewed": [wiki_source],
@@ -345,6 +411,7 @@ def export_faculty_vault_catalog(
                 "credit_buckets_present",
                 "semester_matrices_parsed",
                 "course_numbers_normalized",
+                "wiki_elective_pools_parsed",
             ],
             "verifiedItems": [
                 f"Exported {len(programs)} {faculty_id} programs from wiki track pages.",

@@ -40,8 +40,17 @@ def catalog_staging_prefix(faculty_id: str) -> str:
     return f"technion-{faculty_id}"
 
 
-def program_staging_key(faculty_id: str, catalog_version: str, program_code: str) -> str:
-    return f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:program:{program_code}"
+def program_staging_key(
+    faculty_id: str,
+    catalog_version: str,
+    program_code: str,
+    *,
+    wiki_page: str | None = None,
+) -> str:
+    base = f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:program:{program_code}"
+    if wiki_page:
+        return f"{base}:{wiki_page}"
+    return base
 
 
 def requirement_staging_key(faculty_id: str, catalog_version: str, group_id: str) -> str:
@@ -349,7 +358,13 @@ def build_catalog_staging_plan(
     }
 
     for program in document.programs:
-        program_key = program_staging_key(faculty_id, catalog_version, program.programCode)
+        wiki_page = (program.metadata or {}).get("wikiPage")
+        program_key = program_staging_key(
+            faculty_id,
+            catalog_version,
+            program.programCode,
+            wiki_page=str(wiki_page) if wiki_page else None,
+        )
         import_meta = build_import_metadata(
             staging_key=program_key,
             document=document,

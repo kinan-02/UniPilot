@@ -32,7 +32,7 @@ def _titles_from_tables(text: str, index: dict[str, str]) -> None:
         code_idx = _column_index(table.headers, "code", "קוד")
         if code_idx is None:
             continue
-        name_idx = _column_index(table.headers, "name", "שם")
+        name_idx = _column_index(table.headers, "name", "course", "שם")
         if name_idx is None:
             continue
         for row in table.rows:

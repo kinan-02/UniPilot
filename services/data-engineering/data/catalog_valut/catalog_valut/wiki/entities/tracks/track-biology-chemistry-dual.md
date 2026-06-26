@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Biology and Chemistry Dual Track
 
 **Faculty:** [[faculty-biology]] + [[faculty-chemistry]]
+**Program code:** 012124-1-000
 **Degree:** B.Sc. in Biology and Chemistry (dual-department)
 **Total Credits:** ~135 נ"ז
 

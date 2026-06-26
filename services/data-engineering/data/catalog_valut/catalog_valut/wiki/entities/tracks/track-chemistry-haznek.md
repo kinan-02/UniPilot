@@ -13,6 +13,7 @@ updated: 2026-06-21
 # תוכנית הזנק — מסלול ישיר לתואר שני בכימיה
 
 **Faculty:** [[faculty-chemistry]]
+**Program code:** 012154-1-000
 **Degree:** BSc + MSc in Chemistry (with thesis)
 **Duration:** 9 semesters (≈ 4.5 years)
 

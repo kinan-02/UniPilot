@@ -13,6 +13,7 @@ updated: 2026-06-24
 # Mapping and Geo-Information (3-Year B.Sc.)
 
 **Faculty:** [[faculty-civil-environmental-engineering]]
+**Program code:** 001046-1-000
 **Total Credits:** 120 נ"ז
 
 ## Overview
