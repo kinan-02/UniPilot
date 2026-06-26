@@ -11,6 +11,7 @@ from typing import Any
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
+from app.curation.catalog_policies import PRODUCTION_EXCLUDED_COURSE_NUMBERS
 from app.curation.catalog_signoff import extract_catalog_signoff
 from app.catalog.course_reference_policy import (
     collect_catalog_course_numbers,
@@ -161,7 +162,9 @@ def build_promotion_gate_result(
     offerings = list(database[settings.staging_course_offerings_collection].find({}))
 
     catalog_signoff = extract_catalog_signoff(programs)
-    excluded_courses = set(catalog_signoff.get("productionExcludedCourseNumbers", []))
+    excluded_courses = set(catalog_signoff.get("productionExcludedCourseNumbers", [])) | set(
+        PRODUCTION_EXCLUDED_COURSE_NUMBERS
+    )
     advisory_group_ids = set(catalog_signoff.get("signedOffNonExecutableRuleGroupIds", []))
     for document in requirements:
         group = document.get("requirementGroup", {})

@@ -8,6 +8,10 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings, get_settings
+from app.catalog.excluded_courses import (
+    PRODUCTION_EXCLUDED_COURSE_NUMBERS,
+    is_production_excluded_course_number,
+)
 
 INTERNAL_FIELDS = frozenset(
     {
@@ -36,6 +40,15 @@ PUBLISHED_COURSE_FILTER = {
 
 # Backward-compatible alias for course/offering queries
 PUBLISHED_FILTER = PUBLISHED_COURSE_FILTER
+
+
+def _published_course_filter() -> dict[str, Any]:
+    return {
+        "$and": [
+            PUBLISHED_COURSE_FILTER,
+            {"courseNumber": {"$nin": sorted(PRODUCTION_EXCLUDED_COURSE_NUMBERS)}},
+        ]
+    }
 
 
 def _strip_internal_fields(document: dict[str, Any]) -> dict[str, Any]:
@@ -135,7 +148,7 @@ def _build_course_search_filter(
     min_credits: float | None = None,
     max_credits: float | None = None,
 ) -> dict[str, Any]:
-    filters: list[dict[str, Any]] = [PUBLISHED_FILTER.copy()]
+    filters: list[dict[str, Any]] = [_published_course_filter()]
     if course_number:
         filters.append({"courseNumber": course_number})
     if course_numbers is not None:
@@ -337,6 +350,8 @@ async def find_course_by_number(
     settings: Settings | None = None,
 ) -> dict[str, Any] | None:
     """Return raw published course document (includes _id)."""
+    if is_production_excluded_course_number(course_number):
+        return None
     settings = settings or get_settings()
     return await database[settings.courses_collection].find_one(
         {**PUBLISHED_FILTER, "courseNumber": course_number}
@@ -349,6 +364,8 @@ async def get_course_by_number(
     *,
     settings: Settings | None = None,
 ) -> dict[str, Any] | None:
+    if is_production_excluded_course_number(course_number):
+        return None
     settings = settings or get_settings()
     document = await database[settings.courses_collection].find_one(
         {**PUBLISHED_FILTER, "courseNumber": course_number}

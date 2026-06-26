@@ -52,6 +52,26 @@ def test_map_staging_advisory_requirement_adds_general_technion_links() -> None:
     assert document["linkedCreditBucketId"] == "009216-1-000:enrichment"
 
 
+def test_map_staging_advisory_requirement_adds_general_technion_links_for_cs_program() -> None:
+    document = map_staging_advisory_requirement_to_production(
+        {
+            "programCode": "023023-1-000",
+            "stagingKey": "req:enrichment-pool",
+            "requirementGroup": {
+                "groupId": "023023-1-000:enrichment-pool",
+                "title": "Enrichment pool",
+                "requirementType": "elective",
+                "courseReferences": [],
+                "ruleExpression": {"type": "course_pool", "operator": "min_credits"},
+            },
+        },
+        promotion_run_id="run-1",
+        promoted_at="2026-06-20T00:00:00+00:00",
+        catalog_version="2025-2026",
+    )
+    assert document["linkedCreditBucketId"] == "023023-1-000:enrichment"
+
+
 def test_map_staging_advisory_requirement_omits_link_for_semester_matrix() -> None:
     document = map_staging_advisory_requirement_to_production(
         {

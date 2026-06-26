@@ -11,6 +11,7 @@ from app.repositories.catalog_repository import (
     _sanitize_metadata,
     course_summary_from_document,
 )
+from app.catalog.excluded_courses import EXCLUDED_COURSE, PRODUCTION_EXCLUDED_COURSE_NUMBERS
 from tests.fixtures.catalog_production_fixtures import KNOWN_COURSE, seed_catalog_production_fixtures
 
 
@@ -55,6 +56,16 @@ def test_sanitize_metadata_overrides_inferred_flag():
     result = _sanitize_metadata({"degreeRequirementsInferred": True, "extra": "data"})
     assert result["degreeRequirementsInferred"] is False
     assert result["extra"] == "data"
+
+
+def test_build_course_search_filter_base_only_returns_single_filter():
+    filt = _build_course_search_filter(
+        q=None,
+        faculty=None,
+        course_number=None,
+    )
+    assert "$and" in filt
+    assert {"courseNumber": {"$nin": sorted(PRODUCTION_EXCLUDED_COURSE_NUMBERS)}} in filt["$and"]
 
 
 def test_build_course_search_filter_with_course_numbers_min_max():
@@ -295,6 +306,24 @@ async def test_repository_list_and_get_course(mongo_database):
     assert course is not None
     assert course["courseNumber"] == KNOWN_COURSE
     assert "productionKey" not in course
+
+
+@pytest.mark.asyncio
+async def test_repository_hides_production_excluded_course(mongo_database):
+    settings = get_settings()
+    await mongo_database[settings.courses_collection].insert_one(
+        {
+            "courseNumber": EXCLUDED_COURSE,
+            "title": "Excluded course",
+            "status": "published",
+        }
+    )
+
+    assert await catalog_repository.get_course_by_number(mongo_database, EXCLUDED_COURSE) is None
+    assert await catalog_repository.find_course_by_number(mongo_database, EXCLUDED_COURSE) is None
+
+    items, total = await catalog_repository.list_courses(mongo_database, limit=50, offset=0)
+    assert all(item["courseNumber"] != EXCLUDED_COURSE for item in items)
 
 
 @pytest.mark.asyncio

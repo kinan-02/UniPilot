@@ -570,16 +570,54 @@ GENERAL_TECHNION_PHYSICAL_EDUCATION_DESCRIPTION = (
     "Physical education (חינוך גופני): 2 credits required; maximum 1.5 credits per semester."
 )
 
+TECHNION_WIDE_ENRICHMENT_CREDITS = 6.0
+TECHNION_WIDE_PHYSICAL_EDUCATION_CREDITS = 2.0
+DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL = 12.0
 
-def _general_technion_elective_groups(program_code: str) -> list[dict[str, Any]]:
+
+def technion_wide_elective_credit_split(
+    technion_wide_total: float = DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL,
+) -> tuple[float, float, float]:
+    """Split Technion-wide elective total into enrichment / free / physical-education buckets."""
+    enrichment = TECHNION_WIDE_ENRICHMENT_CREDITS
+    physical = TECHNION_WIDE_PHYSICAL_EDUCATION_CREDITS
+    free = max(0.0, round(float(technion_wide_total) - enrichment - physical, 2))
+    return enrichment, free, physical
+
+
+def _general_technion_credit_bucket_groups(
+    program_code: str,
+    *,
+    technion_wide_total: float = DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL,
+) -> list[dict[str, Any]]:
+    """Hard credit buckets for enrichment / free-elective / physical-education (linked from pools)."""
+    enrichment, free, physical = technion_wide_elective_credit_split(technion_wide_total)
+    return _credit_bucket_groups(
+        program_code,
+        {
+            "creditBuckets": [
+                ("University enrichment", "enrichment", "enrichment", enrichment),
+                ("Free electives", "free-elective", "elective", free),
+                ("Physical education", "physical-education", "enrichment", physical),
+            ],
+        },
+    )
+
+
+def _general_technion_elective_groups(
+    program_code: str,
+    *,
+    technion_wide_total: float = DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL,
+) -> list[dict[str, Any]]:
     """Advisory pools linked to enrichment / free-elective / physical-education credit buckets."""
+    enrichment, free, physical = technion_wide_elective_credit_split(technion_wide_total)
     return [
         _course_pool_group(
             program_code=program_code,
             group_suffix="enrichment-pool",
             title="University enrichment pool",
             course_refs=[],
-            min_credits=6.0,
+            min_credits=enrichment,
             rule_expression=ENRICHMENT_POOL_RULE,
             catalog_description=GENERAL_TECHNION_ENRICHMENT_DESCRIPTION,
             notes=["Eligible courses use catalog prefix 039405 (CHE enrichment)."],
@@ -589,7 +627,7 @@ def _general_technion_elective_groups(program_code: str) -> list[dict[str, Any]]
             group_suffix="free-elective-pool",
             title="Free electives pool",
             course_refs=[],
-            min_credits=4.0,
+            min_credits=free,
             rule_expression=FREE_ELECTIVE_POOL_RULE,
             catalog_description=GENERAL_TECHNION_FREE_ELECTIVE_DESCRIPTION,
             notes=["No fixed course list; progress uses remaining eligible transcript credits."],
@@ -599,7 +637,7 @@ def _general_technion_elective_groups(program_code: str) -> list[dict[str, Any]]
             group_suffix="physical-education-pool",
             title="Physical education pool",
             course_refs=[],
-            min_credits=2.0,
+            min_credits=physical,
             rule_expression=PHYSICAL_EDUCATION_POOL_RULE,
             catalog_description=GENERAL_TECHNION_PHYSICAL_EDUCATION_DESCRIPTION,
             notes=["Eligible courses use catalog prefixes 039408 or 039409."],

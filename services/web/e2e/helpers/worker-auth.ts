@@ -15,8 +15,12 @@ export function workerAuthFilePath(parallelIndex: number): string {
 async function authFileIsValid(authFile: string): Promise<boolean> {
   const client = await playwrightRequest.newContext({ storageState: authFile, baseURL })
   try {
-    const response = await client.get('/api/student-profile', { timeout: 10_000 })
-    return response.ok()
+    const profileResponse = await client.get('/api/student-profile', { timeout: 10_000 })
+    if (!profileResponse.ok()) {
+      return false
+    }
+    const progressResponse = await client.get('/api/graduation-progress', { timeout: 10_000 })
+    return progressResponse.ok()
   } catch {
     return false
   } finally {

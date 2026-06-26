@@ -8,10 +8,10 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings, get_settings
+from app.catalog.excluded_courses import EXCLUDED_COURSE
 
 logger = logging.getLogger(__name__)
 
-EXCLUDED_COURSE = "00960226"
 KNOWN_COURSE = "00940345"
 KNOWN_PROGRAM = "009216-1-000"
 HARD_REQUIREMENT_ID = "009216-1-000:core-mandatory"

@@ -154,10 +154,11 @@ def main() -> None:
             fail(f"risk get -> {r.status_code}")
         ok("academic risk get")
 
-        # Security: no token
-        r = client.get("/semester-plans")
-        if r.status_code != 401:
-            fail(f"unauth plans expected 401 got {r.status_code}")
+        # Security: no token (fresh client — avoids refresh-cookie session reuse)
+        with httpx.Client(base_url=BASE, timeout=30.0) as guest:
+            r = guest.get("/semester-plans")
+            if r.status_code != 401:
+                fail(f"unauth plans expected 401 got {r.status_code}")
         ok("auth enforcement")
 
         # Cleanup completed course

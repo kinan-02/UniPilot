@@ -129,6 +129,44 @@ def test_excluded_courses_are_skipped(mongo_database) -> None:
         )
 
 
+def test_purge_production_excluded_courses_removes_leaked_rows(mongo_database) -> None:
+    from app.promotion.dds_production_promoter import purge_production_excluded_courses
+
+    settings = get_settings()
+    leaked = PRODUCTION_EXCLUDED_COURSE_NUMBERS[0]
+    mongo_database[settings.production_courses_collection].insert_one(
+        {"courseNumber": leaked, "productionKey": f"technion:course:{leaked}", "status": "published"}
+    )
+    mongo_database[settings.production_course_offerings_collection].insert_one(
+        {
+            "courseNumber": leaked,
+            "productionKey": f"technion:course-offering:{leaked}:2025:201",
+            "status": "published",
+        }
+    )
+
+    deleted = purge_production_excluded_courses(mongo_database, settings=settings)
+    assert deleted["courses"] >= 1
+    assert deleted["course_offerings"] >= 1
+    assert (
+        mongo_database[settings.production_courses_collection].count_documents(
+            {"courseNumber": leaked}
+        )
+        == 0
+    )
+
+
+def test_purge_production_excluded_courses_noop_for_empty_set(mongo_database) -> None:
+    from app.promotion.dds_production_promoter import purge_production_excluded_courses
+
+    settings = get_settings()
+    assert purge_production_excluded_courses(
+        mongo_database,
+        settings=settings,
+        excluded_course_numbers=set(),
+    ) == {"courses": 0, "course_offerings": 0}
+
+
 def test_offerings_for_excluded_courses_are_skipped(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     settings = get_settings()

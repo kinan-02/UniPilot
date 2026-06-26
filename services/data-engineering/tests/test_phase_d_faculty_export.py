@@ -316,3 +316,25 @@ def test_extract_program_code_falls_back_to_body_pattern(monkeypatch) -> None:
         english_body="**Program code:** 010001-1-000\n",
     )
     assert extract_program_code(page) == "010001-1-000"
+
+
+def test_build_generic_program_splits_technion_wide_electives_into_standard_buckets() -> None:
+    from app.paths import catalog_vault_root
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root(catalog_vault_root()))
+    page = pages["track-computer-science-general-4year"]
+    program = build_generic_program(page, faculty_id="computer-science", pages=pages)
+    assert program is not None
+    group_ids = {group["groupId"] for group in program["requirementGroups"]}
+    code = program["programCode"]
+    assert f"{code}:technion-wide-electives" not in group_ids
+    assert f"{code}:enrichment" in group_ids
+    assert f"{code}:free-elective" in group_ids
+    assert f"{code}:physical-education" in group_ids
+    assert f"{code}:enrichment-pool" in group_ids
+
+    from app.vault.export_dds_catalog import technion_wide_elective_credit_split
+
+    assert technion_wide_elective_credit_split(12.0) == (6.0, 4.0, 2.0)
+    assert technion_wide_elective_credit_split(10.0) == (6.0, 2.0, 2.0)

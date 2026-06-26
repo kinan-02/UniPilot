@@ -12,6 +12,7 @@ from pymongo import ReplaceOne
 from pymongo.database import Database
 
 from app.config import Settings, get_settings
+from app.curation.catalog_policies import PRODUCTION_EXCLUDED_COURSE_NUMBERS
 from app.catalog.faculty_catalog_context import (
     FacultyCatalogContext,
     faculty_catalog_context_from_staging_program,
@@ -526,6 +527,31 @@ def retire_unplanned_production_documents(
     return retired
 
 
+def purge_production_excluded_courses(
+    database: Database,
+    *,
+    settings: Settings,
+    excluded_course_numbers: set[str] | None = None,
+) -> dict[str, int]:
+    """Remove vault-excluded course rows that must never be served from production."""
+    if excluded_course_numbers is None:
+        numbers = sorted(PRODUCTION_EXCLUDED_COURSE_NUMBERS)
+    else:
+        numbers = sorted(excluded_course_numbers)
+    if not numbers:
+        return {"courses": 0, "course_offerings": 0}
+    courses_deleted = database[settings.production_courses_collection].delete_many(
+        {"courseNumber": {"$in": numbers}}
+    )
+    offerings_deleted = database[settings.production_course_offerings_collection].delete_many(
+        {"courseNumber": {"$in": numbers}}
+    )
+    return {
+        "courses": int(courses_deleted.deleted_count),
+        "course_offerings": int(offerings_deleted.deleted_count),
+    }
+
+
 def validate_production_collections_for_promotion(
     database: Database,
     *,
@@ -999,6 +1025,12 @@ def run_dds_production_promotion(
         )
         ensure_production_promotion_indexes(database, settings)
         counts_written = _upsert_production_documents(database, documents_by_collection)
+        purge_production_excluded_courses(
+            database,
+            settings=settings,
+            excluded_course_numbers=set(gate.policiesApplied.productionExcludedCourseNumbers or [])
+            | set(PRODUCTION_EXCLUDED_COURSE_NUMBERS),
+        )
         run.countsWritten = {
             settings.production_degree_programs_collection: len(
                 documents_by_collection[settings.production_degree_programs_collection]

@@ -16,6 +16,8 @@ from app.vault.export_dds_catalog import (
     CATALOG_VERSION,
     CATALOG_YEAR,
     INSTITUTION_ID,
+    DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL,
+    _general_technion_credit_bucket_groups,
     _general_technion_elective_groups,
     _relative_vault_path,
     _semester_matrix_groups,
@@ -161,8 +163,34 @@ def build_generic_program(
     )
 
     requirement_groups = _credit_bucket_groups(program_code, parse_credit_buckets_from_page(page))
+    technion_wide_total = DEFAULT_TECHNION_WIDE_ELECTIVE_TOTAL
+    filtered_groups: list[dict[str, Any]] = []
+    existing_bucket_slugs: set[str] = set()
+    for group in requirement_groups:
+        group_id = str(group.get("groupId") or "")
+        slug = group_id.split(":", 1)[-1] if ":" in group_id else group_id
+        if slug == "technion-wide-electives":
+            if group.get("minCredits") is not None:
+                technion_wide_total = float(group["minCredits"])
+            continue
+        filtered_groups.append(group)
+        if group.get("ruleExpression", {}).get("type") == "credit_bucket":
+            existing_bucket_slugs.add(slug)
+    requirement_groups = filtered_groups
+
+    standard_technion_buckets = {"enrichment", "free-elective", "physical-education"}
+    if not standard_technion_buckets.issubset(existing_bucket_slugs):
+        requirement_groups.extend(
+            _general_technion_credit_bucket_groups(
+                program_code,
+                technion_wide_total=technion_wide_total,
+            )
+        )
+
     requirement_groups.extend(_semester_matrix_groups(page, program_code))
-    requirement_groups.extend(_general_technion_elective_groups(program_code))
+    requirement_groups.extend(
+        _general_technion_elective_groups(program_code, technion_wide_total=technion_wide_total)
+    )
     if faculty_id == "computer-science":
         requirement_groups.extend(cs_elective_groups(page, program_code))
 
