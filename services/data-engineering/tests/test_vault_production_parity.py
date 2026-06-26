@@ -122,3 +122,35 @@ def test_load_production_groups_skips_legacy_catalog_rule_rows(mongo_database) -
     loaded = load_production_groups(mongo_database)
     assert list(loaded.keys()) == ["009216-1-000:semester-1-matrix"]
     assert loaded["009216-1-000:semester-1-matrix"].course_numbers == ("00940345",)
+
+
+def test_load_production_groups_filters_by_program_codes(mongo_database) -> None:
+    settings = get_settings()
+    mongo_database[settings.production_degree_requirements_collection].insert_one(
+        {
+            "requirementGroupId": "009009-1-000:core-mandatory",
+            "programCode": "009009-1-000",
+            "courseReferences": [],
+        }
+    )
+    mongo_database[settings.production_catalog_rules_collection].insert_many(
+        [
+            {
+                "requirementGroupId": "009216-1-000:semester-1-matrix",
+                "recordType": "advisory_requirement_group",
+                "programCode": "009216-1-000",
+                "courseReferences": [],
+            },
+            {
+                "requirementGroupId": "023023-1-000:semester-1-matrix",
+                "recordType": "advisory_requirement_group",
+                "programCode": "023023-1-000",
+                "courseReferences": [],
+            },
+        ]
+    )
+    scoped = load_production_groups(
+        mongo_database,
+        program_codes=frozenset({"009216-1-000"}),
+    )
+    assert list(scoped.keys()) == ["009216-1-000:semester-1-matrix"]

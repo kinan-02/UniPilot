@@ -212,17 +212,37 @@ def _snapshot_from_production_doc(
     )
 
 
-def load_production_groups(database: Database, settings: Settings | None = None) -> dict[str, GroupSnapshot]:
+def _program_codes_from_vault_document(document: dict[str, Any]) -> frozenset[str]:
+    codes: set[str] = set()
+    for program in document.get("programs") or []:
+        program_code = program.get("programCode")
+        if program_code:
+            codes.add(str(program_code))
+    return frozenset(codes)
+
+
+def load_production_groups(
+    database: Database,
+    settings: Settings | None = None,
+    *,
+    program_codes: frozenset[str] | None = None,
+) -> dict[str, GroupSnapshot]:
     resolved = settings or get_settings()
     production: dict[str, GroupSnapshot] = {}
 
     for doc in database[resolved.production_degree_requirements_collection].find({}):
+        program_code = str(doc.get("programCode") or "")
+        if program_codes and program_code not in program_codes:
+            continue
         group_id = str(doc.get("requirementGroupId") or "")
         if not group_id:
             continue
         production[group_id] = _snapshot_from_production_doc(doc, "hard")
 
     for doc in database[resolved.production_catalog_rules_collection].find({}):
+        program_code = str(doc.get("programCode") or "")
+        if program_codes and program_code not in program_codes:
+            continue
         group_id = str(doc.get("requirementGroupId") or "")
         if not group_id:
             continue
@@ -295,7 +315,8 @@ def verify_vault_production_parity(
     apply_vault_signoff_to_catalog(document, vault_path=vault_path)
 
     expected = build_expected_groups_from_vault_document(document)
-    production = load_production_groups(database, settings)
+    program_codes = _program_codes_from_vault_document(document)
+    production = load_production_groups(database, settings, program_codes=program_codes)
 
     expected_hard = {gid for gid, snap in expected.items() if snap.classification == "hard"}
     expected_advisory = {gid for gid, snap in expected.items() if snap.classification == "advisory"}
