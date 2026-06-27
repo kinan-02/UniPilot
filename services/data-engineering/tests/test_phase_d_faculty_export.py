@@ -472,6 +472,13 @@ def test_should_export_degree_program_skips_non_primary_canonical_with_faculty_s
     ) is False
 
 
+def test_export_biology_expected_program_codes_match_per_track_programs() -> None:
+    biology_doc, _ = export_faculty_vault_catalog(faculty_id="biology")
+    program_codes = [program["programCode"] for program in biology_doc["programs"]]
+    assert biology_doc["source"]["expectedProgramCodes"] == sorted(program_codes)
+    assert program_codes.count("013043-1-000") > 1
+
+
 def test_export_cross_faculty_canonical_mirrors_have_elective_pools() -> None:
     chemistry_doc, _ = export_faculty_vault_catalog(faculty_id="chemistry")
     chemistry_program = next(

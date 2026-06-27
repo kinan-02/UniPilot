@@ -469,7 +469,7 @@ def export_faculty_vault_catalog(
         catalog_version=CATALOG_VERSION,
     )
 
-    expected_codes = frozenset(program["programCode"] for program in programs)
+    expected_program_codes = sorted(program["programCode"] for program in programs)
     wiki_source = _relative_vault_path(root)
     export_report = {
         "exporter": "vault-export-specialized",
@@ -494,7 +494,7 @@ def export_faculty_vault_catalog(
             "sourceName": f"technion-{faculty_id}-catalog",
             "sourceType": f"{faculty_id}_catalog_curated_reviewed",
             "exportMode": "specialized",
-            "expectedProgramCodes": sorted(expected_codes),
+            "expectedProgramCodes": expected_program_codes,
             "catalogYear": CATALOG_YEAR,
             "catalogVersion": CATALOG_VERSION,
             "sourceFile": wiki_source,
