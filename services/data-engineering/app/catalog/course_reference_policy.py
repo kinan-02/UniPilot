@@ -59,6 +59,13 @@ def is_cross_faculty_course_reference(course_number: str) -> bool:
     return course_number[:4] in CROSS_FACULTY_COURSE_PREFIXES
 
 
+def build_technion_promotion_course_number_set(
+    course_index: dict[str, CourseOfferingRecord],
+) -> set[str]:
+    """Course numbers eligible for Technion-wide production course ingestion."""
+    return set(course_index.keys())
+
+
 def build_dds_promotion_course_number_set(
     course_index: dict[str, CourseOfferingRecord],
 ) -> set[str]:

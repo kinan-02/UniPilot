@@ -43,9 +43,12 @@ python -m app.main plan-dds-production-promotion
 python -m app.main promote-dds-to-production --i-confirm-dangerous-production-write
 ```
 
-Export output: `data/generated/technion/catalog/catalog_reviewed.json` (+ `catalog_phase8_readiness_check.json`)
+Export output:
 
-Phase A (DDS export) and Phase B (vault wiki sign-off) are implemented. Multi-faculty export and RAG indexing are deferred.
+- DDS: `data/generated/technion/catalog/catalog_reviewed.json`
+- Other faculties: `data/generated/technion/<faculty-id>/catalog_reviewed.json`
+
+Phase A (DDS export), Phase B (vault wiki sign-off), and Phase D (generic multi-faculty export) are implemented. Faculty exports use `ingestibleCourseScope: technion-semester-json` so matrix courses from any faculty can promote when present in the 2025 semester JSON. RAG indexing remains deferred.
 
 **Docker pipeline** (requires `mongo` running):
 
@@ -61,6 +64,14 @@ docker compose run --rm data-engineering python -m app.main promote-dds-to-produ
 ```
 
 Vault sign-off is embedded automatically in `export-vault-catalog` output.
+
+**Per-faculty promotion helper** (from repo root; requires `mongo` + rebuilt `data-engineering` image):
+
+```bash
+bash scripts/promote_and_verify_faculty.sh <faculty-id>
+```
+
+Runs export → staging import → quality → production promotion → `scripts/verify_promoted_faculty_curriculum.py` for that faculty.
 
 ## Staging & production commands (catalog)
 

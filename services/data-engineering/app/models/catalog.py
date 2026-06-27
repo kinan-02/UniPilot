@@ -175,6 +175,7 @@ class CatalogPathOption(BaseModel):
     institutionId: str = Field(min_length=1, max_length=100)
     facultyId: str = Field(min_length=1, max_length=120)
     wikiSlug: str = Field(min_length=1, max_length=120)
+    curriculumWikiSlug: str | None = Field(default=None, max_length=120)
     kind: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=300)
     nameHe: str | None = None

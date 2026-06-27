@@ -351,6 +351,11 @@ def build_promotion_gate_result(
         for doc in courses
         if doc.get("courseNumber") and is_dds_faculty(doc.get("faculty"))
     }
+    ingestible_scope = catalog_signoff.get("ingestibleCourseScope", "dds-faculty-semester-json")
+    if ingestible_scope == "technion-semester-json":
+        ingestible_course_numbers = {str(number) for number in staging_course_numbers}
+    else:
+        ingestible_course_numbers = dds_ingestible_course_numbers
     catalog_reviewed_path = catalog_reviewed_json_path(faculty_id)
     if (
         catalog_signoff.get("signoffSource") == "vault-wiki"
@@ -361,7 +366,7 @@ def build_promotion_gate_result(
         expected_excluded = set(
             derive_production_excluded_course_numbers(
                 catalog_numbers,
-                ingestible_course_numbers=dds_ingestible_course_numbers,
+                ingestible_course_numbers=ingestible_course_numbers,
             )
         )
     else:

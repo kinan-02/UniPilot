@@ -9,6 +9,7 @@ from typing import Any
 from app.curation.catalog_signoff import SIGNOFF_SOURCE_VAULT
 from app.catalog.course_reference_policy import (
     build_dds_promotion_course_number_set,
+    build_technion_promotion_course_number_set,
     collect_catalog_course_numbers,
     derive_production_excluded_course_numbers,
 )
@@ -140,6 +141,7 @@ def build_vault_signoff_payload(
     ingestible_course_numbers: set[str],
     wiki_root_path: Path,
     signed_off_at: str | None = None,
+    ingestible_course_scope: str = "dds-faculty-semester-json",
 ) -> dict[str, Any]:
     non_executable = derive_non_executable_rule_group_ids(document)
     excluded = derive_production_excluded_from_document(
@@ -156,7 +158,7 @@ def build_vault_signoff_payload(
         "signedOffNonExecutableRuleGroupIds": non_executable,
         "productionExcludedCourseNumbers": excluded,
         "productionExcludedCoursePolicy": PRODUCTION_EXCLUDED_POLICY,
-        "ingestibleCourseScope": "dds-faculty-semester-json",
+        "ingestibleCourseScope": ingestible_course_scope,
         "notes": (
             "Vault wiki sign-off: non-executable requirement groups are advisory-only in production. "
             "Catalog course references outside the DDS ingest scope are excluded from production "
@@ -170,13 +172,17 @@ def apply_vault_signoff_to_catalog(
     *,
     vault_path: Path | None = None,
     course_json_paths: list[Path] | None = None,
+    ingestible_course_scope: str = "dds-faculty-semester-json",
 ) -> dict[str, Any]:
     root = wiki_root(vault_path)
     pages = load_pages_by_slug(root)
 
     paths = [path for path in (course_json_paths or default_course_json_paths()) if path.exists()]
     course_index = build_course_index(paths)
-    ingestible_course_numbers = build_dds_promotion_course_number_set(course_index)
+    if ingestible_course_scope == "technion-semester-json":
+        ingestible_course_numbers = build_technion_promotion_course_number_set(course_index)
+    else:
+        ingestible_course_numbers = build_dds_promotion_course_number_set(course_index)
     wiki_titles = build_wiki_course_title_index(pages)
 
     titles_filled = enrich_titles_from_wiki(document, wiki_titles)
@@ -192,6 +198,7 @@ def apply_vault_signoff_to_catalog(
         document,
         ingestible_course_numbers=ingestible_course_numbers,
         wiki_root_path=root,
+        ingestible_course_scope=ingestible_course_scope,
     )
 
     report = document.setdefault("curationReport", {})

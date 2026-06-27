@@ -471,6 +471,49 @@ def test_gate_recomputes_excluded_courses_from_vault_export(
     assert excluded_check.passed is True
 
 
+def test_gate_excluded_list_honors_technion_semester_json_scope(
+    mongo_database, tmp_path: Path, monkeypatch
+) -> None:
+    reviewed_path = tmp_path / "catalog_reviewed.json"
+    reviewed_path.write_text(
+        json.dumps(
+            {
+                "programs": [
+                    {
+                        "requirementGroups": [
+                            {
+                                "courseReferences": [
+                                    {"courseNumber": "00940345"},
+                                    {"courseNumber": "00999999"},
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "app.promotion.dds_promotion_gate.catalog_reviewed_json_path",
+        lambda faculty_id="dds": reviewed_path,
+    )
+    _seed_signed_off_promotion_staging(mongo_database)
+
+    def set_technion_scope(signoff: dict) -> None:
+        signoff["signoffSource"] = "vault-wiki"
+        signoff["ingestibleCourseScope"] = "technion-semester-json"
+        signoff["productionExcludedCourseNumbers"] = ["00999999"]
+
+    _set_vault_signoff_on_all_programs(mongo_database, mutator=set_technion_scope)
+
+    gate = build_promotion_gate_result(mongo_database, allow_warnings=True)
+    excluded_check = next(
+        check for check in gate.checks if check.checkId == "policy.excluded_courses_list"
+    )
+    assert excluded_check.passed is True
+
+
 def test_cli_plan_command_exits_zero_on_pass(mongo_database, tmp_path: Path, monkeypatch) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
     monkeypatch.setattr("app.main.check_mongo_connectivity", lambda: "connected")

@@ -12,7 +12,7 @@ from app.models.catalog import ReviewedCuratedCatalogDocument
 from app.models.staging_catalog import Phase8ReadinessCheck
 from app.paths import catalog_vault_root
 from app.sources.technion_course_json_index import build_course_index, default_course_json_paths
-from app.vault.faculty_elective_enrichers import faculty_elective_groups
+from app.vault.faculty_elective_enrichers import _resolve_elective_source_slug, faculty_elective_groups
 from app.vault.export_dds_catalog import (
     CATALOG_VERSION,
     CATALOG_YEAR,
@@ -83,6 +83,7 @@ def should_export_degree_program(
     page: WikiPage,
     *,
     faculty_track_slugs: frozenset[str] | None = None,
+    pages: dict[str, WikiPage] | None = None,
 ) -> bool:
     """Path-only wiki pages share a program code with a canonical track page."""
     kind = track_program_kind(page)
@@ -95,6 +96,8 @@ def should_export_degree_program(
         if faculty_track_slugs is None:
             return False
         if canonical in faculty_track_slugs:
+            return False
+        if pages is not None and canonical in pages:
             return False
         return True
     return True
@@ -326,6 +329,20 @@ def inherit_parent_track_title_hints(
     return filled
 
 
+def _semester_matrices_for_track(
+    page: WikiPage,
+    program_code: str,
+    pages: dict[str, WikiPage],
+) -> list[dict[str, Any]]:
+    groups = _semester_matrix_groups(page, program_code, pages=pages)
+    if groups:
+        return groups
+    source_slug = _resolve_elective_source_slug(page, pages)
+    if source_slug and source_slug in pages:
+        return _semester_matrix_groups(pages[source_slug], program_code, pages=pages)
+    return []
+
+
 def build_generic_program(
     page: WikiPage,
     *,
@@ -371,7 +388,7 @@ def build_generic_program(
             if slug in missing_standard_buckets:
                 requirement_groups.append(group)
 
-    requirement_groups.extend(_semester_matrix_groups(page, program_code, pages=pages))
+    requirement_groups.extend(_semester_matrices_for_track(page, program_code, pages))
     requirement_groups.extend(
         _general_technion_elective_groups(program_code, technion_wide_total=technion_wide_total)
     )
@@ -441,6 +458,7 @@ def export_faculty_vault_catalog(
         if page is None or not should_export_degree_program(
             page,
             faculty_track_slugs=faculty_track_slug_set,
+            pages=pages,
         ):
             continue
         if slug in exported_program_slugs:
@@ -558,6 +576,7 @@ def export_faculty_vault_catalog(
         document,
         vault_path=vault_path or catalog_vault_root(),
         course_json_paths=course_json_paths,
+        ingestible_course_scope="technion-semester-json",
     )
     readiness = build_readiness_after_vault_signoff(document)
     readiness.setdefault("blockingIssuesForStaging", [])

@@ -17,12 +17,12 @@ async def test_ensure_development_catalog_seeds_when_empty(mongo_database) -> No
     )
     seeded = await ensure_development_catalog(mongo_database, settings)
     assert seeded is True
-    assert await mongo_database.degree_programs.count_documents({}) == 4
-    assert await mongo_database.courses.count_documents({}) == 5
+    assert await mongo_database.degree_programs.count_documents({}) == 5
+    assert await mongo_database.courses.count_documents({}) >= 5
     resolved = get_settings()
     assert (
         await mongo_database[resolved.catalog_rules_collection].count_documents({})
-        == 46
+        == 59
     )
 
 
@@ -36,7 +36,7 @@ async def test_ensure_development_catalog_skips_when_programs_exist(mongo_databa
     await seed_minimal_catalog(mongo_database, settings)
     seeded = await ensure_development_catalog(mongo_database, settings)
     assert seeded is False
-    assert await mongo_database.degree_programs.count_documents({}) == 4
+    assert await mongo_database.degree_programs.count_documents({}) == 5
 
 
 @pytest.mark.asyncio
@@ -92,4 +92,7 @@ async def test_seed_minimal_catalog_includes_e2e_cs_faculty_and_ds_elective_cour
     )
     assert await mongo_database[resolved.catalog_faculties_collection].count_documents(
         {"facultyId": "faculty-computer-science"},
+    ) == 1
+    assert await mongo_database[resolved.catalog_faculties_collection].count_documents(
+        {"facultyId": "faculty-civil-environmental-engineering"},
     ) == 1

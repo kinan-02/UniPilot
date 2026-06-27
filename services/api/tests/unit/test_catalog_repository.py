@@ -557,3 +557,113 @@ async def test_list_path_options_supports_non_primary_filter(mongo_database):
         settings=settings,
     )
     assert any(option.get("selectableAsPrimary") is False for option in supplemental)
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_resolves_linked_degree_by_curriculum_wiki_slug(mongo_database):
+    settings = get_settings()
+    canonical_id = (
+        await mongo_database[settings.degree_programs_collection].insert_one(
+            {
+                "programCode": "027399-1-000",
+                "status": "published",
+                "metadata": {"wikiPage": "track-biomedical-engineering-medicine-dual"},
+            }
+        )
+    ).inserted_id
+    await mongo_database[settings.degree_programs_collection].insert_one(
+        {
+            "programCode": "027399-1-000",
+            "status": "published",
+            "metadata": {"wikiPage": "track-medicine-dual-biomedical-engineering"},
+        }
+    )
+    await mongo_database[settings.catalog_path_options_collection].insert_one(
+        {
+            "facultyId": "faculty-medicine",
+            "institutionId": "technion",
+            "status": "published",
+            "optionKey": "medicine-dual-bme",
+            "wikiSlug": "track-medicine-dual-biomedical-engineering",
+            "curriculumWikiSlug": "track-biomedical-engineering-medicine-dual",
+            "linkedProgramCode": "027399-1-000",
+            "kind": "bsc_track",
+            "name": "Dual medicine BME",
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "selectableAsPrimary": True,
+        }
+    )
+    options = await catalog_repository.list_path_options(
+        mongo_database,
+        faculty_id="faculty-medicine",
+        settings=settings,
+    )
+    alias = next(
+        option
+        for option in options
+        if option.get("wikiSlug") == "track-medicine-dual-biomedical-engineering"
+    )
+    assert alias["linkedDegreeProgramId"] == str(canonical_id)
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_uses_single_program_when_code_unique(mongo_database):
+    settings = get_settings()
+    program_id = (
+        await mongo_database[settings.degree_programs_collection].insert_one(
+            {
+                "programCode": "099999-1-000",
+                "status": "published",
+                "metadata": {"wikiPage": "track-only-program"},
+            }
+        )
+    ).inserted_id
+    await mongo_database[settings.catalog_path_options_collection].insert_one(
+        {
+            "facultyId": "faculty-test",
+            "institutionId": "technion",
+            "status": "published",
+            "optionKey": "test-track",
+            "wikiSlug": "track-alias",
+            "curriculumWikiSlug": "track-other-wiki",
+            "linkedProgramCode": "099999-1-000",
+            "kind": "bsc_track",
+            "name": "Test track",
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "selectableAsPrimary": True,
+        }
+    )
+    options = await catalog_repository.list_path_options(
+        mongo_database,
+        faculty_id="faculty-test",
+        settings=settings,
+    )
+    assert options[0]["linkedDegreeProgramId"] == str(program_id)
+
+
+@pytest.mark.asyncio
+async def test_list_path_options_skips_missing_linked_program_code(mongo_database):
+    settings = get_settings()
+    await mongo_database[settings.catalog_path_options_collection].insert_one(
+        {
+            "facultyId": "faculty-orphan",
+            "institutionId": "technion",
+            "status": "published",
+            "optionKey": "orphan-track",
+            "wikiSlug": "track-orphan",
+            "linkedProgramCode": "000000-1-000",
+            "kind": "bsc_track",
+            "name": "Orphan track",
+            "catalogYear": 2025,
+            "catalogVersion": "2025-2026",
+            "selectableAsPrimary": True,
+        }
+    )
+    options = await catalog_repository.list_path_options(
+        mongo_database,
+        faculty_id="faculty-orphan",
+        settings=settings,
+    )
+    assert options[0].get("linkedDegreeProgramId") is None

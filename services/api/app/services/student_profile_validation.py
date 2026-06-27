@@ -75,7 +75,14 @@ async def validate_academic_path_for_profile(
             detail="Unknown track slug for the selected degree program",
         )
     if resolved_slug != track_slug:
-        raise HTTPException(
-            status_code=400,
-            detail="Selected track does not match the chosen degree program",
+        program_code = program.get("programCode")
+        path_option = await catalog_repository.find_primary_path_option_for_track(
+            database,
+            track_slug=str(track_slug),
+            program_code=str(program_code) if program_code else None,
         )
+        if path_option is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected track does not match the chosen degree program",
+            )

@@ -1,6 +1,6 @@
 # UniPilot AI — Project Context (Source of Truth)
 
-Last updated: 2026-06-23
+Last updated: 2026-06-27
 Use it before starting major coding, architecture updates, or roadmap decisions.
 
 If this file and another doc conflict:
@@ -61,7 +61,7 @@ The **Node.js / Express** reference backend has been **removed**. **`services/ap
 | Policy | Detail |
 |---|---|
 | Production API | `services/api/` — FastAPI on port 8000 inside Docker |
-| MongoDB database | `unipilot_python` (promoted Technion DDS catalog) |
+| MongoDB database | `unipilot_python` (promoted Technion catalog — DDS + 16 wiki-exported faculties) |
 | Behavioral contract | `docs/API_SPEC.md` + pytest + `scripts/verify_and_benchmark.py` |
 | Historical plan | `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md` (archived reference) |
 
@@ -128,7 +128,9 @@ Phase 5 scope intentionally excludes production import, staging import of real d
 
 **Retired:** PDF extraction, docx markdown export, and markdown parser pipeline (`parse-dds-catalog-md`, `curate-dds-catalog`, `signoff-dds-catalog`). Raw catalog PDFs remain under `catalog_valut/raw/` for provenance.
 
-**Next:** `export-vault-catalog --faculty dds` (implemented) → staging import + production promotion. Additional faculties register in `vault_export_registry.py`. See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
+**Status (2026-06-27):** Vault export, staging import, and production promotion are implemented for **17 faculties** (DDS + 16 generic exporters). Local verification: `python3 scripts/verify_promoted_faculty_curriculum.py` — **17/17 pass** after promotion (onboarding → graduation progress → curriculum graph → semester plan). Helper: `scripts/promote_and_verify_faculty.sh <faculty-id>`. See `docs/planning/CATALOG_VAULT_INTEGRATION_PLAN.md`.
+
+**Export fixes for multi-faculty curriculum:** Hebrew semester headings (`### סמסטר N`), semester-matrix inheritance from `electiveSource`, canonical track deduplication (`should_export_degree_program`), `curriculumWikiSlug` on path options, and `technion-semester-json` ingest scope for non-DDS faculty promotion.
 
 ### Python Phase 6–7.6 status (retired — superseded by catalog vault)
 

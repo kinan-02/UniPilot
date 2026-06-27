@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings, get_settings
 from app.catalog.excluded_courses import EXCLUDED_COURSE
+from app.db.e2e_civil_catalog_seed import seed_e2e_civil_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,9 @@ ALL_PROGRAMS = (
 )
 E2E_ONBOARDING_PROGRAMS = (CS_PROGRAM_CODE,)
 
-SEEDED_COURSE_COUNT = 5
-SEEDED_PROGRAM_COUNT = len(ALL_PROGRAMS) + len(E2E_ONBOARDING_PROGRAMS)
-SEEDED_FACULTY_COUNT = 2
+SEEDED_COURSE_COUNT = 10
+SEEDED_PROGRAM_COUNT = len(ALL_PROGRAMS) + len(E2E_ONBOARDING_PROGRAMS) + 1
+SEEDED_FACULTY_COUNT = 3
 
 TOTAL_HARD_REQUIREMENTS = 16
 TOTAL_ADVISORY_RULES = 46
@@ -262,6 +263,7 @@ async def seed_minimal_catalog(database: AsyncIOMotorDatabase, settings: Setting
     assert len(advisory_docs) == TOTAL_ADVISORY_RULES
     await database[resolved.catalog_rules_collection].insert_many(advisory_docs)
     await _seed_catalog_faculties_and_path_options(database, resolved)
+    await seed_e2e_civil_catalog(database, resolved)
 
 
 async def _seed_catalog_faculties_and_path_options(

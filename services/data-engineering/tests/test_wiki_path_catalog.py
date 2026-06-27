@@ -8,6 +8,7 @@ from app.paths import catalog_vault_root, resolve_catalog_vault_wiki_root
 from app.vault.export_dds_catalog import DDS_TRACK_SLUGS, export_vault_catalog
 from app.vault.loader import load_pages_by_slug
 from app.vault.wiki_path_catalog import (
+    _curriculum_wiki_slug,
     _track_selectable_as_primary,
     _track_study_levels,
     build_wiki_path_catalog,
@@ -45,6 +46,19 @@ def test_build_wiki_path_catalog_includes_tracks_programs_and_graduate_areas():
     )
     assert dne["duration"] == "4 years (8 semesters)"
     assert dne["totalCreditsRequired"] == "155"
+
+
+def test_curriculum_wiki_slug_prefers_canonical_slug() -> None:
+    from app.vault.loader import WikiPage
+
+    page = WikiPage(
+        slug="track-alias",
+        path=Path("/tmp/alias.md"),
+        frontmatter={"canonicalSlug": "track-canonical"},
+        body="",
+        english_body="",
+    )
+    assert _curriculum_wiki_slug(page) == "track-canonical"
 
 
 def test_medicine_md_is_not_primary_admission_path():

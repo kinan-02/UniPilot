@@ -105,10 +105,17 @@ courses_2025_*.json → import-technion-courses-staging → staging_courses / st
 | D.4 Incremental faculty ingest | Done | `export_faculty_vault_catalog.py` (generic Pass-1); per-faculty output under `data/generated/technion/catalog/<faculty>/`; staging keys `technion-<faculty>:catalog:...` |
 | D.5 API catalog scope | Done | `/catalog/degree-programs?facultyId=` filter; `track_registry` + web `academicPath` resolve `metadata.wikiPage` for any `track-*` slug |
 | D.6 RAG index | Deferred | Chunk `wiki/` pages for future AI advisor; cite `[[source]]` links |
+| D.7 Curriculum E2E verification | Done | `scripts/verify_promoted_faculty_curriculum.py` (17 faculties); `scripts/promote_and_verify_faculty.sh`; alias tracks via `curriculumWikiSlug` + API path-option resolution |
 
 **Reference second faculty:** Computer Science (`--faculty computer-science`) — 7 BSc track programs exported (e.g. `023023-1-000`).
 
-**Onboarding a new faculty:** (1) expand `catalog_valut/wiki/`, (2) register in `vault_export_registry.py` (or use generic exporter if track pages follow the schema), (3) add `faculties.<id>` contract block if chain pools exist, (4) export → import → quality → promote with `--faculty <id>`.
+**Onboarding a new faculty:** (1) expand `catalog_valut/wiki/`, (2) register in `vault_export_registry.py` (or use generic exporter if track pages follow the schema), (3) add `faculties.<id>` contract block if chain pools exist, (4) `bash scripts/promote_and_verify_faculty.sh <faculty-id>` (or manual export → import → quality → promote).
+
+**Multi-faculty promotion notes:**
+
+- Run `import-technion-courses-staging` once (full Technion scope, not `--dds-only`) before promoting non-DDS faculties so matrix courses exist in staging/production.
+- Faculty exports set `ingestibleCourseScope: technion-semester-json`; the promotion gate validates excluded-course lists against that scope.
+- Duplicate cross-faculty programs (e.g. dual-degree tracks) export once from the canonical wiki page; alias path options carry `curriculumWikiSlug` for API onboarding.
 
 ### Phase C — Staging & production (complete)
 

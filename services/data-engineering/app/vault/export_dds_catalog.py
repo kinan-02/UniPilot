@@ -77,7 +77,7 @@ DDS_TRACK_SLUGS: dict[str, dict[str, Any]] = {
 }
 
 SEMESTER_HEADING_PATTERN = re.compile(
-    r"^###\s+Semester\s+(\d+)\b.*$",
+    r"^###\s+(?:Semester|סמסטר)\s+(\d+)\b",
     re.MULTILINE | re.IGNORECASE,
 )
 COURSE_NUMBER_INLINE_PATTERN = re.compile(r"(?<!\d)(0\d{6,8}|\d{7,8})(?!\d)")

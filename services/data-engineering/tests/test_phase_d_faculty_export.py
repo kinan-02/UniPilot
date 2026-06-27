@@ -443,13 +443,15 @@ def test_should_export_degree_program_skips_specializations_and_canonical_mirror
     assert should_export_degree_program(
         pages["track-medicine-dual-biomedical-engineering"],
         faculty_track_slugs=medicine_slugs,
-    ) is True
+        pages=pages,
+    ) is False
 
     chemistry_slugs = frozenset(discover_faculty_track_slugs(pages, "chemistry"))
     assert should_export_degree_program(
         pages["track-chemistry-materials-combined"],
         faculty_track_slugs=chemistry_slugs,
-    ) is True
+        pages=pages,
+    ) is False
 
 
 def test_should_export_degree_program_skips_non_primary_canonical_with_faculty_slugs(
@@ -472,6 +474,22 @@ def test_should_export_degree_program_skips_non_primary_canonical_with_faculty_s
     ) is False
 
 
+def test_should_export_degree_program_exports_mirror_when_canonical_page_missing() -> None:
+    page = WikiPage(
+        slug="track-mirror",
+        path=Path("/tmp/mirror.md"),
+        frontmatter={"canonicalSlug": "track-canonical"},
+        body="",
+        english_body="",
+    )
+    pages = {"track-mirror": page}
+    assert should_export_degree_program(
+        page,
+        faculty_track_slugs=frozenset({"track-mirror"}),
+        pages=pages,
+    ) is True
+
+
 def test_export_biology_expected_program_codes_match_per_track_programs() -> None:
     biology_doc, _ = export_faculty_vault_catalog(faculty_id="biology")
     program_codes = [program["programCode"] for program in biology_doc["programs"]]
@@ -480,34 +498,35 @@ def test_export_biology_expected_program_codes_match_per_track_programs() -> Non
 
 
 def test_export_cross_faculty_canonical_mirrors_have_elective_pools() -> None:
-    chemistry_doc, _ = export_faculty_vault_catalog(faculty_id="chemistry")
-    chemistry_program = next(
+    """Canonical dual-degree tracks export once from the owning faculty with elective pools."""
+    materials_doc, _ = export_faculty_vault_catalog(faculty_id="materials-science-engineering")
+    materials_program = next(
         program
-        for program in chemistry_doc["programs"]
-        if (program.get("metadata") or {}).get("wikiPage") == "track-chemistry-materials-combined"
+        for program in materials_doc["programs"]
+        if (program.get("metadata") or {}).get("wikiPage") == "track-materials-engineering-chemistry"
     )
-    chemistry_pools = [
+    materials_pools = [
         group
-        for group in chemistry_program.get("requirementGroups") or []
+        for group in materials_program.get("requirementGroups") or []
         if (group.get("ruleExpression") or {}).get("operator") in {"choose_n", "choose_chain"}
         and (group.get("courseReferences") or [])
     ]
-    assert chemistry_pools
+    assert materials_pools
 
-    medicine_doc, _ = export_faculty_vault_catalog(faculty_id="medicine")
-    medicine_program = next(
+    biomedical_doc, _ = export_faculty_vault_catalog(faculty_id="biomedical-engineering")
+    biomedical_program = next(
         program
-        for program in medicine_doc["programs"]
+        for program in biomedical_doc["programs"]
         if (program.get("metadata") or {}).get("wikiPage")
-        == "track-medicine-dual-biomedical-engineering"
+        == "track-biomedical-engineering-medicine-dual"
     )
-    medicine_pools = [
+    biomedical_pools = [
         group
-        for group in medicine_program.get("requirementGroups") or []
+        for group in biomedical_program.get("requirementGroups") or []
         if (group.get("ruleExpression") or {}).get("operator") in {"choose_n", "choose_chain"}
         and (group.get("courseReferences") or [])
     ]
-    assert medicine_pools
+    assert biomedical_pools
 
 
 def test_export_faculty_vault_catalog_exports_each_primary_track_slug(
@@ -650,3 +669,26 @@ def test_semester_matrix_groups_merge_variant_headings() -> None:
     semester_six = [group for group in groups if group["groupId"].endswith("semester-6-matrix")]
     assert len(semester_six) == 1
     assert len(semester_six[0]["courseReferences"]) > 0
+
+
+def test_semester_matrix_groups_parse_hebrew_headings() -> None:
+    from app.paths import catalog_vault_root
+    from app.vault.export_dds_catalog import _semester_matrix_groups
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root(catalog_vault_root()))
+    page = pages["track-mechanical-engineering"]
+    groups = _semester_matrix_groups(page, "034034-1-000", pages=pages)
+    assert len(groups) >= 6
+
+
+def test_semester_matrices_inherit_from_elective_source() -> None:
+    from app.paths import catalog_vault_root
+    from app.vault.export_faculty_vault_catalog import _semester_matrices_for_track
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root(catalog_vault_root()))
+    barak = pages["track-mechanical-engineering-barak"]
+    groups = _semester_matrices_for_track(barak, "034034-2-000", pages)
+    assert len(groups) >= 6
+    assert all(group["groupId"].startswith("034034-2-000:") for group in groups)

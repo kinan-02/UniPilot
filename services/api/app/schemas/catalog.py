@@ -131,6 +131,7 @@ class CatalogPathOption(BaseModel):
     selectableAsPrimary: bool = False
     linkedProgramCode: str | None = None
     linkedDegreeProgramId: str | None = None
+    curriculumWikiSlug: str | None = None
     description: str | None = None
     duration: str | None = None
     totalCreditsRequired: str | None = None

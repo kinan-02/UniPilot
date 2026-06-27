@@ -216,6 +216,7 @@ def _path_option(
     study_levels: list[str],
     selectable_as_primary: bool,
     linked_program_code: str | None = None,
+    curriculum_wiki_slug: str | None = None,
     description: str | None = None,
     duration: str | None = None,
     total_credits_required: str | None = None,
@@ -235,11 +236,20 @@ def _path_option(
         "description": description,
         "status": "published",
     }
+    if curriculum_wiki_slug:
+        option["curriculumWikiSlug"] = curriculum_wiki_slug
     if duration:
         option["duration"] = duration
     if total_credits_required:
         option["totalCreditsRequired"] = total_credits_required
     return option
+
+
+def _curriculum_wiki_slug(page: WikiPage) -> str:
+    raw = page.frontmatter.get("canonicalSlug")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return page.slug
 
 
 def _track_options(
@@ -271,6 +281,7 @@ def _track_options(
                 study_levels=_track_study_levels(page),
                 selectable_as_primary=_track_selectable_as_primary(page),
                 linked_program_code=program_code,
+                curriculum_wiki_slug=_curriculum_wiki_slug(page),
                 description=_page_description(page),
                 duration=duration,
                 total_credits_required=total_credits,

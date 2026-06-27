@@ -622,6 +622,24 @@ async def find_path_option_by_id(
     )
 
 
+async def find_primary_path_option_for_track(
+    database: AsyncIOMotorDatabase,
+    *,
+    track_slug: str,
+    program_code: str | None = None,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    settings = settings or get_settings()
+    query: dict[str, Any] = {
+        **PUBLISHED_STATUS_FILTER,
+        "wikiSlug": track_slug,
+        "selectableAsPrimary": True,
+    }
+    if program_code:
+        query["linkedProgramCode"] = program_code
+    return await database[settings.catalog_path_options_collection].find_one(query)
+
+
 async def _faculty_ids_with_path_options(
     database: AsyncIOMotorDatabase,
     *,
@@ -705,19 +723,36 @@ async def list_path_options(
         for option in options
         if option.get("linkedProgramCode")
     }
-    program_ids_by_code: dict[str, str] = {}
+    programs_by_code: dict[str, list[dict[str, Any]]] = {}
     if linked_codes:
         program_cursor = database[settings.degree_programs_collection].find(
             {**PUBLISHED_STATUS_FILTER, "programCode": {"$in": list(linked_codes)}},
-            {"programCode": 1},
+            {"programCode": 1, "metadata": 1},
         )
         async for program in program_cursor:
-            program_ids_by_code[str(program["programCode"])] = str(program["_id"])
+            code = str(program["programCode"])
+            programs_by_code.setdefault(code, []).append(program)
 
     for option in options:
         linked_code = option.get("linkedProgramCode")
-        if linked_code and linked_code in program_ids_by_code:
-            option["linkedDegreeProgramId"] = program_ids_by_code[linked_code]
+        if not linked_code:
+            continue
+        candidates = programs_by_code.get(linked_code, [])
+        if not candidates:
+            continue
+        curriculum_slug = option.get("curriculumWikiSlug") or option.get("wikiSlug")
+        matched = next(
+            (
+                program
+                for program in candidates
+                if (program.get("metadata") or {}).get("wikiPage") == curriculum_slug
+            ),
+            None,
+        )
+        if matched is None and len(candidates) == 1:
+            matched = candidates[0]
+        if matched is not None:
+            option["linkedDegreeProgramId"] = str(matched["_id"])
 
     return options
 

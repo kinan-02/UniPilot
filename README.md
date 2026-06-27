@@ -37,7 +37,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Set `MONGO_DB=unipilot_python` in `.env` (matches `.env.example`) so the API reads the promoted Technion DDS catalog.
+Set `MONGO_DB=unipilot_python` in `.env` (matches `.env.example`) so the API reads the promoted Technion catalog (DDS + 16 additional faculties when fully promoted).
 
 - **Web UI:** [http://localhost:3000](http://localhost:3000) (`WEB_PORT`)
 - **API health:** [http://localhost:8000/health](http://localhost:8000/health) (`API_PORT`, or via web at `/api/health`)
@@ -190,11 +190,31 @@ See `docs/API_SPEC.md` for `selectedLessonEvents`, `PATCH .../lesson-selection`,
 
 ## Data engineering
 
-Internal Python CLI for Technion DDS ingestion, staging validation, and guarded production promotion. Shares MongoDB (`MONGO_DB`, default `unipilot_python`).
+Internal Python CLI for Technion wiki catalog export, semester JSON import, staging validation, and guarded production promotion. Shares MongoDB (`MONGO_DB`, default `unipilot_python`).
 
 ```bash
 docker compose run --rm data-engineering python -m app.main health
 docker compose run --rm data-engineering python -m app.main promote-dds-to-production --dry-run
+```
+
+**Promote one faculty** (export → staging → quality → production → API smoke):
+
+```bash
+bash scripts/promote_and_verify_faculty.sh <faculty-id>
+# Example: bash scripts/promote_and_verify_faculty.sh civil-environmental-engineering
+```
+
+Before the first faculty promotion on a clean Mongo volume, import all Technion semester courses once:
+
+```bash
+docker compose run --rm data-engineering python -m app.main import-technion-courses-staging
+```
+
+**Verify curriculum E2E** for all promoted faculties (requires API + promoted Mongo; `AUTO_SEED_CATALOG=false`):
+
+```bash
+python3 scripts/verify_promoted_faculty_curriculum.py --base-url http://localhost:8000
+python3 scripts/verify_promoted_faculty_curriculum.py --faculty-id faculty-civil-environmental-engineering
 ```
 
 See `services/data-engineering/README.md` and `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`.
