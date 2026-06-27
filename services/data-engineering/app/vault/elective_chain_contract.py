@@ -264,10 +264,10 @@ def validate_staging_requirement_group(requirement_doc: dict[str, Any]) -> list[
             (item for item in matching_entries if item.get("trackSlug") == wiki_page),
             None,
         )
-    else:
-        entry = matching_entries[0] if len(matching_entries) == 1 else None
-    if entry is None and len(matching_entries) == 1:
+    elif len(matching_entries) == 1:
         entry = matching_entries[0]
+    else:
+        entry = None
     if entry is None:
         return []
 

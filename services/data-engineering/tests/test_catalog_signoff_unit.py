@@ -57,14 +57,32 @@ class TestExtractCatalogSignoff:
         result = extract_catalog_signoff(programs)
         assert result["signedOffBy"] == "backup"
 
-    def test_returns_first_valid_signoff(self):
+    def test_merges_vault_signoffs_across_programs(self):
         programs = [
             {"curationReport": {}},
-            {"curationReport": {"vaultSignoff": {"signedOffBy": "v1"}}},
-            {"curationReport": {"vaultSignoff": {"signedOffBy": "v2"}}},
+            {
+                "curationReport": {
+                    "vaultSignoff": {
+                        "signedOffBy": "vault-wiki",
+                        "signedOffNonExecutableRuleGroupIds": ["a:group-1"],
+                        "productionExcludedCourseNumbers": ["00000001"],
+                    }
+                }
+            },
+            {
+                "curationReport": {
+                    "vaultSignoff": {
+                        "signedOffBy": "vault-wiki",
+                        "signedOffNonExecutableRuleGroupIds": ["a:group-2", "a:group-1"],
+                        "productionExcludedCourseNumbers": ["00000002"],
+                    }
+                }
+            },
         ]
         result = extract_catalog_signoff(programs)
-        assert result["signedOffBy"] == "v1"
+        assert result["signedOffBy"] == "vault-wiki"
+        assert result["signedOffNonExecutableRuleGroupIds"] == ["a:group-1", "a:group-2"]
+        assert result["productionExcludedCourseNumbers"] == ["00000001", "00000002"]
 
 
 class TestExtractHumanSignoffAlias:

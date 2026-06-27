@@ -351,6 +351,36 @@ def test_validate_staging_requirement_group_matches_track_slug_when_codes_collid
     assert violations == []
 
 
+def test_validate_staging_requirement_group_biology_general_faculty_list_pool():
+    violations = validate_staging_requirement_group(
+        {
+            "metadata": {"wikiPage": "track-biology-general"},
+            "requirementGroup": {
+                "groupId": "013043-1-000:biology-faculty-elective-list-pool",
+                "courseReferences": [
+                    {"courseNumber": f"0134006{i}"} for i in range(7)
+                ],
+                "catalogDescription": "Faculty electives",
+            },
+        }
+    )
+    assert violations == []
+
+
+def test_validate_staging_requirement_group_skips_when_track_slug_mismatches():
+    violations = validate_staging_requirement_group(
+        {
+            "metadata": {"wikiPage": "track-biology-general"},
+            "requirementGroup": {
+                "groupId": "013043-1-000:biology-list-a1-pool",
+                "courseReferences": [{"courseNumber": "01340150"}],
+                "catalogDescription": "List A1",
+            },
+        }
+    )
+    assert violations == []
+
+
 def test_validate_staging_requirement_group_falls_back_to_single_contract_entry():
     violations = validate_staging_requirement_group(
         {
@@ -464,8 +494,8 @@ def test_remove_stale_dds_staging_records_and_retire_superseded_rules():
         catalog_version="2025-2026",
         active_staging_keys=active_keys,
     )
-    assert removed == 2
-    assert collection.delete_many.call_count == 2
+    assert removed == 5
+    assert collection.delete_many.call_count == 5
 
     assert (
         _retire_superseded_catalog_rules(

@@ -479,6 +479,15 @@
         {
           "programCode": "013043-1-000",
           "trackSlug": "track-biology-general",
+          "suffix": "biology-faculty-elective-list-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 7,
+          "maxCourseRefs": 7,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "013043-1-000",
+          "trackSlug": "track-biology-general",
           "suffix": "biology-list-a-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,

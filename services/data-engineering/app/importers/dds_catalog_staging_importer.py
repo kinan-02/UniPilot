@@ -576,8 +576,11 @@ def _remove_stale_faculty_staging_records(
     prefix = f"{catalog_staging_prefix(faculty_id)}:catalog:{catalog_version}:"
     removed = 0
     for collection_name in (
+        settings.staging_degree_programs_collection,
         settings.staging_degree_requirements_collection,
         settings.staging_catalog_rules_collection,
+        settings.staging_catalog_path_options_collection,
+        settings.staging_catalog_faculties_collection,
     ):
         collection = database[collection_name]
         stale_keys = [
