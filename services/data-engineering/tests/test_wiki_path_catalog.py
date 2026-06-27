@@ -6,7 +6,12 @@ from pathlib import Path
 
 from app.paths import catalog_vault_root, resolve_catalog_vault_wiki_root
 from app.vault.export_dds_catalog import DDS_TRACK_SLUGS, export_vault_catalog
-from app.vault.wiki_path_catalog import build_wiki_path_catalog
+from app.vault.loader import load_pages_by_slug
+from app.vault.wiki_path_catalog import (
+    _track_selectable_as_primary,
+    _track_study_levels,
+    build_wiki_path_catalog,
+)
 
 VAULT_ROOT = catalog_vault_root()
 WIKI_ROOT = resolve_catalog_vault_wiki_root(VAULT_ROOT)
@@ -40,6 +45,47 @@ def test_build_wiki_path_catalog_includes_tracks_programs_and_graduate_areas():
     )
     assert dne["duration"] == "4 years (8 semesters)"
     assert dne["totalCreditsRequired"] == "155"
+
+
+def test_medicine_md_is_not_primary_admission_path():
+    pages = load_pages_by_slug(WIKI_ROOT)
+    md_page = pages["track-medicine-md"]
+    assert "MD" in _track_study_levels(md_page)
+    assert _track_selectable_as_primary(md_page) is False
+
+
+def test_chemistry_haznek_includes_bsc_and_msc_levels():
+    pages = load_pages_by_slug(WIKI_ROOT)
+    haznek = pages["track-chemistry-haznek"]
+    levels = _track_study_levels(haznek)
+    assert "BSc" in levels
+    assert "MSc" in levels
+
+
+def test_track_selectable_as_primary_ignores_non_continuation_prerequisites():
+    pages = load_pages_by_slug(WIKI_ROOT)
+    dne = pages["track-data-information-engineering"]
+    assert _track_selectable_as_primary(dne) is True
+
+    generic_prereq_page = type(
+        "WikiPage",
+        (),
+        {
+            "english_body": "**Prerequisites:** High school diploma.",
+            "body": "",
+        },
+    )()
+    assert _track_selectable_as_primary(generic_prereq_page) is True
+
+    non_track_prereq_page = type(
+        "WikiPage",
+        (),
+        {
+            "english_body": "**Prerequisites:** Completion of [[program-excellence]].",
+            "body": "",
+        },
+    )()
+    assert _track_selectable_as_primary(non_track_prereq_page) is True
 
 
 def test_export_vault_catalog_attaches_path_catalog():

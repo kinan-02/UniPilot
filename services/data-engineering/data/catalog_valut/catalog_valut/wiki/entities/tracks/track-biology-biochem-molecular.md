@@ -5,6 +5,8 @@ aliases: [מגמת ביוכימיה וביולוגיה מולקולרית, Biolo
 type: entity
 tags: [track, bsc, faculty-biology]
 faculty: faculty-biology
+electiveSource: track-biology-general
+programKind: bsc_specialization
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

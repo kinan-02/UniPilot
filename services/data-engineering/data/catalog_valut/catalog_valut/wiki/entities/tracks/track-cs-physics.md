@@ -5,6 +5,7 @@ aliases: [מדמח פיזיקה, CS Physics, מסלול מדעי המחשב ופ
 type: entity
 tags: [track, bsc, faculty-computer-science, faculty-physics]
 faculty: faculty-computer-science
+electiveSource: track-computer-science-general-4year
 sources: 1
 created: 2026-06-22
 updated: 2026-06-22

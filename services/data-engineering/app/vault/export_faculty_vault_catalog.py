@@ -28,11 +28,11 @@ from app.vault.export_dds_catalog import (
     enrich_programs,
     parse_credits_value,
 )
-from app.vault.loader import WikiPage, extract_field, load_pages_by_slug, wiki_root
+from app.vault.loader import WikiPage, extract_field, extract_wikilinks, load_pages_by_slug, wiki_root
 from app.vault.markdown_tables import parse_markdown_tables
 from app.vault.track_program_codes import resolve_program_code
 from app.vault.vault_signoff import apply_vault_signoff_to_catalog, build_readiness_after_vault_signoff
-from app.vault.wiki_path_catalog import build_wiki_path_catalog
+from app.vault.wiki_path_catalog import _track_selectable_as_primary, build_wiki_path_catalog
 
 PROGRAM_CODE_FIELD_PATTERN = re.compile(
     r"^\*\*(?:Track code|Program code):\*\*\s*(0\d{5}-\d-\d{3})\s*$",
@@ -58,6 +58,46 @@ def discover_faculty_track_slugs(pages: dict[str, WikiPage], faculty_id: str) ->
         if wiki_id in tags:
             slugs.append(slug)
     return sorted(set(slugs))
+
+
+def track_program_kind(page: WikiPage) -> str:
+    raw = page.frontmatter.get("programKind")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return "bsc_track"
+
+
+def canonical_program_track_slug(page: WikiPage) -> str | None:
+    raw = page.frontmatter.get("canonicalSlug")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    parent_track = extract_field(page.english_body, "Parent Track")
+    if parent_track:
+        for link in extract_wikilinks(parent_track):
+            if link.startswith("track-"):
+                return link
+    return None
+
+
+def should_export_degree_program(
+    page: WikiPage,
+    *,
+    faculty_track_slugs: frozenset[str] | None = None,
+) -> bool:
+    """Path-only wiki pages share a program code with a canonical track page."""
+    kind = track_program_kind(page)
+    if kind == "bsc_specialization":
+        return _track_selectable_as_primary(page)
+    canonical = canonical_program_track_slug(page)
+    if canonical:
+        if not _track_selectable_as_primary(page):
+            return False
+        if faculty_track_slugs is None:
+            return False
+        if canonical in faculty_track_slugs:
+            return False
+        return True
+    return True
 
 
 def extract_program_code(page: WikiPage) -> str | None:
@@ -205,6 +245,87 @@ def _credit_bucket_groups(program_code: str, buckets: list[tuple[str, str, str, 
     return groups
 
 
+def _parent_track_slug(page: WikiPage) -> str | None:
+    parent = canonical_program_track_slug(page)
+    if parent:
+        return parent
+    for label in ("Parent Track", "Parent Tracks"):
+        raw = extract_field(page.english_body, label)
+        if not raw:
+            continue
+        for link in extract_wikilinks(raw):
+            if link.startswith("track-"):
+                return link
+    return None
+
+
+def inherit_parent_track_title_hints(
+    programs: list[dict[str, Any]],
+    pages: dict[str, WikiPage],
+) -> int:
+    """Fill missing titleHints from a track's parent program or parent wiki page."""
+    title_by_number: dict[str, str] = {}
+    for program in programs:
+        for group in program.get("requirementGroups", []):
+            for ref in group.get("courseReferences", []):
+                number = ref.get("courseNumber")
+                title = ref.get("titleHint")
+                if number and title:
+                    title_by_number.setdefault(str(number), str(title))
+
+    program_by_slug = {
+        str((program.get("metadata") or {}).get("wikiPage")): program
+        for program in programs
+        if (program.get("metadata") or {}).get("wikiPage")
+    }
+
+    for program in programs:
+        wiki_slug = (program.get("metadata") or {}).get("wikiPage")
+        page = pages.get(str(wiki_slug)) if wiki_slug else None
+        if page is None:
+            continue
+        parent_slug = _parent_track_slug(page)
+        if not parent_slug:
+            continue
+        parent_program = program_by_slug.get(parent_slug)
+        if parent_program is not None:
+            for group in parent_program.get("requirementGroups", []):
+                for ref in group.get("courseReferences", []):
+                    number = ref.get("courseNumber")
+                    title = ref.get("titleHint")
+                    if number and title:
+                        title_by_number.setdefault(str(number), str(title))
+
+    filled = 0
+    for program in programs:
+        wiki_slug = (program.get("metadata") or {}).get("wikiPage")
+        page = pages.get(str(wiki_slug)) if wiki_slug else None
+        parent_slug = _parent_track_slug(page) if page is not None else None
+        parent_page = pages.get(parent_slug) if parent_slug else None
+        for group in program.get("requirementGroups", []):
+            for ref in group.get("courseReferences", []):
+                if ref.get("titleHint"):
+                    continue
+                number = ref.get("courseNumber")
+                if not number:
+                    continue
+                title = title_by_number.get(str(number))
+                if not title and parent_page is not None:
+                    from app.vault.title_index import build_wiki_title_index
+
+                    parent_index = build_wiki_title_index({parent_slug: parent_page, **pages})
+                    title = parent_index.get(str(number))
+                if not title:
+                    continue
+                ref["titleHint"] = title
+                evidence = list(ref.get("sourceEvidence") or [])
+                evidence.append(f"titleHint:parent-track:{parent_slug}:{number}")
+                ref["sourceEvidence"] = evidence
+                ref["confidence"] = "medium"
+                filled += 1
+    return filled
+
+
 def build_generic_program(
     page: WikiPage,
     *,
@@ -250,7 +371,7 @@ def build_generic_program(
             if slug in missing_standard_buckets:
                 requirement_groups.append(group)
 
-    requirement_groups.extend(_semester_matrix_groups(page, program_code))
+    requirement_groups.extend(_semester_matrix_groups(page, program_code, pages=pages))
     requirement_groups.extend(
         _general_technion_elective_groups(program_code, technion_wide_total=technion_wide_total)
     )
@@ -274,7 +395,7 @@ def build_generic_program(
             "faculty": faculty_id,
             "facultyId": faculty_wiki_id(faculty_id),
             "wikiPage": page.slug,
-            "programKind": "bsc_track",
+            "programKind": track_program_kind(page),
         },
         "manualReviewRequired": True,
         "confidence": "medium",
@@ -312,14 +433,22 @@ def export_faculty_vault_catalog(
     }
 
     track_slugs = discover_faculty_track_slugs(pages, faculty_id)
+    faculty_track_slug_set = frozenset(track_slugs)
     programs: list[dict[str, Any]] = []
+    exported_program_slugs: set[str] = set()
     for slug in track_slugs:
         page = pages.get(slug)
-        if page is None:
+        if page is None or not should_export_degree_program(
+            page,
+            faculty_track_slugs=faculty_track_slug_set,
+        ):
+            continue
+        if slug in exported_program_slugs:
             continue
         program = build_generic_program(page, faculty_id=faculty_id, pages=pages)
         if program is not None:
             programs.append(program)
+            exported_program_slugs.add(slug)
 
     if not programs:
         raise ValueError(
@@ -328,6 +457,7 @@ def export_faculty_vault_catalog(
         )
 
     enrich_programs(programs, offering_index)
+    inherit_parent_track_title_hints(programs, pages)
 
     track_program_codes = build_track_program_code_map(pages, faculty_id)
     path_catalog = build_wiki_path_catalog(
@@ -430,7 +560,6 @@ def export_faculty_vault_catalog(
         course_json_paths=course_json_paths,
     )
     readiness = build_readiness_after_vault_signoff(document)
-    readiness["counts"] = counts
     readiness.setdefault("blockingIssuesForStaging", [])
 
     faculty_catalog_context_from_document(document)

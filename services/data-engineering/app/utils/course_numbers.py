@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from app.utils.hebrew_rtl import reverse_rtl_line_fragment
 
@@ -141,6 +142,37 @@ def strip_wikilinks_for_inline_scan(text: str) -> str:
         return alias or slug_prefix or ""
 
     return WIKILINK_CELL_PATTERN.sub(_replace, text)
+
+
+def _looks_like_course_number(value: str) -> bool:
+    digits = re.sub(r"\D", "", value or "")
+    return bool(digits) and normalize_course_number(digits) is not None and len(digits) <= 9
+
+
+def title_hint_from_wikilink_cell(
+    cell: str,
+    *,
+    fallback_name: str | None = None,
+    pages: dict[str, Any] | None = None,
+) -> str | None:
+    """Resolve a display title from a wikilink code cell or companion name column."""
+    name = (fallback_name or "").strip()
+    if name and not name.startswith("**") and name not in {"—", "-"}:
+        return name
+
+    for match in WIKILINK_CELL_PATTERN.finditer(cell or ""):
+        alias = (match.group(2) or "").strip()
+        slug = (match.group(1) or "").strip()
+        if alias and not _looks_like_course_number(alias):
+            return alias
+        if pages and slug in pages:
+            page = pages[slug]
+            title_he = getattr(page, "title_he", None)
+            title = getattr(page, "title", None)
+            resolved = title_he or title
+            if resolved:
+                return str(resolved)
+    return None
 
 
 def clean_cell_text(text: str) -> str:

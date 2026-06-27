@@ -12,7 +12,7 @@ from app.vault.elective_chain_contract import (
     validate_elective_chain_export,
 )
 from app.vault.export_faculty_vault_catalog import export_faculty_vault_catalog
-from app.vault.vault_signoff import finalize_export_quality_metadata
+from app.vault.vault_signoff import build_readiness_after_vault_signoff, finalize_export_quality_metadata
 
 VaultExportFn = Callable[..., tuple[dict[str, Any], dict[str, Any]]]
 
@@ -127,4 +127,5 @@ def export_vault_catalog(
 
     finalize_export_quality_metadata(document)
 
+    readiness = build_readiness_after_vault_signoff(document)
     return document, readiness

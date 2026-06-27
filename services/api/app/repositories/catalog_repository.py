@@ -555,8 +555,18 @@ async def list_degree_programs(
 def _program_matches_study_level(program: dict[str, Any], study_level: str) -> bool:
     metadata = program.get("metadata") or {}
     kind = metadata.get("programKind")
+    if study_level == "MD":
+        if kind == "graduate_program":
+            return False
+        wiki_page = metadata.get("wikiPage")
+        if wiki_page == "track-medicine-md":
+            return True
+        study_levels = program.get("studyLevels") or metadata.get("studyLevels") or []
+        return "MD" in study_levels
     if kind == "graduate_program":
         return study_level in {"MSc", "PhD", "MBA"}
+    if kind == "md_program" or metadata.get("wikiPage") == "track-medicine-md":
+        return study_level == "MD"
     return study_level == "BSc"
 
 

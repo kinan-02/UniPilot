@@ -5,6 +5,7 @@ aliases: [מסלול הנדסה סביבתית, Environmental Engineering Track]
 type: entity
 tags: [track, bsc, faculty-civil-environmental-engineering]
 faculty: faculty-civil-environmental-engineering
+electiveSource: track-civil-engineering-structures
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

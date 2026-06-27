@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Award, BookOpen, Briefcase, ChevronDown, GraduationCap } from 'lucide-react'
+import { Award, BookOpen, Briefcase, ChevronDown, GraduationCap, Stethoscope } from 'lucide-react'
 import { catalogApi, profileApi } from '../api/endpoints'
 import { isAuthError, useAuth } from '../auth/AuthContext'
 import { OnboardingShell } from '../components/onboarding/OnboardingShell'
@@ -30,6 +30,7 @@ const PROGRAM_TYPES = [
   { id: 'MSc', icon: BookOpen },
   { id: 'PhD', icon: Award },
   { id: 'MBA', icon: Briefcase },
+  { id: 'MD', icon: Stethoscope },
 ] as const
 
 const STEP_COUNT = 4
@@ -99,10 +100,12 @@ export function OnboardingPage() {
   }, [facultyId, programType])
 
   const pathOptions = (pathOptionsQuery.data?.items ?? []).filter((option) => Boolean(option.id))
-  const primaryOptions = useMemo(
-    () => pathOptions.filter((option) => option.selectableAsPrimary),
-    [pathOptions],
-  )
+  const primaryOptions = useMemo(() => {
+    if (programType === 'MD') {
+      return pathOptions.filter((option) => (option.studyLevels ?? []).includes('MD'))
+    }
+    return pathOptions.filter((option) => option.selectableAsPrimary)
+  }, [pathOptions, programType])
   const supplementalOptions = useMemo(
     () => pathOptions.filter((option) => !option.selectableAsPrimary),
     [pathOptions],

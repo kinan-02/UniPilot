@@ -4,6 +4,7 @@ title_he: הנדסת מערכות מידע
 aliases: [הנדסת מערכות מידע, ISE, מ"מ, מערכות מידע, Information Systems Engineering, Information Systems, מסלול מ"מ, מגמת מערכות מידע, 009118]
 type: entity
 tags: [track, bsc, undergraduate, information-systems]
+faculty: faculty-dds
 sources: 1
 created: 2026-06-21
 updated: 2026-06-21

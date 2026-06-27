@@ -5,6 +5,7 @@ aliases: [מגמת סייבר, Cyber Security CS, אבטחת מערכות ממו
 type: entity
 tags: [track, bsc, faculty-computer-science]
 faculty: faculty-computer-science
+electiveSource: track-computer-science-general-4year
 sources: 1
 created: 2026-06-22
 updated: 2026-06-22

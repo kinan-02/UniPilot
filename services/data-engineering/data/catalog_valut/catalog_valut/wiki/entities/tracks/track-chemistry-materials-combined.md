@@ -5,6 +5,8 @@ aliases: [מסלול משולב כימיה ומדע החומרים, Chemistry �
 type: entity
 tags: [track, bsc, faculty-chemistry]
 faculty: faculty-chemistry
+canonicalSlug: track-materials-engineering-chemistry
+electiveSource: track-materials-engineering-chemistry
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

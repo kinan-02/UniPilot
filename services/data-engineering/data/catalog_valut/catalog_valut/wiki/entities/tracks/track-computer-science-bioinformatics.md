@@ -5,6 +5,8 @@ aliases: [מגמת ביואינפורמטיקה, CS Bioinformatics, ביואינ
 type: entity
 tags: [track, bsc, faculty-computer-science]
 faculty: faculty-computer-science
+electiveSource: track-computer-science-general-4year
+programKind: bsc_specialization
 sources: 1
 created: 2026-06-22
 updated: 2026-06-22

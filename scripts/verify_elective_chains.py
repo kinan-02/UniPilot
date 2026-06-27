@@ -6,10 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from functools import partial
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "services" / "data-engineering"))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+from lib.parallel_faculties import default_worker_count, map_faculties_parallel  # noqa: E402
 
 from app.vault.elective_chain_contract import (  # noqa: E402
     contracted_faculty_ids,
@@ -24,6 +28,10 @@ from app.vault.vault_export_registry import export_vault_catalog, supported_expo
 def verify_export(vault_path: Path | None, faculty: str) -> list[str]:
     document, _ = export_vault_catalog(vault_path=vault_path or wiki_root(), faculty=faculty)
     return validate_elective_chain_export(document, faculty_id=faculty)
+
+
+def _verify_export_for_pool(vault_path: Path | None, faculty_id: str) -> list[str]:
+    return verify_export(vault_path, faculty_id)
 
 
 def verify_mongo(mongo_uri: str, db_name: str, *, faculty: str | None) -> list[str]:
@@ -58,6 +66,7 @@ def verify_mongo(mongo_uri: str, db_name: str, *, faculty: str | None) -> list[s
     return violations
 
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -78,6 +87,12 @@ def main() -> int:
         type=Path,
         help="Optional catalog_valut root (defaults to repo vault).",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help=f"Parallel faculty workers (default: {default_worker_count(None)})",
+    )
     args = parser.parse_args()
 
     faculty_arg = args.faculty.lower()
@@ -91,8 +106,15 @@ def main() -> int:
         export_faculties = [faculty_arg]
 
     violations: list[str] = []
-    for faculty_id in export_faculties:
-        violations.extend(verify_export(args.vault_path, faculty_id))
+    if len(export_faculties) == 1:
+        violations.extend(verify_export(args.vault_path, export_faculties[0]))
+    else:
+        nested = map_faculties_parallel(
+            export_faculties,
+            partial(_verify_export_for_pool, args.vault_path),
+            workers=args.workers,
+        )
+        violations = [item for group in nested for item in group]
 
     if args.mongo_uri:
         mongo_faculty = None if faculty_arg == "all" else faculty_arg

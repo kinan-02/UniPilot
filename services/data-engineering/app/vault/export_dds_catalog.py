@@ -22,6 +22,7 @@ from app.utils.course_numbers import (
     collect_course_numbers_from_text,
     normalize_course_number,
     resolve_course_number_token,
+    title_hint_from_wikilink_cell,
 )
 from app.vault.loader import WikiPage, extract_field, load_pages_by_slug, wiki_root
 from app.vault.markdown_tables import MarkdownTable, find_table_with_header, parse_markdown_tables
@@ -148,7 +149,11 @@ def _column_index(headers: list[str], *candidates: str) -> int | None:
     return None
 
 
-def _table_course_rows(table: MarkdownTable) -> list[dict[str, str | None]]:
+def _table_course_rows(
+    table: MarkdownTable,
+    *,
+    pages: dict[str, WikiPage] | None = None,
+) -> list[dict[str, str | None]]:
     code_idx = _column_index(table.headers, "code", "קוד")
     if code_idx is None:
         return []
@@ -166,10 +171,12 @@ def _table_course_rows(table: MarkdownTable) -> list[dict[str, str | None]]:
             continue
         if resolve_course_number_token(code) is None:
             continue
+        name_cell = row[name_idx].strip() if name_idx is not None and name_idx < len(row) else None
+        title_hint = title_hint_from_wikilink_cell(code, fallback_name=name_cell, pages=pages)
         rows.append(
             {
                 "code": code,
-                "name": row[name_idx].strip() if name_idx is not None and name_idx < len(row) else None,
+                "name": title_hint or name_cell,
                 "credits": row[credits_idx].strip() if credits_idx is not None and credits_idx < len(row) else None,
                 "notes": row[notes_idx].strip() if notes_idx is not None and notes_idx < len(row) else None,
             }
@@ -326,7 +333,12 @@ def _credit_bucket_groups(program_code: str, config: dict[str, Any]) -> list[dic
     return groups
 
 
-def _semester_matrix_groups(page: WikiPage, program_code: str) -> list[dict[str, Any]]:
+def _semester_matrix_groups(
+    page: WikiPage,
+    program_code: str,
+    *,
+    pages: dict[str, WikiPage] | None = None,
+) -> list[dict[str, Any]]:
     groups: list[dict[str, Any]] = []
     english = page.english_body
     for match in SEMESTER_HEADING_PATTERN.finditer(english):
@@ -337,7 +349,7 @@ def _semester_matrix_groups(page: WikiPage, program_code: str) -> list[dict[str,
         tables = parse_markdown_tables(section)
         course_refs: list[dict[str, Any]] = []
         for table in tables:
-            for row in _table_course_rows(table):
+            for row in _table_course_rows(table, pages=pages):
                 ref = build_course_reference(
                     row["code"] or "",
                     title_hint=row.get("name"),
@@ -490,9 +502,14 @@ def _focus_chain_section_end(
     return min(end_candidates) if end_candidates else len(section)
 
 
-def _table_course_refs(page: WikiPage, table: MarkdownTable) -> list[dict[str, Any]]:
+def _table_course_refs(
+    page: WikiPage,
+    table: MarkdownTable,
+    *,
+    pages: dict[str, WikiPage] | None = None,
+) -> list[dict[str, Any]]:
     refs: list[dict[str, Any]] = []
-    for row in _table_course_rows(table):
+    for row in _table_course_rows(table, pages=pages):
         ref = build_course_reference(
             row["code"] or "",
             title_hint=row.get("name"),
@@ -668,6 +685,25 @@ def _dne_elective_groups(page: WikiPage, program_code: str, config: dict[str, An
             refs: list[dict[str, Any]] = []
             for table in tables:
                 refs.extend(_table_course_refs(page, table))
+            if refs:
+                groups.append(
+                    _course_pool_group(
+                        program_code=program_code,
+                        group_suffix="dne-elective-list-pool",
+                        title="DNE elective course list",
+                        course_refs=refs,
+                        rule_expression={
+                            "type": "course_pool",
+                            "operator": "choose_n",
+                            "chooseCount": 1,
+                        },
+                        catalog_description=(
+                            "Complete DNE elective credits from this catalog list; "
+                            "must include at least 2 courses marked * (data-intensive projects)."
+                        ),
+                        notes=["Must include at least 2 courses marked * in the source catalog."],
+                    )
+                )
             groups.append(
                 _course_pool_group(
                     program_code=program_code,

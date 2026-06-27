@@ -5,6 +5,7 @@ aliases: [מסלול משולב רפואה + הנדסת נתונים ומידע,
 type: entity
 tags: [track, bsc, faculty-medicine]
 faculty: faculty-medicine
+electiveSource: track-data-information-engineering
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

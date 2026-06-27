@@ -59,7 +59,7 @@ _SPECIALIZATION_TRACK_HEADER = re.compile(
 )
 _ELECTIVES_SECTION_MARKER = re.compile(r"\*\*Electives\b", re.IGNORECASE)
 _BOLD_LIST_HEADER = re.compile(
-    r"^\s*(?:-\s+)?\*\*List\s+([A-Z]\d?)\s+\(רשימה",
+    r"^\s*(?:-\s+)?\*\*List\s+([A-Z][A-Z0-9]*)\b[^*]*\*\*",
     re.MULTILINE | re.IGNORECASE,
 )
 _CHOOSE_N_TABLE_SUFFIXES = frozenset(
@@ -99,6 +99,11 @@ _TABLE_SECTION_MARKERS: tuple[tuple[str, str, str], ...] = (
         "## Faculty Elective Requirements",
         "faculty-elective-list-pool",
         "Faculty elective requirements pool",
+    ),
+    (
+        "## Faculty Electives",
+        "faculty-elective-list-pool",
+        "Faculty electives pool",
     ),
     (
         "## Elective Requirements",

@@ -483,6 +483,26 @@ async def test_list_degree_programs_filters_by_study_level(mongo_database):
         (program.get("metadata") or {}).get("programKind") != "graduate_program"
         for program in bsc_programs
     )
+    await mongo_database[settings.degree_programs_collection].insert_one(
+        {
+            "programCode": "027027-1-000",
+            "status": "published",
+            "metadata": {"wikiPage": "track-medicine-md"},
+            "studyLevels": ["MD"],
+        }
+    )
+    md_programs = await catalog_repository.list_degree_programs(
+        mongo_database,
+        study_level="MD",
+        settings=settings,
+    )
+    assert any(program.get("programCode") == "027027-1-000" for program in md_programs)
+    bsc_after_md = await catalog_repository.list_degree_programs(
+        mongo_database,
+        study_level="BSc",
+        settings=settings,
+    )
+    assert not any(program.get("programCode") == "027027-1-000" for program in bsc_after_md)
 
 
 @pytest.mark.asyncio

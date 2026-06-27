@@ -202,6 +202,19 @@ The Haznek track is a unique accelerated program for outstanding students. It le
 
 - השלמת חובות תזה מחקרית לתואר שני.
 
+## Faculty Elective Requirements
+
+Focus-area electives (4 credits from the following list):
+
+| Code | Course | Credits |
+|---|---|---|
+| [[01270450-biophotochemistry-quantum-phenomena|01270450]] | ביופוטוכימיה ותופעות קוונטיות | 2.0 |
+| [[01270451-physical-chemistry-quantum-materials|01270451]] | שליטה ומדידה קוונטית בכימיה פיסיקלית | 2.0 |
+| [[01280429-advanced-experimental-methods-in-magnetic-resonanc|01280429]] | שיטות נסיוניות מתקדמות בתהודה מגנטית | 3.0 |
+| [[01160037-noisy-quantum-computing|01160037]] | מחשב קוונטי רועש | 2.0 |
+| [[01160040-advanced-quantum-information|01160040]] | אינפורמציה קוונטית מתקדמת | 2.0 |
+| [[01180137-radiation-and-quantum-matter|01180137]] | קרינה וחומר קוונטי | 3.5 |
+
 ## Special Rules
 
 - בסמסטר 6 נצברים 21 נק' שמיוחסים לתואר הראשון ו/או השני לפי החלטת הסטודנט והחונך.

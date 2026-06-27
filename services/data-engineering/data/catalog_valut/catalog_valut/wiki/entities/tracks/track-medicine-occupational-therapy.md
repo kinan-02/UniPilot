@@ -5,6 +5,7 @@ aliases: [מסלול ריפוי בעיסוק, Occupational Therapy Track]
 type: entity
 tags: [track, bsc, faculty-medicine]
 faculty: faculty-medicine
+electiveSource: track-medicine-bsc
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

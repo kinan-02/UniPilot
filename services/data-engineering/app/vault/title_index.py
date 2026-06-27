@@ -6,15 +6,20 @@ import re
 from typing import Any
 
 from app.utils.course_numbers import (
+    WIKILINK_CELL_PATTERN,
     normalize_course_number,
     resolve_course_number_token,
     strip_wikilinks_for_inline_scan,
+    title_hint_from_wikilink_cell,
 )
 from app.vault.loader import WikiPage
 from app.vault.markdown_tables import parse_markdown_tables
 
 INLINE_TITLE_PATTERN = re.compile(
     r"(?<!\d)(0\d{6,8}|\d{7,8})\s*[\(\[]\s*([^\)\]]+?)\s*[\)\]]",
+)
+REVERSE_INLINE_TITLE_PATTERN = re.compile(
+    r"([א-ת][^\n,(|]{2,120}?)\s*\(\s*(0\d{6,8}|\d{7,8})\s*\)",
 )
 
 
@@ -52,23 +57,48 @@ def _titles_from_inline(text: str, index: dict[str, str]) -> None:
             index.setdefault(number, title)
 
 
+def _titles_from_reverse_inline(text: str, index: dict[str, str]) -> None:
+    for match in REVERSE_INLINE_TITLE_PATTERN.finditer(text):
+        title = match.group(1).strip()
+        number = normalize_course_number(match.group(2))
+        if number and title and not title.startswith("**"):
+            index.setdefault(number, title)
+
+
+def _course_page_title(page: WikiPage) -> str | None:
+    title = page.title_he or page.title
+    return str(title) if title else None
+
+
+def _titles_from_wikilink_cells(text: str, index: dict[str, str], pages: dict[str, WikiPage]) -> None:
+    for match in WIKILINK_CELL_PATTERN.finditer(text):
+        number = resolve_course_number_token(match.group(0))
+        if not number:
+            continue
+        hint = title_hint_from_wikilink_cell(match.group(0), pages=pages)
+        if hint:
+            index.setdefault(number, hint)
+
+
 def build_wiki_title_index(pages: dict[str, WikiPage]) -> dict[str, str]:
     """Resolve titles from course pages, wiki tables, and inline annotations."""
     index: dict[str, str] = {}
 
     for page in pages.values():
-        if page.page_type == "course":
-            raw_code = page.frontmatter.get("course_code")
-            if raw_code:
-                number = normalize_course_number(str(raw_code))
-                if number:
-                    title = page.title_he or page.title
-                    if title:
-                        index.setdefault(number, str(title))
+        raw_code = page.frontmatter.get("course_code")
+        if raw_code is not None:
+            number = normalize_course_number(str(raw_code))
+            if number:
+                title = _course_page_title(page)
+                if title:
+                    index.setdefault(number, title)
 
         for body in (page.english_body, page.body):
             _titles_from_tables(body, index)
-            _titles_from_inline(strip_wikilinks_for_inline_scan(body), index)
+            scanned = strip_wikilinks_for_inline_scan(body)
+            _titles_from_inline(scanned, index)
+            _titles_from_reverse_inline(body, index)
+            _titles_from_wikilink_cells(body, index, pages)
 
     return index
 

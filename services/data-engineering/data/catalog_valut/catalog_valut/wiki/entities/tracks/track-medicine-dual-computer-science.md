@@ -5,6 +5,7 @@ aliases: [תואר כפול רפואה מדעי המחשב, medicine CS dual, 02
 type: entity
 tags: [track, faculty-medicine]
 faculty: faculty-medicine
+canonicalSlug: track-cs-medicine-dual
 sources: 1
 created: 2026-06-22
 updated: 2026-06-22

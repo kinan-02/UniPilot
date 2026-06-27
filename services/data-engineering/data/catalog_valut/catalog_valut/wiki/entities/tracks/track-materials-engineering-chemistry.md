@@ -5,6 +5,7 @@ aliases: [מסלול משולב הנדסת חומרים-כימיה, Materials En
 type: entity
 tags: [track, bsc, faculty-materials-science-engineering]
 faculty: faculty-materials-science-engineering
+electiveSource: track-materials-engineering
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

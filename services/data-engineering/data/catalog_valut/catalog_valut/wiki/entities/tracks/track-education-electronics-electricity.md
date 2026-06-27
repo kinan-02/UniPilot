@@ -5,6 +5,8 @@ aliases: [הוראת אלקטרוניקה-חשמל, Education Electronics Electr
 type: entity
 tags: [track, bsc, faculty-education-science-technology]
 faculty: faculty-education-science-technology
+electiveSource: track-electrical-engineering
+electiveCatalogSource: technion-education-catalog-2025-2026
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

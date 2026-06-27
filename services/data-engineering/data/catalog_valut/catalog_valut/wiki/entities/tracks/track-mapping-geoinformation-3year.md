@@ -5,6 +5,7 @@ aliases: [מיפוי וגיאו-אינפורמציה (תלת שנתי), Mapping 
 type: entity
 tags: [track, bsc, faculty-civil-environmental-engineering]
 faculty: faculty-civil-environmental-engineering
+electiveSource: track-mapping-geoinformation-4year
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

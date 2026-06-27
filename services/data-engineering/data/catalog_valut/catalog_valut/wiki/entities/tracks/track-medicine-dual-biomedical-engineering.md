@@ -5,6 +5,8 @@ aliases: [תואר כפול רפואה הנדסה ביו-רפואית, medicine 
 type: entity
 tags: [track, faculty-medicine]
 faculty: faculty-medicine
+canonicalSlug: track-biomedical-engineering-medicine-dual
+electiveSource: track-biomedical-engineering-medicine-dual
 sources: 1
 created: 2026-06-22
 updated: 2026-06-22

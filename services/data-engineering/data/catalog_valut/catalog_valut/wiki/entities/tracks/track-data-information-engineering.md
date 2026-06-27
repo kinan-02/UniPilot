@@ -4,6 +4,7 @@ title_he: הנדסת נתונים ומידע
 aliases: [הנדסת נתונים ומידע, DNE, Data Engineering, Data & Information Engineering, Data and Information Engineering, נתונים ומידע, מגמת נתונים, מסלול נתונים, 009216]
 type: entity
 tags: [track, bsc, undergraduate, data-engineering]
+faculty: faculty-dds
 sources: 1
 created: 2026-06-21
 updated: 2026-06-21

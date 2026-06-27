@@ -4,6 +4,7 @@ title_he: הנדסת תעשייה וניהול
 aliases: [הנדסת תעשייה וניהול, IEM, ת"ו, תעשייה וניהול, Industrial Engineering, Industrial Engineering and Management, מסלול ת"ו, מגמת תעשייה, 009009]
 type: entity
 tags: [track, bsc, undergraduate, industrial-engineering]
+faculty: faculty-dds
 sources: 1
 created: 2026-06-21
 updated: 2026-06-21

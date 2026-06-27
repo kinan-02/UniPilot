@@ -29,6 +29,7 @@ from app.vault.export_faculty_vault_catalog import (
     _slugify_bucket_label,
     build_generic_program,
     export_faculty_vault_catalog,
+    should_export_degree_program,
     parse_credit_buckets_from_page,
 )
 from app.vault.loader import WikiPage
@@ -421,6 +422,214 @@ def test_build_generic_program_dedupes_hebrew_credit_buckets_and_standard_techni
         group["groupId"].endswith(":required-courses")
         for group in education["requirementGroups"]
     )
+
+
+def test_should_export_degree_program_skips_specializations_and_canonical_mirrors() -> None:
+    from app.paths import catalog_vault_root
+    from app.vault.export_faculty_vault_catalog import discover_faculty_track_slugs
+    from app.vault.loader import load_pages_by_slug, wiki_root
+
+    pages = load_pages_by_slug(wiki_root(catalog_vault_root()))
+    assert should_export_degree_program(pages["track-biology-general"]) is True
+    assert should_export_degree_program(pages["track-biology-human-development"]) is True
+    assert should_export_degree_program(pages["track-computer-science-cyber"]) is False
+    assert should_export_degree_program(pages["track-medicine-dual-computer-science"]) is False
+
+    medicine_slugs = frozenset(discover_faculty_track_slugs(pages, "medicine"))
+    assert should_export_degree_program(
+        pages["track-medicine-dual-computer-science"],
+        faculty_track_slugs=medicine_slugs,
+    ) is False
+    assert should_export_degree_program(
+        pages["track-medicine-dual-biomedical-engineering"],
+        faculty_track_slugs=medicine_slugs,
+    ) is True
+
+    chemistry_slugs = frozenset(discover_faculty_track_slugs(pages, "chemistry"))
+    assert should_export_degree_program(
+        pages["track-chemistry-materials-combined"],
+        faculty_track_slugs=chemistry_slugs,
+    ) is True
+
+
+def test_should_export_degree_program_skips_non_primary_canonical_with_faculty_slugs(
+    monkeypatch,
+) -> None:
+    page = WikiPage(
+        slug="track-mirror",
+        path=Path("/tmp/mirror.md"),
+        frontmatter={"canonicalSlug": "track-canonical"},
+        body="",
+        english_body="",
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog._track_selectable_as_primary",
+        lambda candidate: False,
+    )
+    assert should_export_degree_program(
+        page,
+        faculty_track_slugs=frozenset({"track-mirror"}),
+    ) is False
+
+
+def test_export_cross_faculty_canonical_mirrors_have_elective_pools() -> None:
+    chemistry_doc, _ = export_faculty_vault_catalog(faculty_id="chemistry")
+    chemistry_program = next(
+        program
+        for program in chemistry_doc["programs"]
+        if (program.get("metadata") or {}).get("wikiPage") == "track-chemistry-materials-combined"
+    )
+    chemistry_pools = [
+        group
+        for group in chemistry_program.get("requirementGroups") or []
+        if (group.get("ruleExpression") or {}).get("operator") in {"choose_n", "choose_chain"}
+        and (group.get("courseReferences") or [])
+    ]
+    assert chemistry_pools
+
+    medicine_doc, _ = export_faculty_vault_catalog(faculty_id="medicine")
+    medicine_program = next(
+        program
+        for program in medicine_doc["programs"]
+        if (program.get("metadata") or {}).get("wikiPage")
+        == "track-medicine-dual-biomedical-engineering"
+    )
+    medicine_pools = [
+        group
+        for group in medicine_program.get("requirementGroups") or []
+        if (group.get("ruleExpression") or {}).get("operator") in {"choose_n", "choose_chain"}
+        and (group.get("courseReferences") or [])
+    ]
+    assert medicine_pools
+
+
+def test_export_faculty_vault_catalog_exports_each_primary_track_slug(
+    monkeypatch,
+) -> None:
+    """Each exportable track slug gets its own program document (codes may repeat)."""
+    program_code = "099999-1-000"
+    pages = {
+        "track-dup-a": WikiPage(
+            slug="track-dup-a",
+            path=Path("/tmp/track-dup-a.md"),
+            frontmatter={"faculty": "faculty-test"},
+            body="",
+            english_body=f"**Track code:** {program_code}\n",
+        ),
+        "track-dup-b": WikiPage(
+            slug="track-dup-b",
+            path=Path("/tmp/track-dup-b.md"),
+            frontmatter={"faculty": "faculty-test"},
+            body="",
+            english_body=f"**Track code:** {program_code}\n",
+        ),
+    }
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.load_pages_by_slug",
+        lambda root: pages,
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.discover_faculty_track_slugs",
+        lambda loaded_pages, faculty_id: ["track-dup-a", "track-dup-b"],
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.build_generic_program",
+        lambda page, faculty_id, pages: {
+            "programCode": program_code,
+            "metadata": {"wikiPage": page.slug},
+            "requirementGroups": [],
+            "totalCredits": 155.0,
+        },
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.build_wiki_path_catalog",
+        lambda **kwargs: {"faculties": [], "pathOptions": []},
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.apply_vault_signoff_to_catalog",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.build_readiness_after_vault_signoff",
+        lambda doc: {
+            "counts": {},
+            "blockingIssuesForStaging": [],
+            "canImportToStaging": True,
+        },
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.ReviewedCuratedCatalogDocument.model_validate",
+        lambda doc: doc,
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.Phase8ReadinessCheck.model_validate",
+        lambda readiness: readiness,
+    )
+    doc, _ = export_faculty_vault_catalog(faculty_id="test")
+    assert len(doc["programs"]) == 2
+    assert {program["metadata"]["wikiPage"] for program in doc["programs"]} == {
+        "track-dup-a",
+        "track-dup-b",
+    }
+
+
+def test_export_faculty_vault_catalog_exports_shared_code_per_track_slug() -> None:
+    biology_doc, _ = export_faculty_vault_catalog(faculty_id="biology")
+    biology_slugs = {(program["programCode"], program["metadata"]["wikiPage"]) for program in biology_doc["programs"]}
+    assert ("013043-1-000", "track-biology-general") in biology_slugs
+    assert ("013043-1-000", "track-biology-human-development") in biology_slugs
+    assert len(biology_doc["programs"]) >= 4
+
+    cs_doc, _ = export_faculty_vault_catalog(faculty_id="computer-science")
+    cs_slugs = [program["metadata"]["wikiPage"] for program in cs_doc["programs"]]
+    assert "track-computer-science-general-3year" in cs_slugs
+    assert "track-computer-science-general-4year" in cs_slugs
+    assert len(cs_doc["programs"]) >= 8
+
+
+def test_export_faculty_vault_catalog_skips_duplicate_slug(monkeypatch) -> None:
+    program_code = "099998-1-000"
+    page = WikiPage(
+        slug="track-once",
+        path=Path("/tmp/track-once.md"),
+        frontmatter={"faculty": "faculty-test"},
+        body="",
+        english_body=f"**Track code:** {program_code}\n",
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.load_pages_by_slug",
+        lambda root: {"track-once": page},
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.discover_faculty_track_slugs",
+        lambda loaded_pages, faculty_id: ["track-once", "track-once"],
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.build_wiki_path_catalog",
+        lambda **kwargs: {"faculties": [], "pathOptions": []},
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.apply_vault_signoff_to_catalog",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.build_readiness_after_vault_signoff",
+        lambda doc: {
+            "counts": {},
+            "blockingIssuesForStaging": [],
+            "canImportToStaging": True,
+        },
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.ReviewedCuratedCatalogDocument.model_validate",
+        lambda doc: doc,
+    )
+    monkeypatch.setattr(
+        "app.vault.export_faculty_vault_catalog.Phase8ReadinessCheck.model_validate",
+        lambda readiness: readiness,
+    )
+    doc, _ = export_faculty_vault_catalog(faculty_id="test")
+    assert len(doc["programs"]) == 1
 
 
 def test_semester_matrix_groups_merge_variant_headings() -> None:

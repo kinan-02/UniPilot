@@ -141,6 +141,7 @@ const STUDY_LEVEL_LABELS: Record<string, { he: string; en: string }> = {
   MSc: { he: 'תואר שני', en: 'Master' },
   PhD: { he: 'דוקטורט', en: 'PhD' },
   MBA: { he: 'MBA', en: 'MBA' },
+  MD: { he: 'דוקטור לרפואה', en: 'MD' },
 }
 
 function formatStudyLevels(levels: string[], locale: 'he' | 'en'): string {

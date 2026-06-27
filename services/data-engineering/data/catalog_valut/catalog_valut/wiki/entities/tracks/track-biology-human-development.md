@@ -5,6 +5,7 @@ aliases: [מגמה ביולוגיה של האדם, Human Biology Track]
 type: entity
 tags: [track, bsc, faculty-biology]
 faculty: faculty-biology
+programKind: bsc_specialization
 sources: 1
 created: 2026-06-21
 updated: 2026-06-21

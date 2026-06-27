@@ -168,3 +168,19 @@ def cs_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, Any]
     groups = _science_chain_groups(page, program_code)
     groups.extend(_specialization_groups(page, program_code))
     return groups
+
+
+def cs_elective_groups_from_source(
+    page: WikiPage,
+    program_code: str,
+    *,
+    source_page: WikiPage | None = None,
+) -> list[dict[str, Any]]:
+    """Parse CS elective pools from the general 4-year wiki page for any target program code."""
+    source = source_page or page
+    if source.slug != GENERAL_4YEAR_SLUG:
+        return []
+
+    groups = _science_chain_groups(source, program_code)
+    groups.extend(_specialization_groups(source, program_code))
+    return groups

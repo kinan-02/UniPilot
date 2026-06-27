@@ -5,6 +5,7 @@ aliases: [הנדסת מכונות — מסלול ברק (עתודה), Mechanical
 type: entity
 tags: [track, bsc, faculty-mechanical-engineering]
 faculty: faculty-mechanical-engineering
+electiveSource: track-mechanical-engineering
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

@@ -5,6 +5,7 @@ aliases: [מסלול דו-חוגי כימיה-ביוכימיה, Chemistry — Bi
 type: entity
 tags: [track, bsc, faculty-chemistry]
 faculty: faculty-chemistry
+canonicalSlug: track-biology-chemistry-dual
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

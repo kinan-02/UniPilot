@@ -5,6 +5,7 @@ aliases: [מסלול דו-חוגי ביולוגיה-כימיה, Biology and Chem
 type: entity
 tags: [track, bsc, faculty-biology, faculty-chemistry]
 faculty: faculty-biology
+electiveSource: track-biology-general
 sources: 1
 created: 2026-06-22
 updated: 2026-06-24

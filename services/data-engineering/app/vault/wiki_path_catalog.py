@@ -36,7 +36,7 @@ def _option_key(institution_id: str, faculty_id: str, wiki_slug: str) -> str:
 def _study_levels_from_text(text: str) -> list[str]:
     lowered = text.lower()
     levels: list[str] = []
-    if "b.sc" in lowered or "bsc" in lowered or "תואר ראשון" in text:
+    if "b.sc" in lowered or "bsc" in lowered or "תואר ראשון" in text or "בוגר" in text:
         levels.append("BSc")
     if "m.sc" in lowered or "msc" in lowered or "מוסמך" in text or 'מ"א' in text:
         levels.append("MSc")
@@ -44,7 +44,35 @@ def _study_levels_from_text(text: str) -> list[str]:
         levels.append("PhD")
     if "mba" in lowered:
         levels.append("MBA")
+    if "m.d" in lowered or " md " in f" {lowered} " or "דוקטור לרפואה" in text:
+        levels.append("MD")
     return levels or ["BSc"]
+
+
+_TRACK_PREREQUISITE_PATTERN = re.compile(
+    r"\*\*Prerequisites?:\*\*[^\n]*",
+    re.IGNORECASE,
+)
+
+
+def _track_study_levels(page: WikiPage) -> list[str]:
+    body = f"{page.english_body}\n{page.body}"
+    return _study_levels_from_text(body)
+
+
+def _track_selectable_as_primary(page: WikiPage) -> bool:
+    """Admission paths only — exclude clinical/continuation tracks with upstream prerequisites."""
+    body = f"{page.english_body}\n{page.body}"
+    prerequisite_line = _TRACK_PREREQUISITE_PATTERN.search(body)
+    if not prerequisite_line:
+        return True
+    prereq_text = prerequisite_line.group(0).lower()
+    if "completion of" not in prereq_text and "requires" not in prereq_text:
+        return True
+    for link in extract_wikilinks(prerequisite_line.group(0)):
+        if link.startswith("track-"):
+            return False
+    return True
 
 
 def _graduate_study_levels(title: str, section_text: str) -> list[str]:
@@ -240,8 +268,8 @@ def _track_options(
                 name=page.title,
                 name_he=page.title_he,
                 name_en=page.title,
-                study_levels=["BSc"],
-                selectable_as_primary=True,
+                study_levels=_track_study_levels(page),
+                selectable_as_primary=_track_selectable_as_primary(page),
                 linked_program_code=program_code,
                 description=_page_description(page),
                 duration=duration,
