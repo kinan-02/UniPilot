@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.curation.catalog_signoff import (
     SIGNOFF_SOURCE_HUMAN,
     SIGNOFF_SOURCE_VAULT,
+    _merge_catalog_signoffs,
     extract_catalog_signoff,
     extract_human_signoff_from_staged_programs,
     signoff_source_label,
@@ -12,6 +13,9 @@ from app.curation.catalog_signoff import (
 
 
 class TestExtractCatalogSignoff:
+    def test_merge_catalog_signoffs_empty_returns_empty_dict(self):
+        assert _merge_catalog_signoffs([]) == {}
+
     def test_returns_empty_dict_for_empty_list(self):
         assert extract_catalog_signoff([]) == {}
 

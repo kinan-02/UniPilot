@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Callable
 
 from app.config import get_settings
 from app.curation.catalog_policies import (
@@ -221,16 +222,28 @@ def test_gate_fails_without_catalog_signoff(mongo_database) -> None:
     assert any(check.checkId == "policy.catalog_signoff_present" and not check.passed for check in gate.checks)
 
 
+def _set_vault_signoff_on_all_programs(
+    database,
+    *,
+    mutator: Callable[[dict], None],
+) -> None:
+    settings = get_settings()
+    for program in database[settings.staging_degree_programs_collection].find({}):
+        signoff = dict(program["curationReport"]["vaultSignoff"])
+        mutator(signoff)
+        database[settings.staging_degree_programs_collection].update_one(
+            {"_id": program["_id"]},
+            {"$set": {"curationReport.vaultSignoff": signoff}},
+        )
+
+
 def test_gate_fails_if_excluded_course_list_missing(mongo_database) -> None:
     _seed_signed_off_promotion_staging(mongo_database)
-    settings = get_settings()
-    program = mongo_database[settings.staging_degree_programs_collection].find_one({})
-    signoff = program["curationReport"]["vaultSignoff"]
-    signoff["productionExcludedCourseNumbers"] = []
-    mongo_database[settings.staging_degree_programs_collection].update_one(
-        {"_id": program["_id"]},
-        {"$set": {"curationReport.vaultSignoff": signoff}},
-    )
+
+    def clear_excluded(signoff: dict) -> None:
+        signoff["productionExcludedCourseNumbers"] = []
+
+    _set_vault_signoff_on_all_programs(mongo_database, mutator=clear_excluded)
     gate = build_promotion_gate_result(mongo_database)
     assert gate.gateStatus == "fail"
     assert any(check.checkId == "policy.excluded_courses_list" and not check.passed for check in gate.checks)
@@ -444,14 +457,12 @@ def test_gate_recomputes_excluded_courses_from_vault_export(
         {"courseNumber": "00940345"},
         {"$set": {"faculty": "הפקולטה למדעי הנתונים וההחלטות"}},
     )
-    program = mongo_database[settings.staging_degree_programs_collection].find_one({})
-    signoff = program["curationReport"]["vaultSignoff"]
-    signoff["signoffSource"] = "vault-wiki"
-    signoff["productionExcludedCourseNumbers"] = ["00960226"]
-    mongo_database[settings.staging_degree_programs_collection].update_one(
-        {"_id": program["_id"]},
-        {"$set": {"curationReport.vaultSignoff": signoff}},
-    )
+
+    def set_excluded(signoff: dict) -> None:
+        signoff["signoffSource"] = "vault-wiki"
+        signoff["productionExcludedCourseNumbers"] = ["00960226"]
+
+    _set_vault_signoff_on_all_programs(mongo_database, mutator=set_excluded)
 
     gate = build_promotion_gate_result(mongo_database, allow_warnings=True)
     excluded_check = next(
