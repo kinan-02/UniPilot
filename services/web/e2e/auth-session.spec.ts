@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import {
   createNamedPlan,
   DEFAULT_E2E_PASSWORD,
+  dashboardProgramTypeLeakPattern,
   expectDashboardProgramType,
   expectSidebarEmail,
   isGoogleAuthEnabled,
@@ -32,7 +33,7 @@ test.describe('Auth session isolation', () => {
 
     await loginExistingUserExpectingDashboard(page, userB)
     await expectDashboardProgramType(page, 'MSc')
-    await expect(page.getByRole('heading', { name: /BSc student/i })).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: dashboardProgramTypeLeakPattern('BSc') })).not.toBeVisible()
     await expectSidebarEmail(page, userB)
   })
 
@@ -90,7 +91,7 @@ test.describe('Auth session isolation', () => {
     await setupContext.close()
 
     await loginExistingUserExpectingOnboarding(page, userB)
-    await expect(page.getByRole('heading', { name: /BSc student/i })).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: dashboardProgramTypeLeakPattern('BSc') })).not.toBeVisible()
     await expect(page.getByRole('link', { name: /לוח בקרה|Dashboard/i })).not.toBeVisible()
   })
 
@@ -145,7 +146,7 @@ test.describe('Auth session isolation', () => {
     await waitForDashboard(page)
 
     await expect(page.getByText(planName)).not.toBeVisible()
-    await expect(page.getByRole('heading', { name: /BSc student/i })).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: dashboardProgramTypeLeakPattern('BSc') })).not.toBeVisible()
     await expectDashboardProgramType(page, 'MSc')
     await expectSidebarEmail(page, passwordEmail)
   })
@@ -170,6 +171,6 @@ test.describe('Auth session isolation', () => {
       googleId: `google-sub-${Date.now()}`,
     })
     await waitForOnboardingPage(page)
-    await expect(page.getByRole('heading', { name: /MSc student/i })).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: dashboardProgramTypeLeakPattern('MSc') })).not.toBeVisible()
   })
 })

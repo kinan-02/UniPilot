@@ -97,9 +97,22 @@ async def test_generate_rejects_invalid_semester_code(auth_client, mongo_databas
     response = await auth_client.post(
         "/semester-plans/generate",
         headers={"Authorization": f"Bearer {token}"},
-        json={"semesterCode": "2025-3", "maxCredits": 6},
+        json={"semesterCode": "2025-4", "maxCredits": 6},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_generate_accepts_summer_semester_code(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_and_profile(auth_client, "matrix-summer-sem@example.com", fixtures["programId"])
+
+    response = await auth_client.post(
+        "/semester-plans/generate",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"semesterCode": "2025-3", "maxCredits": 6},
+    )
+    assert response.status_code == 201
 
 
 @pytest.mark.asyncio

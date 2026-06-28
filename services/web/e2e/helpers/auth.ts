@@ -69,9 +69,20 @@ export async function expectSidebarEmail(page: Page, email: string) {
   })
 }
 
+export function dashboardProgramTypeHeadingPattern(programType: OnboardingProgramType): RegExp {
+  return new RegExp(
+    `(?:Hello,? ${programType} student|שלום,? ${programType} סטודנט)`,
+    'i',
+  )
+}
+
+export function dashboardProgramTypeLeakPattern(programType: OnboardingProgramType): RegExp {
+  return new RegExp(`${programType} (?:student|סטודנט)`, 'i')
+}
+
 export async function expectDashboardProgramType(page: Page, programType: OnboardingProgramType) {
   await expect(
-    page.getByRole('heading', { name: new RegExp(`Hello,? ${programType} student`, 'i') }),
+    page.getByRole('heading', { name: dashboardProgramTypeHeadingPattern(programType) }),
   ).toBeVisible({ timeout: 15_000 })
 }
 
