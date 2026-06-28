@@ -7,7 +7,7 @@ services:
     environment:
       API_PORT: 8000
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
       REDIS_URL: redis://:${REDIS_PASSWORD:-unipilot_dev_redis_password}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
@@ -58,7 +58,7 @@ services:
       - .env
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
       MONGO_DB_NAME: ${MONGO_DB:-unipilot_python}
       LOG_LEVEL: ${DATA_ENGINEERING_LOG_LEVEL:-INFO}
       CATALOG_VAULT_PATH: ${CATALOG_VAULT_PATH:-data/catalog_valut}
@@ -135,7 +135,7 @@ services:
     environment:
       WORKER_PORT: ${WORKER_PORT}
       WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME}
-      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
       REDIS_URL: redis://:${REDIS_PASSWORD:-unipilot_dev_redis_password}@redis:6379
       AI_SERVICE_URL: http://ai:${AI_SERVICE_PORT}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}

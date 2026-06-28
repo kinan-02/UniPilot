@@ -1,0 +1,24 @@
+# Use with a shared MongoDB Atlas cluster (MONGO_URI set in .env):
+#   docker compose -f docker-compose.yml -f docker-compose.atlas.yml up --build
+#
+# Skips the local mongo container and removes mongo from service dependencies.
+
+services:
+  api:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+
+  worker:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+
+  data-engineering:
+    depends_on: !override {}
+
+  mongo:
+    profiles:
+      - local-mongo
