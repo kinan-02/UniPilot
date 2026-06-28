@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GraduationCap, Info } from 'lucide-react'
 import { progressApi, transcriptApi } from '../api/endpoints'
 import { TranscriptAddCourseForm } from '../components/transcript/TranscriptAddCourseForm'
+import { TranscriptPdfUpload } from '../components/transcript/TranscriptPdfUpload'
 import { TranscriptCourseList } from '../components/transcript/TranscriptCourseList'
 import { TranscriptPageSkeleton } from '../components/transcript/TranscriptPageSkeleton'
 import { TranscriptSummaryCard } from '../components/transcript/TranscriptSummaryCard'
@@ -95,6 +96,16 @@ export function TranscriptPage() {
           </div>
         </Card>
       ) : null}
+
+      <TranscriptPdfUpload t={t} locale={locale} featured={records.length === 0} />
+
+      <div className="relative flex items-center gap-4 py-1">
+        <div className="h-px flex-1 bg-[var(--color-border)]" />
+        <span className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
+          {t('transcript.upload.orManual')}
+        </span>
+        <div className="h-px flex-1 bg-[var(--color-border)]" />
+      </div>
 
       <TranscriptAddCourseForm
         defaultSemesterCode={currentSemesterCode}

@@ -10,6 +10,7 @@ from app.repositories import catalog_repository
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
 from app.services.graduation_progress_calculator import calculate_graduation_progress
+from app.services.graduation_catalog_context import enrich_pool_documents_for_program
 
 ProgressStatus = Literal[
     "ok",
@@ -48,12 +49,23 @@ async def get_graduation_progress_for_user(
         include_internal=True,
     )
     pools_task = catalog_repository.list_course_pools_for_program(database, program_code)
+    matrix_task = catalog_repository.list_semester_matrix_rules_for_program(
+        database,
+        program_code,
+    )
     completed_task = find_all_completed_courses_by_user_id(database, user_id)
 
-    hard_requirements, pool_documents, completed_records = await asyncio.gather(
+    hard_requirements, pool_documents, semester_matrix_documents, completed_records = await asyncio.gather(
         hard_requirements_task,
         pools_task,
+        matrix_task,
         completed_task,
+    )
+
+    pool_documents = await enrich_pool_documents_for_program(
+        database,
+        program_code=program_code,
+        pool_documents=pool_documents,
     )
 
     course_ids = [str(record["courseId"]) for record in completed_records]
@@ -66,6 +78,7 @@ async def get_graduation_progress_for_user(
         pool_documents=pool_documents,
         catalog_courses_by_id=catalog_courses_by_id,
         completed_course_records=completed_records,
+        semester_matrix_documents=semester_matrix_documents,
     )
 
     return {"status": "ok", "progress": progress}

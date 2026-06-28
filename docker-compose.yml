@@ -19,6 +19,7 @@ services:
       AI_RATE_LIMIT_MAX: ${AI_RATE_LIMIT_MAX:-10}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
+      TRANSCRIPT_PARSER_URL: http://transcript-parser:${TRANSCRIPT_PARSER_PORT:-8010}
       WEB_APP_URL: ${WEB_APP_URL:-http://localhost:3000}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
@@ -34,6 +35,8 @@ services:
       mongo:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      transcript-parser:
         condition: service_healthy
     healthcheck:
       test:
@@ -177,6 +180,32 @@ services:
           "node",
           "-e",
           "const port=process.env.AI_SERVICE_PORT||3001; fetch('http://localhost:'+port+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  transcript-parser:
+    build:
+      context: ./services/transcript-parser
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      TRANSCRIPT_PARSER_PORT: ${TRANSCRIPT_PARSER_PORT:-8010}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
+      MAX_UPLOAD_BYTES: ${TRANSCRIPT_IMPORT_MAX_UPLOAD_BYTES:-5242880}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8010/health').read()",
         ]
       interval: 10s
       timeout: 5s

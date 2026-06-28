@@ -1,4 +1,5 @@
 import type { ElectiveBucket, ElectivePoolCourse } from '../types/api'
+import { courseNumberKeys } from './courseNumbers'
 import { groupSuffix, isChainPool } from './electivePools'
 
 export type ChainStepKind = 'required' | 'choose_one'
@@ -343,11 +344,18 @@ function coursesForStep(
   return courses
 }
 
-function stepSatisfied(courses: ElectivePoolCourse[], countedNumbers: Set<string>): boolean {
-  return courses.some(
-    (course) =>
-      countedNumbers.has(course.courseNumber) ||
-      countedNumbers.has(normalizeNumber(course.courseNumber)),
+function stepSatisfied(
+  definition: ChainStepDefinition,
+  courses: ElectivePoolCourse[],
+  countedNumbers: Set<string>,
+): boolean {
+  for (const number of definition.courseNumbers ?? []) {
+    if (courseNumberKeys(number).some((key) => countedNumbers.has(key))) {
+      return true
+    }
+  }
+  return courses.some((course) =>
+    courseNumberKeys(course.courseNumber).some((key) => countedNumbers.has(key)),
   )
 }
 
@@ -384,7 +392,7 @@ function resolveSteps(
       kindLabel,
       note,
       courses,
-      satisfied: stepSatisfied(courses, countedNumbers),
+      satisfied: stepSatisfied(definition, courses, countedNumbers),
     })
   }
 

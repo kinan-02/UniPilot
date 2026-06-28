@@ -1,0 +1,6 @@
+fastapi==0.135.4
+uvicorn[standard]==0.32.1
+pydantic-settings==2.6.1
+pydantic==2.10.3
+python-multipart==0.0.20
+pymupdf==1.25.5

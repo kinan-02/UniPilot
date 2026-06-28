@@ -11,7 +11,7 @@ from app.planning.prerequisite_resolver import (
 
 def test_canonical_course_number_rejects_invalid_lengths():
     assert canonical_course_number("") is None
-    assert canonical_course_number("123456") is None
+    assert canonical_course_number("12345") is None
 
 
 def test_extract_course_numbers_returns_empty_for_blank_text():

@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { useCallback, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BookOpen } from 'lucide-react'
 import { progressApi } from '../api/endpoints'
@@ -8,6 +8,9 @@ import {
   ProgressEmptyTranscriptHint,
   RequirementBucketRow,
 } from '../components/progress/ProgressSections'
+import { ProgressAttentionPanel } from '../components/progress/ProgressAttentionPanel'
+import { ProgressCompletionCelebration } from '../components/progress/ProgressCompletionCelebration'
+import { ProgressPageNav } from '../components/progress/ProgressPageNav'
 import { CurriculumGraphSection } from '../components/progress/CurriculumGraphSection'
 import { ElectivePoolsPanel } from '../components/progress/ElectivePoolsPanel'
 import { ElectivePoolsPanelSkeleton } from '../components/progress/ElectivePoolsPanelSkeleton'
@@ -17,14 +20,30 @@ import { useTranslation } from '../i18n'
 import {
   buildRequiredCurriculumCourseNumbers,
   buildTranscriptCourseNumbers,
+  findPoolsForBucket,
 } from '../lib/electivePools'
-import { partitionRequirementBuckets, progressCatalogSubtitle } from '../lib/graduationProgress'
+import {
+  countAttentionItems,
+  hasActionableGaps,
+  partitionRequirementBuckets,
+  progressCatalogSubtitle,
+} from '../lib/graduationProgress'
 import type { ElectiveBucket, RequirementProgressEntry } from '../types/api'
 
 const CURRICULUM_GRAPH_STALE_MS = 5 * 60 * 1000
 
+function scrollToPoolPanel() {
+  requestAnimationFrame(() => {
+    document.getElementById('elective-pools-panel')?.scrollIntoView?.({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  })
+}
+
 export function ProgressPage() {
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null)
   const progressQuery = useQuery({
     queryKey: ['progress'],
@@ -39,7 +58,7 @@ export function ProgressPage() {
   })
   const electivePools = curriculumQuery.data?.curriculumGraph?.electiveBuckets ?? []
   const requirementProgress = progressQuery.data?.graduationProgress?.requirementProgress ?? []
-  const transcriptNumbers = useMemo(
+  const progressCourseNumbers = useMemo(
     () => buildTranscriptCourseNumbers(requirementProgress),
     [requirementProgress],
   )
@@ -48,18 +67,57 @@ export function ProgressPage() {
       buildRequiredCurriculumCourseNumbers(requirementProgress, {
         curriculumGraph: curriculumQuery.data?.curriculumGraph,
         remainingMandatory: progressQuery.data?.graduationProgress?.remainingMandatoryCourses,
+        completedMandatory: progressQuery.data?.graduationProgress?.completedMandatoryCourses,
       }),
     [
       curriculumQuery.data?.curriculumGraph,
+      progressQuery.data?.graduationProgress?.completedMandatoryCourses,
       progressQuery.data?.graduationProgress?.remainingMandatoryCourses,
       requirementProgress,
     ],
   )
+
+  useEffect(() => {
+    const poolId = searchParams.get('pool')
+    if (!poolId || !electivePools.some((pool) => pool.groupId === poolId)) return
+    setExpandedPoolId(poolId)
+    scrollToPoolPanel()
+  }, [electivePools, searchParams])
+
+  const handleExplorePool = useCallback(
+    (_bucket: RequirementProgressEntry, pool: ElectiveBucket) => {
+      setExpandedPoolId(pool.groupId)
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          next.set('pool', pool.groupId)
+          return next
+        },
+        { replace: true },
+      )
+      scrollToPoolPanel()
+    },
+    [setSearchParams],
+  )
+
   const handleExpandedPoolChange = useCallback(
     (_bucket: RequirementProgressEntry, pool: ElectiveBucket | null) => {
-      setExpandedPoolId(pool?.groupId ?? null)
+      const nextPoolId = pool?.groupId ?? null
+      setExpandedPoolId(nextPoolId)
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          if (nextPoolId) {
+            next.set('pool', nextPoolId)
+          } else {
+            next.delete('pool')
+          }
+          return next
+        },
+        { replace: true },
+      )
     },
-    [],
+    [setSearchParams],
   )
 
   if (progressQuery.isLoading) {
@@ -113,6 +171,30 @@ export function ProgressPage() {
     progressCatalogSubtitle(progress) || t('progress.subtitleFallback')
   const showTranscriptHint =
     progress.statusSummary === 'not_started' || progress.completedCredits <= 0
+  const curriculumGraph = curriculumQuery.data?.curriculumGraph
+  const showAttention = hasActionableGaps(progress, curriculumGraph)
+  const attentionCount = countAttentionItems(progress, curriculumGraph)
+  const showCurriculum = Boolean(curriculumGraph)
+  const showPools =
+    !curriculumQuery.isLoading || curriculumQuery.data
+      ? electivePools.length > 0
+      : false
+  const showCelebration =
+    !showAttention &&
+    (progress.statusSummary === 'complete' ||
+      progress.statusSummary === 'mandatory_requirements_met')
+  const navSections = [
+    ...(showAttention
+      ? [{ id: 'progress-attention', label: t('progress.nav.attention') }]
+      : []),
+    ...(mandatory.length
+      ? [{ id: 'progress-mandatory', label: t('progress.nav.mandatory') }]
+      : []),
+    ...(showPools ? [{ id: 'elective-pools-panel', label: t('progress.nav.pools') }] : []),
+    ...(showCurriculum
+      ? [{ id: 'progress-curriculum', label: t('progress.nav.curriculum') }]
+      : []),
+  ]
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -132,10 +214,48 @@ export function ProgressPage() {
 
       {showTranscriptHint ? <ProgressEmptyTranscriptHint t={t} /> : null}
 
-      <ProgressSummaryCard progress={progress} statusLabel={statusLabel} t={t} />
+      <ProgressSummaryCard
+        progress={progress}
+        statusLabel={statusLabel}
+        attentionCount={attentionCount}
+        t={t}
+      />
 
-      {curriculumQuery.data?.curriculumGraph ? (
-        <CurriculumGraphSection graph={curriculumQuery.data.curriculumGraph} t={t} />
+      <ProgressPageNav sections={navSections} t={t} />
+
+      {showCelebration ? (
+        <ProgressCompletionCelebration progress={progress} statusLabel={statusLabel} t={t} />
+      ) : null}
+
+      {showAttention ? (
+        <ProgressAttentionPanel
+          progress={progress}
+          curriculumGraph={curriculumGraph}
+          t={t}
+        />
+      ) : null}
+
+      {mandatory.length ? (
+        <Card id="progress-mandatory">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">{t('progress.mandatoryBuckets')}</h2>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              {t('progress.mandatoryBucketsHint')}
+            </p>
+          </div>
+          <div className="space-y-3">
+            {mandatory.map((bucket) => (
+              <RequirementBucketRow
+                key={bucket.requirementGroupId}
+                bucket={bucket}
+                linkedPools={findPoolsForBucket(bucket, electivePools)}
+                onExplorePool={electivePools.length ? handleExplorePool : undefined}
+                curriculumGraph={curriculumGraph}
+                t={t}
+              />
+            ))}
+          </div>
+        </Card>
       ) : null}
 
       {curriculumQuery.isLoading && !curriculumQuery.data ? (
@@ -145,7 +265,8 @@ export function ProgressPage() {
           pools={electivePools}
           requirementBuckets={requirementProgress}
           requiredCurriculumNumbers={requiredCurriculumNumbers}
-          transcriptNumbers={transcriptNumbers}
+          transcriptNumbers={progressCourseNumbers}
+          curriculumGraph={curriculumGraph}
           expandedPoolId={expandedPoolId}
           t={t}
           onExpandedPoolChange={handleExpandedPoolChange}
@@ -158,15 +279,10 @@ export function ProgressPage() {
         </Card>
       ) : null}
 
-      {mandatory.length ? (
-        <Card>
-          <h2 className="mb-4 text-sm font-semibold">{t('progress.mandatoryBuckets')}</h2>
-          <div className="space-y-3">
-            {mandatory.map((bucket) => (
-              <RequirementBucketRow key={bucket.requirementGroupId} bucket={bucket} t={t} />
-            ))}
-          </div>
-        </Card>
+      {showCurriculum ? (
+        <div id="progress-curriculum">
+          <CurriculumGraphSection graph={curriculumGraph!} t={t} />
+        </div>
       ) : null}
 
       {progress.assumptions?.length ? (

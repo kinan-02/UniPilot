@@ -40,6 +40,46 @@ type RequestOptions = {
   signal?: AbortSignal
 }
 
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  { token, signal }: { token?: string | null; signal?: AbortSignal } = {},
+): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  }
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+    signal,
+    credentials: 'include',
+  })
+
+  let payload: ApiEnvelope<T> | null = null
+  try {
+    payload = (await response.json()) as ApiEnvelope<T>
+  } catch {
+    payload = null
+  }
+
+  if (!response.ok || !payload?.success) {
+    const message =
+      payload?.error ??
+      (response.status === 429
+        ? 'Too many requests. Please wait a moment.'
+        : `Request failed (${response.status})`)
+    throw new ApiError(message, response.status)
+  }
+
+  return payload.data as T
+}
+
 export async function apiRequest<T>(
   path: string,
   { method = 'GET', body, token, signal }: RequestOptions = {},

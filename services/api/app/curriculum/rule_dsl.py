@@ -90,11 +90,25 @@ def summarize_pool_course_reference(
     if credits is None:
         credits = course_ref.get("creditsHint")
 
+    from app.services.course_reference_keys import course_reference_number_keys
+
+    alternatives = list(course_ref.get("alternatives") or [])
+    if not alternatives:
+        from app.curriculum.data_quality import parse_alternatives_from_text
+
+        notes = course_ref.get("notes") or []
+        notes_text = " ".join(str(note) for note in notes)
+        alternatives = parse_alternatives_from_text(
+            notes_text,
+            course_ref.get("prerequisitesText"),
+        )
+
     return {
         "courseNumber": number,
         "title": title,
         "titleHe": title_he,
         "credits": credits,
+        "alternatives": alternatives,
         "notes": (course_ref.get("notes") or [])[:2],
     }
 

@@ -81,7 +81,7 @@ export const PoolCourseListItem = memo(function PoolCourseListItem({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-[var(--color-text-muted)]">
           {course.credits != null ? <span className="tabular-nums">{formatCredits(course.credits)}</span> : null}
-          {isRequiredCurriculum ? (
+          {isRequiredCurriculum && !isCounted ? (
             <span className="inline-flex items-center gap-1 font-medium text-sky-800">
               {requiredLabel}
             </span>

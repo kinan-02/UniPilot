@@ -103,13 +103,13 @@ def test_failed_grade_does_not_exclude_matrix_mandatory_course():
     assert S1_COURSE_A in recommended_ids
 
 
-def test_grade_55_boundary_is_not_passing():
+def test_grade_55_boundary_is_passing():
     plan = _plan(
-        completed_course_records=[build_matrix_completed_record(S1_COURSE_A, grade=55, credits_earned=0)],
+        completed_course_records=[build_matrix_completed_record(S1_COURSE_A, grade=55, credits_earned=4.0)],
         max_credits=6,
     )
     recommended_ids = [course["courseId"] for course in plan["semesters"][0]["plannedCourses"]]
-    assert S1_COURSE_A in recommended_ids
+    assert S1_COURSE_A not in recommended_ids
 
 
 def test_grade_56_counts_as_completed():

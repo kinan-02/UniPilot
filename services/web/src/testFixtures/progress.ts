@@ -171,6 +171,7 @@ export function emptyCurriculumGraph(
     ],
     bottlenecks: [],
     electiveBuckets: [],
+    crossTrackEquivalenceGroups: [['00960211', '00960221']],
     ...overrides,
   }
 }

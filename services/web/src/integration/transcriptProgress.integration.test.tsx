@@ -33,6 +33,10 @@ vi.mock('../api/endpoints', () => ({
     create: vi.fn(),
     remove: vi.fn(),
   },
+  transcriptImportApi: {
+    parse: vi.fn(),
+    commit: vi.fn(),
+  },
   progressApi: {
     get: vi.fn(),
     curriculumGraph: vi.fn(),
@@ -124,6 +128,10 @@ describe('Transcript ↔ Progress integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    vi.mocked(endpoints.transcriptApi.listAll).mockResolvedValue({
+      completedCourses: [],
+      pagination: { total: 0, page: 1, limit: 0 },
+    })
     vi.mocked(endpoints.progressApi.curriculumGraph).mockResolvedValue({
       curriculumGraph: {
         ...emptyCurriculumGraph(),
@@ -151,6 +159,7 @@ describe('Transcript ↔ Progress integration', () => {
     await user.click(poolCard.querySelector('button[aria-expanded="false"]')!)
 
     const detail = await screen.findByTestId(`elective-pool-detail-${dsPool.groupId}`)
+    await user.click(screen.getByRole('button', { name: /^counted/i }))
     expect(detail).toHaveTextContent('00940411')
     expect(detail).toHaveTextContent(/counted/i)
   })
@@ -187,6 +196,66 @@ describe('Transcript ↔ Progress integration', () => {
 
     await waitFor(() => {
       expect(endpoints.transcriptApi.remove).toHaveBeenCalledWith('record-1')
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })
+  })
+
+  it('invalidates graduation progress after importing transcript courses', async () => {
+    const user = userEvent.setup()
+    vi.mocked(endpoints.transcriptImportApi.parse).mockResolvedValue({
+      parsePreview: {
+        courses: [
+          {
+            courseNumber: '00940411',
+            semesterCode: '2024-2',
+            grade: 88,
+            creditsEarned: 3.5,
+            attempt: 1,
+            title: 'Intro to Data Science',
+            confidence: 0.95,
+            warnings: [],
+          },
+        ],
+        warnings: [],
+        parseMetadata: {
+          pageCount: 1,
+          extractor: 'pymupdf',
+          pipelineVersion: '0.3.0-official-he-en',
+          textCharCount: 1000,
+          ocrUsed: false,
+        },
+      },
+    })
+    vi.mocked(endpoints.transcriptImportApi.commit).mockResolvedValue({
+      importResult: {
+        created: [],
+        skippedDuplicates: [],
+        unresolved: [],
+        createdCount: 1,
+        skippedCount: 0,
+        unresolvedCount: 0,
+      },
+    })
+    vi.mocked(endpoints.transcriptApi.listAll).mockResolvedValue({
+      completedCourses: [],
+      pagination: { total: 0, page: 1, limit: 0 },
+    })
+    vi.mocked(endpoints.progressApi.get).mockResolvedValue({
+      graduationProgress: progressWithDsCourse,
+    })
+
+    const { queryClient } = renderWithClient(<TranscriptPage />)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await screen.findByTestId('transcript-upload-dropzone')
+    const file = new File(['pdf'], 'transcript.pdf', { type: 'application/pdf' })
+    await user.upload(screen.getByTestId('transcript-upload-input'), file)
+    await user.click(screen.getByTestId('transcript-upload-parse'))
+    await screen.findByTestId('transcript-upload-preview')
+    await user.click(screen.getByTestId('transcript-upload-commit'))
+
+    await waitFor(() => {
+      expect(endpoints.transcriptImportApi.commit).toHaveBeenCalled()
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })
   })

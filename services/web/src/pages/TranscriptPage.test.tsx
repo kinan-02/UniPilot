@@ -31,6 +31,10 @@ vi.mock('../api/endpoints', () => ({
     create: vi.fn(),
     remove: vi.fn(),
   },
+  transcriptImportApi: {
+    parse: vi.fn(),
+    commit: vi.fn(),
+  },
   progressApi: {
     get: vi.fn(),
   },
@@ -128,7 +132,7 @@ describe('TranscriptPage', () => {
   it('renders localized header, summary, and semester groups', async () => {
     renderTranscript()
 
-    expect(await screen.findByRole('heading', { name: /transcript/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Transcript' })).toBeInTheDocument()
     expect(screen.getByTestId('transcript-summary-card')).toBeInTheDocument()
     expect(screen.getByTestId('transcript-course-list')).toBeInTheDocument()
     expect(screen.getByTestId('transcript-row-00940411')).toBeInTheDocument()

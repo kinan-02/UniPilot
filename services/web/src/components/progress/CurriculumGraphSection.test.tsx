@@ -19,7 +19,7 @@ const t = (key: string) => {
 }
 
 describe('CurriculumGraphSection', () => {
-  it('renders section header and collapsed state by default', () => {
+  it('renders section header, preview stats, and collapsed state by default', () => {
     render(<CurriculumGraphSection graph={emptyCurriculumGraph()} t={t} />)
 
     expect(screen.getByTestId('curriculum-graph-section')).toBeInTheDocument()
@@ -29,6 +29,7 @@ describe('CurriculumGraphSection', () => {
       'false',
     )
     expect(screen.queryByTestId('curriculum-mindmap')).not.toBeInTheDocument()
+    expect(screen.getByTestId('curriculum-graph-preview')).toBeInTheDocument()
   })
 
   it('expands mind map and renders curriculum nodes', async () => {
@@ -54,5 +55,54 @@ describe('CurriculumGraphSection', () => {
     await user.click(screen.getByRole('button', { name: /collapse view/i }))
 
     expect(screen.queryByTestId('curriculum-mindmap')).not.toBeInTheDocument()
+  })
+
+  it('shows completed-via-alternative note on curriculum nodes', async () => {
+    const user = userEvent.setup()
+    render(
+      <CurriculumGraphSection
+        graph={emptyCurriculumGraph({
+          nodes: [
+            {
+              nodeId: 'node-algebra',
+              courseNumber: '1040065',
+              title: 'Algebra',
+              semester: 1,
+              status: 'completed',
+              credits: { display: '5', value: 5, uncertain: false },
+              alternatives: ['1040016'],
+              satisfiedViaAlternative: '01040016',
+              dataQuality: {
+                manualReviewRequired: false,
+                confidence: 'high',
+                hasAlternatives: true,
+                creditsUncertain: false,
+                verifyWithRegistrar: true,
+              },
+              prerequisiteNumbers: [],
+              missingPrerequisites: [],
+              isBottleneck: false,
+            },
+          ],
+          semesterLanes: [
+            {
+              semester: 1,
+              title: 'Year 1 — Semester 1',
+              nodeIds: ['node-algebra'],
+              collapsedByDefault: false,
+            },
+          ],
+        })}
+        t={(key, params) => {
+          if (key === 'progress.curriculum.satisfiedViaAlternative') {
+            return `Completed via parallel course ${params?.courseNumber ?? ''}`
+          }
+          return t(key)
+        }}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /mind map view/i }))
+    expect(screen.getByText(/completed via parallel course 01040016/i)).toBeInTheDocument()
   })
 })

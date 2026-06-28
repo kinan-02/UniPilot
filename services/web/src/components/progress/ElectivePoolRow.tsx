@@ -10,12 +10,12 @@ import {
   resolvePoolProgressDisplay,
   shouldShowPoolCatalogExplanation,
 } from '../../lib/electivePools'
-import { cn } from '../../lib/utils'
+import { cn, formatCredits } from '../../lib/utils'
 import { ElectivePoolCourseList } from './ElectivePoolCourseList'
 import { PoolCatalogExplanation } from './PoolCatalogExplanation'
 import { PoolProgressBadge, PoolProgressStrip } from './PoolProgressStrip'
 import { PoolRuleBadge } from './PoolRuleBadge'
-import type { ElectiveBucket, RequirementProgressEntry } from '../../types/api'
+import type { CurriculumGraph, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 
 type ElectivePoolRowProps = {
   pool: ElectiveBucket
@@ -23,6 +23,7 @@ type ElectivePoolRowProps = {
   requirementBuckets: RequirementProgressEntry[]
   requiredCurriculumNumbers: Set<string>
   transcriptNumbers: Set<string>
+  curriculumGraph?: CurriculumGraph | null
   expanded: boolean
   t: (key: string) => string
   onToggle: (bucket: RequirementProgressEntry, pool: ElectiveBucket) => void
@@ -34,6 +35,7 @@ export function ElectivePoolRow({
   requirementBuckets,
   requiredCurriculumNumbers,
   transcriptNumbers,
+  curriculumGraph,
   expanded,
   t,
   onToggle,
@@ -48,7 +50,10 @@ export function ElectivePoolRow({
     creditsRemaining: pool.minCredits ?? 0,
   }
   const progressDisplay = resolvePoolProgressDisplay(pool, allPools)
-  const summary = poolProgressSummary(pool, bucket, transcriptNumbers)
+  const summary = poolProgressSummary(pool, bucket, t, allPools, {
+    curriculumGraph,
+    requiredCurriculumNumbers,
+  })
   const poolTitle = localizedPoolTitle(pool, t)
   const catalogLines = localizedPoolDescriptions(pool, t)
   const showCatalogExplanation =
@@ -93,7 +98,8 @@ export function ElectivePoolRow({
           <p className="mt-2 text-xs text-[var(--color-text-muted)]">
             {interpolateTemplate(t('progress.electiveExplorer.countedSummary'), {
               counted: summary.counted,
-              listed: pool.courseCount ?? pool.courses.length,
+              listed: summary.listed,
+              credits: formatCredits(summary.creditsCompleted),
             })}
             {pool.courseListSource === 'vault_union'
               ? ` · ${t('progress.electiveExplorer.vaultUnionHint')}`
@@ -101,6 +107,7 @@ export function ElectivePoolRow({
           </p>
           <PoolProgressStrip
             pool={pool}
+            allPools={allPools}
             linkedBucket={linkedBucket}
             summary={summary}
             progressDisplay={progressDisplay}
@@ -109,6 +116,8 @@ export function ElectivePoolRow({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <PoolProgressBadge
+            pool={pool}
+            allPools={allPools}
             progressDisplay={progressDisplay}
             linkedBucket={linkedBucket}
             summary={summary}
@@ -135,9 +144,11 @@ export function ElectivePoolRow({
           ) : null}
           <ElectivePoolCourseList
             pool={pool}
+            allPools={allPools}
             bucket={bucket}
             transcriptNumbers={transcriptNumbers}
             requiredCurriculumNumbers={requiredCurriculumNumbers}
+            curriculumGraph={curriculumGraph}
             t={t}
           />
         </div>

@@ -19,7 +19,7 @@ def test_passing_threshold_is_55():
     "value,expected",
     [
         (0, False),
-        (55, False),
+        (55, True),
         (55.1, True),
         (56, True),
         (82, True),
@@ -34,7 +34,7 @@ def test_is_passing_numeric_grade_boundary(value, expected):
     "grade,expected",
     [
         (82, True),
-        (55, False),
+        (55, True),
         (56, True),
         ("82", True),
         ("55", False),
@@ -54,7 +54,7 @@ def test_parse_numeric_grade(grade, expected):
 
 def test_is_passing_grade_uses_grade_field():
     assert is_passing_grade({"grade": 82}) is True
-    assert is_passing_grade({"grade": 55}) is False
+    assert is_passing_grade({"grade": 55}) is True
     assert is_passing_grade({"grade": 40}) is False
 
 

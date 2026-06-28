@@ -38,17 +38,20 @@ const gameTheoryPool: ElectiveBucket = {
   explorerReady: true,
 }
 
-function renderChainView(countedNumbers = new Set<string>()) {
+function renderChainView(
+  completedCourses: Array<{ courseId: string; courseNumber: string; creditsEarned: number }> = [],
+) {
   return render(
     <I18nProvider>
       <MemoryRouter>
         <ChainRequirementView
           pool={gameTheoryPool}
+          allPools={[gameTheoryPool]}
           bucket={requirementBucket({
             requirementGroupId: '009216-1-000:elective-faculty',
             isMandatory: false,
+            completedCourses,
           })}
-          transcriptNumbers={countedNumbers}
           requiredCurriculumNumbers={new Set()}
           t={t}
         />
@@ -75,10 +78,47 @@ describe('ChainRequirementView', () => {
     expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
   })
 
-  it('marks completed chain steps when transcript includes counted courses', () => {
-    renderChainView(new Set(['0960226']))
+  it('marks completed chain steps when bucket assigns counted courses', () => {
+    renderChainView([{ courseId: '1', courseNumber: '0960226', creditsEarned: 3 }])
 
     const doneBadges = screen.getAllByText('Done')
     expect(doneBadges.length).toBeGreaterThan(0)
+  })
+
+  it('marks cross-track commerce code as counted in chain steps', () => {
+    const poolWithCrossTrack: ElectiveBucket = {
+      ...gameTheoryPool,
+      courses: [
+        ...gameTheoryPool.courses,
+        { courseNumber: '00960221', title: 'E-commerce models (ISE)', credits: 3.5 },
+      ],
+    }
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ChainRequirementView
+            pool={poolWithCrossTrack}
+            allPools={[poolWithCrossTrack]}
+            bucket={requirementBucket({
+              requirementGroupId: '009216-1-000:elective-faculty',
+              isMandatory: false,
+              completedCourses: [{ courseId: '1', courseNumber: '00960211', creditsEarned: 3.5 }],
+            })}
+            requiredCurriculumNumbers={new Set()}
+            t={t}
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    )
+
+    expect(screen.getAllByText('Counted').length).toBeGreaterThan(0)
+    expect(screen.queryByText('00960221')).not.toBeInTheDocument()
+  })
+
+  it('does not mark chain steps done without bucket assignment', () => {
+    renderChainView()
+
+    expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
   })
 })

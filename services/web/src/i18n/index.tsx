@@ -28,11 +28,19 @@ function getNestedValue(tree: TranslationTree, key: string): string {
   return typeof current === 'string' ? current : key
 }
 
+function interpolate(template: string, params?: Record<string, string | number>): string {
+  if (!params) return template
+  return Object.entries(params).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  )
+}
+
 type I18nContextValue = {
   locale: Locale
   dir: 'rtl' | 'ltr'
   setLocale: (locale: Locale) => void
-  t: (key: string) => string
+  t: (key: string, params?: Record<string, string | number>) => string
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null)
@@ -55,7 +63,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.dir = dir
   }, [locale, dir])
 
-  const t = useCallback((key: string) => getNestedValue(translations[locale], key), [locale])
+  const t = useCallback(
+    (key: string, params?: Record<string, string | number>) =>
+      interpolate(getNestedValue(translations[locale], key), params),
+    [locale],
+  )
 
   const value = useMemo(() => ({ locale, dir, setLocale, t }), [locale, dir, setLocale, t])
 

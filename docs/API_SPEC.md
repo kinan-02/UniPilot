@@ -392,6 +392,41 @@ Delete a **manual** record only. `official` and `imported` records return `403`.
 
 Future transcript ingestion or registrar sync will insert `official` / `imported` rows through **internal trusted import logic** (worker/admin pipeline writing directly to MongoDB), not through client-facing endpoints. Those records remain readable by the owning user but are not editable or deletable via `PUT` / `DELETE` (returns `403`).
 
+### Transcript PDF import (implemented)
+
+**Status:** Parse preview, commit persistence, and web upload UI implemented. Heuristic PDF parsing (`pipelineVersion` `0.2.0-heuristic`); OCR fallback remains planned.
+
+**Auth:** JWT required. Rate limited (`TRANSCRIPT_IMPORT_RATE_LIMIT_*`).
+
+**Prefix:** `/transcript-import`
+
+#### `POST /transcript-import/parse`
+
+Upload an official Technion transcript PDF for parsing. Forwards to internal `transcript-parser` service; **does not write** to MongoDB.
+
+**Request:** `multipart/form-data` with field `file` (PDF, max `TRANSCRIPT_IMPORT_MAX_UPLOAD_BYTES`, default 5 MiB).
+
+**Success (`200`):** `{ success, data: { parsePreview }, error: null }` — see `docs/planning/TRANSCRIPT_PDF_IMPORT_PLAN.md` for `parsePreview` shape.
+
+**Errors:** `400` invalid/empty/oversized upload, `401` missing JWT, `422` parse failure, `429` rate limit, `502/503` parser unavailable.
+
+#### `POST /transcript-import/commit`
+
+Persist selected parsed rows as `source: imported` completed courses after catalog resolution.
+
+**Request body:**
+
+| Field | Required | Rules |
+|---|---|---|
+| `courses` | yes | 1–100 items: `courseNumber`, `semesterCode`, `grade`, `creditsEarned`, optional `attempt`, `title` |
+| `skipDuplicates` | no | default `true`; skips existing `(userId, courseId, attempt)` |
+
+**Success (`200`):** `{ success, data: { importResult: { created, skippedDuplicates, unresolved, createdCount, skippedCount, unresolvedCount } }, error: null }`
+
+Imported records are read-only via `PUT` / `DELETE` (same as `official`).
+
+See `docs/planning/TRANSCRIPT_PDF_IMPORT_PLAN.md` for the full PDF pipeline.
+
 ---
 
 ## 4.4 Course Catalog (read-only, production DDS)

@@ -186,6 +186,35 @@ def test_validate_production_settings_rejects_high_ai_rate_limit() -> None:
         settings.validate_production_settings()
 
 
+def test_resolved_transcript_parser_url_uses_default_when_unset() -> None:
+    settings = Settings(transcript_parser_url=None)
+    assert settings.resolved_transcript_parser_url() == "http://transcript-parser:8010"
+
+
+def test_resolved_transcript_parser_url_strips_trailing_slash() -> None:
+    settings = Settings(transcript_parser_url="http://parser:9000/")
+    assert settings.resolved_transcript_parser_url() == "http://parser:9000"
+
+
+def test_resolved_internal_service_token_strips_whitespace() -> None:
+    settings = Settings(internal_service_token="  secret-token  ")
+    assert settings.resolved_internal_service_token() == "secret-token"
+
+
+def test_validate_production_settings_rejects_high_transcript_import_rate_limit() -> None:
+    settings = Settings(
+        environment="production",
+        jwt_secret="x" * 32,
+        mongo_root_password="strong-production-mongo-password",
+        internal_service_token="y" * 32,
+        auth_rate_limit_max=5,
+        ai_rate_limit_max=5,
+        transcript_import_rate_limit_max=30,
+    )
+    with pytest.raises(RuntimeError, match="TRANSCRIPT_IMPORT_RATE_LIMIT_MAX"):
+        settings.validate_production_settings()
+
+
 def test_validate_production_settings_requires_internal_service_token() -> None:
     settings = Settings(
         environment="production",

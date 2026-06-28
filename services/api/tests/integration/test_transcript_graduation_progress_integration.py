@@ -236,13 +236,19 @@ async def test_strict_pool_course_in_bucket_ineligible_course_in_separate_list(
 
     progress = await fetch_progress(auth_client, token)
     ds = bucket_by_suffix(progress, "elective-ds")
+    core = bucket_by_suffix(progress, "core-mandatory")
 
     assert fixtures["courseBNumber"] in progress_course_numbers(progress)
     assert any(course["courseNumber"] == fixtures["courseBNumber"] for course in ds["completedCourses"])
-    assert any(item["courseNumber"] == fixtures["courseANumber"] for item in progress["ineligibleCredits"])
+    assert any(
+        course["courseNumber"] == fixtures["courseANumber"] for course in core["completedCourses"]
+    )
     assert fixtures["courseANumber"] not in {
         course["courseNumber"] for course in ds["completedCourses"]
     }
+    assert not any(
+        item["courseNumber"] == fixtures["courseANumber"] for item in progress["ineligibleCredits"]
+    )
 
 
 @pytest.mark.asyncio

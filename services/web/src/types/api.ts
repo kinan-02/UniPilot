@@ -112,6 +112,40 @@ export type CatalogPathOption = {
   totalCreditsRequired?: string
 }
 
+export type ParsedTranscriptCourse = {
+  courseNumber: string
+  semesterCode: string
+  grade: number
+  creditsEarned: number
+  attempt?: number | null
+  title?: string | null
+  confidence: number
+  warnings: string[]
+}
+
+export type TranscriptParsePreview = {
+  courses: ParsedTranscriptCourse[]
+  studentId?: string | null
+  studentName?: string | null
+  warnings: string[]
+  parseMetadata: {
+    pageCount: number
+    extractor: string
+    pipelineVersion: string
+    textCharCount: number
+    ocrUsed: boolean
+  }
+}
+
+export type TranscriptImportResult = {
+  created: CompletedCourse[]
+  skippedDuplicates: string[]
+  unresolved: Array<{ courseNumber: string; semesterCode: string; reason: string }>
+  createdCount: number
+  skippedCount: number
+  unresolvedCount: number
+}
+
 export type CompletedCourse = {
   id: string
   courseId: string
@@ -119,6 +153,7 @@ export type CompletedCourse = {
   courseTitle?: string
   semesterCode: string
   grade: string
+  gradePoints?: number | null
   creditsEarned: number
   attempt: number
   source: string
@@ -132,6 +167,7 @@ export type CourseProgressEntry = {
   creditsEarned?: number
   grade?: string | number
   semesterCode?: string
+  assignedPoolGroupId?: string | null
 }
 
 export type RequirementProgressEntry = {
@@ -181,6 +217,7 @@ export type GraduationProgress = {
   catalogYear?: number
   catalogVersion?: string
   completedCredits: number
+  transcriptCreditsTotal?: number
   totalRequiredCredits: number
   creditsRemaining: number
   completionPercentage: number
@@ -229,6 +266,7 @@ export type CurriculumGraphNode = {
     | 'verify_with_registrar'
   missingPrerequisites: string[]
   isBottleneck: boolean
+  satisfiedViaAlternative?: string
 }
 
 export type CurriculumGraphEdge = {
@@ -253,6 +291,7 @@ export type ElectivePoolCourse = {
   title?: string
   titleHe?: string
   credits?: number | null
+  alternatives?: string[]
   notes?: string[]
 }
 
@@ -300,6 +339,8 @@ export type CurriculumGraph = {
   electiveBuckets?: ElectiveBucket[]
   advisories?: Array<{ code: string; severity: string; message: string }>
   bottlenecks: Array<{ courseNumber: string; blockedBy: string[]; reason: string }>
+  /** Same course under different track catalog codes (from vault). */
+  crossTrackEquivalenceGroups?: string[][]
   transcriptSummary?: {
     completedCount: number
     failedCount: number

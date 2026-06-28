@@ -11,7 +11,7 @@ COURSE_NUMBER_PATTERN = re.compile(r"(?<!\d)(0\d{6,8}|\d{7,8})(?!\d)")
 def canonical_course_number(raw: str | None) -> str | None:
     """Normalize Technion course numbers to 8-digit 0-prefixed strings."""
     digits = re.sub(r"\D", "", str(raw or ""))
-    if not digits or len(digits) < 7 or len(digits) > 9:
+    if not digits or len(digits) < 6 or len(digits) > 9:
         return None
     padded = digits.zfill(8)[-8:]
     if not re.fullmatch(r"0\d{7}", padded):

@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     ai_rate_limit_max: int = 10
     progress_rate_limit_window_ms: int = 60_000
     progress_rate_limit_max: int = 60
+    transcript_import_rate_limit_window_ms: int = 60_000
+    transcript_import_rate_limit_max: int = 10
+    transcript_parser_url: str | None = None
+    transcript_parser_timeout_seconds: int = 60
+    transcript_import_max_upload_bytes: int = 5 * 1024 * 1024
     cors_allowed_origins: str = ",".join(DEFAULT_CORS_ORIGINS)
     internal_service_token: str | None = None
     courses_collection: str = "courses"
@@ -113,6 +118,15 @@ class Settings(BaseSettings):
     def resolved_web_app_url(self) -> str:
         return str(self.web_app_url).rstrip("/")
 
+    def resolved_transcript_parser_url(self) -> str:
+        configured = (self.transcript_parser_url or "").strip()
+        if configured:
+            return configured.rstrip("/")
+        return "http://transcript-parser:8010"
+
+    def resolved_internal_service_token(self) -> str:
+        return (self.internal_service_token or "").strip()
+
     def resolved_google_oauth_redirect_uri(self) -> str:
         configured = (self.google_oauth_redirect_uri or "").strip()
         if configured:
@@ -159,7 +173,12 @@ class Settings(BaseSettings):
                 "AI_RATE_LIMIT_MAX must be <= 10 in production (recommended: 5)."
             )
 
-        internal_token = (self.internal_service_token or "").strip()
+        if self.transcript_import_rate_limit_max > 10:
+            raise RuntimeError(
+                "TRANSCRIPT_IMPORT_RATE_LIMIT_MAX must be <= 10 in production (recommended: 5)."
+            )
+
+        internal_token = self.resolved_internal_service_token()
         if not internal_token or len(internal_token) < 32:
             raise RuntimeError(
                 "INTERNAL_SERVICE_TOKEN must be at least 32 characters in production."

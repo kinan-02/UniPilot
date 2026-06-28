@@ -16,6 +16,7 @@ Simulation and async AI recommendation features are not implemented yet.
 |---------|------|-----------|
 | `web` | React SPA — **primary UI** (proxies `/api` to backend) | `WEB_PORT` (default **3000**) |
 | `api` | FastAPI REST API | `API_PORT` (default **8000**) |
+| `transcript-parser` | Internal Technion transcript PDF extraction | none |
 | `data-engineering` | Internal staging / promotion CLI | none |
 | `worker` | Internal async job stub | none |
 | `ai` | Internal inference stub | none |
@@ -85,6 +86,25 @@ pytest tests/integration
 pytest tests/security
 pytest tests/stress
 ```
+
+Transcript parser service (internal; 100% coverage gate):
+
+```bash
+cd services/transcript-parser
+pip install -r requirements-dev.txt
+pytest
+```
+
+### Full-stack verification (local)
+
+Runs API pytest, transcript-parser pytest, web build, Vitest (file-by-file), and optional Docker health / Playwright checks with a single progress bar:
+
+```bash
+python3 scripts/extensive_verification.py --no-cov --skip-e2e --skip-docker
+python3 scripts/extensive_verification.py --no-cov --skip-docker   # includes Playwright @progress
+```
+
+Writes `scripts/verification_report.json` (gitignored). Use `--smoke-only` for progress-focused API tests only.
 
 ### Docker E2E verification + benchmarks
 
@@ -159,6 +179,7 @@ The web UI defaults to **Hebrew** (RTL) with an in-app language switcher (Hebrew
 | Profile | `POST/GET/PUT/DELETE /student-profile` |
 | Catalog | `GET /catalog/courses`, `GET /catalog/degree-programs/{code}/...` |
 | Transcript | `POST/GET/PUT/DELETE /completed-courses` |
+| Transcript import | `POST /transcript-import/parse` (PDF preview), `POST /transcript-import/commit` (persist selected rows) |
 | Progress | `GET /graduation-progress`, `GET /graduation-progress/curriculum-graph` |
 | Plans | `POST /semester-plans/generate`, `POST /semester-plans/suggest-courses`, `POST /semester-plans/suggest-schedule`, `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions` |
 | Risks | `POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id` |
@@ -225,7 +246,8 @@ See `services/data-engineering/README.md` and `docs/data-sources/TECHNION_DDS_SO
 - Passwords: bcrypt; JWT from env (`JWT_SECRET` required at startup — dev default in `.env.example`; production needs a unique 32+ char secret).
 - Auth rate limit: `AUTH_RATE_LIMIT_MAX` defaults to **30** in development (Docker); set **5** for production.
 - Progress rate limit: `PROGRESS_RATE_LIMIT_MAX` (default **60**/min) on `GET /graduation-progress` and `/graduation-progress/curriculum-graph`.
-- Auth and progress rate limiting via Redis.
+- Transcript import rate limit: `TRANSCRIPT_IMPORT_RATE_LIMIT_MAX` (default **10**/min) on `/transcript-import/*`.
+- Auth, progress, and transcript-import rate limiting via Redis.
 - Replace dev secrets in `.env` before non-local deployment.
 - Worker and AI remain internal stubs for a future async AI phase.
 

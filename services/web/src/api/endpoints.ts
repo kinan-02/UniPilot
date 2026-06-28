@@ -1,4 +1,4 @@
-import { apiRequest, getApiBaseUrl } from '../lib/api'
+import { apiRequest, apiUpload, getApiBaseUrl } from '../lib/api'
 import type {
   AcademicRiskAnalysis,
   AuthPayload,
@@ -12,10 +12,13 @@ import type {
   GraduationProgress,
   CurriculumGraph,
   PaginatedCourses,
+  ParsedTranscriptCourse,
   PlannedCourse,
   SelectedLessonEvent,
   SemesterPlan,
   StudentProfile,
+  TranscriptImportResult,
+  TranscriptParsePreview,
   User,
 } from '../types/api'
 
@@ -165,6 +168,29 @@ export const transcriptApi = {
     }),
   remove: (id: string) =>
     apiRequest<{ deleted: boolean }>(`/completed-courses/${id}`, { method: 'DELETE' }),
+}
+
+export const transcriptImportApi = {
+  parse: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiUpload<{ parsePreview: TranscriptParsePreview }>('/transcript-import/parse', formData)
+  },
+  commit: (courses: ParsedTranscriptCourse[]) =>
+    apiRequest<{ importResult: TranscriptImportResult }>('/transcript-import/commit', {
+      method: 'POST',
+      body: {
+        courses: courses.map((course) => ({
+          courseNumber: course.courseNumber,
+          semesterCode: course.semesterCode,
+          grade: course.grade,
+          creditsEarned: course.creditsEarned,
+          attempt: course.attempt ?? 1,
+          title: course.title ?? undefined,
+        })),
+        skipDuplicates: true,
+      },
+    }),
 }
 
 export const progressApi = {

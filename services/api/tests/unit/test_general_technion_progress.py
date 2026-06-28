@@ -160,10 +160,16 @@ def test_enrichment_strict_pool_rejects_non_enrichment_course():
     )
     assert enrichment["eligibilityEnforcement"] == "strict_pool"
     assert enrichment["creditsCompleted"] == 3.0
-    ineligible = [
-        item for item in progress["ineligibleCredits"] if item.get("bucketSuffix") == "enrichment"
-    ]
-    assert any(item.get("courseNumber") == "00940345" for item in ineligible)
+    assert not any(
+        course["courseNumber"] == "00940345" for course in enrichment["completedCourses"]
+    )
+    free = next(
+        entry
+        for entry in progress["requirementProgress"]
+        if entry["requirementGroupId"] == f"{PROGRAM}:free-elective"
+    )
+    assert any(course["courseNumber"] == "00940345" for course in free["completedCourses"])
+    assert not any(item.get("courseNumber") == "00940345" for item in progress["ineligibleCredits"])
 
 
 def test_free_elective_uses_credit_bucket_only():

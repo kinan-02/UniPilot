@@ -17,6 +17,7 @@ function renderCourseList(courseCount: number) {
       <MemoryRouter>
         <ElectivePoolCourseList
           pool={pool}
+          allPools={[pool]}
           bucket={requirementBucket()}
           transcriptNumbers={new Set()}
           requiredCurriculumNumbers={new Set()}

@@ -9,14 +9,21 @@ import {
   findPoolsForBucket,
   groupPoolsByCategory,
   interpolateTemplate,
+  isCountedCourse,
   isGeneralTechnionPool,
+  isRequiredCurriculumCourse,
   localizedBucketTitle,
   localizedPoolDescriptions,
   localizedPoolTitle,
   partitionExplorerPools,
+  poolCountedCourseNumbers,
   poolCourseFilterCounts,
   poolProgressSummary,
   preparePoolCourseView,
+  courseMatchesPoolCatalog,
+  poolCreditsCompleted,
+  poolMatchedBucketCourses,
+  resolvePoolCreditProgress,
   resolvePoolProgressDisplay,
   ruleBadgeTone,
   ruleOperatorTranslationKey,
@@ -158,7 +165,7 @@ describe('localizedPoolDescriptions', () => {
 })
 
 describe('resolvePoolProgressDisplay', () => {
-  it('shows chain steps for choose_n pools sharing a faculty bucket', () => {
+  it('shows chain steps for choose_n pools (matches API progressDisplay)', () => {
     const pools = [
       pool({
         groupId: '009118-1-000:is-behavior-science-chain',
@@ -168,11 +175,111 @@ describe('resolvePoolProgressDisplay', () => {
       pool({
         groupId: '009118-1-000:is-additional-faculty-electives',
         linkedCreditBucketId: '009118-1-000:elective-faculty',
-        rule: { type: 'course_pool', operator: 'min_credits' },
+        rule: { type: 'course_pool', operator: 'min_credits', allowedPrefixes: ['094'] },
       }),
     ]
     expect(resolvePoolProgressDisplay(pools[0]!, pools)).toBe('chain_steps')
     expect(resolvePoolProgressDisplay(pools[1]!, pools)).toBe('shared_bucket_credits')
+  })
+
+  it('shows chain steps only for choose_chain focus pools', () => {
+    expect(
+      resolvePoolProgressDisplay(
+        pool({
+          groupId: '009118-1-000:is-focus-chain-ml',
+          linkedCreditBucketId: '009118-1-000:elective-faculty',
+          rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+        }),
+        [],
+      ),
+    ).toBe('chain_steps')
+  })
+
+  it('uses shared credits when multiple pools share a faculty bucket', () => {
+    const facultyPool = pool({
+      groupId: '009118-1-000:elective-faculty-pool',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+    })
+    const focusPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+    })
+    const allPools = [facultyPool, focusPool]
+    expect(resolvePoolProgressDisplay(facultyPool, allPools)).toBe('shared_bucket_credits')
+    expect(resolvePoolProgressDisplay(focusPool, allPools)).toBe('chain_steps')
+  })
+})
+
+describe('poolCountedCourseNumbers', () => {
+  it('counts only courses assigned to the linked bucket', () => {
+    const counted = poolCountedCourseNumbers(
+      pool({
+        groupId: '009118-1-000:elective-faculty-pool',
+        courses: [
+          { courseNumber: '00940411', title: 'Faculty course' },
+          { courseNumber: '00960327', title: 'Focus course' },
+        ],
+      }),
+      bucket({
+        requirementGroupId: '009118-1-000:elective-faculty',
+        eligibilityEnforcement: 'strict_pool',
+        completedCourses: [{ courseId: '1', courseNumber: '00940411', creditsEarned: 3.5 }],
+      }),
+    )
+    expect([...counted]).toContain('00940411')
+    expect([...counted]).not.toContain('00960327')
+  })
+
+  it('marks all bucket courses counted for dedicated faculty pool display', () => {
+    const facultyPool = pool({
+      groupId: '009118-1-000:elective-faculty-pool',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      allowedPrefixes: ['094'],
+      courses: [{ courseNumber: '09400101', title: 'Prefix course' }],
+    })
+    const facultyBucket = bucket({
+      requirementGroupId: '009118-1-000:elective-faculty',
+      creditsCompleted: 7,
+      completedCourses: [
+        { courseId: '1', courseNumber: '09400101', creditsEarned: 3.5 },
+        { courseId: '2', courseNumber: '00960327', creditsEarned: 3.5 },
+      ],
+    })
+    const allPools = [facultyPool]
+    const counted = poolCountedCourseNumbers(facultyPool, facultyBucket, allPools)
+    expect(isCountedCourse('00960327', counted)).toBe(true)
+    expect(isCountedCourse('09400101', counted)).toBe(true)
+
+    const summary = poolProgressSummary(facultyPool, facultyBucket, undefined, allPools)
+    expect(summary.counted).toBe(2)
+    expect(summary.creditsCompleted).toBe(7)
+  })
+
+  it('matches pool catalog alternatives to bucket course numbers', () => {
+    const focusPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [{ courseNumber: '0960324', title: 'Part 2', alternatives: ['0980413'] }],
+    })
+    expect(courseMatchesPoolCatalog('0980413', focusPool)).toBe(true)
+    expect(courseMatchesPoolCatalog('00960324', focusPool)).toBe(true)
+  })
+
+  it('matches canonical catalog numbers to bucket course numbers', () => {
+    const focusPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [{ courseNumber: '0960324', title: 'Part 2' }],
+    })
+    const facultyBucket = bucket({
+      requirementGroupId: '009118-1-000:elective-faculty',
+      completedCourses: [{ courseId: '1', courseNumber: '00960324', creditsEarned: 3.5 }],
+    })
+    const counted = poolCountedCourseNumbers(focusPool, facultyBucket, [focusPool])
+    expect(isCountedCourse('0960324', counted)).toBe(true)
   })
 })
 
@@ -189,6 +296,28 @@ describe('poolProgressSummary', () => {
       bucket({
         completedCourses: [{ courseId: '1', courseNumber: 'A', creditsEarned: 3 }],
       }),
+    )
+    expect(summary.chainStepsRequired).toBe(3)
+    expect(summary.chainStepsCompleted).toBe(1)
+  })
+
+  it('uses structured chain steps instead of raw course counts', () => {
+    const summary = poolProgressSummary(
+      pool({
+        groupId: '009118-1-000:is-focus-chain-performance',
+        rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+        courses: [
+          { courseNumber: '00960327', title: 'Part 1' },
+          { courseNumber: '00960324', title: 'Part 2' },
+          { courseNumber: '00960311', title: 'Part 3 option' },
+        ],
+      }),
+      bucket({
+        requirementGroupId: '009118-1-000:elective-faculty',
+        eligibilityEnforcement: 'strict_pool',
+        completedCourses: [{ courseId: '1', courseNumber: '00960327', creditsEarned: 3.5 }],
+      }),
+      (key) => key,
     )
     expect(summary.chainStepsRequired).toBe(3)
     expect(summary.chainStepsCompleted).toBe(1)
@@ -234,6 +363,23 @@ describe('preparePoolCourseView', () => {
     expect(courses).toHaveLength(1)
     expect(courses[0]?.courseNumber).toBe('00940345')
   })
+
+  it('dedupes cross-track equivalents when one code is counted', () => {
+    const courses = preparePoolCourseView(
+      [
+        { courseNumber: '00960221', title: 'E-commerce models' },
+        { courseNumber: '00960211', title: 'E-commerce models', credits: 3.5 },
+        { courseNumber: '00960327', title: 'Other' },
+      ],
+      {
+        query: '',
+        completedNumbers: new Set(['00960211']),
+        filter: 'all',
+        sort: 'catalog',
+      },
+    )
+    expect(courses.map((course) => course.courseNumber)).toEqual(['00960211', '00960327'])
+  })
 })
 
 describe('catalogSearchLink', () => {
@@ -244,13 +390,25 @@ describe('catalogSearchLink', () => {
 })
 
 describe('poolCourseFilterCounts', () => {
-  it('counts all, counted, and remaining courses', () => {
+  it('counts all, counted, and remaining courses with equivalence dedupe', () => {
     const counts = poolCourseFilterCounts(
       [
         { courseNumber: '00940345', title: 'A' },
         { courseNumber: '00940411', title: 'B' },
       ],
       new Set(['00940345']),
+    )
+    expect(counts).toEqual({ all: 2, counted: 1, remaining: 1 })
+  })
+
+  it('collapses cross-track duplicates in filter counts', () => {
+    const counts = poolCourseFilterCounts(
+      [
+        { courseNumber: '00960221', title: 'E-commerce models' },
+        { courseNumber: '00960211', title: 'E-commerce models' },
+        { courseNumber: '00960327', title: 'Other' },
+      ],
+      new Set(['00960211']),
     )
     expect(counts).toEqual({ all: 2, counted: 1, remaining: 1 })
   })
@@ -290,7 +448,7 @@ describe('buildTranscriptCourseNumbers', () => {
 })
 
 describe('buildRequiredCurriculumCourseNumbers', () => {
-  it('merges mandatory completed, remaining mandatory, and curriculum nodes', () => {
+  it('returns only outstanding mandatory and curriculum slots', () => {
     const numbers = buildRequiredCurriculumCourseNumbers(
       [
         bucket({
@@ -304,6 +462,7 @@ describe('buildRequiredCurriculumCourseNumbers', () => {
         }),
       ],
       {
+        completedMandatory: [{ courseId: '1', courseNumber: '00940345', creditsEarned: 4 }],
         remainingMandatory: [{ courseNumber: '01040031', courseTitle: 'Intro CS' }],
         curriculumGraph: {
           trackSlug: 'track-dne',
@@ -318,7 +477,84 @@ describe('buildRequiredCurriculumCourseNumbers', () => {
         },
       },
     )
-    expect([...numbers].sort()).toEqual(['00940219', '00940345', '01040031'])
+    expect([...numbers].sort()).toEqual(['01040031'])
+  })
+
+  it('excludes cross-track equivalents already satisfied on transcript', () => {
+    const numbers = buildRequiredCurriculumCourseNumbers([], {
+      completedMandatory: [{ courseId: 'done', courseNumber: '00960211' }],
+      remainingMandatory: [{ courseNumber: '00960221', courseTitle: 'E-commerce models' }],
+      curriculumGraph: {
+        trackSlug: 'track-ise',
+        programCode: '009118-1-000',
+        catalogYear: 2025,
+        viewDefault: 'semester_swimlanes',
+        semesterLanes: [],
+        nodes: [
+          {
+            nodeId: 'node-ecom',
+            courseNumber: '00960221',
+            title: 'E-commerce models',
+            semester: 4,
+            status: 'available',
+            credits: { display: '3.5', value: 3.5, uncertain: false },
+            alternatives: [],
+            dataQuality: {
+              manualReviewRequired: false,
+              confidence: 'high',
+              hasAlternatives: false,
+              creditsUncertain: false,
+              verifyWithRegistrar: false,
+            },
+            prerequisiteNumbers: [],
+            missingPrerequisites: [],
+            isBottleneck: false,
+          },
+        ],
+        edges: [],
+        bottlenecks: [],
+        electiveBuckets: [],
+      },
+    })
+    expect(numbers.size).toBe(0)
+  })
+
+  it('includes curriculum node alternatives in the required set', () => {
+    const numbers = buildRequiredCurriculumCourseNumbers([], {
+      curriculumGraph: {
+        trackSlug: 'track-dne',
+        programCode: '009216-1-000',
+        catalogYear: 2025,
+        viewDefault: 'semester_swimlanes',
+        semesterLanes: [],
+        nodes: [
+          {
+            nodeId: 'node-algebra',
+            courseNumber: '1040065',
+            title: 'Algebra',
+            semester: 1,
+            status: 'available',
+            credits: { display: '5', value: 5, uncertain: false },
+            alternatives: ['1040016'],
+            dataQuality: {
+              manualReviewRequired: false,
+              confidence: 'high',
+              hasAlternatives: true,
+              creditsUncertain: false,
+              verifyWithRegistrar: true,
+            },
+            prerequisiteNumbers: [],
+            missingPrerequisites: [],
+            isBottleneck: false,
+          },
+        ],
+        edges: [],
+        bottlenecks: [],
+        electiveBuckets: [],
+      },
+    })
+    expect(isRequiredCurriculumCourse('01040016', numbers)).toBe(true)
+    expect(isRequiredCurriculumCourse('1040065', numbers)).toBe(true)
   })
 })
 
@@ -345,6 +581,264 @@ describe('localizedBucketTitle', () => {
         key === 'progress.electiveExplorer.buckets.elective-ds' ? 'Data science electives' : key,
     )
     expect(title).toBe('Data science electives')
+  })
+})
+
+describe('poolCreditsCompleted', () => {
+  const facultyBucket = bucket({
+    requirementGroupId: '009118-1-000:elective-faculty',
+    creditsCompleted: 10.5,
+    completedCourses: [
+      { courseId: '1', courseNumber: '00960327', creditsEarned: 3.5 },
+      { courseId: '2', courseNumber: '09400101', creditsEarned: 3.5 },
+      { courseId: '3', courseNumber: '00960324', creditsEarned: 3.5 },
+    ],
+  })
+
+  it('counts only courses matching the pool catalog list', () => {
+    const focusPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [
+        { courseNumber: '00960327', title: 'Part 1' },
+        { courseNumber: '00960324', title: 'Part 2' },
+      ],
+    })
+    expect(poolCreditsCompleted(focusPool, facultyBucket, [focusPool])).toBe(7)
+  })
+
+  it('counts prefix-matched courses not listed explicitly in the pool catalog', () => {
+    const prefixPool = pool({
+      groupId: '009118-1-000:is-additional-faculty-electives',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'min_credits', allowedPrefixes: ['094'] },
+      courses: [],
+      allowedPrefixes: ['094'],
+    })
+    expect(poolCreditsCompleted(prefixPool, facultyBucket, [prefixPool])).toBe(3.5)
+  })
+
+  it('additional faculty pool excludes credits already attributed to focus chains', () => {
+    const focusPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [
+        { courseNumber: '00960327', title: 'Part 1' },
+        { courseNumber: '00960324', title: 'Part 2' },
+      ],
+    })
+    const prefixPool = pool({
+      groupId: '009118-1-000:is-additional-faculty-electives',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'min_credits', allowedPrefixes: ['094', '0096'] },
+      courses: [],
+      allowedPrefixes: ['094', '0096'],
+    })
+    const allPools = [focusPool, prefixPool]
+    expect(poolCreditsCompleted(focusPool, facultyBucket, allPools)).toBe(7)
+    expect(poolCreditsCompleted(prefixPool, facultyBucket, allPools)).toBe(3.5)
+  })
+
+  it('uses canonical course numbers when matching pool lists', () => {
+    const listPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [{ courseNumber: '0960324', title: 'Part 2' }],
+    })
+    expect(courseMatchesPoolCatalog('00960324', listPool)).toBe(true)
+    expect(poolCreditsCompleted(listPool, facultyBucket, [listPool])).toBe(3.5)
+  })
+})
+
+describe('resolvePoolCreditProgress', () => {
+  const facultyBucket = bucket({
+    requirementGroupId: '009118-1-000:elective-faculty',
+    minCredits: 24.5,
+    creditsCompleted: 10.5,
+    completedCourses: [
+      { courseId: '1', courseNumber: '00960327', creditsEarned: 3.5 },
+      { courseId: '2', courseNumber: '09400101', creditsEarned: 3.5 },
+      { courseId: '3', courseNumber: '00960324', creditsEarned: 3.5 },
+    ],
+  })
+
+  it('uses full bucket credits for dedicated bucket pools', () => {
+    const facultyPool = pool({
+      groupId: '009118-1-000:elective-faculty-pool',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      allowedPrefixes: ['094'],
+      courses: [],
+    })
+    const progress = resolvePoolCreditProgress(
+      facultyPool,
+      facultyBucket,
+      'dedicated_bucket_credits',
+    )
+    expect(progress.displayCreditsCompleted).toBe(10.5)
+    expect(progress.bucketCreditsCompleted).toBe(10.5)
+  })
+
+  it('uses pool-specific credits for shared sub-pools', () => {
+    const prefixPool = pool({
+      groupId: '009118-1-000:is-additional-faculty-electives',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'min_credits', allowedPrefixes: ['094'] },
+      allowedPrefixes: ['094'],
+      courses: [],
+    })
+    const progress = resolvePoolCreditProgress(prefixPool, facultyBucket, 'shared_bucket_credits', [
+      prefixPool,
+    ])
+    expect(progress.displayCreditsCompleted).toBe(3.5)
+    expect(progress.bucketCreditsCompleted).toBe(10.5)
+  })
+})
+
+describe('poolProgressSummary credits', () => {
+  it('reports bucket credits for a sole dedicated pool on its bucket', () => {
+    const dsBucket = bucket({
+      requirementGroupId: '009216-1-000:elective-ds',
+      creditsCompleted: 7,
+      completedCourses: [
+        { courseId: '1', courseNumber: '00940411', creditsEarned: 3.5 },
+        { courseId: '2', courseNumber: '00940345', creditsEarned: 3.5 },
+      ],
+    })
+    const dsPool = pool({
+      groupId: '009216-1-000:elective-ds-pool',
+      linkedCreditBucketId: '009216-1-000:elective-ds',
+    })
+    const summary = poolProgressSummary(dsPool, dsBucket, undefined, [dsPool])
+    expect(summary.creditsCompleted).toBe(7)
+    expect(summary.counted).toBe(2)
+  })
+
+  it('reports pool-specific credits when multiple pools share a faculty bucket', () => {
+    const facultyBucket = bucket({
+      requirementGroupId: '009118-1-000:elective-faculty',
+      creditsCompleted: 10.5,
+      completedCourses: [
+        { courseId: '1', courseNumber: '00960327', creditsEarned: 3.5 },
+        { courseId: '2', courseNumber: '09400101', creditsEarned: 3.5 },
+        { courseId: '3', courseNumber: '00960324', creditsEarned: 3.5 },
+      ],
+    })
+    const allPools = [
+      pool({
+        groupId: '009118-1-000:elective-faculty-pool',
+        linkedCreditBucketId: '009118-1-000:elective-faculty',
+        allowedPrefixes: ['094'],
+      }),
+      pool({
+        groupId: '009118-1-000:is-focus-chain-performance',
+        linkedCreditBucketId: '009118-1-000:elective-faculty',
+        rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+        courses: [
+          { courseNumber: '00960327', title: 'Part 1' },
+          { courseNumber: '00960324', title: 'Part 2' },
+        ],
+      }),
+    ]
+
+    const facultyPoolSummary = poolProgressSummary(allPools[0]!, facultyBucket, undefined, allPools)
+    expect(facultyPoolSummary.creditsCompleted).toBe(3.5)
+    expect(facultyPoolSummary.counted).toBe(1)
+
+    const sharedSummary = poolProgressSummary(allPools[1]!, facultyBucket, undefined, allPools)
+    expect(sharedSummary.creditsCompleted).toBe(7)
+    expect(sharedSummary.counted).toBe(2)
+    expect(sharedSummary.bucketCreditsCompleted).toBe(10.5)
+  })
+
+  it('caps choose_n chain step progress at the required count', () => {
+    const summary = poolProgressSummary(
+      pool({
+        groupId: '009118-1-000:is-behavior-science-chain',
+        linkedCreditBucketId: '009118-1-000:elective-faculty',
+        rule: { type: 'course_pool', operator: 'choose_n', chooseCount: 1 },
+        courses: [
+          { courseNumber: '0960600', title: 'Option A' },
+          { courseNumber: '0960620', title: 'Option B' },
+        ],
+      }),
+      bucket({
+        requirementGroupId: '009118-1-000:elective-faculty',
+        completedCourses: [
+          { courseId: '1', courseNumber: '0960600', creditsEarned: 3.5 },
+          { courseId: '2', courseNumber: '0960620', creditsEarned: 3.5 },
+        ],
+      }),
+      undefined,
+      [],
+    )
+    expect(summary.chainStepsRequired).toBe(1)
+    expect(summary.chainStepsCompleted).toBe(1)
+  })
+})
+
+describe('poolMatchedBucketCourses with assignedPoolGroupId', () => {
+  it('uses API pool attribution when present', () => {
+    const focusPool = pool({
+      groupId: '009118-1-000:is-focus-chain-performance',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [{ courseNumber: '00960327', title: 'Part 1' }],
+    })
+    const additionalPool = pool({
+      groupId: '009118-1-000:is-additional-faculty-electives',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'min_credits', allowedPrefixes: ['094', '0096'] },
+      allowedPrefixes: ['094', '0096'],
+      courses: [],
+    })
+    const facultyBucket = bucket({
+      requirementGroupId: '009118-1-000:elective-faculty',
+      completedCourses: [
+        {
+          courseId: '1',
+          courseNumber: '00960327',
+          creditsEarned: 3.5,
+          assignedPoolGroupId: '009118-1-000:is-focus-chain-performance',
+        },
+        {
+          courseId: '2',
+          courseNumber: '09400101',
+          creditsEarned: 3.5,
+          assignedPoolGroupId: '009118-1-000:is-additional-faculty-electives',
+        },
+      ],
+    })
+    const allPools = [focusPool, additionalPool]
+
+    expect(poolMatchedBucketCourses(focusPool, facultyBucket, allPools)).toHaveLength(1)
+    expect(poolMatchedBucketCourses(additionalPool, facultyBucket, allPools)).toHaveLength(1)
+    expect(poolCreditsCompleted(additionalPool, facultyBucket, allPools)).toBe(3.5)
+  })
+})
+
+describe('choose_n pool matching', () => {
+  it('counts at most chooseCount courses toward the pool', () => {
+    const behaviorPool = pool({
+      groupId: '009118-1-000:is-behavior-science-chain',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_n', chooseCount: 1 },
+      courses: [
+        { courseNumber: '0960600', title: 'Option A' },
+        { courseNumber: '0960620', title: 'Option B' },
+      ],
+    })
+    const facultyBucket = bucket({
+      requirementGroupId: '009118-1-000:elective-faculty',
+      completedCourses: [
+        { courseId: '1', courseNumber: '0960600', creditsEarned: 3.5 },
+        { courseId: '2', courseNumber: '0960620', creditsEarned: 3.5 },
+      ],
+    })
+    expect(poolMatchedBucketCourses(behaviorPool, facultyBucket, [behaviorPool])).toHaveLength(1)
+    expect(poolCreditsCompleted(behaviorPool, facultyBucket, [behaviorPool])).toBe(3.5)
   })
 })
 

@@ -143,3 +143,6 @@ async def test_curriculum_graph_response_contract(auth_client, mongo_database):
         if bucket.get("groupId", "").endswith(":elective-ds-pool")
     )
     assert ds_pool["linkedCreditBucketId"] == "009216-1-000:elective-ds"
+    assert ("00960211", "00960221") in [
+        tuple(group) for group in graph.get("crossTrackEquivalenceGroups", [])
+    ]

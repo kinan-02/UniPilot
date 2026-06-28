@@ -101,6 +101,62 @@ describe('ProgressPage', () => {
     vi.clearAllMocks()
   })
 
+  it('shows attention panel when gaps exist', async () => {
+    vi.mocked(endpoints.progressApi.get).mockResolvedValue({
+      graduationProgress: {
+        ...baseProgress,
+        completedMandatoryCourses: [
+          { courseId: 'done-1', courseNumber: '1040016', courseTitle: 'Algebra alt' },
+        ],
+        remainingMandatoryCourses: [
+          { courseId: 'matrix-1040065', courseNumber: '1040065', courseTitle: 'Algebra' },
+          { courseId: 'matrix-1', courseNumber: '01040031', courseTitle: 'Intro CS' },
+        ],
+        ineligibleCredits: [
+          {
+            courseId: 'bad-1',
+            courseNumber: '00960327',
+            creditsEarned: 3,
+            reason: 'not_assigned_to_requirement',
+          },
+        ],
+        missingRequirements: baseProgress.missingRequirements,
+      },
+    })
+    vi.mocked(endpoints.progressApi.curriculumGraph).mockResolvedValue({
+      curriculumGraph: {
+        ...emptyCurriculumGraph(),
+        nodes: [
+          {
+            nodeId: 'node-algebra',
+            courseNumber: '1040065',
+            title: 'Algebra',
+            semester: 1,
+            status: 'available',
+            credits: { display: '5', value: 5, uncertain: false },
+            alternatives: ['1040016'],
+            dataQuality: {
+              manualReviewRequired: false,
+              confidence: 'high',
+              hasAlternatives: true,
+              creditsUncertain: false,
+              verifyWithRegistrar: true,
+            },
+            prerequisiteNumbers: [],
+            missingPrerequisites: [],
+            isBottleneck: false,
+          },
+        ],
+      },
+    })
+    renderProgress()
+    const panel = await screen.findByTestId('progress-attention-panel')
+    expect(panel).toBeInTheDocument()
+    expect(screen.getByText('01040031')).toBeInTheDocument()
+    expect(screen.queryByText('1040065')).not.toBeInTheDocument()
+    expect(screen.getByText('00960327')).toBeInTheDocument()
+  })
+
   it('shows setup prompt when degree is not selected', async () => {
     vi.mocked(endpoints.progressApi.get).mockRejectedValue(
       new ApiError('Degree required', 400),
@@ -138,7 +194,7 @@ describe('ProgressPage', () => {
     expect(screen.getAllByText(/7\.5\s*\/\s*12/).length).toBeGreaterThan(0)
     expect(screen.getByText('00940345')).toBeInTheDocument()
     expect(screen.getByText(/credits remaining|נק״ז שנותרו/i)).toBeInTheDocument()
-    expect(screen.queryByText(/still needed|עדיין חסר/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('progress-attention-panel')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /elective buckets/i })).not.toBeInTheDocument()
   })
 

@@ -8,16 +8,18 @@ from typing import Any
 
 from app.planning.prerequisite_resolver import (
     build_courses_by_number,
+    canonical_course_number,
     resolve_prerequisite_ids,
 )
 from app.services.graduation_progress_calculator import (
     build_effective_completions,
+    is_course_eligible_for_pools,
     round_credits,
 )
 from app.services.graduation_requirement_links import (
     bucket_suffix_from_group_id,
+    collect_eligibility_pools_for_bucket,
     index_pools_by_linked_bucket,
-    resolve_pool_for_bucket,
 )
 
 DEFAULT_MAX_CREDITS = 18.0
@@ -133,14 +135,23 @@ def _resolve_matrix_course(
     courses_by_id: dict[str, dict[str, Any]],
     courses_by_number: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
+    from app.services.course_reference_keys import course_reference_number_keys
+
     course_id = reference.get("courseId")
-    course_number = reference.get("courseNumber")
     if course_id is not None:
-        return courses_by_id.get(normalize_course_id(course_id))
-    if course_number is not None:
-        raw = courses_by_number.get(str(course_number))
+        resolved = courses_by_id.get(normalize_course_id(course_id))
+        if resolved:
+            return normalize_planner_course(resolved, courses_by_number=courses_by_number)
+
+    for number_key in sorted(course_reference_number_keys(reference)):
+        raw = courses_by_number.get(number_key)
         if raw:
             return normalize_planner_course(raw, courses_by_number=courses_by_number)
+        canonical = canonical_course_number(number_key)
+        if canonical and canonical != number_key:
+            raw = courses_by_number.get(canonical)
+            if raw:
+                return normalize_planner_course(raw, courses_by_number=courses_by_number)
     return None
 
 
@@ -188,15 +199,14 @@ def build_matrix_course_semester_index(
     semester_matrix_documents: list[dict[str, Any]],
 ) -> dict[str, int]:
     """Map course number to the earliest matrix semester that lists it."""
+    from app.services.course_reference_keys import course_reference_number_keys
+
     index: dict[str, int] = {}
     for matrix_document in semester_matrix_documents:
         semester_number = _matrix_semester_number(matrix_document)
         for reference in matrix_document.get("courseReferences") or []:
-            course_number = reference.get("courseNumber")
-            if course_number is None:
-                continue
-            number = str(course_number)
-            index[number] = min(index.get(number, semester_number), semester_number)
+            for course_number in course_reference_number_keys(reference):
+                index[course_number] = min(index.get(course_number, semester_number), semester_number)
     return index
 
 
@@ -389,20 +399,24 @@ def _elective_from_pools(
         if suffix not in unsatisfied_elective_suffixes:
             continue
 
-        pool_document, _, _ = resolve_pool_for_bucket(
+        eligibility_pools, _, _ = collect_eligibility_pools_for_bucket(
             program_code=program_code,
             bucket_suffix=suffix,
             pools_by_group_id=pools_by_id,
             pools_by_linked_bucket=pools_by_linked_bucket,
+            pool_documents=pool_documents,
         )
-        if not pool_document:
+        if not eligibility_pools:
             continue
 
         for course in normalized_catalog:
             course_id = normalize_course_id(course["_id"])
             if course_id in completed_course_ids or course_id in seen_ids:
                 continue
-            if _course_matches_pool(course, pool_document):
+            course_number = str(course.get("number") or course.get("courseNumber") or "")
+            if is_course_eligible_for_pools(
+                course_number, eligibility_pools, program_code=program_code
+            ):
                 candidates.append(course)
                 seen_ids.add(course_id)
 

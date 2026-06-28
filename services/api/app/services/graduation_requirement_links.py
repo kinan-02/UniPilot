@@ -63,14 +63,82 @@ def bucket_suffix_from_group_id(requirement_group_id: str, program_code: str) ->
 
 def index_pools_by_linked_bucket(
     pool_documents: list[dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """Phase 15.1 — map credit bucket requirementGroupId -> pool document."""
-    indexed: dict[str, dict[str, Any]] = {}
+) -> dict[str, list[dict[str, Any]]]:
+    """Phase 15.1 — map credit bucket requirementGroupId -> linked pool documents."""
+    indexed: dict[str, list[dict[str, Any]]] = {}
     for document in pool_documents:
         linked_bucket_id = document.get("linkedCreditBucketId")
         if linked_bucket_id:
-            indexed[str(linked_bucket_id)] = document
+            key = str(linked_bucket_id)
+            indexed.setdefault(key, []).append(document)
     return indexed
+
+
+def collect_eligibility_pools_for_bucket(
+    *,
+    program_code: str,
+    bucket_suffix: str,
+    pools_by_group_id: dict[str, dict[str, Any]],
+    pools_by_linked_bucket: dict[str, list[dict[str, Any]]],
+    pool_documents: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    """Return (eligibility_pools, primary_linked_pool_group_id, strict_pool_enforcement).
+
+    Shared credit buckets (especially elective-faculty) may have many linked pool
+    documents (focus chains, behavior chains, prefix pool). Eligibility is the
+    union of all applicable pools, not a single winning document.
+    """
+    bucket_group = bucket_group_id(program_code, bucket_suffix)
+    pools: list[dict[str, Any]] = []
+    seen_group_ids: set[str] = set()
+
+    def add_pool(document: dict[str, Any] | None) -> None:
+        if not document:
+            return
+        group_id = str(document.get("requirementGroupId") or "")
+        if not group_id or group_id in seen_group_ids:
+            return
+        seen_group_ids.add(group_id)
+        pools.append(document)
+
+    conventional_group = linked_pool_group_id(program_code, bucket_suffix)
+    if conventional_group and bucket_suffix in ENFORCED_BUCKET_POOL_SUFFIXES:
+        add_pool(pools_by_group_id.get(conventional_group))
+
+    for document in pools_by_linked_bucket.get(bucket_group, []):
+        add_pool(document)
+
+    program_prefix = f"{program_code}:"
+    for document in pool_documents:
+        group_id = str(document.get("requirementGroupId") or "")
+        if not group_id.startswith(program_prefix):
+            continue
+        if document.get("linkedCreditBucketId"):
+            continue
+        mapped_bucket = credit_bucket_id_for_pool(
+            program_code=program_code,
+            pool_document=document,
+        )
+        if mapped_bucket == bucket_group:
+            add_pool(document)
+
+    explicit_pools = pools_by_linked_bucket.get(bucket_group, [])
+    if explicit_pools:
+        primary_group = str(explicit_pools[0].get("requirementGroupId") or "") or None
+    elif conventional_group and any(
+        str(pool.get("requirementGroupId") or "") == conventional_group for pool in pools
+    ):
+        primary_group = conventional_group
+    elif pools:
+        primary_group = str(pools[0].get("requirementGroupId") or "") or None
+    else:
+        primary_group = conventional_group
+
+    strict = bool(pools) and (
+        bucket_suffix in ENFORCED_BUCKET_POOL_SUFFIXES
+        or bool(explicit_pools)
+    )
+    return pools, primary_group, strict
 
 
 def credit_bucket_id_for_pool(
@@ -105,28 +173,36 @@ def resolve_pool_for_bucket(
     program_code: str,
     bucket_suffix: str,
     pools_by_group_id: dict[str, dict[str, Any]],
-    pools_by_linked_bucket: dict[str, dict[str, Any]],
+    pools_by_linked_bucket: dict[str, list[dict[str, Any]]],
+    pool_documents: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, bool]:
-    """Return (pool_document, linked_pool_group_id, strict_pool_enforcement).
+    """Return (primary_pool_document, linked_pool_group_id, strict_pool_enforcement).
 
-    Phase 15.1 explicit linkedCreditBucketId takes precedence over Phase 15.0
-    naming-convention links.
+    The primary pool is used for API metadata; eligibility may include additional
+    linked/explorer pools via ``collect_eligibility_pools_for_bucket``.
     """
-    bucket_group = bucket_group_id(program_code, bucket_suffix)
+    pools, primary_group, strict = collect_eligibility_pools_for_bucket(
+        program_code=program_code,
+        bucket_suffix=bucket_suffix,
+        pools_by_group_id=pools_by_group_id,
+        pools_by_linked_bucket=pools_by_linked_bucket,
+        pool_documents=pool_documents or [],
+    )
+    if not pools:
+        return None, primary_group, strict
 
-    explicit_pool = pools_by_linked_bucket.get(bucket_group)
-    if explicit_pool is not None:
-        pool_group = explicit_pool.get("requirementGroupId")
-        return (
-            explicit_pool,
-            str(pool_group) if pool_group is not None else None,
-            True,
+    primary_document = None
+    if primary_group:
+        primary_document = next(
+            (
+                document
+                for document in pools
+                if str(document.get("requirementGroupId") or "") == primary_group
+            ),
+            None,
         )
+    if primary_document is None:
+        primary_document = pools[0]
+        primary_group = str(primary_document.get("requirementGroupId") or "") or primary_group
 
-    conventional_group = linked_pool_group_id(program_code, bucket_suffix)
-    if conventional_group:
-        conventional_pool = pools_by_group_id.get(conventional_group)
-        if conventional_pool and bucket_suffix in ENFORCED_BUCKET_POOL_SUFFIXES:
-            return conventional_pool, conventional_group, True
-
-    return None, conventional_group, False
+    return primary_document, primary_group, strict

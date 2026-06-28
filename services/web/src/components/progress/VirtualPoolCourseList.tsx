@@ -3,7 +3,7 @@ import { useVirtualList } from '../../hooks/useVirtualList'
 import { cn } from '../../lib/utils'
 import { PoolCourseListItem } from './PoolCourseListItem'
 import type { Locale } from '../../i18n/types'
-import { localizedCourseTitle } from '../../lib/electivePools'
+import { localizedCourseTitle, isCountedCourse, isRequiredCurriculumCourse } from '../../lib/electivePools'
 import type { ElectivePoolCourse } from '../../types/api'
 
 const COMPACT_ROW_HEIGHT = 64
@@ -61,8 +61,12 @@ export function VirtualPoolCourseList({
               as="div"
               course={course}
               displayTitle={localizedCourseTitle(course, locale)}
-              isCounted={completedNumbers.has(course.courseNumber)}
-              isRequiredCurriculum={requiredCurriculumNumbers?.has(course.courseNumber) ?? false}
+              isCounted={isCountedCourse(course.courseNumber, completedNumbers)}
+              isRequiredCurriculum={
+                requiredCurriculumNumbers
+                  ? isRequiredCurriculumCourse(course.courseNumber, requiredCurriculumNumbers)
+                  : false
+              }
               countedLabel={countedLabel}
               requiredLabel={requiredLabel}
               showChainStep={showChainLayout}

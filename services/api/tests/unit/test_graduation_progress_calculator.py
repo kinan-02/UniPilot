@@ -16,7 +16,7 @@ from app.services.graduation_progress_calculator import (
 def test_is_passing_grade_numeric():
     assert is_passing_grade({"grade": 82}) is True
     assert is_passing_grade({"grade": 56}) is True
-    assert is_passing_grade({"grade": 55}) is False
+    assert is_passing_grade({"grade": 55}) is True
     assert is_passing_grade({"grade": 0}) is False
 
 
@@ -141,7 +141,7 @@ def test_calculate_progress_enforces_ds_pool_for_elective_bucket():
     )
     assert ds_bucket["creditsCompleted"] == 3.5
     assert ds_bucket["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 8.5
+    assert progress["completedCredits"] == 3.5
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ def test_calculate_progress_handles_custom_bucket_suffix():
 def test_is_passing_grade_numeric():
     assert is_passing_grade({"grade": 82}) is True
     assert is_passing_grade({"grade": 56}) is True
-    assert is_passing_grade({"grade": 55}) is False
+    assert is_passing_grade({"grade": 55}) is True
     assert is_passing_grade({"grade": 0}) is False
 
 
@@ -355,4 +355,4 @@ def test_calculate_progress_enforces_ds_pool_for_elective_bucket():
     )
     assert ds_bucket["creditsCompleted"] == 3.5
     assert ds_bucket["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 8.5
+    assert progress["completedCredits"] == 3.5

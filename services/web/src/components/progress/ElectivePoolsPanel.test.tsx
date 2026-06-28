@@ -99,4 +99,57 @@ describe('ElectivePoolsPanel', () => {
     const { container } = renderPanel({ pools: [] })
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('hides unselected focus chains when transcript progress indicates a chosen track', () => {
+    const focusPools = [
+      {
+        groupId: '009118-1-000:is-focus-chain-performance',
+        title: 'Performance chain',
+        rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+        courses: [{ courseNumber: '00960327', title: 'Part 1', credits: 3.5 }],
+        courseCount: 1,
+        linkedCreditBucketId: '009118-1-000:elective-faculty',
+        explorerReady: true,
+      },
+      {
+        groupId: '009118-1-000:is-focus-chain-ml',
+        title: 'ML chain',
+        rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+        courses: [{ courseNumber: '0970209', title: 'ML core', credits: 3.5 }],
+        courseCount: 1,
+        linkedCreditBucketId: '009118-1-000:elective-faculty',
+        explorerReady: true,
+      },
+    ] as const
+
+    renderPanel({
+      pools: [...focusPools],
+      requirementBuckets: [
+        requirementBucket({
+          requirementGroupId: '009118-1-000:elective-faculty',
+          isMandatory: false,
+          eligibilityEnforcement: 'strict_pool',
+          minCredits: 24.5,
+          creditsCompleted: 3.5,
+          creditsRemaining: 21,
+          completedCourses: [{ courseId: 'ml-1', courseNumber: '0970209', creditsEarned: 3.5 }],
+        }),
+      ],
+      transcriptNumbers: new Set(),
+      t: (key, params) => {
+        if (key === 'progress.electiveExplorer.hiddenChainOptions') {
+          return `${params?.count ?? 0} other focus chain options are hidden`
+        }
+        return progressT(key)
+      },
+    })
+
+    expect(
+      screen.getByTestId('elective-pool-card-009118-1-000:is-focus-chain-ml'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByTestId('elective-pool-card-009118-1-000:is-focus-chain-performance'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/other focus chain options are hidden/i)).toBeInTheDocument()
+  })
 })

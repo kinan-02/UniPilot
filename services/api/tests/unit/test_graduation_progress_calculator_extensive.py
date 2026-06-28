@@ -82,21 +82,21 @@ def _completion(course_id: str, grade: int | float, credits: float, **extra):
     }
 
 
-# --- Passing grades (Technion 0–100, pass > 55) ---
+# --- Passing grades (Technion 0–100, minimum pass grade is 55) ---
 
 
 @pytest.mark.parametrize(
     "record,expected",
     [
         ({"grade": 0}, False),
-        ({"grade": 55}, False),
+        ({"grade": 55}, True),
         ({"grade": 56}, True),
         ({"grade": 82}, True),
         ({"grade": 100}, True),
         ({"grade": 40, "gradePoints": 82}, True),
         ({"grade": 82, "gradePoints": 50}, False),
         ({"grade": "82"}, True),
-        ({"grade": "55"}, False),
+        ({"grade": "55"}, True),
         ({"grade": "A+"}, False),
     ],
 )
@@ -144,7 +144,7 @@ def test_effective_completions_ignores_all_failing_attempts():
     result = build_effective_completions(
         [
             _completion(cid, 40, 0),
-            _completion(cid, 55, 0),
+            _completion(cid, 54, 0),
         ]
     )
     assert result == {}
@@ -165,6 +165,15 @@ def test_effective_completions_deduplicates_multiple_courses():
 def test_pool_eligibility_empty_pool_rejects_all():
     pool = {"ruleExpression": {"type": "course_pool"}, "courseReferences": []}
     assert is_course_eligible_for_pool("00940411", pool) is False
+
+
+def test_pool_eligibility_matches_canonical_number_aliases():
+    pool = {
+        "ruleExpression": {"type": "course_pool", "operator": "choose_credits"},
+        "courseReferences": [{"courseNumber": "0960324"}],
+    }
+    assert is_course_eligible_for_pool("00960324", pool) is True
+    assert is_course_eligible_for_pool("0960324", pool) is True
 
 
 def test_pool_eligibility_multiple_prefixes():
@@ -207,7 +216,7 @@ def test_phase_15_0_ds_pool_rejects_non_listed_course():
     ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
     assert ds["creditsCompleted"] == 3.5
     assert ds["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 8.5
+    assert progress["completedCredits"] == 3.5
     assert len(progress["ineligibleCredits"]) == 1
     assert progress["ineligibleCredits"][0]["courseNumber"] == "01040031"
 
@@ -285,10 +294,12 @@ def test_phase_15_1_explicit_link_always_enforces_even_when_flag_false():
 def test_resolve_pool_for_bucket_prefers_explicit_link():
     pools_by_group = {f"{PROGRAM}:elective-ds-pool": {"requirementGroupId": f"{PROGRAM}:elective-ds-pool"}}
     explicit = {
-        f"{PROGRAM}:elective-ds": {
-            "requirementGroupId": f"{PROGRAM}:explicit-pool",
-            "linkedCreditBucketId": f"{PROGRAM}:elective-ds",
-        }
+        f"{PROGRAM}:elective-ds": [
+            {
+                "requirementGroupId": f"{PROGRAM}:explicit-pool",
+                "linkedCreditBucketId": f"{PROGRAM}:elective-ds",
+            }
+        ]
     }
     pool, group, strict = resolve_pool_for_bucket(
         program_code=PROGRAM,
@@ -308,6 +319,91 @@ def test_index_pools_by_linked_bucket():
     indexed = index_pools_by_linked_bucket(docs)
     assert f"{PROGRAM}:elective-ds" in indexed
     assert len(indexed) == 1
+    assert len(indexed[f"{PROGRAM}:elective-ds"]) == 1
+
+
+def test_faculty_bucket_union_eligibility_across_linked_pools():
+    focus_course = str(ObjectId())
+    prefix_course = str(ObjectId())
+    catalog = {
+        **_catalog_entry(focus_course, "00960324", 3.5),
+        **_catalog_entry(prefix_course, "09400101", 3.0),
+    }
+    faculty_bucket_id = f"{PROGRAM}:elective-faculty"
+    progress = calculate_graduation_progress(
+        degree_program=_program(),
+        hard_requirements=[_bucket("elective-faculty", 6.0)],
+        pool_documents=[
+            _pool(
+                "elective-faculty-pool",
+                ruleExpression={"type": "course_pool", "allowedPrefixes": ["094"]},
+            ),
+            _pool(
+                "is-focus-chain-performance",
+                linked_bucket=faculty_bucket_id,
+                courseReferences=[{"courseNumber": "00960324"}],
+                ruleExpression={"type": "course_pool", "operator": "choose_chain", "chooseCount": 3},
+            ),
+            _pool(
+                "is-additional-faculty-electives",
+                linked_bucket=faculty_bucket_id,
+                ruleExpression={"type": "course_pool", "operator": "min_credits", "allowedPrefixes": ["094"]},
+            ),
+        ],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[
+            _completion(focus_course, 80, 3.5),
+            _completion(prefix_course, 82, 3.0),
+        ],
+    )
+    faculty = next(
+        entry for entry in progress["requirementProgress"] if entry["requirementGroupId"].endswith(":elective-faculty")
+    )
+    assert faculty["eligibilityEnforcement"] == "strict_pool"
+    assert faculty["creditsCompleted"] == 6.0
+    assert len(faculty["completedCourses"]) == 2
+    assert progress["ineligibleCredits"] == []
+    focus_entry = next(
+        course for course in faculty["completedCourses"] if course["courseNumber"] == "00960324"
+    )
+    prefix_entry = next(
+        course for course in faculty["completedCourses"] if course["courseNumber"] == "09400101"
+    )
+    assert focus_entry["assignedPoolGroupId"] == f"{PROGRAM}:is-focus-chain-performance"
+    assert prefix_entry["assignedPoolGroupId"] == f"{PROGRAM}:is-additional-faculty-electives"
+
+
+def test_is_track_faculty_bucket_strict_with_explorer_mapped_chain_pools():
+    is_program = "009118-1-000"
+    focus_course = str(ObjectId())
+    catalog = _catalog_entry(focus_course, "00960327", 3.5)
+    progress = calculate_graduation_progress(
+        degree_program=_program(programCode=is_program),
+        hard_requirements=[
+            {
+                "_id": ObjectId(),
+                "requirementGroupId": f"{is_program}:elective-faculty",
+                "title": "Faculty electives",
+                "requirementType": "elective",
+                "minCredits": 3.5,
+                "isMandatory": True,
+                "ruleExpression": {"type": "credit_bucket", "operator": "min_credits"},
+            }
+        ],
+        pool_documents=[
+            {
+                "requirementGroupId": f"{is_program}:is-focus-chain-performance",
+                "ruleExpression": {"type": "course_pool", "operator": "choose_chain", "chooseCount": 3},
+                "courseReferences": [{"courseNumber": "00960327"}],
+                "enforceInGraduationProgress": True,
+            },
+        ],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[_completion(focus_course, 88, 3.5)],
+    )
+    faculty = progress["requirementProgress"][0]
+    assert faculty["eligibilityEnforcement"] == "strict_pool"
+    assert faculty["creditsCompleted"] == 3.5
 
 
 # --- Bucket allocation / no double-count ---
@@ -350,6 +446,36 @@ def test_core_mandatory_greedy_fill_after_strict_pools():
     core_bucket = next(r for r in progress["requirementProgress"] if "core-mandatory" in r["requirementGroupId"])
     assert core_bucket["creditsCompleted"] == 4.0
     assert core_bucket["status"] == "satisfied"
+
+
+def test_mandatory_matrix_course_reserved_for_core_not_elective_pool():
+    mandatory = str(ObjectId())
+    catalog = _catalog_entry(mandatory, "00940345", 4.0)
+    progress = calculate_graduation_progress(
+        degree_program=_program(),
+        hard_requirements=[
+            _bucket("elective-ds", 24.5),
+            _bucket("core-mandatory", 108.0, req_type="core"),
+        ],
+        pool_documents=[
+            _pool(
+                "elective-ds-pool",
+                courseReferences=[{"courseNumber": "00940345"}, {"courseNumber": "00940411"}],
+            ),
+        ],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[_completion(mandatory, 88, 4.0)],
+        semester_matrix_documents=[
+            {
+                "courseReferences": [{"courseNumber": "00940345"}],
+            }
+        ],
+    )
+    ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
+    core = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":core-mandatory"))
+    assert ds["creditsCompleted"] == 0
+    assert core["creditsCompleted"] == 4.0
+    assert any(course["courseNumber"] == "00940345" for course in core["completedCourses"])
 
 
 # --- Status summary ---
@@ -428,7 +554,7 @@ def test_completion_percentage_capped_at_100():
 # --- Missing catalog entry ---
 
 
-def test_completion_without_catalog_still_counts_globally_but_not_in_strict_pool():
+def test_completion_without_catalog_records_ineligible_and_does_not_assign_credits():
     unknown = str(ObjectId())
     progress = calculate_graduation_progress(
         degree_program=_program(),
@@ -437,9 +563,84 @@ def test_completion_without_catalog_still_counts_globally_but_not_in_strict_pool
         catalog_courses_by_id={},
         completed_course_records=[_completion(unknown, 88, 3.5)],
     )
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 0
+    assert progress["transcriptCreditsTotal"] == 3.5
     ds = progress["requirementProgress"][0]
     assert ds["creditsCompleted"] == 0
+    assert len(progress["ineligibleCredits"]) == 1
+    assert progress["ineligibleCredits"][0]["reason"] == "missing_catalog"
+
+
+def test_pool_eligibility_accepts_prefix_when_explicit_list_also_present():
+    pool = {
+        "ruleExpression": {
+            "type": "course_pool",
+            "operator": "choose_credits",
+            "allowedPrefixes": ["094"],
+        },
+        "courseReferences": [{"courseNumber": "00960324"}],
+    }
+    assert is_course_eligible_for_pool("00960324", pool) is True
+    assert is_course_eligible_for_pool("09400101", pool) is True
+    assert is_course_eligible_for_pool("00940411", pool) is False
+
+
+def test_strict_pool_stops_assigning_after_min_credits_reached():
+    first = str(ObjectId())
+    second = str(ObjectId())
+    catalog = {
+        **_catalog_entry(first, "00940411", 3.5),
+        **_catalog_entry(second, "00940345", 4.0),
+    }
+    progress = calculate_graduation_progress(
+        degree_program=_program(),
+        hard_requirements=[_bucket("elective-ds", 3.5)],
+        pool_documents=[
+            _pool(
+                "elective-ds-pool",
+                courseReferences=[
+                    {"courseNumber": "00940411"},
+                    {"courseNumber": "00940345"},
+                ],
+            ),
+        ],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[
+            _completion(first, 88, 3.5),
+            _completion(second, 82, 4.0),
+        ],
+    )
+    ds = progress["requirementProgress"][0]
+    assert ds["creditsCompleted"] == 3.5
+    assert len(ds["completedCourses"]) == 1
+
+
+def test_bucket_credits_completed_capped_at_min_credits():
+    first = str(ObjectId())
+    second = str(ObjectId())
+    catalog = {
+        **_catalog_entry(first, "00940411", 3.5),
+        **_catalog_entry(second, "00940345", 3.0),
+    }
+    progress = calculate_graduation_progress(
+        degree_program=_program(),
+        hard_requirements=[_bucket("elective-faculty", 6.0)],
+        pool_documents=[
+            _pool(
+                "elective-faculty-pool",
+                ruleExpression={"type": "course_pool", "allowedPrefixes": ["0094", "0096"]},
+            ),
+        ],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[
+            _completion(first, 88, 3.5),
+            _completion(second, 82, 3.0),
+        ],
+    )
+    faculty = progress["requirementProgress"][0]
+    assert faculty["creditsCompleted"] == 6.0
+    assert len(faculty["completedCourses"]) == 2
+    assert progress["completedCredits"] == 6.0
 
 
 # --- Non-credit_bucket requirements ignored ---

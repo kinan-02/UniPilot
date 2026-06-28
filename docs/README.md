@@ -1,6 +1,6 @@
 # UniPilot Documentation
 
-Last updated: 2026-06-20
+Last updated: 2026-06-28
 
 This folder contains the published documentation for the UniPilot AI backend. Start with the root [README.md](../README.md) for setup, tests, and Docker.
 
@@ -40,12 +40,15 @@ This folder contains the published documentation for the UniPilot AI backend. St
 | Document | Purpose |
 |----------|---------|
 | [../services/data-engineering/README.md](../services/data-engineering/README.md) | Staging import, quality gates, production promotion CLI |
+| [../services/transcript-parser/README.md](../services/transcript-parser/README.md) | Internal transcript PDF parsing service |
+| [planning/TRANSCRIPT_PDF_IMPORT_PLAN.md](planning/TRANSCRIPT_PDF_IMPORT_PLAN.md) | Transcript PDF import (parse + commit) design |
 
 ## Current stack (summary)
 
-- **API:** FastAPI (`services/api`) — sole client-facing container
+- **Web:** React SPA (`services/web`) — primary UI on `WEB_PORT` (default 3000); proxies `/api` to the backend
+- **API:** FastAPI (`services/api`) — REST API on `API_PORT` (default 8000)
 - **Database:** MongoDB (`MONGO_DB`, default `unipilot_python`) with promoted Technion DDS catalog
-- **Internal:** `worker`, `ai`, `data-engineering`, `redis` — not host-exposed
-- **Tests:** pytest (unit, integration, security, stress) + `services/api/scripts/verify_and_benchmark.py` for Docker E2E
+- **Internal:** `transcript-parser`, `worker`, `ai`, `data-engineering`, `redis`, `mongo` — not host-exposed (except API/web as above)
+- **Tests:** pytest per Python service (100% coverage gates) + Vitest + Playwright E2E in CI; local full-stack helper: `scripts/extensive_verification.py`
 
 When docs conflict, follow: assignment requirements → ADRs → `PROJECT_CONTEXT.md` → update this index if paths change.

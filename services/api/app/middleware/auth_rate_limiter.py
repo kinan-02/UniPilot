@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 RATE_LIMIT_PREFIX = "rl:auth:"
 AI_RATE_LIMIT_PREFIX = "rl:ai:"
 PROGRESS_RATE_LIMIT_PREFIX = "rl:progress:"
+TRANSCRIPT_IMPORT_RATE_LIMIT_PREFIX = "rl:transcript-import:"
 
 
 class RateLimitStore(Protocol):
@@ -164,4 +165,16 @@ async def enforce_progress_rate_limit(request: Request, user_id: str) -> None:
         window_ms=settings.progress_rate_limit_window_ms,
         max_requests=settings.progress_rate_limit_max,
         detail="Too many progress requests. Please try again later.",
+    )
+
+
+async def enforce_transcript_import_rate_limit(request: Request, user_id: str) -> None:
+    settings = get_settings()
+    path = request.url.path
+    key = f"{TRANSCRIPT_IMPORT_RATE_LIMIT_PREFIX}{user_id}:{path}"
+    await _enforce_rate_limit(
+        key=key,
+        window_ms=settings.transcript_import_rate_limit_window_ms,
+        max_requests=settings.transcript_import_rate_limit_max,
+        detail="Too many transcript import requests. Please try again later.",
     )

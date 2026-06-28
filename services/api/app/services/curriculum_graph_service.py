@@ -30,7 +30,7 @@ def curriculum_graph_cache_key(
     program_code: str,
     catalog_version: str,
 ) -> str:
-    return f"curriculum-graph:base:v9:{program_code}:{catalog_version}"
+    return f"curriculum-graph:base:v10:{program_code}:{catalog_version}"
 
 
 def _matrix_course_numbers(semester_matrix_documents: list[dict[str, Any]]) -> list[str]:

@@ -196,6 +196,20 @@ async def test_list_courses_returns_empty_when_no_semester_offerings(mongo_datab
 
 
 @pytest.mark.asyncio
+async def test_find_course_by_number_uses_canonical_course_number(mongo_database):
+    settings = get_settings()
+    await mongo_database[settings.courses_collection].insert_one(
+        {
+            "courseNumber": "00940777",
+            "status": "published",
+        }
+    )
+    result = await catalog_repository.find_course_by_number(mongo_database, "0940777")
+    assert result is not None
+    assert result["courseNumber"] == "00940777"
+
+
+@pytest.mark.asyncio
 async def test_find_course_by_number_calls_get_settings_when_none(mongo_database, monkeypatch):
     """When settings=None, find_course_by_number calls get_settings()."""
     settings = get_settings()

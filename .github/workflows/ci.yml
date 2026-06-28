@@ -22,8 +22,12 @@ jobs:
         run: pip install bandit pip-audit
       - name: Bandit (API)
         run: bandit -q -r services/api/app -x services/api/tests -ll
+      - name: Bandit (transcript-parser)
+        run: bandit -q -r services/transcript-parser/app -x services/transcript-parser/tests -ll
       - name: pip-audit (API)
         run: pip-audit -r services/api/requirements.txt
+      - name: pip-audit (transcript-parser)
+        run: pip-audit -r services/transcript-parser/requirements.txt
       - name: npm audit (web)
         working-directory: services/web
         run: npm ci && npm audit --audit-level=high
@@ -41,6 +45,24 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/api/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run pytest with coverage gate
+        run: pytest
+
+  transcript-parser:
+    name: Transcript parser (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/transcript-parser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/transcript-parser/requirements-dev.txt
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run pytest with coverage gate
@@ -113,7 +135,7 @@ jobs:
             sleep 5
           done
           docker compose ps
-          docker compose logs --tail=80 web api
+          docker compose logs --tail=80 web api transcript-parser
           exit 1
       - uses: actions/setup-node@v4
         with:

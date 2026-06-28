@@ -1,22 +1,30 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, CheckCircle2 } from 'lucide-react'
 import { buildChainRequirementView, type ResolvedChainStep } from '../../lib/chainRequirementSteps'
 import {
+  buildCourseEquivalenceGroups,
+  dedupeEquivalentPoolCourses,
+  expandNumbersWithEquivalence,
+  isCountedViaEquivalence,
+} from '../../lib/courseEquivalence'
+import {
   catalogLinkForPool,
+  isRequiredCurriculumCourse,
   localizedCourseTitle,
   poolCountedCourseNumbers,
 } from '../../lib/electivePools'
 import { useTranslation } from '../../i18n'
 import { cn } from '../../lib/utils'
 import { PoolCourseListItem } from './PoolCourseListItem'
-import type { ElectiveBucket, RequirementProgressEntry } from '../../types/api'
+import type { CurriculumGraph, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 
 type ChainRequirementViewProps = {
   pool: ElectiveBucket
+  allPools: ElectiveBucket[]
   bucket: RequirementProgressEntry
-  transcriptNumbers: Set<string>
   requiredCurriculumNumbers: Set<string>
+  curriculumGraph?: CurriculumGraph | null
   t: (key: string) => string
 }
 
@@ -40,15 +48,29 @@ function ChainStepSection({
   step,
   locale,
   countedNumbers,
+  equivalenceGroups,
   requiredCurriculumNumbers,
+  curriculumGraph,
   t,
 }: {
   step: ResolvedChainStep
   locale: 'he' | 'en'
   countedNumbers: Set<string>
+  equivalenceGroups: Array<Set<string>>
   requiredCurriculumNumbers: Set<string>
+  curriculumGraph?: CurriculumGraph | null
   t: (key: string) => string
 }) {
+  const visibleCourses = useMemo(
+    () =>
+      dedupeEquivalentPoolCourses(step.courses, {
+        countedNumbers,
+        requiredCurriculumNumbers,
+        curriculumGraph,
+      }),
+    [countedNumbers, curriculumGraph, requiredCurriculumNumbers, step.courses],
+  )
+
   return (
     <section
       className="rounded-xl border border-[var(--color-border)] bg-white p-3.5 shadow-sm"
@@ -71,15 +93,22 @@ function ChainStepSection({
         </p>
       ) : null}
 
-      {step.courses.length ? (
+      {visibleCourses.length ? (
         <ul className="space-y-2">
-          {step.courses.map((course) => (
+          {visibleCourses.map((course) => (
             <PoolCourseListItem
               key={course.courseNumber}
               course={course}
               displayTitle={localizedCourseTitle(course, locale)}
-              isCounted={countedNumbers.has(course.courseNumber)}
-              isRequiredCurriculum={requiredCurriculumNumbers.has(course.courseNumber)}
+              isCounted={isCountedViaEquivalence(
+                course.courseNumber,
+                countedNumbers,
+                equivalenceGroups,
+              )}
+              isRequiredCurriculum={isRequiredCurriculumCourse(
+                course.courseNumber,
+                requiredCurriculumNumbers,
+              )}
               countedLabel={t('progress.electiveExplorer.counted')}
               requiredLabel={t('progress.electiveExplorer.requiredCourse')}
               compact
@@ -97,29 +126,72 @@ function ChainStepSection({
 
 export function ChainRequirementView({
   pool,
+  allPools,
   bucket,
-  transcriptNumbers,
   requiredCurriculumNumbers,
+  curriculumGraph,
   t,
 }: ChainRequirementViewProps) {
   const { locale } = useTranslation()
   const [activeChainId, setActiveChainId] = useState<string | null>(null)
 
-  const countedNumbers = useMemo(
-    () => poolCountedCourseNumbers(pool, bucket, transcriptNumbers),
-    [bucket, pool, transcriptNumbers],
+  const bucketCountedNumbers = useMemo(
+    () => poolCountedCourseNumbers(pool, bucket, allPools),
+    [allPools, bucket, pool],
+  )
+
+  const equivalenceGroups = useMemo(
+    () =>
+      buildCourseEquivalenceGroups({
+        curriculumGraph,
+        poolCourses: pool.courses,
+      }),
+    [curriculumGraph, pool.courses],
+  )
+
+  const expandedCountedNumbers = useMemo(
+    () => expandNumbersWithEquivalence(bucketCountedNumbers, equivalenceGroups),
+    [bucketCountedNumbers, equivalenceGroups],
   )
 
   const view = useMemo(
-    () => buildChainRequirementView(pool, t, countedNumbers),
-    [countedNumbers, pool, t],
+    () => buildChainRequirementView(pool, t, expandedCountedNumbers),
+    [expandedCountedNumbers, pool, t],
   )
+
+  const defaultActiveChainId = useMemo(() => {
+    if (view?.layout !== 'pick_one_chain') return null
+    return (
+      [...view.chains].sort((left, right) => right.satisfiedCount - left.satisfiedCount)[0]?.id ??
+      view.chains[0]?.id ??
+      null
+    )
+  }, [view])
+
+  useEffect(() => {
+    if (view?.layout !== 'pick_one_chain' || activeChainId) return
+    if (defaultActiveChainId) {
+      setActiveChainId(defaultActiveChainId)
+    }
+  }, [activeChainId, defaultActiveChainId, view?.layout])
 
   if (!view) return null
 
+  const stepSectionProps = {
+    locale,
+    countedNumbers: bucketCountedNumbers,
+    equivalenceGroups,
+    requiredCurriculumNumbers,
+    curriculumGraph,
+    t,
+  }
+
   if (view.layout === 'pick_one_chain') {
     const activeChain =
-      view.chains.find((chain) => chain.id === activeChainId) ?? view.chains[0] ?? null
+      view.chains.find((chain) => chain.id === activeChainId) ??
+      view.chains.find((chain) => chain.id === defaultActiveChainId) ??
+      view.chains[0] ??
+      null
 
     return (
       <div className="space-y-4" data-testid={`chain-requirement-view-${pool.groupId}`}>
@@ -149,14 +221,7 @@ export function ChainRequirementView({
         {activeChain ? (
           <div className="space-y-3">
             {activeChain.steps.map((step) => (
-              <ChainStepSection
-                key={step.id}
-                step={step}
-                locale={locale}
-                countedNumbers={countedNumbers}
-                requiredCurriculumNumbers={requiredCurriculumNumbers}
-                t={t}
-              />
+              <ChainStepSection key={step.id} step={step} {...stepSectionProps} />
             ))}
           </div>
         ) : null}
@@ -177,14 +242,7 @@ export function ChainRequirementView({
   return (
     <div className="space-y-3" data-testid={`chain-requirement-view-${pool.groupId}`}>
       {view.steps.map((step) => (
-        <ChainStepSection
-          key={step.id}
-          step={step}
-          locale={locale}
-          countedNumbers={countedNumbers}
-          requiredCurriculumNumbers={requiredCurriculumNumbers}
-          t={t}
-        />
+        <ChainStepSection key={step.id} step={step} {...stepSectionProps} />
       ))}
 
       <div className="flex justify-end pt-1">

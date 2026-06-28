@@ -166,9 +166,12 @@ async def test_non_pool_course_not_counted_in_ds_bucket(auth_client, mongo_datab
 
     progress = await fetch_progress(auth_client, token)
     ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
+    core = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":core-mandatory"))
     assert ds["creditsCompleted"] == 0
+    assert core["creditsCompleted"] == 4.0
     assert progress["completedCredits"] == 4.0
-    assert any(item["courseNumber"] == "00940345" for item in progress["ineligibleCredits"])
+    assert any(course["courseNumber"] == "00940345" for course in core["completedCourses"])
+    assert not any(item["courseNumber"] == "00940345" for item in progress["ineligibleCredits"])
 
 
 @pytest.mark.asyncio

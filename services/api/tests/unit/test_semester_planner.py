@@ -259,6 +259,20 @@ def test_resolve_matrix_course_uses_course_number_when_no_course_id():
     assert result["number"] == "00940101"
 
 
+def test_resolve_matrix_course_uses_parallel_alternative_number():
+    from bson import ObjectId
+
+    raw = build_catalog_course(str(ObjectId()), number="1040016", title="Algebra alt")
+    courses_by_number = {"1040016": raw}
+    result = _resolve_matrix_course(
+        {"courseNumber": "1040065", "alternatives": ["1040016"]},
+        courses_by_id={},
+        courses_by_number=courses_by_number,
+    )
+    assert result is not None
+    assert result["number"] == "1040016"
+
+
 def test_resolve_matrix_course_returns_none_when_course_number_not_in_catalog():
     result = _resolve_matrix_course(
         {"courseNumber": "99999999"},

@@ -1,5 +1,6 @@
 import { Layers, Target } from 'lucide-react'
 import { Badge, Card } from '../ui/Card'
+import { interpolateTemplate } from '../../lib/electivePools'
 import { progressCatalogSubtitle, statusBadgeTone } from '../../lib/graduationProgress'
 import { formatCredits, formatPercent } from '../../lib/utils'
 import type { GraduationProgress } from '../../types/api'
@@ -7,6 +8,7 @@ import type { GraduationProgress } from '../../types/api'
 type ProgressSummaryCardProps = {
   progress: GraduationProgress
   statusLabel: string
+  attentionCount?: number
   t: (key: string) => string
 }
 
@@ -55,7 +57,12 @@ function SummaryStat({
   )
 }
 
-export function ProgressSummaryCard({ progress, statusLabel, t }: ProgressSummaryCardProps) {
+export function ProgressSummaryCard({
+  progress,
+  statusLabel,
+  attentionCount = 0,
+  t,
+}: ProgressSummaryCardProps) {
   const catalogLabel = progressCatalogSubtitle(progress)
   const completionPercent = Math.min(progress.completionPercentage, 100)
   const electiveCompleted = progress.completedElectiveCredits ?? 0
@@ -91,6 +98,16 @@ export function ProgressSummaryCard({ progress, statusLabel, t }: ProgressSummar
             </p>
           </div>
         </div>
+
+        {attentionCount > 0 ? (
+          <a
+            href="#progress-attention"
+            className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
+            data-testid="progress-summary-attention-link"
+          >
+            {interpolateTemplate(t('progress.summaryAttentionLink'), { count: attentionCount })}
+          </a>
+        ) : null}
 
         <div className="mt-4">
           <div className="mb-2 flex justify-between text-xs tabular-nums text-[var(--color-text-muted)]">

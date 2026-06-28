@@ -3,6 +3,7 @@ import {
   chainStepPercent,
   interpolateTemplate,
   localizedBucketTitle,
+  resolvePoolCreditProgress,
   type PoolProgressDisplay,
   type PoolProgressSummary,
 } from '../../lib/electivePools'
@@ -12,6 +13,7 @@ import type { ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 
 type PoolProgressStripProps = {
   pool: ElectiveBucket
+  allPools: ElectiveBucket[]
   linkedBucket: RequirementProgressEntry | undefined
   summary: PoolProgressSummary
   progressDisplay: PoolProgressDisplay
@@ -20,6 +22,7 @@ type PoolProgressStripProps = {
 
 export function PoolProgressStrip({
   pool,
+  allPools,
   linkedBucket,
   summary,
   progressDisplay,
@@ -30,6 +33,12 @@ export function PoolProgressStrip({
   if (progressDisplay === 'chain_steps') {
     const required = summary.chainStepsRequired ?? pool.rule.chooseCount ?? 1
     const percent = chainStepPercent(summary.chainStepsCompleted, required)
+    const creditProgress = resolvePoolCreditProgress(
+      pool,
+      linkedBucket,
+      progressDisplay,
+      allPools,
+    )
     return (
       <div className="mt-2">
         <div className="mb-1 flex justify-between text-xs text-[var(--color-text-muted)]">
@@ -47,22 +56,49 @@ export function PoolProgressStrip({
             style={{ width: `${percent}%` }}
           />
         </div>
-        <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
-          {t('progress.electiveExplorer.chainIncludedInElectives')}
-        </p>
+        {creditProgress.displayCreditsCompleted > 0 ? (
+          <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+            {interpolateTemplate(t('progress.electiveExplorer.poolCreditsCounted'), {
+              credits: formatCredits(creditProgress.displayCreditsCompleted),
+              bucketCredits: formatCredits(creditProgress.bucketCreditsCompleted),
+              bucketRequired: formatCredits(creditProgress.bucketMinCredits),
+            })}
+          </p>
+        ) : (
+          <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
+            {t('progress.electiveExplorer.chainIncludedInElectives')}
+          </p>
+        )}
       </div>
     )
   }
 
-  const percent = bucketCompletionPercent(linkedBucket.creditsCompleted, linkedBucket.minCredits)
+  const creditProgress = resolvePoolCreditProgress(
+    pool,
+    linkedBucket,
+    progressDisplay,
+    allPools,
+  )
+  const barCredits =
+    progressDisplay === 'shared_bucket_credits'
+      ? creditProgress.displayCreditsCompleted
+      : creditProgress.bucketCreditsCompleted
+  const percent = bucketCompletionPercent(barCredits, creditProgress.bucketMinCredits)
   const bucketTitle = localizedBucketTitle(linkedBucket, t)
+  const isShared = progressDisplay === 'shared_bucket_credits'
 
   return (
     <div className="mt-2">
-      <div className="mb-1 flex justify-between text-xs text-[var(--color-text-muted)]">
+      <div className="mb-1 flex justify-between gap-2 text-xs text-[var(--color-text-muted)]">
         <span className="truncate">{bucketTitle}</span>
-        <span className="shrink-0 tabular-nums">
-          {formatCredits(linkedBucket.creditsCompleted)} / {formatCredits(linkedBucket.minCredits)}
+        <span className="shrink-0 text-end tabular-nums">
+          {isShared
+            ? interpolateTemplate(t('progress.electiveExplorer.sharedPoolCreditsLine'), {
+                poolCredits: formatCredits(creditProgress.displayCreditsCompleted),
+                bucketCredits: formatCredits(creditProgress.bucketCreditsCompleted),
+                bucketRequired: formatCredits(creditProgress.bucketMinCredits),
+              })
+            : `${formatCredits(creditProgress.displayCreditsCompleted)} / ${formatCredits(creditProgress.bucketMinCredits)}`}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
@@ -71,7 +107,7 @@ export function PoolProgressStrip({
           style={{ width: `${percent}%` }}
         />
       </div>
-      {progressDisplay === 'shared_bucket_credits' ? (
+      {isShared ? (
         <p className="mt-1 text-[11px] text-[var(--color-text-muted)]">
           {t('progress.electiveExplorer.sharedElectiveBucketHint')}
         </p>
@@ -81,10 +117,14 @@ export function PoolProgressStrip({
 }
 
 export function PoolProgressBadge({
+  pool,
+  allPools,
   progressDisplay,
   linkedBucket,
   summary,
 }: {
+  pool: ElectiveBucket
+  allPools: ElectiveBucket[]
   progressDisplay: PoolProgressDisplay
   linkedBucket: RequirementProgressEntry | undefined
   summary: PoolProgressSummary
@@ -99,10 +139,21 @@ export function PoolProgressBadge({
     )
   }
 
-  const percent = bucketCompletionPercent(linkedBucket.creditsCompleted, linkedBucket.minCredits)
+  const creditProgress = resolvePoolCreditProgress(
+    pool,
+    linkedBucket,
+    progressDisplay,
+    allPools,
+  )
+  const percent = bucketCompletionPercent(
+    creditProgress.bucketCreditsCompleted,
+    creditProgress.bucketMinCredits,
+  )
   return (
     <Badge tone={linkedBucket.status === 'satisfied' ? 'success' : 'primary'}>
-      {Math.round(percent)}%
+      {progressDisplay === 'shared_bucket_credits'
+        ? formatCredits(creditProgress.displayCreditsCompleted)
+        : `${Math.round(percent)}%`}
     </Badge>
   )
 }

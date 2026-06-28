@@ -9,6 +9,8 @@ import {
   poolCategoryTranslationKey,
   poolProgressSummary,
   progressBucketForPool,
+  resolvePoolCreditProgress,
+  resolvePoolProgressDisplay,
 } from '../../lib/electivePools'
 import { bucketCompletionPercent } from '../../lib/graduationProgress'
 import { cn, formatCredits } from '../../lib/utils'
@@ -17,6 +19,7 @@ import type { ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 
 type ElectivePoolCardProps = {
   pool: ElectiveBucket
+  allPools?: ElectiveBucket[]
   requirementBuckets: RequirementProgressEntry[]
   t: (key: string) => string
   onExplore: (bucket: RequirementProgressEntry, pool: ElectiveBucket) => void
@@ -36,6 +39,7 @@ function categoryIcon(category: ReturnType<typeof classifyPool>) {
 
 export function ElectivePoolCard({
   pool,
+  allPools = [],
   requirementBuckets,
   t,
   onExplore,
@@ -43,6 +47,7 @@ export function ElectivePoolCard({
   const category = classifyPool(pool)
   const Icon = categoryIcon(category)
   const linkedBucket = progressBucketForPool(pool, requirementBuckets)
+  const progressDisplay = resolvePoolProgressDisplay(pool, allPools)
   const bucket: RequirementProgressEntry = linkedBucket ?? {
     requirementGroupId: pool.linkedCreditBucketId ?? pool.groupId,
     title: pool.title,
@@ -51,11 +56,19 @@ export function ElectivePoolCard({
     creditsCompleted: 0,
     creditsRemaining: pool.minCredits ?? 0,
   }
-  const summary = poolProgressSummary(pool, bucket)
+  const summary = poolProgressSummary(pool, bucket, t, allPools)
+  const creditProgress = linkedBucket
+    ? resolvePoolCreditProgress(pool, linkedBucket, progressDisplay, allPools)
+    : null
   const categoryKey = poolCategoryTranslationKey(category)
   const categoryLabel = t(categoryKey) !== categoryKey ? t(categoryKey) : category
-  const completionPercent = linkedBucket
-    ? bucketCompletionPercent(linkedBucket.creditsCompleted, linkedBucket.minCredits)
+  const completionPercent = creditProgress
+    ? bucketCompletionPercent(
+        progressDisplay === 'shared_bucket_credits'
+          ? creditProgress.displayCreditsCompleted
+          : creditProgress.bucketCreditsCompleted,
+        creditProgress.bucketMinCredits,
+      )
     : 0
   const isSatisfied = linkedBucket?.status === 'satisfied'
 
@@ -95,9 +108,11 @@ export function ElectivePoolCard({
             <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">{categoryLabel}</p>
           </div>
         </div>
-        {linkedBucket ? (
+        {linkedBucket && creditProgress ? (
           <Badge tone={isSatisfied ? 'success' : 'primary'}>
-            {formatCredits(linkedBucket.creditsCompleted)} / {formatCredits(linkedBucket.minCredits)}
+            {progressDisplay === 'shared_bucket_credits'
+              ? `${formatCredits(creditProgress.displayCreditsCompleted)} · ${formatCredits(creditProgress.bucketCreditsCompleted)}/${formatCredits(creditProgress.bucketMinCredits)}`
+              : `${formatCredits(creditProgress.displayCreditsCompleted)} / ${formatCredits(creditProgress.bucketMinCredits)}`}
           </Badge>
         ) : null}
       </div>
@@ -148,6 +163,7 @@ export function ElectivePoolCard({
           : interpolateTemplate(t('progress.electiveExplorer.countedSummary'), {
               counted: summary.counted,
               listed: summary.listed,
+              credits: formatCredits(summary.creditsCompleted),
             })}
       </p>
 

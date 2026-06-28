@@ -8,7 +8,10 @@ from app.curriculum.data_quality import (
     parse_credits_range,
 )
 from app.curriculum.graph_builder import build_base_curriculum_graph
-from app.curriculum.graph_overlay import overlay_transcript_on_graph
+from app.curriculum.graph_overlay import (
+    build_equivalence_groups,
+    overlay_transcript_on_graph,
+)
 
 
 def test_parse_credits_range_detects_en_dash():
@@ -269,6 +272,9 @@ def test_build_base_graph_parses_credits_from_notes_and_hint_raw():
     )
     node = graph["nodes"][0]
     assert node["credits"]["uncertain"] is True
+    assert ("00960211", "00960221") in [
+        tuple(group) for group in graph.get("crossTrackEquivalenceGroups", [])
+    ]
 
 
 def test_prerequisite_sources_deduplicate_duplicate_prerequisite_ids():
@@ -551,3 +557,96 @@ def test_overlay_marks_verify_with_registrar_when_flag_set():
     }
     graph = overlay_transcript_on_graph(base, [])
     assert graph["nodes"][0]["status"] == "verify_with_registrar"
+
+
+def test_build_equivalence_groups_merges_primary_and_alternatives():
+    groups = build_equivalence_groups(
+        [
+            {
+                "courseNumber": "1040065",
+                "alternatives": ["1040016"],
+            }
+        ]
+    )
+    equivalence = groups.get("1040065") or groups.get("01040065") or set()
+    assert "1040016" in equivalence or "01040016" in equivalence
+
+
+def test_overlay_marks_completed_when_parallel_alternative_passed():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "1040065",
+                "courseNumber": "1040065",
+                "semester": 1,
+                "alternatives": ["1040016"],
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            }
+        ],
+        "edges": [],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(
+        base,
+        [{"courseNumber": "01040016", "grade": 85}],
+    )
+    node = graph["nodes"][0]
+    assert node["status"] == "completed"
+    assert node["satisfiedViaAlternative"] == "01040016"
+
+
+def test_overlay_unblocks_dependent_when_prereq_satisfied_via_alternative():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "1040065",
+                "courseNumber": "1040065",
+                "semester": 1,
+                "alternatives": ["1040016"],
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            },
+            {
+                "nodeId": "1040311",
+                "courseNumber": "1040311",
+                "semester": 2,
+                "alternatives": [],
+                "prerequisiteNumbers": ["1040065"],
+                "dataQuality": {"verifyWithRegistrar": False},
+            },
+        ],
+        "edges": [{"from": "1040065", "to": "1040311", "kind": "prerequisite"}],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(
+        base,
+        [{"courseNumber": "1040016", "grade": 90}],
+    )
+    by_number = {node["courseNumber"]: node for node in graph["nodes"]}
+    assert by_number["1040065"]["status"] == "completed"
+    assert by_number["1040311"]["status"] == "available"
+    assert by_number["1040311"]["missingPrerequisites"] == []
+
+
+def test_overlay_keeps_failed_when_primary_failed_and_no_alternative_passed():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "1040065",
+                "courseNumber": "1040065",
+                "semester": 1,
+                "alternatives": ["1040016"],
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            }
+        ],
+        "edges": [],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(
+        base,
+        [{"courseNumber": "1040065", "grade": 40}],
+    )
+    assert graph["nodes"][0]["status"] == "failed"
+    assert "satisfiedViaAlternative" not in graph["nodes"][0]

@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom'
-import { AlertTriangle, BookOpen, ChevronRight, ClipboardList, Layers } from 'lucide-react'
+import { BookOpen, ChevronRight, ClipboardList, Layers } from 'lucide-react'
 import { Badge, Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { bucketCompletionPercent, statusBadgeTone } from '../../lib/graduationProgress'
-import { catalogSearchLink, localizedBucketTitle, localizedPoolTitle } from '../../lib/electivePools'
+import { catalogSearchLink, dedupedPoolListedCount, localizedBucketTitle, localizedPoolTitle } from '../../lib/electivePools'
 import { formatCredits } from '../../lib/utils'
-import type { CourseProgressEntry, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
+import type { CourseProgressEntry, CurriculumGraph, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
 import type { useTranslation } from '../../i18n'
 
 type TFn = ReturnType<typeof useTranslation>['t']
@@ -15,11 +15,13 @@ export function RequirementBucketRow({
   t,
   linkedPools = [],
   onExplorePool,
+  curriculumGraph,
 }: {
   bucket: RequirementProgressEntry
   t: TFn
   linkedPools?: ElectiveBucket[]
   onExplorePool?: (bucket: RequirementProgressEntry, pool: ElectiveBucket) => void
+  curriculumGraph?: CurriculumGraph | null
 }) {
   const percent = bucketCompletionPercent(bucket.creditsCompleted, bucket.minCredits)
   const statusKey = `progress.bucketStatus.${bucket.status}` as const
@@ -75,9 +77,15 @@ export function RequirementBucketRow({
                     ? localizedPoolTitle(pool, t)
                     : t('progress.electiveExplorer.open')}
                 </span>
-                {(pool.courseCount ?? pool.courses.length) > 0 ? (
+                {(dedupedPoolListedCount(pool, {
+                  countedNumbers: new Set<string>(),
+                  curriculumGraph,
+                })) > 0 ? (
                   <span className="rounded-full bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-text-muted)]">
-                    {pool.courseCount ?? pool.courses.length}
+                    {dedupedPoolListedCount(pool, {
+                      countedNumbers: new Set<string>(),
+                      curriculumGraph,
+                    })}
                   </span>
                 ) : null}
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" />
@@ -119,35 +127,6 @@ export function CourseChipList({ courses }: { courses: CourseProgressEntry[] }) 
         </li>
       ))}
     </ul>
-  )
-}
-
-export function ProgressAlertCard({
-  tone,
-  title,
-  description,
-  children,
-}: {
-  tone: 'warning' | 'danger'
-  title: string
-  description: string
-  children?: React.ReactNode
-}) {
-  const border =
-    tone === 'danger' ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'
-  const iconColor = tone === 'danger' ? 'text-red-700' : 'text-amber-700'
-
-  return (
-    <Card className={border}>
-      <div className="flex gap-3">
-        <AlertTriangle className={`mt-0.5 h-5 w-5 shrink-0 ${iconColor}`} />
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">{description}</p>
-          {children ? <div className="mt-3">{children}</div> : null}
-        </div>
-      </div>
-    </Card>
   )
 }
 

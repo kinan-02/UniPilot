@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   bucketCompletionPercent,
+  filterRemainingMandatoryCourses,
   hasActionableGaps,
   isGeneralTechnionBucket,
   partitionRequirementBuckets,
@@ -88,5 +89,48 @@ describe('graduationProgress helpers', () => {
         ineligibleCredits: [{ courseNumber: '03940580', reason: 'wrong bucket' }],
       }),
     ).toBe(true)
+  })
+
+  it('filters remaining mandatory courses already satisfied by parallel completion', () => {
+    const graph = {
+      trackSlug: 'track',
+      programCode: '009216-1-000',
+      catalogYear: 2025,
+      viewDefault: 'semester_swimlanes' as const,
+      semesterLanes: [],
+      nodes: [
+        {
+          nodeId: 'node-algebra',
+          courseNumber: '1040065',
+          title: 'Algebra',
+          semester: 1,
+          status: 'available' as const,
+          credits: { display: '5', value: 5, uncertain: false },
+          alternatives: ['1040016'],
+          dataQuality: {
+            manualReviewRequired: false,
+            confidence: 'high' as const,
+            hasAlternatives: true,
+            creditsUncertain: false,
+            verifyWithRegistrar: true,
+          },
+          prerequisiteNumbers: [],
+          missingPrerequisites: [],
+          isBottleneck: false,
+        },
+      ],
+      edges: [],
+      bottlenecks: [],
+      electiveBuckets: [],
+    }
+    const remaining = filterRemainingMandatoryCourses(
+      [
+        { courseId: 'matrix:1040065', courseNumber: '1040065' },
+        { courseId: 'matrix:01040031', courseNumber: '01040031' },
+      ],
+      [{ courseId: 'real-id', courseNumber: '1040016' }],
+      graph,
+    )
+    expect(remaining.map((course) => course.courseNumber)).toEqual(['01040031'])
   })
 })

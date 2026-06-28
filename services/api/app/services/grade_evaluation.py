@@ -1,4 +1,4 @@
-"""Technion numeric grade evaluation (0–100 scale; pass strictly above 55)."""
+"""Technion numeric grade evaluation (0–100 scale; minimum pass grade is 55)."""
 
 from __future__ import annotations
 
@@ -39,11 +39,11 @@ def resolve_record_numeric_grade(record: dict[str, Any]) -> float | None:
 
 
 def is_passing_numeric_grade(numeric_grade: float) -> bool:
-    return numeric_grade > PASSING_GRADE_THRESHOLD
+    return numeric_grade >= PASSING_GRADE_THRESHOLD
 
 
 def is_passing_grade(record: dict[str, Any] | Any, grade_points: Any = None) -> bool:
-    """Return True when the student passed (score strictly greater than 55)."""
+    """Return True when the student passed (score at or above the minimum pass grade)."""
     if isinstance(record, dict):
         numeric = resolve_record_numeric_grade(record)
     else:

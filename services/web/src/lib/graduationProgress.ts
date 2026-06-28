@@ -1,4 +1,6 @@
-import type { GraduationProgress, RequirementProgressEntry } from '../types/api'
+import type { CurriculumGraph, GraduationProgress, RequirementProgressEntry } from '../types/api'
+import { buildMandatoryEquivalenceGroups } from './courseEquivalence'
+import { courseNumberKeys } from './courseNumbers'
 
 export const GENERAL_TECHNION_BUCKET_SUFFIXES = new Set([
   'enrichment',
@@ -69,10 +71,110 @@ export function progressCatalogSubtitle(progress: GraduationProgress): string {
   return parts.join(' · ') || ''
 }
 
-export function hasActionableGaps(progress: GraduationProgress): boolean {
+export function hasActionableGaps(
+  progress: GraduationProgress,
+  curriculumGraph?: CurriculumGraph | null,
+): boolean {
+  const remainingMandatory = filterRemainingMandatoryCourses(
+    progress.remainingMandatoryCourses,
+    progress.completedMandatoryCourses,
+    curriculumGraph,
+  )
   return Boolean(
-    (progress.remainingMandatoryCourses?.length ?? 0) > 0 ||
+    remainingMandatory.length > 0 ||
       (progress.missingRequirements?.length ?? 0) > 0 ||
       (progress.ineligibleCredits?.length ?? 0) > 0,
   )
+}
+
+export function countAttentionItems(
+  progress: GraduationProgress,
+  curriculumGraph?: CurriculumGraph | null,
+): number {
+  const remainingMandatory = filterRemainingMandatoryCourses(
+    progress.remainingMandatoryCourses,
+    progress.completedMandatoryCourses,
+    curriculumGraph,
+  )
+  return (
+    remainingMandatory.length +
+    (progress.missingRequirements?.length ?? 0) +
+    (progress.ineligibleCredits?.length ?? 0)
+  )
+}
+
+function mandatoryGroupForCourse(
+  courseNumber: string | undefined,
+  groups: Array<Set<string>>,
+): Set<string> | null {
+  if (!courseNumber) return null
+  const keys = new Set(courseNumberKeys(courseNumber))
+  return groups.find((group) => [...keys].some((key) => group.has(key))) ?? null
+}
+
+export function filterRemainingMandatoryCourses(
+  remaining: GraduationProgress['remainingMandatoryCourses'],
+  completed: GraduationProgress['completedMandatoryCourses'],
+  curriculumGraph?: CurriculumGraph | null,
+): NonNullable<GraduationProgress['remainingMandatoryCourses']> {
+  const completedKeys = new Set<string>()
+  for (const course of completed ?? []) {
+    for (const key of courseNumberKeys(course.courseNumber ?? '')) {
+      completedKeys.add(key)
+    }
+  }
+
+  const mandatoryGroups = buildMandatoryEquivalenceGroups({
+    curriculumGraph,
+    remainingMandatory: remaining,
+    completedMandatory: completed,
+  })
+  const satisfiedGroups = new Set<Set<string>>()
+  for (const group of mandatoryGroups) {
+    if ([...group].some((key) => completedKeys.has(key))) {
+      satisfiedGroups.add(group)
+    }
+  }
+
+  const seenGroups = new Set<Set<string>>()
+  const filtered: NonNullable<GraduationProgress['remainingMandatoryCourses']> = []
+
+  for (const course of remaining ?? []) {
+    const group = mandatoryGroupForCourse(course.courseNumber, mandatoryGroups)
+    if (group) {
+      if ([...satisfiedGroups].some((satisfied) => satisfied === group)) continue
+      if (seenGroups.has(group)) continue
+      if (
+        course.courseNumber &&
+        courseNumberKeys(course.courseNumber).some((key) => completedKeys.has(key))
+      ) {
+        continue
+      }
+      seenGroups.add(group)
+      filtered.push(course)
+      continue
+    }
+
+    if (!course.courseNumber) {
+      filtered.push(course)
+      continue
+    }
+    if (!courseNumberKeys(course.courseNumber).some((key) => completedKeys.has(key))) {
+      filtered.push(course)
+    }
+  }
+
+  return filtered
+}
+
+export function ineligibleCreditReasonLabel(
+  reason: string | undefined,
+  t: (key: string) => string,
+): string {
+  if (!reason) {
+    return t('progress.ineligibleReasons.unknown')
+  }
+  const key = `progress.ineligibleReasons.${reason}`
+  const translated = t(key)
+  return translated !== key ? translated : reason.replace(/_/g, ' ')
 }
