@@ -1,5 +1,5 @@
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const SEMESTER_CODE_PATTERN = /^\d{4}-[12]$/
+const SEMESTER_CODE_PATTERN = /^\d{4}-[123]$/
 const COURSE_NUMBER_PATTERN = /^0\d{7}$/
 const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
 

@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 OBJECT_ID_PATTERN = re.compile(r"^[a-f0-9]{24}$", re.IGNORECASE)
-SEMESTER_CODE_PATTERN = re.compile(r"^\d{4}-[12]$")
+SEMESTER_CODE_PATTERN = re.compile(r"^\d{4}-[123]$")
 
 
 def validate_object_id(value: str) -> str:
@@ -15,7 +15,7 @@ def validate_object_id(value: str) -> str:
 
 def validate_semester_code(value: str) -> str:
     if not SEMESTER_CODE_PATTERN.match(str(value)):
-        raise ValueError("Semester code must match YYYY-1 or YYYY-2 format")
+        raise ValueError("Semester code must match YYYY-1, YYYY-2, or YYYY-3 format")
     return str(value)
 
 

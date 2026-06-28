@@ -22,6 +22,7 @@ describe('validation', () => {
 
   it('validates semester code', () => {
     expect(validateSemesterCode('2025-2')).toEqual({ ok: true })
+    expect(validateSemesterCode('2025-3')).toEqual({ ok: true })
     expect(validateSemesterCode('25-2')).toEqual({ ok: false, message: 'validation.semesterCode' })
   })
 

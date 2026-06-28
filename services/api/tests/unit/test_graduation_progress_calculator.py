@@ -141,7 +141,9 @@ def test_calculate_progress_enforces_ds_pool_for_elective_bucket():
     )
     assert ds_bucket["creditsCompleted"] == 3.5
     assert ds_bucket["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 8.5
+    assert progress["transcriptCreditsTotal"] == 8.5
+    assert len(progress["ineligibleCredits"]) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -355,4 +357,6 @@ def test_calculate_progress_enforces_ds_pool_for_elective_bucket():
     )
     assert ds_bucket["creditsCompleted"] == 3.5
     assert ds_bucket["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 8.5
+    assert progress["transcriptCreditsTotal"] == 8.5
+    assert len(progress["ineligibleCredits"]) == 1

@@ -168,6 +168,16 @@ def test_update_request_accepts_valid_semester_code():
     assert payload.currentSemesterCode == "2026-2"
 
 
+def test_create_request_accepts_summer_semester_code():
+    payload = CreateStudentProfileRequest(
+        institutionId="technion",
+        programType="BSc",
+        catalogYear=2025,
+        currentSemesterCode="2025-3",
+    )
+    assert payload.currentSemesterCode == "2025-3"
+
+
 def test_strip_optional_string_handles_none():
     from app.schemas.student_profile import strip_optional_string
     assert strip_optional_string(None) is None

@@ -430,12 +430,12 @@ def calculate_graduation_progress(
         degree_program.get("totalCredits")
         or sum(float(r.get("minCredits") or 0) for r in buckets_by_suffix.values())
     )
-    completed_credits = round_credits(
-        sum(float(entry["creditsCompleted"] or 0) for entry in requirement_progress)
-    )
     transcript_credits_total = round_credits(
         sum(completion["creditsEarned"] for completion in effective_completions.values())
     )
+    # Top-level progress counts each passing transcript course once (see DATABASE_SCHEMA.md),
+    # not the sum of per-bucket caps used for individual requirement status.
+    completed_credits = transcript_credits_total
     credits_remaining = round_credits(max(0, total_required_credits - completed_credits))
     completion_percentage = (
         round_percentage(min(100, (completed_credits / total_required_credits) * 100))

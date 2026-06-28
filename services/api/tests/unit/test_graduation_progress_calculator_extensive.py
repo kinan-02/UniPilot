@@ -216,7 +216,8 @@ def test_phase_15_0_ds_pool_rejects_non_listed_course():
     ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
     assert ds["creditsCompleted"] == 3.5
     assert ds["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 8.5
+    assert progress["transcriptCreditsTotal"] == 8.5
     assert len(progress["ineligibleCredits"]) == 1
     assert progress["ineligibleCredits"][0]["courseNumber"] == "01040031"
 
@@ -563,7 +564,7 @@ def test_completion_without_catalog_records_ineligible_and_does_not_assign_credi
         catalog_courses_by_id={},
         completed_course_records=[_completion(unknown, 88, 3.5)],
     )
-    assert progress["completedCredits"] == 0
+    assert progress["completedCredits"] == 3.5
     assert progress["transcriptCreditsTotal"] == 3.5
     ds = progress["requirementProgress"][0]
     assert ds["creditsCompleted"] == 0
@@ -640,7 +641,8 @@ def test_bucket_credits_completed_capped_at_min_credits():
     faculty = progress["requirementProgress"][0]
     assert faculty["creditsCompleted"] == 6.0
     assert len(faculty["completedCourses"]) == 2
-    assert progress["completedCredits"] == 6.0
+    assert progress["completedCredits"] == 6.5
+    assert progress["transcriptCreditsTotal"] == 6.5
 
 
 # --- Non-credit_bucket requirements ignored ---
