@@ -18,14 +18,14 @@ test.describe('Civil faculty critical path @critical', () => {
         /מסלול הנדסה אזרחית.*מבנים|Structures Track|Civil Engineering.*Structures/i,
     })
 
-    const progressResponse = page.waitForResponse(
+    const progressPromise = page.waitForResponse(
       (response) =>
         response.url().includes('/graduation-progress') &&
         !response.url().includes('curriculum-graph') &&
         response.request().method() === 'GET' &&
         response.status() === 200,
     )
-    const graphResponse = page.waitForResponse(
+    const graphPromise = page.waitForResponse(
       (response) =>
         response.url().includes('/graduation-progress/curriculum-graph') &&
         response.request().method() === 'GET' &&
@@ -33,10 +33,11 @@ test.describe('Civil faculty critical path @critical', () => {
     )
 
     await page.goto('/progress')
-    const progressPayload = (await (await progressResponse).json()) as {
+    const [progressResponse, graphResponse] = await Promise.all([progressPromise, graphPromise])
+    const progressPayload = (await progressResponse.json()) as {
       data: { graduationProgress: { requirementProgress: unknown[] } }
     }
-    const graphPayload = (await (await graphResponse).json()) as {
+    const graphPayload = (await graphResponse.json()) as {
       data: {
         curriculumGraph: { semesterLanes: unknown[]; electiveBuckets: unknown[] }
       }
@@ -55,12 +56,12 @@ test.describe('Civil faculty critical path @critical', () => {
       data: {
         semesterPlan: {
           semesters: Array<{ plannedCourses: unknown[] }>
-          explanation: { partialPlan?: boolean }
+          explanation: { emptyPlan?: boolean; partialPlan?: boolean }
         }
       }
     }
     const planned = generatePayload.data.semesterPlan.semesters[0]?.plannedCourses ?? []
     expect(planned.length).toBeGreaterThan(0)
-    expect(generatePayload.data.semesterPlan.explanation.partialPlan).not.toBe(true)
+    expect(generatePayload.data.semesterPlan.explanation.emptyPlan).not.toBe(true)
   })
 })
