@@ -572,6 +572,44 @@ def test_build_equivalence_groups_merges_primary_and_alternatives():
     assert "1040016" in equivalence or "01040016" in equivalence
 
 
+def test_build_equivalence_groups_skips_nodes_without_primary_number():
+    groups = build_equivalence_groups([{"courseNumber": "", "alternatives": ["1040016"]}])
+    assert "1040016" not in groups
+    assert "01040016" not in groups
+
+
+def test_completed_via_alternative_returns_equivalent_candidate():
+    from app.curriculum.graph_overlay import _completed_via_alternative
+
+    groups = build_equivalence_groups(
+        [{"courseNumber": "1040065", "alternatives": ["1040016"]}],
+    )
+    candidate = _completed_via_alternative(
+        primary="1040065",
+        completed={"01040016"},
+        groups=groups,
+    )
+    assert candidate == "01040016"
+
+
+def test_overlay_skips_bottleneck_highlight_when_edge_nodes_missing():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "known-target",
+                "courseNumber": "B",
+                "semester": 2,
+                "prerequisiteNumbers": ["A"],
+                "dataQuality": {"verifyWithRegistrar": False},
+            }
+        ],
+        "edges": [{"from": "missing-source", "to": "known-target", "kind": "prerequisite"}],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(base, [])
+    assert graph["edges"][0].get("highlight") != "bottleneck"
+
+
 def test_overlay_marks_completed_when_parallel_alternative_passed():
     base = {
         "nodes": [

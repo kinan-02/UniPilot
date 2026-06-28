@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.services.course_reference_keys import (
+    build_mandatory_course_number_keys,
     build_mandatory_equivalence_groups,
     build_remaining_mandatory_course_entries,
     course_reference_number_keys,
@@ -116,6 +117,48 @@ def test_build_remaining_mandatory_course_entries_skips_cross_track_satisfied_gr
     satisfied = {frozenset(group) for group in groups if "00960211" in group}
     remaining = build_remaining_mandatory_course_entries(matrix, satisfied)
     assert remaining == []
+
+
+def test_filter_remaining_mandatory_drops_entry_already_in_completed_keys_for_group():
+    groups = [{"00940101"}]
+    remaining = filter_remaining_mandatory_courses(
+        [{"courseNumber": "00940101"}],
+        [{"courseNumber": "00940101"}],
+        mandatory_groups=groups,
+    )
+    assert remaining == []
+
+
+def test_build_mandatory_course_number_keys_collects_all_group_members():
+    keys = build_mandatory_course_number_keys(
+        [{"courseReferences": [{"courseNumber": "01040031"}]}]
+    )
+    assert "01040031" in keys
+
+
+def test_resolve_mandatory_bucket_suffix_falls_back_to_first_mandatory_bucket():
+    assert (
+        resolve_mandatory_bucket_suffix(
+            {"custom-mandatory": {"isMandatory": True}, "elective-ds": {"isMandatory": False}}
+        )
+        == "custom-mandatory"
+    )
+
+
+def test_build_remaining_mandatory_course_entries_skips_reference_without_keys():
+    remaining = build_remaining_mandatory_course_entries(
+        [{"courseReferences": [{"notes": ["no numbers here"]}]}],
+        set(),
+    )
+    assert remaining == []
+
+
+def test_build_remaining_mandatory_course_entries_uses_sorted_key_when_primary_missing():
+    remaining = build_remaining_mandatory_course_entries(
+        [{"courseReferences": [{"alternatives": ["01040031"], "titleHint": "Alt only"}]}],
+        set(),
+    )
+    assert remaining[0]["courseNumber"] == "01040031"
 
 
 def test_pool_eligibility_accepts_alternative_listed_on_pool_reference():

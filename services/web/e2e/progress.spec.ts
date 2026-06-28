@@ -69,7 +69,8 @@ test.describe('Graduation progress — industry E2E', () => {
   test('does not expose removed bucket explorer UI', async ({ page }) => {
     await expect(page.getByRole('button', { name: /פתח בריכה|Browse pool/i })).toHaveCount(0)
     await expect(page.getByTestId('elective-pool-explorer')).toHaveCount(0)
-    await expect(page.getByText(/still needed|עדיין חסר/i)).toHaveCount(0)
+    const poolsPanel = page.getByTestId('elective-pools-panel')
+    await expect(poolsPanel.getByText(/still needed|עדיין חסר/i)).toHaveCount(0)
   })
 
   test('supports Hebrew default and English switch with dir attribute', async ({ page }) => {

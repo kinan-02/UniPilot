@@ -67,5 +67,61 @@ def test_parse_course_line_returns_none_for_invalid_compact_values():
     assert parse_course_line("00960401 3.0 101", semester_code="2024-1") is None
 
 
+def test_normalize_parsed_courses_drops_invalid_numbers():
+    from app.schemas.parse_result import ParsedCourseEntry
+
+    from app.services import pdf_pipeline
+
+    raw_course = ParsedCourseEntry.model_construct(
+        courseNumber="123",
+        semesterCode="2024-1",
+        grade=85,
+        creditsEarned=3.0,
+        confidence=0.8,
+        warnings=[],
+    )
+    warnings: list[str] = []
+    normalized = pdf_pipeline._normalize_parsed_courses([raw_course], warnings)
+    assert normalized == []
+    assert warnings
+
+
+def test_parse_course_line_structured_number_mismatch(monkeypatch):
+    from app.services import text_line_parser
+
+    monkeypatch.setattr(
+        text_line_parser,
+        "_normalized_course_number_from_line",
+        lambda _line: "00960401",
+    )
+    assert parse_course_line("00960402 Title 3.0 85", semester_code="2024-1") is None
+
+
+def test_parse_course_line_compact_number_mismatch(monkeypatch):
+    from app.services import text_line_parser
+
+    monkeypatch.setattr(
+        text_line_parser,
+        "_normalized_course_number_from_line",
+        lambda _line: "00960401",
+    )
+    assert parse_course_line("00960402 3.0 85", semester_code="2024-1") is None
+
+
+def test_parse_course_line_relaxed_number_mismatch(monkeypatch):
+    from app.services import text_line_parser
+
+    monkeypatch.setattr(
+        text_line_parser,
+        "_normalized_course_number_from_line",
+        lambda _line: "00960401",
+    )
+    assert parse_course_line("960402 3.0 85", semester_code="2024-1") is None
+
+
+def test_parse_course_line_relaxed_invalid_grade_returns_none():
+    assert parse_course_line("960401 3.0 101", semester_code="2024-1") is None
+
+
 def test_parse_course_line_returns_none_for_unrecognized_row_shape():
     assert parse_course_line("00960401 Data Science only", semester_code="2024-1") is None

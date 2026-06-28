@@ -48,6 +48,10 @@ def test_split_title_and_credits_does_not_split_english_course_names_with_number
     assert credits is None
 
 
+def test_parse_semester_from_line_returns_none_when_year_has_no_term():
+    assert parse_semester_from_line("2024-2025 academic year") is None
+
+
 def test_parse_semester_from_line_supports_english_and_hebrew_terms():
     assert parse_semester_from_line("2021-2022 Spring") == "2021-2"
     assert parse_semester_from_line("2022-2023 Winter") == "2022-1"
