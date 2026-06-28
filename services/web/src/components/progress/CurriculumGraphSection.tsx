@@ -546,7 +546,7 @@ export function CurriculumGraphSection({ graph, t }: CurriculumGraphSectionProps
   const bottleneckCount = graph.bottlenecks.length
 
   return (
-    <Card className="space-y-4" data-testid="curriculum-graph-section">
+    <Card className="scroll-mt-24 space-y-4" data-testid="curriculum-graph-section">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{t('progress.curriculum.title')}</h2>

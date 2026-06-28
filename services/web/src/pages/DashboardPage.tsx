@@ -1,53 +1,70 @@
-import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowRight, BookOpen, CalendarDays, GraduationCap, ShieldAlert } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { BookOpen } from 'lucide-react'
 import { progressApi, plansApi, risksApi } from '../api/endpoints'
-import { Badge, Card, PageHeader, Spinner } from '../components/ui/Card'
-import { formatPercent } from '../lib/utils'
+import { DashboardLoadingSkeleton } from '../components/dashboard/DashboardLoadingSkeleton'
+import { DashboardProgressHero } from '../components/dashboard/DashboardProgressHero'
+import { DashboardQuickActions } from '../components/dashboard/DashboardQuickActions'
+import { DashboardSetupPrompt } from '../components/dashboard/DashboardSetupPrompt'
+import { DashboardStatsRow } from '../components/dashboard/DashboardStatsRow'
+import { PageHeader } from '../components/ui/Card'
+import { useAuth } from '../auth/AuthContext'
+import { useTranslation } from '../i18n'
 import { hasStudentProfile, useStudentProfileQuery } from '../lib/studentProfileQuery'
 
+function buildGreeting(programType: string | undefined, t: (key: string) => string): string {
+  if (!programType) return t('dashboard.hello')
+  return `${t('dashboard.hello')}, ${programType} ${t('dashboard.student')}`
+}
+
+function buildStatusLabel(statusSummary: string | undefined, t: (key: string) => string): string {
+  if (!statusSummary) return ''
+  const statusKey = `progress.statusSummary.${statusSummary}` as const
+  const translated = t(statusKey)
+  return translated !== statusKey ? translated : statusSummary.replace(/_/g, ' ')
+}
+
 export function DashboardPage() {
+  const { t } = useTranslation()
+  const { user, isLoading: authLoading } = useAuth()
   const profileQuery = useStudentProfileQuery()
 
   const progressQuery = useQuery({
     queryKey: ['progress'],
     queryFn: progressApi.get,
     enabled: Boolean(profileQuery.data?.profile?.degreeId),
+    retry: false,
   })
 
   const plansQuery = useQuery({
     queryKey: ['plans'],
     queryFn: plansApi.list,
+    enabled: hasStudentProfile(profileQuery.data),
   })
 
   const risksQuery = useQuery({
     queryKey: ['risks'],
     queryFn: risksApi.list,
+    enabled: hasStudentProfile(profileQuery.data),
   })
 
-  if (profileQuery.isLoading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner />
-      </div>
-    )
+  const profilePending =
+    Boolean(user) &&
+    profileQuery.data === undefined &&
+    !profileQuery.isError &&
+    (profileQuery.isLoading || profileQuery.isFetching)
+
+  if (authLoading || profilePending) {
+    return <DashboardLoadingSkeleton />
   }
 
   if (!hasStudentProfile(profileQuery.data)) {
     return (
-      <Card className="animate-fade-in text-center">
-        <h2 className="text-lg font-semibold">Complete your profile</h2>
-        <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-          Add your degree program to unlock progress tracking and semester planning.
-        </p>
-        <Link
-          to="/onboarding"
-          className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)]"
-        >
-          Set up profile
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </Card>
+      <DashboardSetupPrompt
+        title={t('dashboard.completeProfile')}
+        description={t('dashboard.completeProfileHint')}
+        actionLabel={t('dashboard.setupProfile')}
+      />
     )
   }
 
@@ -55,93 +72,39 @@ export function DashboardPage() {
   const progress = progressQuery.data?.graduationProgress
   const planCount = plansQuery.data?.pagination.total ?? 0
   const riskCount = risksQuery.data?.pagination.total ?? 0
-
-  const quickLinks = [
-    { to: '/catalog', label: 'Browse catalog', icon: BookOpen },
-    { to: '/plans', label: 'Semester plans', icon: CalendarDays },
-    { to: '/progress', label: 'Graduation progress', icon: GraduationCap },
-    { to: '/risks', label: 'Risk analysis', icon: ShieldAlert },
-  ]
+  const statusLabel = buildStatusLabel(progress?.statusSummary, t)
 
   return (
-    <div className="animate-fade-in space-y-8">
+    <div className="animate-fade-in space-y-6">
       <PageHeader
-        title={`Hello${profile?.programType ? `, ${profile.programType} student` : ''}`}
-        description="Your academic command center — track progress, explore courses, and plan ahead."
+        title={buildGreeting(profile?.programType, t)}
+        description={t('dashboard.subtitle')}
+        action={
+          <Link
+            to="/transcript"
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-medium transition hover:bg-[var(--color-surface-muted)]"
+          >
+            <BookOpen className="h-4 w-4" aria-hidden />
+            {t('dashboard.importTranscript')}
+          </Link>
+        }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-            Completion
-          </p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">
-            {progress ? formatPercent(progress.completionPercentage) : '—'}
-          </p>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            {progress
-              ? `${progress.completedCredits} / ${progress.totalRequiredCredits} credits`
-              : 'Add a degree to track progress'}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-            Semester
-          </p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">
-            {profile?.currentSemesterCode ?? '—'}
-          </p>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">Current term</p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-            Plans
-          </p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">{planCount}</p>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">Saved semester plans</p>
-        </Card>
-        <Card>
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-            Risk reports
-          </p>
-          <p className="mt-2 text-3xl font-semibold tracking-tight">{riskCount}</p>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">Analysis history</p>
-        </Card>
-      </div>
+      <DashboardProgressHero
+        progress={progress}
+        progressLoading={progressQuery.isLoading}
+        statusLabel={statusLabel}
+        t={t}
+      />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {quickLinks.map(({ to, label, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            className="group flex items-center justify-between rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-5 shadow-[var(--shadow-soft)] transition hover:border-[var(--color-primary)]/30 hover:shadow-[var(--shadow-card)]"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-surface-muted)] text-[var(--color-primary)]">
-                <Icon className="h-5 w-5" />
-              </div>
-              <span className="font-medium">{label}</span>
-            </div>
-            <ArrowRight className="h-4 w-4 text-[var(--color-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--color-primary)]" />
-          </Link>
-        ))}
-      </div>
+      <DashboardStatsRow
+        semesterCode={profile?.currentSemesterCode}
+        planCount={planCount}
+        riskCount={riskCount}
+        t={t}
+      />
 
-      {progress?.statusSummary ? (
-        <Card>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Degree status</p>
-              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                {progress.degreeName ?? progress.degreeCode}
-              </p>
-            </div>
-            <Badge tone={progress.statusSummary === 'complete' ? 'success' : 'primary'}>
-              {progress.statusSummary.replace(/_/g, ' ')}
-            </Badge>
-          </div>
-        </Card>
-      ) : null}
+      <DashboardQuickActions t={t} />
     </div>
   )
 }

@@ -14,19 +14,22 @@ import { ProgressPageNav } from '../components/progress/ProgressPageNav'
 import { CurriculumGraphSection } from '../components/progress/CurriculumGraphSection'
 import { ElectivePoolsPanel } from '../components/progress/ElectivePoolsPanel'
 import { ElectivePoolsPanelSkeleton } from '../components/progress/ElectivePoolsPanelSkeleton'
+import { ProgressLoadingSkeleton } from '../components/progress/ProgressLoadingSkeleton'
 import { ProgressSummaryCard } from '../components/progress/ProgressSummaryCard'
-import { Card, EmptyState, PageHeader, Spinner } from '../components/ui/Card'
+import { Card, EmptyState, PageHeader } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
+import { formatCredits } from '../lib/utils'
 import {
   buildRequiredCurriculumCourseNumbers,
   buildTranscriptCourseNumbers,
   findPoolsForBucket,
 } from '../lib/electivePools'
 import {
+  bucketCompletionPercent,
   countAttentionItems,
+  filterRemainingMandatoryCourses,
   hasActionableGaps,
   partitionRequirementBuckets,
-  progressCatalogSubtitle,
 } from '../lib/graduationProgress'
 import type { ElectiveBucket, RequirementProgressEntry } from '../types/api'
 
@@ -121,11 +124,7 @@ export function ProgressPage() {
   )
 
   if (progressQuery.isLoading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Spinner />
-      </div>
-    )
+    return <ProgressLoadingSkeleton />
   }
 
   if (progressQuery.isError) {
@@ -167,8 +166,6 @@ export function ProgressPage() {
       : progress.statusSummary.replace(/_/g, ' ')
 
   const { mandatory } = partitionRequirementBuckets(progress.requirementProgress)
-  const subtitle =
-    progressCatalogSubtitle(progress) || t('progress.subtitleFallback')
   const showTranscriptHint =
     progress.statusSummary === 'not_started' || progress.completedCredits <= 0
   const curriculumGraph = curriculumQuery.data?.curriculumGraph
@@ -183,7 +180,22 @@ export function ProgressPage() {
     !showAttention &&
     (progress.statusSummary === 'complete' ||
       progress.statusSummary === 'mandatory_requirements_met')
+  const mandatoryRemainingCount = filterRemainingMandatoryCourses(
+    progress.remainingMandatoryCourses,
+    progress.completedMandatoryCourses,
+    curriculumGraph,
+  ).length
+  const mandatoryCreditsCompleted = mandatory.reduce(
+    (sum, bucket) => sum + bucket.creditsCompleted,
+    0,
+  )
+  const mandatoryCreditsRequired = mandatory.reduce((sum, bucket) => sum + bucket.minCredits, 0)
+  const mandatoryAggregatePercent = bucketCompletionPercent(
+    mandatoryCreditsCompleted,
+    mandatoryCreditsRequired,
+  )
   const navSections = [
+    { id: 'progress-overview', label: t('progress.nav.overview') },
     ...(showAttention
       ? [{ id: 'progress-attention', label: t('progress.nav.attention') }]
       : []),
@@ -200,7 +212,7 @@ export function ProgressPage() {
     <div className="animate-fade-in space-y-6">
       <PageHeader
         title={t('progress.title')}
-        description={subtitle}
+        description={t('progress.pageSubtitle')}
         action={
           <Link
             to="/transcript"
@@ -218,6 +230,7 @@ export function ProgressPage() {
         progress={progress}
         statusLabel={statusLabel}
         attentionCount={attentionCount}
+        mandatoryRemainingCount={mandatoryRemainingCount}
         t={t}
       />
 
@@ -236,12 +249,36 @@ export function ProgressPage() {
       ) : null}
 
       {mandatory.length ? (
-        <Card id="progress-mandatory">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold">{t('progress.mandatoryBuckets')}</h2>
-            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-              {t('progress.mandatoryBucketsHint')}
-            </p>
+        <Card className="scroll-mt-24" id="progress-mandatory">
+          <div className="mb-4 space-y-3">
+            <div>
+              <h2 className="text-lg font-semibold">{t('progress.mandatoryBuckets')}</h2>
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                {t('progress.mandatoryBucketsHint')}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium">{t('progress.mandatoryAggregate')}</span>
+                <span className="tabular-nums text-[var(--color-text-muted)]">
+                  {formatCredits(mandatoryCreditsCompleted)} / {formatCredits(mandatoryCreditsRequired)}{' '}
+                  {t('common.credits')}
+                </span>
+              </div>
+              <div
+                className="mt-2 h-2 overflow-hidden rounded-full bg-stone-100"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(mandatoryAggregatePercent)}
+                aria-label={t('progress.mandatoryBuckets')}
+              >
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
+                  style={{ width: `${mandatoryAggregatePercent}%` }}
+                />
+              </div>
+            </div>
           </div>
           <div className="space-y-3">
             {mandatory.map((bucket) => (

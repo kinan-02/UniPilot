@@ -37,7 +37,7 @@ export function ProgressAttentionPanel({ progress, curriculumGraph, t }: Progres
 
   return (
     <Card
-      className="overflow-hidden p-0"
+      className="scroll-mt-24 overflow-hidden p-0"
       data-testid="progress-attention-panel"
       id="progress-attention"
     >

@@ -1,4 +1,4 @@
-import { Layers, Target } from 'lucide-react'
+import { AlertCircle, BookOpenCheck, GraduationCap, Sparkles } from 'lucide-react'
 import { Badge, Card } from '../ui/Card'
 import { interpolateTemplate } from '../../lib/electivePools'
 import { progressCatalogSubtitle, statusBadgeTone } from '../../lib/graduationProgress'
@@ -9,7 +9,9 @@ type ProgressSummaryCardProps = {
   progress: GraduationProgress
   statusLabel: string
   attentionCount?: number
+  mandatoryRemainingCount?: number
   t: (key: string) => string
+  id?: string
 }
 
 function SummaryStat({
@@ -19,7 +21,7 @@ function SummaryStat({
   hint,
   tone = 'neutral',
 }: {
-  icon: typeof Target
+  icon: typeof GraduationCap
   label: string
   value: string
   hint?: string
@@ -29,10 +31,10 @@ function SummaryStat({
     tone === 'primary'
       ? 'border-[var(--color-primary)]/15 bg-[var(--color-primary)]/5'
       : tone === 'warning'
-        ? 'border-amber-200 bg-amber-50/80'
+        ? 'border-amber-200/80 bg-amber-50/70'
         : tone === 'success'
-          ? 'border-emerald-200 bg-emerald-50/80'
-          : 'border-[var(--color-border)] bg-white/80'
+          ? 'border-emerald-200/80 bg-emerald-50/70'
+          : 'border-[var(--color-border)] bg-white/90'
 
   const iconClass =
     tone === 'primary'
@@ -47,12 +49,12 @@ function SummaryStat({
     <div className={`rounded-xl border px-4 py-3 ${toneClass}`}>
       <div className="flex items-center gap-2">
         <Icon className={`h-4 w-4 shrink-0 ${iconClass}`} aria-hidden />
-        <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-          {label}
-        </p>
+        <p className="text-xs font-medium text-[var(--color-text-muted)]">{label}</p>
       </div>
       <p className="mt-2 text-xl font-semibold tabular-nums tracking-tight">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-[var(--color-text-muted)]">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-1 text-xs leading-snug text-[var(--color-text-muted)] text-pretty">{hint}</p>
+      ) : null}
     </div>
   )
 }
@@ -61,86 +63,158 @@ export function ProgressSummaryCard({
   progress,
   statusLabel,
   attentionCount = 0,
+  mandatoryRemainingCount = 0,
   t,
+  id = 'progress-overview',
 }: ProgressSummaryCardProps) {
   const catalogLabel = progressCatalogSubtitle(progress)
   const completionPercent = Math.min(progress.completionPercentage, 100)
   const electiveCompleted = progress.completedElectiveCredits ?? 0
   const electiveRemaining = progress.remainingElectiveCredits ?? 0
   const electiveTotal = electiveCompleted + electiveRemaining
-  const electivePercent =
-    electiveTotal > 0 ? Math.min(100, (electiveCompleted / electiveTotal) * 100) : 0
+  const transcriptTotal = progress.transcriptCreditsTotal
+  const showTranscriptNote =
+    transcriptTotal != null &&
+    Math.abs(transcriptTotal - progress.completedCredits) > 0.01
 
   return (
-    <Card className="overflow-hidden p-0" data-testid="progress-summary-card">
-      <div className="border-b border-[var(--color-border)] bg-gradient-to-br from-white via-white to-[var(--color-surface-muted)]/60 px-6 py-5">
+    <Card
+      className="scroll-mt-24 overflow-hidden p-0 shadow-sm"
+      data-testid="progress-summary-card"
+      id={id}
+    >
+      <div className="border-b border-[var(--color-border)] bg-gradient-to-br from-white via-white to-[var(--color-surface-muted)]/50 px-5 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            {catalogLabel ? (
-              <p className="text-sm font-medium text-[var(--color-text)]">{catalogLabel}</p>
-            ) : null}
-            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
               {t('progress.summarySubtitle')}
             </p>
+            {catalogLabel ? (
+              <p className="mt-1 text-sm font-medium text-balance text-[var(--color-text)]">
+                {catalogLabel}
+              </p>
+            ) : null}
           </div>
           <Badge tone={statusBadgeTone(progress.statusSummary)}>{statusLabel}</Badge>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-end gap-4">
-          <p className="text-5xl font-semibold tabular-nums tracking-tight">
-            {formatPercent(completionPercent)}
-          </p>
-          <div className="pb-1">
-            <p className="text-sm font-medium">{t('progress.overallCompletion')}</p>
-            <p className="text-xs text-[var(--color-text-muted)]">
-              {formatCredits(progress.completedCredits)} / {formatCredits(progress.totalRequiredCredits)}{' '}
-              {t('common.credits').toLowerCase()}
+        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--color-text-muted)]">
+              {t('progress.creditsTowardDegree')}
             </p>
+            <p
+              className="mt-1 text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl"
+              data-testid="progress-credits-hero"
+            >
+              {formatCredits(progress.completedCredits)}
+              <span className="text-2xl font-normal text-[var(--color-text-muted)] sm:text-3xl">
+                {' '}
+                / {formatCredits(progress.totalRequiredCredits)}
+              </span>
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              {interpolateTemplate(t('progress.creditsRemainingInline'), {
+                count: formatCredits(progress.creditsRemaining),
+              })}
+            </p>
+            {showTranscriptNote ? (
+              <p className="mt-2 text-xs text-[var(--color-text-muted)] text-pretty">
+                {interpolateTemplate(t('progress.transcriptCreditsNote'), {
+                  count: formatCredits(transcriptTotal ?? 0),
+                })}
+              </p>
+            ) : null}
+          </div>
+
+          <div
+            className="flex shrink-0 items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-white/80 px-4 py-3"
+            aria-label={t('progress.overallCompletion')}
+          >
+            <div
+              className="relative flex h-14 w-14 items-center justify-center rounded-full"
+              style={{
+                background: `conic-gradient(var(--color-primary) ${completionPercent * 3.6}deg, rgb(245 245 244) 0deg)`,
+              }}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-semibold tabular-nums">
+                {formatPercent(completionPercent)}
+              </div>
+            </div>
+            <div className="hidden min-w-[6rem] sm:block">
+              <p className="text-xs font-medium text-[var(--color-text-muted)]">
+                {t('progress.overallCompletion')}
+              </p>
+              <p className="text-sm font-medium text-[var(--color-text)]">
+                {formatCredits(progress.completedCredits)} {t('common.credits')}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <div className="mb-2 flex justify-between text-xs tabular-nums text-[var(--color-text-muted)]">
+            <span>0</span>
+            <span>{formatCredits(progress.totalRequiredCredits)}</span>
+          </div>
+          <div
+            className="h-2.5 overflow-hidden rounded-full bg-stone-100"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(completionPercent)}
+            aria-label={t('progress.overallCompletion')}
+          >
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-accent)] transition-all duration-700 ease-out"
+              style={{ width: `${completionPercent}%` }}
+            />
           </div>
         </div>
 
         {attentionCount > 0 ? (
           <a
             href="#progress-attention"
-            className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
+            className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200/90 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-950 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
             data-testid="progress-summary-attention-link"
           >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
             {interpolateTemplate(t('progress.summaryAttentionLink'), { count: attentionCount })}
           </a>
         ) : null}
-
-        <div className="mt-4">
-          <div className="mb-2 flex justify-between text-xs tabular-nums text-[var(--color-text-muted)]">
-            <span>{formatCredits(progress.completedCredits)}</span>
-            <span>{formatCredits(progress.totalRequiredCredits)}</span>
-          </div>
-          <div className="h-3 overflow-hidden rounded-full bg-stone-100">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-accent)] transition-all duration-700"
-              style={{ width: `${completionPercent}%` }}
-            />
-          </div>
-        </div>
       </div>
 
-      <div className="grid gap-3 px-6 py-5 sm:grid-cols-2">
+      <div className="grid gap-3 px-5 py-4 sm:grid-cols-3 sm:px-6 sm:py-5">
         <SummaryStat
-          icon={Target}
+          icon={Sparkles}
           label={t('progress.creditsRemaining')}
           value={formatCredits(progress.creditsRemaining)}
-          hint={`${formatCredits(progress.completedCredits)} ${t('progress.summaryEarned').toLowerCase()}`}
+          hint={t('progress.summaryRemainingHint')}
           tone={progress.creditsRemaining > 0 ? 'primary' : 'success'}
         />
         <SummaryStat
-          icon={Layers}
+          icon={BookOpenCheck}
           label={t('progress.electiveProgress')}
-          value={formatCredits(electiveCompleted)}
+          value={
+            electiveTotal > 0
+              ? `${formatCredits(electiveCompleted)} / ${formatCredits(electiveTotal)}`
+              : formatCredits(electiveCompleted)
+          }
           hint={
             electiveTotal > 0
-              ? `${formatPercent(electivePercent)} · ${formatCredits(electiveRemaining)} ${t('progress.electiveRemaining').toLowerCase()}`
+              ? interpolateTemplate(t('progress.summaryElectiveHint'), {
+                  remaining: formatCredits(electiveRemaining),
+                })
               : t('progress.summaryNoElectiveCredits')
           }
           tone="neutral"
+        />
+        <SummaryStat
+          icon={GraduationCap}
+          label={t('progress.mandatoryRemaining')}
+          value={String(mandatoryRemainingCount)}
+          hint={t('progress.summaryMandatoryHint')}
+          tone={mandatoryRemainingCount > 0 ? 'warning' : 'success'}
         />
       </div>
     </Card>

@@ -128,7 +128,11 @@ export function ElectivePoolsPanel({
   }
 
   return (
-    <Card className="space-y-4" data-testid="elective-pools-panel" id="elective-pools-panel">
+    <Card
+      className="scroll-mt-24 space-y-4"
+      data-testid="elective-pools-panel"
+      id="elective-pools-panel"
+    >
       <div>
         <h2 className="text-lg font-semibold">{t('progress.electiveExplorer.catalogTitle')}</h2>
         <p className="mt-1 text-sm text-[var(--color-text-muted)]">

@@ -6,13 +6,18 @@ import type { GraduationProgress } from '../../types/api'
 const t = (key: string) => {
   const labels: Record<string, string> = {
     'progress.summarySubtitle': 'Progress toward your degree requirements',
+    'progress.creditsTowardDegree': 'Credits toward your degree',
+    'progress.creditsRemainingInline': '{count} credits still needed',
     'progress.overallCompletion': 'Overall completion',
-    'common.credits': 'Credits',
+    'common.credits': 'credits',
     'progress.creditsRemaining': 'Credits remaining',
-    'progress.summaryEarned': 'Earned so far',
+    'progress.summaryRemainingHint': 'Until you reach the degree total',
     'progress.electiveProgress': 'Elective credits',
-    'progress.electiveRemaining': 'Elective remaining',
+    'progress.summaryElectiveHint': '{remaining} elective credits still open',
     'progress.summaryNoElectiveCredits': 'No elective credits tracked yet',
+    'progress.mandatoryRemaining': 'Mandatory courses left',
+    'progress.summaryMandatoryHint': 'Required courses not yet satisfied',
+    'progress.summaryAttentionLink': 'View {count} items needing attention',
   }
   return labels[key] ?? key
 }
@@ -32,19 +37,41 @@ const baseProgress: GraduationProgress = {
 }
 
 describe('ProgressSummaryCard', () => {
-  it('shows completion and the two credit stat tiles only', () => {
+  it('shows credit-first hero, ring percent, and stat tiles', () => {
     render(
-      <ProgressSummaryCard progress={baseProgress} statusLabel="In progress" t={t} />,
+      <ProgressSummaryCard
+        progress={baseProgress}
+        statusLabel="In progress"
+        mandatoryRemainingCount={2}
+        t={t}
+      />,
     )
 
     expect(screen.getByTestId('progress-summary-card')).toBeInTheDocument()
+    expect(screen.getByTestId('progress-credits-hero')).toHaveTextContent('7.5')
+    expect(screen.getByTestId('progress-credits-hero')).toHaveTextContent('155')
     expect(screen.getByText('4.8%')).toBeInTheDocument()
     expect(screen.getByText(/Industrial Engineering · 2025 · v2025-2026/)).toBeInTheDocument()
     expect(screen.getByText('Credits remaining')).toBeInTheDocument()
     expect(screen.getByText('Elective credits')).toBeInTheDocument()
+    expect(screen.getByText('Mandatory courses left')).toBeInTheDocument()
     expect(screen.getByText('147.5')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.queryByText('Open buckets')).not.toBeInTheDocument()
     expect(screen.queryByText('Track status')).not.toBeInTheDocument()
+  })
+
+  it('shows attention link when attentionCount is positive', () => {
+    render(
+      <ProgressSummaryCard
+        progress={baseProgress}
+        statusLabel="In progress"
+        attentionCount={3}
+        t={t}
+      />,
+    )
+
+    expect(screen.getByTestId('progress-summary-attention-link')).toHaveTextContent('3')
   })
 
   it('shows not-started status with zero completion bar', () => {

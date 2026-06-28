@@ -7,6 +7,7 @@ import * as endpoints from '../api/endpoints'
 import { ApiError } from '../lib/api'
 import { AuthProvider } from '../auth/AuthContext'
 import { AuthQuerySync } from '../auth/AuthQuerySync'
+import { I18nProvider } from '../i18n'
 
 vi.mock('../api/endpoints', () => ({
   authApi: { me: vi.fn() },
@@ -17,16 +18,19 @@ vi.mock('../api/endpoints', () => ({
 }))
 
 function renderDashboard() {
+  localStorage.setItem('unipilot_locale', 'en')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AuthQuerySync />
-        <MemoryRouter>
-          <DashboardPage />
-        </MemoryRouter>
-      </AuthProvider>
-    </QueryClientProvider>,
+    <I18nProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AuthQuerySync />
+          <MemoryRouter>
+            <DashboardPage />
+          </MemoryRouter>
+        </AuthProvider>
+      </QueryClientProvider>
+    </I18nProvider>,
   )
 }
 
@@ -54,11 +58,12 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(endpoints.profileApi.get).toHaveBeenCalled()
     })
-    expect(await screen.findByText(/complete your profile/i)).toBeInTheDocument()
+    expect(await screen.findByTestId('dashboard-setup-prompt')).toBeInTheDocument()
+    expect(screen.getByText(/complete your profile/i)).toBeInTheDocument()
     expect(screen.queryByText('Student profile not found')).not.toBeInTheDocument()
   })
 
-  it('renders dashboard stats when profile exists', async () => {
+  it('renders credit-first progress hero and quick actions when profile exists', async () => {
     vi.mocked(endpoints.profileApi.get).mockResolvedValue({
       profile: {
         id: 'p1',
@@ -75,6 +80,7 @@ describe('DashboardPage', () => {
         degreeId: 'd1',
         degreeCode: '006',
         degreeName: 'Industrial Engineering',
+        catalogYear: 2025,
         completionPercentage: 42,
         completedCredits: 60,
         totalRequiredCredits: 140,
@@ -85,6 +91,19 @@ describe('DashboardPage', () => {
 
     renderDashboard()
     expect(await screen.findByRole('heading', { name: /hello, bsc student/i })).toBeInTheDocument()
-    expect(await screen.findByText('42.0%')).toBeInTheDocument()
+    expect(await screen.findByTestId('dashboard-progress-hero')).toBeInTheDocument()
+    expect(screen.getByTestId('dashboard-credits-hero')).toHaveTextContent('60')
+    expect(screen.getByTestId('dashboard-credits-hero')).toHaveTextContent('140')
+    expect(screen.getByText('42.0%')).toBeInTheDocument()
+    expect(screen.getByTestId('dashboard-view-progress-link')).toHaveAttribute('href', '/progress')
+    expect(screen.getByTestId('dashboard-quick-actions')).toBeInTheDocument()
+    expect(screen.getByTestId('dashboard-action-transcript')).toBeInTheDocument()
+    expect(screen.getByText('2025-1')).toBeInTheDocument()
+  })
+
+  it('shows loading skeleton while profile loads', async () => {
+    vi.mocked(endpoints.profileApi.get).mockReturnValue(new Promise(() => undefined))
+    renderDashboard()
+    expect(await screen.findByTestId('dashboard-loading-skeleton')).toBeInTheDocument()
   })
 })
