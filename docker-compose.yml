@@ -173,6 +173,17 @@ services:
     environment:
       AI_SERVICE_PORT: ${AI_SERVICE_PORT}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
+      ACADEMIC_WIKI_PATH: ${ACADEMIC_WIKI_PATH:-/app/data/academic/wiki}
+      ACADEMIC_TECHNION_RAW_DIR: ${ACADEMIC_TECHNION_RAW_DIR:-/app/data/raw/technion}
+      ACADEMIC_DEFAULT_SEMESTER_FILE: ${ACADEMIC_DEFAULT_SEMESTER_FILE:-courses_2025_201.json}
+      ACADEMIC_CATALOG_JSON: ${ACADEMIC_CATALOG_JSON:-/app/data/raw/technion/courses_2025_201.json}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-5-mini}
+      ADVISOR_MAX_RETRIEVAL_ITERATIONS: ${ADVISOR_MAX_RETRIEVAL_ITERATIONS:-5}
+    volumes:
+      - ./services/data-engineering/data/catalog_valut/catalog_valut/wiki:/app/data/academic/wiki:ro
+      - ./services/data-engineering/data/raw/technion:/app/data/raw/technion:ro
     healthcheck:
       test:
         [

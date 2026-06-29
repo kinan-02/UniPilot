@@ -8,6 +8,8 @@ coverage/
 __pycache__/
 **/__pycache__/
 *.pyc
+.venv/
+**/.venv/
 npm-debug.log
 *.log
 
