@@ -1,20 +1,20 @@
-FROM node:20.19.2-alpine
-
-RUN apk add --no-cache python3 py3-pip
+FROM python:3.12.8-slim-bookworm
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src ./src
+COPY app ./app
+COPY tests ./tests
+COPY pytest.ini ./
+
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+USER appuser
 
 EXPOSE 3001
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
-
-CMD ["node", "src/index.js"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${AI_SERVICE_PORT:-3001}"]

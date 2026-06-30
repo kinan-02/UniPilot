@@ -12,25 +12,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
+SCRIPTS = ROOT / "scripts"
 WIKI = REPO / "services/data-engineering/data/catalog_valut/catalog_valut/wiki"
 RAW = REPO / "services/data-engineering/data/raw/technion"
 
-sys.path.insert(0, str(SRC))
+sys.path.insert(0, str(ROOT))
 
-from academic_graph_engine import (  # noqa: E402
+from app.services.academic_graph_engine import (  # noqa: E402
     AcademicGraphEngine,
     parse_prerequisites_string,
 )
-from advisor_agent import (  # noqa: E402
+from app.services.advisor_agent import (  # noqa: E402
     UserContext,
     _dedupe_blocks,
     _default_fallback,
     _extract_course_codes,
     synthesize_answer,
 )
-from graph_tools import _block_is_empty, _retrieve_graph_data, build_graph_tools  # noqa: E402
-from semester_catalog import (  # noqa: E402
+from app.services.graph_tools import _block_is_empty, _retrieve_graph_data, build_graph_tools  # noqa: E402
+from app.services.semester_catalog import (  # noqa: E402
     discover_semester_catalogs,
     resolve_semester_from_query,
 )
@@ -60,18 +60,13 @@ def warn(name: str, detail: str = "") -> None:
 
 
 def bridge(payload: dict) -> dict:
+    from app.services.graph_registry import GraphRegistry
+
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC)
     env.pop("OPENAI_API_KEY", None)
-    proc = subprocess.run(
-        [sys.executable, str(SRC / "graph_bridge.py")],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=ROOT,
-    )
-    return json.loads(proc.stdout)
+    registry = GraphRegistry()
+    success, data, error = registry.dispatch_action(payload)
+    return {"success": success, "data": data, "error": error}
 
 
 def section(title: str) -> None:
@@ -302,11 +297,10 @@ def simulate_graph_bridge_errors() -> None:
     section("[H] graph_bridge error & guard paths")
 
     bad_json = subprocess.run(
-        [sys.executable, str(SRC / "graph_bridge.py")],
+        [sys.executable, str(SCRIPTS / "graph_bridge.py")],
         input="{not json",
         capture_output=True,
         text=True,
-        env={**os.environ, "PYTHONPATH": str(SRC)},
         cwd=ROOT,
     )
     out = json.loads(bad_json.stdout)

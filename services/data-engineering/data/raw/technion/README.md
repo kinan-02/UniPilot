@@ -27,3 +27,11 @@ See `manifest.json`, `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`, and `do
 ## Git policy
 
 Large JSON files are **gitignored**. Copy them locally after clone.
+
+For local dev when you do not have the full exports yet, run from the repo root:
+
+```bash
+./scripts/bootstrap-semester-data.sh
+```
+
+That copies minimal test fixtures (`courses_2025_{200,201,202}.json`) so the semester planner and AI advisor can start. Replace with the full Technion semester exports when available.

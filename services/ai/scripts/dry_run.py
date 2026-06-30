@@ -12,16 +12,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
+SCRIPTS = ROOT / "scripts"
 WIKI = REPO / "services/data-engineering/data/catalog_valut/catalog_valut/wiki"
 RAW = REPO / "services/data-engineering/data/raw/technion"
 
-sys.path.insert(0, str(SRC))
+sys.path.insert(0, str(ROOT))
 
-from academic_graph_engine import AcademicGraphEngine, parse_prerequisites_string  # noqa: E402
-from advisor_agent import UserContext, synthesize_answer  # noqa: E402
-from graph_tools import _retrieve_graph_data, build_graph_tools  # noqa: E402
-from semester_catalog import (  # noqa: E402
+from app.services.academic_graph_engine import AcademicGraphEngine, parse_prerequisites_string  # noqa: E402
+from app.services.advisor_agent import UserContext, synthesize_answer  # noqa: E402
+from app.services.graph_tools import _retrieve_graph_data, build_graph_tools  # noqa: E402
+from app.services.semester_catalog import (  # noqa: E402
     discover_semester_catalogs,
     format_semester_catalog_summary,
     resolve_semester_from_query,
@@ -164,7 +164,6 @@ def main() -> int:
 
     print("\n[9] graph_bridge CLI")
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC)
     env.pop("OPENAI_API_KEY", None)
     bridge_cases = [
         ("stats", {"action": "stats", "md_dir_path": str(WIKI), "technion_raw_dir": str(RAW)}),
@@ -182,7 +181,7 @@ def main() -> int:
     ]
     for label, payload in bridge_cases:
         proc = subprocess.run(
-            [sys.executable, str(SRC / "graph_bridge.py")],
+            [sys.executable, str(SCRIPTS / "graph_bridge.py")],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -198,7 +197,7 @@ def main() -> int:
 
     print("\n[10] LLM paths (expected guard without API key)")
     try:
-        from advisor_agent import advise
+        from app.services.advisor_agent import advise
 
         advise("test", engine, str(RAW), UserContext())
         check("advise without OPENAI_API_KEY", False, "should have raised")

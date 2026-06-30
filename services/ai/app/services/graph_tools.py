@@ -8,7 +8,7 @@ from typing import Any
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from academic_graph_engine import AcademicGraphEngine
+from app.services.academic_graph_engine import AcademicGraphEngine
 
 WIKI_ONLY_INTENTS = {"wiki_page", "wiki_search", "structure"}
 SEMESTER_INTENTS = {

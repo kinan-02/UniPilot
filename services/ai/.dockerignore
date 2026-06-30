@@ -1,6 +1,8 @@
-node_modules
-npm-debug.log
-coverage
-test
-*.md
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
 .venv
+*.md
+coverage

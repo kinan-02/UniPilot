@@ -12,9 +12,9 @@ from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from academic_graph_engine import AcademicGraphEngine
-from graph_tools import build_graph_tools, parse_tool_result
-from semester_catalog import resolve_semester_from_query
+from app.services.academic_graph_engine import AcademicGraphEngine
+from app.services.graph_tools import build_graph_tools, parse_tool_result
+from app.services.semester_catalog import resolve_semester_from_query
 
 COURSE_CODE_RE = re.compile(r"\d{8}")
 HEBREW_RE = re.compile(r"[\u0590-\u05FF]")

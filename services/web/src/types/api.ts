@@ -532,3 +532,16 @@ export type AcademicRiskAnalysis = {
     message?: string
   }>
 }
+
+export type AdvisorReply = {
+  question: string
+  answer: string
+  confidence: 'high' | 'medium' | 'low' | string
+  courseIds: string[]
+  wikiSlugs: string[]
+  sources: string[]
+  contacts: string[]
+  eligibility?: Record<string, unknown> | null
+  semesterResolution?: Record<string, unknown> | null
+  retrievalStatus?: string | null
+}

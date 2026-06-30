@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 import networkx as nx
 
-from semester_catalog import (
+from app.services.semester_catalog import (
     SemesterCatalogInfo,
     discover_semester_catalogs,
     format_semester_catalog_summary,

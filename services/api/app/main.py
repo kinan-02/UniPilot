@@ -13,6 +13,7 @@ from app.db.catalog_bootstrap import ensure_development_catalog
 from app.db.catalog_indexes import ensure_catalog_indexes
 from app.db.mongo import close_mongo_client, get_database
 from app.db.redis import close_redis
+from app.routes.advisor import router as advisor_router
 from app.routes.auth import router as auth_router
 from app.routes.catalog import router as catalog_router
 from app.routes.completed_courses import router as completed_courses_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(semester_plans_router)
     app.include_router(academic_risks_router)
     app.include_router(transcript_import_router)
+    app.include_router(advisor_router)
     return app
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from advisor_agent import (
+from app.services.advisor_agent import (
     RetrievalAgentResult,
     UserContext,
     _dedupe_blocks,
@@ -12,7 +12,7 @@ from advisor_agent import (
     _structured_output_method,
     synthesize_answer,
 )
-from graph_tools import _block_is_empty
+from app.services.graph_tools import _block_is_empty
 
 
 def test_dedupe_blocks():

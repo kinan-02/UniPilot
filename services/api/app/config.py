@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     progress_rate_limit_max: int = 60
     transcript_import_rate_limit_window_ms: int = 60_000
     transcript_import_rate_limit_max: int = 10
+    ai_service_url: str | None = None
+    ai_advisor_timeout_seconds: int = 120
     transcript_parser_url: str | None = None
     transcript_parser_timeout_seconds: int = 60
     transcript_import_max_upload_bytes: int = 5 * 1024 * 1024
@@ -123,6 +125,12 @@ class Settings(BaseSettings):
         if configured:
             return configured.rstrip("/")
         return "http://transcript-parser:8010"
+
+    def resolved_ai_service_url(self) -> str:
+        configured = (self.ai_service_url or "").strip()
+        if configured:
+            return configured.rstrip("/")
+        return "http://ai:3001"
 
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()

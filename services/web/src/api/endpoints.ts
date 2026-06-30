@@ -1,6 +1,7 @@
 import { apiRequest, apiUpload, getApiBaseUrl } from '../lib/api'
 import type {
   AcademicRiskAnalysis,
+  AdvisorReply,
   AuthPayload,
   CatalogFaculty,
   CatalogPathOption,
@@ -282,6 +283,14 @@ export const plansApi = {
   getShared: (shareToken: string) =>
     apiRequest<{ semesterPlan: SemesterPlan }>(`/semester-plans/shared/${shareToken}`, {
       token: null,
+    }),
+}
+
+export const advisorApi = {
+  ask: (question: string) =>
+    apiRequest<{ advisor: AdvisorReply }>('/advisor/ask', {
+      method: 'POST',
+      body: { question },
     }),
 }
 

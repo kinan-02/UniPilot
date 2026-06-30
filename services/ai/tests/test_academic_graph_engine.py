@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from academic_graph_engine import AcademicGraphEngine, parse_prerequisites_string
+from app.services.academic_graph_engine import AcademicGraphEngine, parse_prerequisites_string
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WIKI_DIR = REPO_ROOT / "services/data-engineering/data/catalog_valut/catalog_valut/wiki"

@@ -14,14 +14,13 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
 WIKI = REPO / "services/data-engineering/data/catalog_valut/catalog_valut/wiki"
 RAW = REPO / "services/data-engineering/data/raw/technion"
 
-sys.path.insert(0, str(SRC))
+sys.path.insert(0, str(ROOT))
 
-from academic_graph_engine import AcademicGraphEngine  # noqa: E402
-from advisor_agent import UserContext, advise  # noqa: E402
+from app.services.academic_graph_engine import AcademicGraphEngine  # noqa: E402
+from app.services.advisor_agent import UserContext, advise  # noqa: E402
 
 KNOWN = "00440148"
 SPRING_ONLY = "00440127"

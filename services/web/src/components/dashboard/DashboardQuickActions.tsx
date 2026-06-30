@@ -5,6 +5,7 @@ import {
   BookOpen,
   CalendarDays,
   GraduationCap,
+  MessageCircle,
   ScrollText,
   ShieldAlert,
   UserCircle,
@@ -58,6 +59,13 @@ export function DashboardQuickActions({ t }: DashboardQuickActionsProps) {
       description: t('dashboard.quickActionRisks'),
       icon: ShieldAlert,
       testId: 'dashboard-action-risks',
+    },
+    {
+      to: '/advisor',
+      label: t('dashboard.advisorAction'),
+      description: t('dashboard.quickActionAdvisor'),
+      icon: MessageCircle,
+      testId: 'dashboard-action-advisor',
     },
     {
       to: '/profile',

@@ -186,6 +186,11 @@ def test_validate_production_settings_rejects_high_ai_rate_limit() -> None:
         settings.validate_production_settings()
 
 
+def test_resolved_ai_service_url_uses_default_when_unset() -> None:
+    settings = Settings(ai_service_url=None)
+    assert settings.resolved_ai_service_url() == "http://ai:3001"
+
+
 def test_resolved_transcript_parser_url_uses_default_when_unset() -> None:
     settings = Settings(transcript_parser_url=None)
     assert settings.resolved_transcript_parser_url() == "http://transcript-parser:8010"
