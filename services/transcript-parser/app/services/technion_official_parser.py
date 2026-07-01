@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, replace
 
 from app.schemas.parse_result import ParsedCourseEntry
-from app.services.course_attempts import assign_sequential_course_attempts
+from app.services.course_attempts import assign_sequential_course_attempts, detect_attempt_from_text
 
 COURSE_NUMBER_ONLY = re.compile(r"^0\d{7}$")
 CONCATENATED_ROW = re.compile(
@@ -39,6 +39,7 @@ EXEMPTION_WITH_POINTS = re.compile(
     re.IGNORECASE,
 )
 PASS_GRADE = re.compile(r"^\s*pass\s*$|^\s*עובר\s*$", re.IGNORECASE)
+NUMERIC_GRADE_PREFIX = re.compile(r"^(\d+(?:\.\d)?)")
 HEBREW_SPRING = re.compile(r"אביב", re.IGNORECASE)
 HEBREW_WINTER = re.compile(r"חורף", re.IGNORECASE)
 HEBREW_SUMMER = re.compile(r"קיץ", re.IGNORECASE)
@@ -59,6 +60,12 @@ class ParsedBlock:
     title: str | None
     confidence: float
     warnings: tuple[str, ...]
+    marked_attempt: int = 1
+
+
+def _marked_attempt_from_parts(*parts: str | None) -> int:
+    combined = " ".join(part.strip() for part in parts if part and part.strip())
+    return detect_attempt_from_text(combined)
 
 
 @dataclass(frozen=True)
@@ -114,6 +121,17 @@ def parse_numeric_grade(value: str) -> float | None:
     if numeric < 0 or numeric > 100:
         return None
     return numeric
+
+
+def parse_grade_line(line: str) -> float | None:
+    stripped = line.strip()
+    direct = parse_numeric_grade(stripped)
+    if direct is not None:
+        return direct
+    prefix = NUMERIC_GRADE_PREFIX.match(stripped)
+    if prefix:
+        return parse_numeric_grade(prefix.group(1))
+    return None
 
 
 def infer_term_from_semester_line(line: str) -> int | None:
@@ -200,7 +218,7 @@ def finish_block(
         warnings.extend(exemption_warnings)
         index += 1
     else:
-        grade = parse_numeric_grade(grade_line)
+        grade = parse_grade_line(grade_line)
         index += 1
         if grade is None:
             return None, index
@@ -211,6 +229,8 @@ def finish_block(
     if not semester_code:
         return None, index
 
+    marked_attempt = _marked_attempt_from_parts(grade_line, semester_line, title)
+
     return (
         ParsedBlock(
             course_number=course_number,
@@ -220,6 +240,7 @@ def finish_block(
             title=title,
             confidence=confidence,
             warnings=tuple(warnings),
+            marked_attempt=marked_attempt,
         ),
         index,
     )
@@ -261,6 +282,7 @@ def parse_block_from_index(lines: list[str], start: int) -> tuple[ParsedBlock | 
         index += 1
         if not semester_code:
             return None, index
+        marked_attempt = _marked_attempt_from_parts(line, semester_line, title)
         return (
             ParsedBlock(
                 course_number=course_number,
@@ -270,6 +292,7 @@ def parse_block_from_index(lines: list[str], start: int) -> tuple[ParsedBlock | 
                 title=title,
                 confidence=0.86,
                 warnings=tuple(warnings),
+                marked_attempt=marked_attempt,
             ),
             index,
         )
@@ -315,15 +338,18 @@ def parse_block_from_index(lines: list[str], start: int) -> tuple[ParsedBlock | 
             index += 1
             if not semester_code:
                 return None, index
+            block_title = clean_title(" ".join(title_parts))
+            marked_attempt = _marked_attempt_from_parts(current, semester_line, block_title)
             return (
                 ParsedBlock(
                     course_number=course_number,
                     semester_code=semester_code,
                     grade=grade,
                     credits_earned=exemption_credits,
-                    title=clean_title(" ".join(title_parts)),
+                    title=block_title,
                     confidence=0.85,
                     warnings=tuple(warnings),
+                    marked_attempt=marked_attempt,
                 ),
                 index,
             )
@@ -384,15 +410,21 @@ def parse_technion_official_transcript(raw_text: str) -> tuple[list[ParsedCourse
     if not blocks and raw_text.strip():
         warnings.append("No course rows detected in transcript text.")
 
-    deduped: dict[tuple[str, str], ParsedBlock] = {}
+    deduped: dict[tuple[str, str, float, float, int], ParsedBlock] = {}
     for block in blocks:
-        key = (block.course_number, block.semester_code)
+        key = (
+            block.course_number,
+            block.semester_code,
+            block.grade,
+            block.credits_earned,
+            block.marked_attempt,
+        )
         existing = deduped.get(key)
         if existing is None or block.confidence >= existing.confidence:
             deduped[key] = block
 
     attempt_rows = [
-        _AttemptBlock(block=block, attempt=1) for block in deduped.values()
+        _AttemptBlock(block=block, attempt=block.marked_attempt) for block in deduped.values()
     ]
     assigned_rows = assign_sequential_course_attempts(
         attempt_rows,

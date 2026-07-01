@@ -95,6 +95,16 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
+Outlook Mail MCP service (internal read-only MCP; delegated Microsoft Graph):
+
+```bash
+cd services/outlook-mcp
+pip install -r requirements-dev.txt
+pytest
+```
+
+See [services/outlook-mcp/README.md](services/outlook-mcp/README.md) for OAuth setup and MCP tool usage.
+
 ### Full-stack verification (local)
 
 Runs API pytest, transcript-parser pytest, web build, Vitest (file-by-file), and optional Docker health / Playwright checks with a single progress bar:
@@ -164,6 +174,7 @@ npm run test:e2e -- --project=transcript-progress
 npm run test:e2e -- --project=planner-catalog
 npm run test:e2e -- --project=planner-auto-assist
 npm run test:e2e -- --project=critical-paths
+npm run test:e2e:mas             # MAS UI: prompt → output → approve → planner (serial)
 npm run test:e2e -- --project=accessibility
 ```
 
@@ -189,6 +200,12 @@ Full contract: `docs/API_SPEC.md`. API version **1.0.0**.
 ### Quick start flow
 
 Register via the web UI at `/register`, complete onboarding with a degree program, then explore catalog, transcript, progress, plans, and risks from the sidebar.
+
+### Transcript retakes and progress
+
+Graduation progress uses the **latest attempt** per course (later semester, then attempt number, then import time). The latest attempt must be **passing** to count toward credits and requirements. Same-semester retakes (including מועד ב) are supported on PDF import.
+
+If you imported a transcript before retake fixes shipped, re-upload the official PDF from **Transcript → Import** so missing attempts are added. Rows already stored with the same course, semester, and grade are skipped as duplicates on commit.
 
 ### Manual semester planner
 
@@ -239,6 +256,17 @@ python3 scripts/verify_promoted_faculty_curriculum.py --faculty-id faculty-civil
 ```
 
 See `services/data-engineering/README.md` and `docs/data-sources/TECHNION_DDS_SOURCE_MAPPING.md`.
+
+## Outlook Mail integration (optional)
+
+Read-only Outlook / Microsoft 365 mail access for the autonomous agent via a controlled MCP server:
+
+1. Set `MICROSOFT_CLIENT_ID` and `MICROSOFT_TOKEN_ENCRYPTION_KEY` in `.env` (see `.env.example`).
+2. Register redirect URI `${WEB_APP_URL}/api/integrations/outlook/callback` in Azure App Registration.
+3. Connect account: `GET /api/integrations/outlook/connect` (JWT required).
+4. Agent calls MCP tools from `services/outlook-mcp` (stdio) with `userId` + `INTERNAL_SERVICE_TOKEN`.
+
+Details: [services/outlook-mcp/README.md](services/outlook-mcp/README.md).
 
 ## Security & ops notes
 

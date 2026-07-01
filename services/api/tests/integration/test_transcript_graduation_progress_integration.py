@@ -273,6 +273,36 @@ async def test_delete_and_readd_restores_progress(auth_client, mongo_database):
 
 
 @pytest.mark.asyncio
+async def test_passing_retake_counts_after_failing_first_attempt(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "txgp-retake-pass@example.com")
+    await create_profile(auth_client, token, fixtures["programId"])
+
+    await add_completed(
+        auth_client,
+        token,
+        fixtures["courseBId"],
+        grade=40,
+        credits=0,
+        semester_code="2023-1",
+    )
+    progress_after_fail = await fetch_progress(auth_client, token)
+    assert progress_after_fail["completedCredits"] == 0
+
+    await add_completed(
+        auth_client,
+        token,
+        fixtures["courseBId"],
+        grade=85,
+        credits=3.5,
+        semester_code="2024-2",
+    )
+    progress_after_pass = await fetch_progress(auth_client, token)
+    assert progress_after_pass["completedCredits"] == 3.5
+    assert fixtures["courseBNumber"] in progress_course_numbers(progress_after_pass)
+
+
+@pytest.mark.asyncio
 async def test_transcript_list_aligns_with_progress_passing_courses(auth_client, mongo_database):
     fixtures = await seed_graduation_progress_fixtures(mongo_database)
     token = await register_access_token(auth_client, "txgp-list-align@example.com")

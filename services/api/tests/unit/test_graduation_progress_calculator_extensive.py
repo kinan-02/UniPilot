@@ -186,6 +186,33 @@ def test_effective_completions_tie_breaks_on_later_recorded_at_iso_strings():
     assert result[cid]["recordedAt"] == "2024-08-01T00:00:00Z"
 
 
+def test_effective_completions_prefers_later_semester_pass_over_earlier_fail_with_higher_attempt():
+    cid = str(ObjectId())
+    result = build_effective_completions(
+        [
+            {
+                "courseId": ObjectId(cid),
+                "grade": 88,
+                "creditsEarned": 3.5,
+                "attempt": 1,
+                "semesterCode": "2024-2",
+                "recordedAt": "2024-06-01T00:00:00Z",
+            },
+            {
+                "courseId": ObjectId(cid),
+                "grade": 40,
+                "creditsEarned": 0,
+                "attempt": 2,
+                "semesterCode": "2023-1",
+                "recordedAt": "2025-01-01T00:00:00Z",
+            },
+        ]
+    )
+    assert cid in result
+    assert result[cid]["grade"] == 88
+    assert result[cid]["semesterCode"] == "2024-2"
+
+
 def test_effective_completions_ignores_all_failing_attempts():
     cid = str(ObjectId())
     result = build_effective_completions(

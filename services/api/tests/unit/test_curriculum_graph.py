@@ -716,3 +716,42 @@ def test_overlay_keeps_failed_when_primary_failed_and_no_alternative_passed():
     )
     assert graph["nodes"][0]["status"] == "failed"
     assert "satisfiedViaAlternative" not in graph["nodes"][0]
+
+
+def test_overlay_marks_failed_when_latest_retake_fails_after_earlier_pass():
+    base = {
+        "nodes": [
+            {
+                "nodeId": "00960401",
+                "courseNumber": "00960401",
+                "semester": 1,
+                "alternatives": [],
+                "prerequisiteNumbers": [],
+                "dataQuality": {"verifyWithRegistrar": False},
+            }
+        ],
+        "edges": [],
+        "bottlenecks": [],
+    }
+    graph = overlay_transcript_on_graph(
+        base,
+        [
+            {
+                "courseId": "course-ds",
+                "courseNumber": "00960401",
+                "grade": 85,
+                "semesterCode": "2023-2",
+                "attempt": 1,
+            },
+            {
+                "courseId": "course-ds",
+                "courseNumber": "00960401",
+                "grade": 40,
+                "semesterCode": "2024-1",
+                "attempt": 2,
+            },
+        ],
+    )
+    assert graph["nodes"][0]["status"] == "failed"
+    assert graph["transcriptSummary"]["completedCount"] == 0
+    assert graph["transcriptSummary"]["failedCount"] == 1

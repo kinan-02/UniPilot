@@ -51,26 +51,48 @@ def _recorded_at_timestamp(value: Any) -> float:
     return 0.0
 
 
-def build_effective_completions(
+def _record_grouping_key(record: dict[str, Any]) -> str | None:
+    course_id = record.get("courseId")
+    if course_id is not None:
+        return normalize_id(course_id)
+    course_number = record.get("courseNumber")
+    if course_number:
+        return f"number:{course_number}"
+    return None
+
+
+def pick_latest_records_by_course_id(
     completed_course_records: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    """One row per courseId: the latest attempt only; must be passing to count."""
-    latest_by_course_id: dict[str, dict[str, Any]] = {}
-    latest_rank_by_course_id: dict[str, tuple[int, float, str]] = {}
+    """One raw transcript row per course — the latest attempt only."""
+    latest_by_key: dict[str, dict[str, Any]] = {}
+    latest_rank_by_key: dict[str, tuple[int, int, int, float]] = {}
 
     for record in completed_course_records:
-        course_id = normalize_id(record["courseId"])
+        grouping_key = _record_grouping_key(record)
+        if grouping_key is None:
+            continue
+
         rank = latest_attempt_rank(
             attempt=int(record.get("attempt") or 1),
             recorded_at_timestamp=_recorded_at_timestamp(record.get("recordedAt")),
             semester_code=str(record.get("semesterCode") or ""),
         )
-        existing_rank = latest_rank_by_course_id.get(course_id)
+        existing_rank = latest_rank_by_key.get(grouping_key)
         if existing_rank is not None and rank <= existing_rank:
             continue
 
-        latest_rank_by_course_id[course_id] = rank
-        latest_by_course_id[course_id] = record
+        latest_rank_by_key[grouping_key] = rank
+        latest_by_key[grouping_key] = record
+
+    return latest_by_key
+
+
+def build_effective_completions(
+    completed_course_records: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """One row per courseId: the latest attempt only; must be passing to count."""
+    latest_by_course_id = pick_latest_records_by_course_id(completed_course_records)
 
     effective: dict[str, dict[str, Any]] = {}
     for course_id, record in latest_by_course_id.items():
@@ -266,12 +288,12 @@ def calculate_graduation_progress(
     semester_matrix_documents: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from app.services.course_pool_classification import (
-        build_mandatory_equivalence_groups,
         is_mandatory_curriculum_course,
         mandatory_group_for_course,
         resolve_claiming_pool,
     )
     from app.services.catalog_overlap_groups import (
+        build_catalog_overlap_groups,
         exclude_overlap_duplicate_credits,
         overlap_group_for_course,
     )
@@ -288,12 +310,7 @@ def calculate_graduation_progress(
         semester_matrix_documents,
         catalog_course_list,
     )
-    mandatory_groups = build_mandatory_equivalence_groups(semester_matrix_documents)
-    overlap_groups = [
-        group
-        for group in progress_equivalence_groups
-        if len(group) > 1
-    ]
+    catalog_overlap_groups = build_catalog_overlap_groups(catalog_course_list)
     enforce_mandatory_bucket = bool(matrix_mandatory_groups)
     from app.services.course_reference_keys import (
         build_remaining_mandatory_course_entries,
@@ -310,7 +327,7 @@ def calculate_graduation_progress(
     overlap_excluded_ids = exclude_overlap_duplicate_credits(
         effective_completions,
         catalog_courses_by_id,
-        overlap_groups,
+        catalog_overlap_groups,
         recorded_at_timestamp=_recorded_at_timestamp,
     )
     assigned_course_ids: set[str] = set()
@@ -357,7 +374,7 @@ def calculate_graduation_progress(
                 if course_number is not None:
                     course_number = str(course_number)
 
-            overlap_key = overlap_group_for_course(course_number, overlap_groups)
+            overlap_key = overlap_group_for_course(course_number, catalog_overlap_groups)
             if overlap_key is not None and overlap_key in bucket_overlap_groups:
                 continue
 
@@ -571,8 +588,6 @@ def calculate_graduation_progress(
         if entry["status"] != "satisfied"
     ]
 
-    from app.services.catalog_overlap_groups import build_catalog_overlap_groups
-
     assumptions = [
         "hard_requirements_matrix",
         "strict_pool_eligibility",
@@ -606,9 +621,7 @@ def calculate_graduation_progress(
         ),
     }
 
-    catalog_overlap_serialized = [
-        sorted(group) for group in build_catalog_overlap_groups(catalog_course_list)
-    ]
+    catalog_overlap_serialized = [sorted(group) for group in catalog_overlap_groups]
 
     return {
         "degreeId": normalize_id(degree_program["_id"]),

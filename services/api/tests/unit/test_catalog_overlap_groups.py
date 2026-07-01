@@ -46,7 +46,7 @@ def test_resolve_record_numeric_grade():
     assert resolve_record_numeric_grade({"grade": 70, "gradePoints": 88}) == 70.0
 
 
-def test_exclude_overlap_duplicate_credits_prefers_max_credits():
+def test_exclude_overlap_duplicate_credits_prefers_latest_completion():
     older_id = str(ObjectId())
     newer_id = str(ObjectId())
     completions = {
@@ -69,7 +69,7 @@ def test_exclude_overlap_duplicate_credits_prefers_max_credits():
         [{"02340114", "02340117"}],
         recorded_at_timestamp=lambda value: 0 if value == "2024-01-01T00:00:00Z" else 1,
     )
-    assert excluded == {newer_id}
+    assert excluded == {older_id}
 
 
 def test_exclude_overlap_duplicate_credits_keeps_latest_when_credits_equal():
@@ -265,8 +265,8 @@ def test_dual_overlapping_transcript_courses_count_once_toward_degree():
             },
         ],
     )
-    assert progress["completedCredits"] == 4.0
-    assert progress["transcriptCreditsTotal"] == 4.0
+    assert progress["completedCredits"] == 3.5
+    assert progress["transcriptCreditsTotal"] == 3.5
     assert any(
         {"02340114", "02340117"} <= set(group)
         for group in progress["catalogOverlapEquivalenceGroups"]
@@ -275,4 +275,60 @@ def test_dual_overlapping_transcript_courses_count_once_toward_degree():
         row for row in progress["ineligibleCredits"] if row["reason"] == "overlap_no_additional_credit"
     ]
     assert len(overlap_rows) == 1
-    assert overlap_rows[0]["courseNumber"] == "02340117"
+    assert overlap_rows[0]["courseNumber"] == "02340114"
+
+
+def test_matrix_alternatives_without_catalog_overlap_do_not_exclude_transcript_credits():
+    older_id = str(ObjectId())
+    newer_id = str(ObjectId())
+    catalog = {
+        older_id: {"courseNumber": "01040031", "credits": 3.5},
+        newer_id: {"courseNumber": "01040016", "credits": 3.5},
+    }
+    progress = calculate_graduation_progress(
+        degree_program={
+            "_id": ObjectId(),
+            "programCode": "009009-1-000",
+            "totalCredits": 155.0,
+        },
+        hard_requirements=[
+            {
+                "_id": ObjectId(),
+                "requirementGroupId": "009009-1-000:core-mandatory",
+                "minCredits": 108.0,
+                "isMandatory": True,
+                "ruleExpression": {"type": "credit_bucket"},
+            }
+        ],
+        pool_documents=[],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[
+            {
+                "courseId": ObjectId(older_id),
+                "grade": 88,
+                "creditsEarned": 3.5,
+                "recordedAt": "2024-01-01T00:00:00Z",
+            },
+            {
+                "courseId": ObjectId(newer_id),
+                "grade": 90,
+                "creditsEarned": 3.5,
+                "recordedAt": "2025-01-01T00:00:00Z",
+            },
+        ],
+        semester_matrix_documents=[
+            {
+                "courseReferences": [
+                    {
+                        "courseNumber": "01040031",
+                        "alternatives": ["01040016"],
+                    }
+                ]
+            }
+        ],
+    )
+    assert progress["transcriptCreditsTotal"] == 7.0
+    overlap_rows = [
+        row for row in progress["ineligibleCredits"] if row["reason"] == "overlap_no_additional_credit"
+    ]
+    assert overlap_rows == []

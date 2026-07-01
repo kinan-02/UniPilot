@@ -143,7 +143,31 @@ describe('transcript utilities', () => {
     expect(stats.averageGrade).toBe(88)
   })
 
-  it('prefers later recordedAt when attempt numbers tie', () => {
+  it('prefers later semester over higher attempt number for the same course', () => {
+    const stats = computeTranscriptStats([
+      sampleRecord({
+        id: '1',
+        courseId: 'c1',
+        grade: '88',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2024-2',
+      }),
+      sampleRecord({
+        id: '2',
+        courseId: 'c1',
+        grade: '40',
+        creditsEarned: 0,
+        attempt: 2,
+        semesterCode: '2023-1',
+      }),
+    ])
+
+    expect(stats.totalCredits).toBe(3.5)
+    expect(stats.averageGrade).toBe(88)
+  })
+
+  it('prefers later recordedAt when attempt numbers tie in the same semester', () => {
     const stats = computeTranscriptStats([
       sampleRecord({
         id: '1',
@@ -160,7 +184,7 @@ describe('transcript utilities', () => {
         grade: '88',
         creditsEarned: 3.5,
         attempt: 1,
-        semesterCode: '2023-1',
+        semesterCode: '2024-1',
         recordedAt: '2024-06-01T00:00:00.000Z',
       }),
     ])
@@ -197,6 +221,24 @@ describe('transcript utilities', () => {
     expect(stats.totalCredits).toBe(6.5)
     expect(stats.courseCount).toBe(2)
     expect(stats.averageGrade).toBeCloseTo(85.231, 2)
+  })
+
+  it('excludes overlap-duplicate courses from transcript totals when requested', () => {
+    const stats = computeTranscriptStats(
+      [
+        sampleRecord({ id: '1', courseId: 'c1', creditsEarned: 4 }),
+        sampleRecord({
+          id: '2',
+          courseId: 'c2',
+          courseNumber: '02340117',
+          creditsEarned: 3.5,
+        }),
+      ],
+      { excludedCourseIds: new Set(['c2']) },
+    )
+
+    expect(stats.totalCredits).toBe(4)
+    expect(stats.courseCount).toBe(1)
   })
 
   it('groups records by semester newest first', () => {

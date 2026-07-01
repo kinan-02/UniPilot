@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from app.services.course_attempts import assign_sequential_course_attempts
+from app.services.course_attempts import assign_sequential_course_attempts, detect_attempt_from_text
 
 from app.schemas.parse_result import ParsedCourseEntry
 from app.services.course_number import normalize_course_number
@@ -18,9 +18,6 @@ STRUCTURED_LINE_PATTERN = re.compile(
 COMPACT_LINE_PATTERN = re.compile(
     r"^(?P<number>0\d{7})\s+(?P<credits>\d+(?:\.\d)?)\s+(?P<grade>\d+(?:\.\d)?)\s*$"
 )
-ATTEMPT_B_PATTERN = re.compile(r"מועד\s*ב|attempt\s*2|2nd\s*attempt", re.IGNORECASE)
-
-
 @dataclass(frozen=True)
 class RawCourseRow:
     course_number: str
@@ -74,7 +71,7 @@ def parse_credits(value: str) -> float | None:
 
 
 def detect_attempt(line: str) -> int:
-    return 2 if ATTEMPT_B_PATTERN.search(line) else 1
+    return detect_attempt_from_text(line)
 
 
 def parse_course_line(line: str, *, semester_code: str) -> RawCourseRow | None:
@@ -172,9 +169,15 @@ def parse_courses_from_text(text: str) -> tuple[list[ParsedCourseEntry], list[st
     if not raw_rows and text.strip():
         warnings.append("No course rows detected in transcript text.")
 
-    deduped: dict[tuple[str, str, int], RawCourseRow] = {}
+    deduped: dict[tuple[str, str, int, float, float], RawCourseRow] = {}
     for row in raw_rows:
-        key = (row.course_number, row.semester_code, row.attempt)
+        key = (
+            row.course_number,
+            row.semester_code,
+            row.attempt,
+            row.grade,
+            row.credits_earned,
+        )
         existing = deduped.get(key)
         if existing is None or row.confidence >= existing.confidence:
             deduped[key] = row

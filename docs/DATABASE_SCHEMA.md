@@ -399,7 +399,8 @@ Graduation progress is **computed at read time** — not stored in a separate co
 
 **Allocation:**
 - Passing numeric grades only (0–100 scale, **strictly above 55**); 55 and below excluded
-- One effective completion per `courseId` (latest attempt by attempt number, then `recordedAt`, then semester; must be passing)
+- One effective completion per `courseId` (latest by semester, then attempt number, then `recordedAt`; must be passing)
+- Catalog overlap groups (מקצועות ללא זיכוי נוסף) allow only one counted completion per group; the latest completion wins within the group
 - Top-level `completedCredits` sums each course **once**
 - Strict pools: only pool-eligible courses count toward linked buckets
 - Other buckets: greedy credit fill from unassigned passing completions

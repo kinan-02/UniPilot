@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.planning.academic_risk_analyzer import analyze_academic_risks
+from app.planning.academic_risk_analyzer import analyze_academic_risks, build_failed_course_attempts
 from tests.fixtures.semester_planner_fixtures import (
     ALGORITHMS,
     DATA_STRUCTURES,
@@ -174,6 +174,52 @@ def test_detects_failed_course_retake_warning():
     )
 
     assert any(risk["riskType"] == "failed_course_retake" for risk in analysis["risks"])
+
+
+def test_build_failed_course_attempts_uses_latest_semester_not_highest_attempt():
+    failed = build_failed_course_attempts(
+        [
+            {
+                "courseId": FOUNDATIONS,
+                "grade": 40,
+                "semesterCode": "2023-2",
+                "attempt": 2,
+                "creditsEarned": 0,
+            },
+            {
+                "courseId": FOUNDATIONS,
+                "grade": 35,
+                "semesterCode": "2024-1",
+                "attempt": 1,
+                "creditsEarned": 0,
+            },
+        ]
+    )
+    assert FOUNDATIONS in failed
+    assert failed[FOUNDATIONS]["semesterCode"] == "2024-1"
+    assert failed[FOUNDATIONS]["grade"] == 35
+
+
+def test_build_failed_course_attempts_omits_course_when_latest_passes():
+    failed = build_failed_course_attempts(
+        [
+            {
+                "courseId": FOUNDATIONS,
+                "grade": 40,
+                "semesterCode": "2023-2",
+                "attempt": 1,
+                "creditsEarned": 0,
+            },
+            {
+                "courseId": FOUNDATIONS,
+                "grade": 85,
+                "semesterCode": "2024-1",
+                "attempt": 2,
+                "creditsEarned": 3,
+            },
+        ]
+    )
+    assert FOUNDATIONS not in failed
 
 
 def test_detects_elective_only_plan_while_mandatory_requirements_remain():

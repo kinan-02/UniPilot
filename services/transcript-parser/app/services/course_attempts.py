@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from typing import Callable, TypeVar
 
 T = TypeVar("T")
+
+ATTEMPT_B_PATTERN = re.compile(r"מועד\s*ב|attempt\s*2|2nd\s*attempt", re.IGNORECASE)
+
+
+def detect_attempt_from_text(text: str) -> int:
+    """Return attempt 2 when a מועד ב / second-attempt marker appears in row text."""
+    return 2 if ATTEMPT_B_PATTERN.search(text) else 1
 
 
 def assign_sequential_course_attempts(

@@ -34,7 +34,7 @@ type TranscriptPdfUploadProps = {
 }
 
 function rowKey(course: ParsedTranscriptCourse) {
-  return `${course.courseNumber}:${course.semesterCode}:${course.attempt ?? 1}`
+  return `${course.courseNumber}:${course.semesterCode}:${course.attempt ?? 1}:${course.grade}`
 }
 
 function groupPreviewBySemester(courses: ParsedTranscriptCourse[]) {

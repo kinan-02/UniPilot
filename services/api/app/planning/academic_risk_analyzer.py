@@ -7,6 +7,7 @@ from typing import Any
 from app.services.graduation_progress_calculator import (
     build_effective_completions,
     is_passing_grade,
+    pick_latest_records_by_course_id,
     round_credits,
 )
 
@@ -62,26 +63,22 @@ def build_risk(
 def build_failed_course_attempts(
     completed_course_records: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    failed_by_course_id: dict[str, dict[str, Any]] = {}
+    latest_by_course_id = pick_latest_records_by_course_id(completed_course_records)
+    effective_completions = build_effective_completions(completed_course_records)
 
-    for record in completed_course_records:
+    failed_by_course_id: dict[str, dict[str, Any]] = {}
+    for course_id, record in latest_by_course_id.items():
+        if course_id in effective_completions:
+            continue
         if is_passing_grade(record):
             continue
 
-        course_id = normalize_course_id(record["courseId"])
-        candidate = {
+        failed_by_course_id[course_id] = {
             "courseId": course_id,
             "grade": record.get("grade"),
             "semesterCode": record.get("semesterCode"),
             "attempt": record.get("attempt") or 1,
         }
-        existing = failed_by_course_id.get(course_id)
-        if not existing or candidate["attempt"] > existing["attempt"]:
-            failed_by_course_id[course_id] = candidate
-
-    effective_completions = build_effective_completions(completed_course_records)
-    for course_id in effective_completions:
-        failed_by_course_id.pop(course_id, None)
 
     return failed_by_course_id
 

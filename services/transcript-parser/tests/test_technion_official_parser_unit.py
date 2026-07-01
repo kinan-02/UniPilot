@@ -192,6 +192,52 @@ def test_exemption_concat_invalid_when_marker_missing():
     assert block is None
 
 
+def test_parse_grade_line_ignores_moed_b_suffix():
+    from app.services.technion_official_parser import parse_grade_line
+
+    assert parse_grade_line("85 מועד ב") == 85.0
+
+
+def test_parse_technion_official_transcript_keeps_same_semester_moed_b_retake():
+    text = """
+00960401
+Data Science
+3.0
+40
+2024-2025 Spring
+00960401
+Data Science
+3.0
+85 מועד ב
+2024-2025 Spring
+"""
+    courses, _ = parse_technion_official_transcript(text)
+    ds_rows = [course for course in courses if course.courseNumber == "00960401"]
+    assert len(ds_rows) == 2
+    assert sorted(course.grade for course in ds_rows) == [40.0, 85.0]
+    assert sorted(course.attempt for course in ds_rows) == [1, 2]
+
+
+def test_parse_technion_official_transcript_keeps_same_semester_retakes_with_different_grades():
+    text = """
+00960401
+Data Science
+3.0
+40
+2024-2025 Spring
+00960401
+Data Science
+3.0
+85
+2024-2025 Spring
+"""
+    courses, _ = parse_technion_official_transcript(text)
+    ds_rows = [course for course in courses if course.courseNumber == "00960401"]
+    assert len(ds_rows) == 2
+    assert sorted(course.grade for course in ds_rows) == [40.0, 85.0]
+    assert sorted(course.attempt for course in ds_rows) == [1, 2]
+
+
 def test_parse_technion_official_transcript_warns_when_no_rows():
     _, warnings = parse_technion_official_transcript("Header only\nNo courses")
     assert "No course rows detected" in warnings[0]

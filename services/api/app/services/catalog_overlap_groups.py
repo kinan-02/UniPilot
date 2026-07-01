@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.planning.prerequisite_resolver import extract_course_numbers_from_text
+from app.services.completed_course_attempts import latest_attempt_rank
 from app.services.course_reference_keys import course_number_keys, merge_overlapping_equivalence_groups
 
 
@@ -69,6 +70,19 @@ def overlap_group_for_course(
     return None
 
 
+def _completion_precedence_key(
+    completion: dict[str, Any],
+    *,
+    recorded_at_timestamp,
+) -> tuple[int, float, str]:
+    """Latest completion wins within a catalog overlap group (not max credits)."""
+    return latest_attempt_rank(
+        attempt=int(completion.get("attempt") or 1),
+        recorded_at_timestamp=recorded_at_timestamp(completion.get("recordedAt")),
+        semester_code=str(completion.get("semesterCode") or ""),
+    )
+
+
 def exclude_overlap_duplicate_credits(
     effective_completions: dict[str, dict[str, Any]],
     catalog_courses_by_id: dict[str, dict[str, Any]],
@@ -102,9 +116,9 @@ def exclude_overlap_duplicate_credits(
 
         winner_id, _ = max(
             members,
-            key=lambda item: (
-                float(item[1].get("creditsEarned") or 0),
-                recorded_at_timestamp(item[1].get("recordedAt")),
+            key=lambda item: _completion_precedence_key(
+                item[1],
+                recorded_at_timestamp=recorded_at_timestamp,
             ),
         )
         for course_id, _ in members:

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Badge, Card } from '../ui/Card'
 import { CourseChipList } from './ProgressSections'
 import {
+  actionableIneligibleCredits,
   filterRemainingMandatoryCourses,
   bucketCompletionPercent,
   ineligibleCreditReasonLabel,
@@ -27,7 +28,7 @@ export function ProgressAttentionPanel({ progress, curriculumGraph, t }: Progres
     progress.completedMandatoryCourses,
     { curriculumGraph, progress },
   )
-  const ineligible = progress.ineligibleCredits ?? []
+  const ineligible = actionableIneligibleCredits(progress)
   const missingBuckets = progress.missingRequirements ?? []
 
   const itemCount = remainingMandatory.length + ineligible.length + missingBuckets.length

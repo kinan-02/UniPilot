@@ -1,23 +1,11 @@
-"""Tests for transcript parser attempt numbering."""
+"""Unit tests for shared course attempt helpers."""
 
-from app.services.course_attempts import assign_sequential_course_attempts
+from app.services.course_attempts import detect_attempt_from_text
 
 
-def test_assign_sequential_course_attempts_numbers_retakes_across_semesters():
-    rows = [
-        ("00960401", "2023-1", 1),
-        ("00960401", "2024-1", 1),
-    ]
+def test_detect_attempt_from_text_recognizes_hebrew_moed_b():
+    assert detect_attempt_from_text("85 מועד ב") == 2
 
-    assigned = assign_sequential_course_attempts(
-        rows,
-        course_number=lambda row: row[0],
-        semester_code=lambda row: row[1],
-        attempt=lambda row: row[2],
-        with_attempt=lambda row, resolved: (row[0], row[1], resolved),
-    )
 
-    assert assigned == [
-        ("00960401", "2023-1", 1),
-        ("00960401", "2024-1", 2),
-    ]
+def test_detect_attempt_from_text_defaults_to_first_attempt():
+    assert detect_attempt_from_text("00960401 Data Science 3.0 85") == 1

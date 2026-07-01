@@ -71,6 +71,14 @@ export function progressCatalogSubtitle(progress: GraduationProgress): string {
   return parts.join(' · ') || ''
 }
 
+export function actionableIneligibleCredits(
+  progress: GraduationProgress,
+): NonNullable<GraduationProgress['ineligibleCredits']> {
+  return (progress.ineligibleCredits ?? []).filter(
+    (entry) => entry.reason !== 'overlap_no_additional_credit',
+  )
+}
+
 export function hasActionableGaps(
   progress: GraduationProgress,
   curriculumGraph?: CurriculumGraph | null,
@@ -83,7 +91,7 @@ export function hasActionableGaps(
   return Boolean(
     remainingMandatory.length > 0 ||
       (progress.missingRequirements?.length ?? 0) > 0 ||
-      (progress.ineligibleCredits?.length ?? 0) > 0,
+      actionableIneligibleCredits(progress).length > 0,
   )
 }
 
@@ -99,7 +107,7 @@ export function countAttentionItems(
   return (
     remainingMandatory.length +
     (progress.missingRequirements?.length ?? 0) +
-    (progress.ineligibleCredits?.length ?? 0)
+    actionableIneligibleCredits(progress).length
   )
 }
 
@@ -188,7 +196,7 @@ export function hasDegreeCreditBucketGap(
   const transcriptGap =
     progress.transcriptCreditsTotal != null &&
     progress.transcriptCreditsTotal - progress.completedCredits > 0.01
-  const hasIneligible = (progress.ineligibleCredits?.length ?? 0) > 0
+  const hasIneligible = actionableIneligibleCredits(progress).length > 0
 
   if (remainingMandatory.length > 0 && highCompletion) {
     return true

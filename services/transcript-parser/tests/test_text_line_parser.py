@@ -35,15 +35,28 @@ def test_parse_courses_from_text_assigns_attempt_numbers_for_cross_semester_reta
     assert attempts == [("2023-2", 1), ("2024-1", 2)]
 
 
-def test_parse_courses_from_text_deduplicates_same_course_attempt():
+def test_parse_courses_from_text_keeps_same_semester_fail_and_pass_without_exam_marker():
+    text = """
+2024-1
+00960401 Data Science 3.0 40
+00960401 Data Science 3.0 85
+"""
+    courses, _ = parse_courses_from_text(text)
+    ds_rows = [course for course in courses if course.courseNumber == "00960401"]
+    assert len(ds_rows) == 2
+    assert sorted(course.grade for course in ds_rows) == [40.0, 85.0]
+    assert sorted(course.attempt for course in ds_rows) == [1, 2]
+
+
+def test_parse_courses_from_text_deduplicates_exact_duplicate_rows():
     text = """
 2024-1
 00960401 Data Science 3.0 85
-00960401 Data Science 3.0 90
+00960401 Data Science 3.0 85
 """
     courses, _ = parse_courses_from_text(text)
     assert len(courses) == 1
-    assert courses[0].grade == 90
+    assert courses[0].grade == 85
 
 
 def test_parse_courses_from_text_warns_when_no_rows():

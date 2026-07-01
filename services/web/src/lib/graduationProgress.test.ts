@@ -87,9 +87,17 @@ describe('graduationProgress helpers', () => {
     expect(
       hasActionableGaps({
         ...base,
-        ineligibleCredits: [{ courseNumber: '03940580', reason: 'wrong bucket' }],
+        ineligibleCredits: [{ courseNumber: '03940580', reason: 'not_assigned_to_requirement' }],
       }),
     ).toBe(true)
+    expect(
+      hasActionableGaps({
+        ...base,
+        ineligibleCredits: [
+          { courseNumber: '02340117', reason: 'overlap_no_additional_credit', creditsEarned: 4 },
+        ],
+      }),
+    ).toBe(false)
   })
 
   it('filters remaining mandatory courses already satisfied by parallel completion', () => {

@@ -19,6 +19,18 @@ from app.services.transcript_import_normalization import (
     resolve_import_grade_points,
 )
 from app.schemas.transcript_import import CommitTranscriptImportRequest
+from app.services.grade_evaluation import parse_numeric_grade
+
+
+def _import_grade_key(course_id: str, semester_code: str, grade: Any) -> tuple[str, str, str]:
+    numeric = parse_numeric_grade(grade)
+    if numeric is not None and numeric == int(numeric):
+        normalized_grade = str(int(numeric))
+    elif numeric is not None:
+        normalized_grade = str(numeric)
+    else:
+        normalized_grade = str(grade)
+    return (course_id, semester_code, normalized_grade)
 
 
 async def commit_transcript_import(
@@ -33,8 +45,20 @@ async def commit_transcript_import(
         (
             str(record.get("courseId")),
             str(record.get("semesterCode")),
-            record.get("grade"),
+            _import_grade_key(
+                str(record.get("courseId")),
+                str(record.get("semesterCode")),
+                record.get("grade"),
+            )[2],
             float(record.get("creditsEarned") or 0),
+        )
+        for record in existing_records
+    }
+    existing_grade_keys = {
+        _import_grade_key(
+            str(record.get("courseId")),
+            str(record.get("semesterCode")),
+            record.get("grade"),
         )
         for record in existing_records
     }
@@ -71,8 +95,17 @@ async def commit_transcript_import(
 
         credits_earned = resolve_import_credits(row, course)
         grade_points = resolve_import_grade_points(row)
-        signature = (course_id, row.semesterCode, row.grade, float(credits_earned))
+        grade_key = _import_grade_key(course_id, row.semesterCode, row.grade)
+        signature = (
+            course_id,
+            row.semesterCode,
+            grade_key[2],
+            float(credits_earned),
+        )
         if payload.skipDuplicates and signature in existing_signatures:
+            skipped_duplicates.append(row.courseNumber)
+            continue
+        if payload.skipDuplicates and grade_key in existing_grade_keys:
             skipped_duplicates.append(row.courseNumber)
             continue
 
@@ -98,6 +131,7 @@ async def commit_transcript_import(
             continue
 
         existing_signatures.add(signature)
+        existing_grade_keys.add(grade_key)
         course_summary = catalog_repository.course_summary_from_document(course)
         public_record = to_public_completed_course(record, course_summary)
         if public_record:

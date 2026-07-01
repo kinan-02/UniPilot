@@ -8,6 +8,7 @@ from app.planning.academic_risk_analyzer import normalize_course_id
 from app.planning.prerequisite_resolver import canonical_course_number
 from app.services.course_reference_keys import merge_with_cross_track_equivalence_groups
 from app.services.grade_evaluation import is_passing_grade
+from app.services.graduation_progress_calculator import pick_latest_records_by_course_id
 
 
 def _register_number(numbers: set[str], raw: str | None) -> None:
@@ -22,7 +23,7 @@ def _register_number(numbers: set[str], raw: str | None) -> None:
 
 def _completed_numbers(completed_records: list[dict[str, Any]]) -> set[str]:
     numbers: set[str] = set()
-    for record in completed_records:
+    for record in pick_latest_records_by_course_id(completed_records).values():
         number = record.get("courseNumber")
         if number and is_passing_grade(record):
             _register_number(numbers, str(number))
@@ -31,7 +32,7 @@ def _completed_numbers(completed_records: list[dict[str, Any]]) -> set[str]:
 
 def _failed_numbers(completed_records: list[dict[str, Any]]) -> set[str]:
     numbers: set[str] = set()
-    for record in completed_records:
+    for record in pick_latest_records_by_course_id(completed_records).values():
         number = record.get("courseNumber")
         if number and not is_passing_grade(record):
             _register_number(numbers, str(number))

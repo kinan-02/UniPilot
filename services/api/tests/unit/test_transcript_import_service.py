@@ -73,6 +73,76 @@ async def test_commit_transcript_import_stores_retake_in_new_semester_as_next_at
 
 
 @pytest.mark.asyncio
+async def test_commit_transcript_import_skips_same_semester_same_grade_when_credits_differ(
+    mongo_database,
+):
+    course = await seed_production_course_fixture(mongo_database)
+    from app.repositories.completed_course_repository import create_completed_course
+
+    user_id = "665f2b0f2a3f7b2a1a9a7c04"
+    await create_completed_course(
+        mongo_database,
+        user_id,
+        build_completed_course_payload(course["courseId"], creditsEarned=3.0),
+    )
+
+    result = await commit_transcript_import(
+        mongo_database,
+        user_id,
+        CommitTranscriptImportRequest(
+            courses=[
+                CommitTranscriptCourseInput(
+                    courseNumber=course["courseNumber"],
+                    semesterCode="2024-1",
+                    grade=82,
+                    creditsEarned=3.5,
+                )
+            ]
+        ),
+    )
+
+    assert result["createdCount"] == 0
+    assert result["skippedCount"] == 1
+
+
+@pytest.mark.asyncio
+async def test_commit_transcript_import_stores_same_semester_pass_after_fail(mongo_database):
+    course = await seed_production_course_fixture(mongo_database)
+    from app.repositories.completed_course_repository import create_completed_course
+
+    user_id = "665f2b0f2a3f7b2a1a9a7c05"
+    await create_completed_course(
+        mongo_database,
+        user_id,
+        build_completed_course_payload(
+            course["courseId"],
+            grade=40,
+            creditsEarned=0,
+        ),
+    )
+
+    result = await commit_transcript_import(
+        mongo_database,
+        user_id,
+        CommitTranscriptImportRequest(
+            courses=[
+                CommitTranscriptCourseInput(
+                    courseNumber=course["courseNumber"],
+                    semesterCode="2024-1",
+                    grade=72,
+                    creditsEarned=3,
+                    attempt=2,
+                )
+            ]
+        ),
+    )
+
+    assert result["createdCount"] == 1
+    assert result["created"][0]["attempt"] == 2
+    assert result["created"][0]["grade"] == 72
+
+
+@pytest.mark.asyncio
 async def test_commit_transcript_import_resolves_unpadded_course_number(mongo_database):
     course = await seed_production_course_fixture(mongo_database)
     user_id = "665f2b0f2a3f7b2a1a9a7c02"

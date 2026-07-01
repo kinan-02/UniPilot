@@ -43,17 +43,27 @@ function parseRecordedAtTimestamp(value: string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function semesterCodeRank(semesterCode: string): [number, number] {
+  const parsed = parseSemesterCode(semesterCode)
+  if (!parsed) return [0, 0]
+  return [parsed.academicYear, parsed.termIndex]
+}
+
 function compareLatestAttemptPrecedence(
   left: CompletedCourse,
   right: CompletedCourse,
 ): number {
+  const [leftYear, leftTerm] = semesterCodeRank(left.semesterCode)
+  const [rightYear, rightTerm] = semesterCodeRank(right.semesterCode)
+  if (leftYear !== rightYear) return leftYear - rightYear
+  if (leftTerm !== rightTerm) return leftTerm - rightTerm
   const leftAttempt = left.attempt ?? 1
   const rightAttempt = right.attempt ?? 1
   if (leftAttempt !== rightAttempt) return leftAttempt - rightAttempt
   const leftRecorded = parseRecordedAtTimestamp(left.recordedAt)
   const rightRecorded = parseRecordedAtTimestamp(right.recordedAt)
   if (leftRecorded !== rightRecorded) return leftRecorded - rightRecorded
-  return -compareSemesterCodesDesc(left.semesterCode, right.semesterCode)
+  return 0
 }
 
 /** Latest transcript row per courseId, regardless of pass/fail. */
@@ -110,8 +120,13 @@ export function gradeBadgeTone(grade: string | number | undefined): 'success' | 
 
 export { compareSemesterCodesDesc } from './semester'
 
-export function computeTranscriptStats(records: CompletedCourse[]): TranscriptStats {
-  const effectiveRecords = pickEffectiveTranscriptRecords(records)
+export function computeTranscriptStats(
+  records: CompletedCourse[],
+  options?: { excludedCourseIds?: ReadonlySet<string> },
+): TranscriptStats {
+  const effectiveRecords = pickEffectiveTranscriptRecords(records).filter(
+    (record) => !options?.excludedCourseIds?.has(record.courseId),
+  )
   let totalCredits = 0
   let weightedGradeSum = 0
   let weightedCreditTotal = 0
@@ -157,7 +172,10 @@ export function computeTranscriptStats(records: CompletedCourse[]): TranscriptSt
   }
 }
 
-export function groupTranscriptBySemester(records: CompletedCourse[]): TranscriptSemesterGroup[] {
+export function groupTranscriptBySemester(
+  records: CompletedCourse[],
+  options?: { excludedCourseIds?: ReadonlySet<string> },
+): TranscriptSemesterGroup[] {
   const groups = new Map<string, CompletedCourse[]>()
   const latestByCourseId = new Map(
     pickLatestAttemptRecords(records).map((record) => [record.courseId, record]),
@@ -176,6 +194,7 @@ export function groupTranscriptBySemester(records: CompletedCourse[]): Transcrip
         (left.courseNumber ?? left.courseId).localeCompare(right.courseNumber ?? right.courseId),
       ),
       semesterCredits: courses.reduce((sum, course) => {
+        if (options?.excludedCourseIds?.has(course.courseId)) return sum
         const latest = latestByCourseId.get(course.courseId)
         if (!latest || latest.semesterCode !== semesterCode) return sum
         if (!countsTowardAccumulatedCredits(latest)) return sum

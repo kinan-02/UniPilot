@@ -41,7 +41,20 @@ export function TranscriptPage() {
   })
 
   const records = transcriptQuery.data?.completedCourses ?? []
-  const stats = useMemo(() => computeTranscriptStats(records), [records])
+  const overlapExcludedCourseIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const entry of progressQuery.data?.graduationProgress?.ineligibleCredits ?? []) {
+      if (entry.reason === 'overlap_no_additional_credit' && entry.courseId) {
+        ids.add(entry.courseId)
+      }
+    }
+    return ids
+  }, [progressQuery.data?.graduationProgress?.ineligibleCredits])
+
+  const stats = useMemo(
+    () => computeTranscriptStats(records, { excludedCourseIds: overlapExcludedCourseIds }),
+    [records, overlapExcludedCourseIds],
+  )
   const completionPercent = progressQuery.data?.graduationProgress?.completionPercentage ?? null
   const profile = profileQuery.data?.profile
   const currentSemesterCode = profile?.currentSemesterCode ?? defaultSemesterCode()
@@ -136,6 +149,7 @@ export function TranscriptPage() {
           locale={locale}
           t={t}
           deletingId={deletingId}
+          excludedCourseIds={overlapExcludedCourseIds}
           onDelete={(id) => deleteMutation.mutate(id)}
         />
       )}

@@ -13,6 +13,7 @@ from app.config import Settings, get_settings
 from app.repositories.catalog_repository import find_courses_by_ids
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
+from app.services.graduation_progress_calculator import build_effective_completions
 
 
 def _json_safe_value(value: Any) -> Any:
@@ -43,11 +44,8 @@ async def build_advisor_user_context(
 ) -> dict[str, Any]:
     profile = await find_student_profile_by_user_id(database, user_id)
     completed_records = await find_all_completed_courses_by_user_id(database, user_id)
-    course_ids = [
-        str(record.get("courseId"))
-        for record in completed_records
-        if record.get("courseId") is not None
-    ]
+    effective_completions = build_effective_completions(completed_records)
+    course_ids = list(effective_completions.keys())
     catalog_courses = await find_courses_by_ids(database, course_ids)
     number_by_id = {
         str(course.get("_id")): str(course.get("number"))
@@ -55,10 +53,9 @@ async def build_advisor_user_context(
         if course.get("number")
     }
     completed_numbers = [
-        number_by_id[str(record.get("courseId"))]
-        for record in completed_records
-        if record.get("courseId") is not None
-        and str(record.get("courseId")) in number_by_id
+        number_by_id[course_id]
+        for course_id in course_ids
+        if course_id in number_by_id
     ]
 
     if not profile:
