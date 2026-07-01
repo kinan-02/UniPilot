@@ -25,7 +25,7 @@ export function ProgressAttentionPanel({ progress, curriculumGraph, t }: Progres
   const remainingMandatory = filterRemainingMandatoryCourses(
     progress.remainingMandatoryCourses,
     progress.completedMandatoryCourses,
-    curriculumGraph,
+    { curriculumGraph, progress },
   )
   const ineligible = progress.ineligibleCredits ?? []
   const missingBuckets = progress.missingRequirements ?? []

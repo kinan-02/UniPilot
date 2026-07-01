@@ -62,7 +62,7 @@ export default defineConfig({
     },
     {
       name: 'progress',
-      testMatch: /progress\.spec\.ts/,
+      testMatch: /progress(-polish)?\.spec\.ts/,
       testIgnore: /transcript-progress/,
       use: { ...devices['Desktop Chrome'] },
     },
@@ -84,6 +84,12 @@ export default defineConfig({
     {
       name: 'critical-paths',
       testMatch: /(critical-paths|civil-critical-path)\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'mas-user-journey',
+      testMatch: /mas-user-journey\.spec\.ts/,
+      timeout: 240_000,
       use: { ...devices['Desktop Chrome'] },
     },
     {

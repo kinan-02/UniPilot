@@ -340,7 +340,7 @@ Create a manual transcript record for the authenticated user.
 | `grade` | yes | number 0–100 (Technion numeric scale; pass strictly above 55) |
 | `gradePoints` | no | number 0–100 (optional; when set, used for pass/fail if present) |
 | `creditsEarned` | yes | number 0–36 in **0.5 increments** (e.g. `0`, `1`, `1.5`, `2`, `3.5`) |
-| `attempt` | no | integer 1–5, default `1` |
+| `attempt` | no | integer 1–10, default `1` |
 | `metadata` | no | `{ notes?: string (max 500) }` |
 
 `source` is always stored as `manual` for API-created records. `userId`, `official`, and `imported` source values are rejected on create.

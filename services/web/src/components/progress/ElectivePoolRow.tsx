@@ -15,7 +15,7 @@ import { ElectivePoolCourseList } from './ElectivePoolCourseList'
 import { PoolCatalogExplanation } from './PoolCatalogExplanation'
 import { PoolProgressBadge, PoolProgressStrip } from './PoolProgressStrip'
 import { PoolRuleBadge } from './PoolRuleBadge'
-import type { CurriculumGraph, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
+import type { CurriculumGraph, ElectiveBucket, GraduationProgress, RequirementProgressEntry } from '../../types/api'
 
 type ElectivePoolRowProps = {
   pool: ElectiveBucket
@@ -24,6 +24,7 @@ type ElectivePoolRowProps = {
   requiredCurriculumNumbers: Set<string>
   transcriptNumbers: Set<string>
   curriculumGraph?: CurriculumGraph | null
+  graduationProgress?: GraduationProgress | null
   expanded: boolean
   t: (key: string) => string
   onToggle: (bucket: RequirementProgressEntry, pool: ElectiveBucket) => void
@@ -36,6 +37,7 @@ export function ElectivePoolRow({
   requiredCurriculumNumbers,
   transcriptNumbers,
   curriculumGraph,
+  graduationProgress,
   expanded,
   t,
   onToggle,
@@ -52,6 +54,7 @@ export function ElectivePoolRow({
   const progressDisplay = resolvePoolProgressDisplay(pool, allPools)
   const summary = poolProgressSummary(pool, bucket, t, allPools, {
     curriculumGraph,
+    graduationProgress,
     requiredCurriculumNumbers,
   })
   const poolTitle = localizedPoolTitle(pool, t)
@@ -86,6 +89,20 @@ export function ElectivePoolRow({
           <div className="mt-1.5">
             <PoolRuleBadge pool={pool} t={t} />
           </div>
+          {pool.coursesTruncated || pool.manualReviewRequired ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {pool.coursesTruncated ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+                  {t('progress.electiveExplorer.coursesTruncated')}
+                </span>
+              ) : null}
+              {pool.manualReviewRequired ? (
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-900">
+                  {t('progress.electiveExplorer.manualReviewRequired')}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {showCatalogExplanation && !expanded ? (
             <div className="mt-2">
               <PoolCatalogExplanation
@@ -149,6 +166,7 @@ export function ElectivePoolRow({
             transcriptNumbers={transcriptNumbers}
             requiredCurriculumNumbers={requiredCurriculumNumbers}
             curriculumGraph={curriculumGraph}
+            graduationProgress={graduationProgress}
             t={t}
           />
         </div>

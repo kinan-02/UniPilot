@@ -230,7 +230,7 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
   - required: `userId`, `courseId`, `semesterCode`, `grade`, `creditsEarned`, `attempt`, `source`, `recordedAt`
   - grade enum (see `docs/API_SPEC.md` §4.3)
   - `creditsEarned` number >= 0, max 36, in **0.5 increments** (Technion-style half credits allowed)
-  - `attempt` integer > 0 (API: 1–5)
+  - `attempt` integer > 0 (API: 1–10)
   - `courseId` must reference a published `courses` document (production catalog after Phase 12 promotion on Python API)
   - unique `(userId, courseId, attempt)`
 - **Ownership rules:**
@@ -399,7 +399,7 @@ Graduation progress is **computed at read time** — not stored in a separate co
 
 **Allocation:**
 - Passing numeric grades only (0–100 scale, **strictly above 55**); 55 and below excluded
-- One effective completion per `courseId` (best passing `creditsEarned`, latest on tie)
+- One effective completion per `courseId` (latest attempt by attempt number, then `recordedAt`, then semester; must be passing)
 - Top-level `completedCredits` sums each course **once**
 - Strict pools: only pool-eligible courses count toward linked buckets
 - Other buckets: greedy credit fill from unassigned passing completions

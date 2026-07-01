@@ -12,7 +12,7 @@ class ParsedCourseEntry(BaseModel):
     semesterCode: str
     grade: float = Field(ge=0, le=100)
     creditsEarned: float = Field(ge=0, le=36)
-    attempt: int | None = Field(default=None, ge=1, le=5)
+    attempt: int | None = Field(default=None, ge=1, le=10)
     title: str | None = None
     confidence: float = Field(ge=0, le=1)
     warnings: list[str] = Field(default_factory=list)

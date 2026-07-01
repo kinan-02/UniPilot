@@ -244,6 +244,23 @@ export function buildTranscriptCourseNumbers(
   return numbers
 }
 
+/** All passing transcript course numbers, including ineligible rows not assigned to buckets. */
+export function buildFullTranscriptCourseNumbers(
+  progress: Pick<
+    GraduationProgress,
+    'requirementProgress' | 'ineligibleCredits' | 'completedMandatoryCourses'
+  >,
+): Set<string> {
+  const numbers = buildTranscriptCourseNumbers(progress.requirementProgress)
+  for (const course of progress.completedMandatoryCourses ?? []) {
+    addCourseNumberKeys(numbers, course.courseNumber)
+  }
+  for (const entry of progress.ineligibleCredits ?? []) {
+    addCourseNumberKeys(numbers, entry.courseNumber)
+  }
+  return numbers
+}
+
 /** Course numbers from raw completed-course records (actual transcript). */
 export function buildCompletedCourseNumberSet(
   records: Array<{ courseNumber?: string | null }> | undefined,
@@ -618,6 +635,7 @@ export function poolProgressSummary(
   allPools: ElectiveBucket[] = [],
   options?: {
     curriculumGraph?: CurriculumGraph | null
+    graduationProgress?: GraduationProgress | null
     requiredCurriculumNumbers?: Set<string>
   },
 ): PoolProgressSummary {
@@ -628,6 +646,7 @@ export function poolProgressSummary(
     countedNumbers,
     requiredCurriculumNumbers: options?.requiredCurriculumNumbers,
     curriculumGraph: options?.curriculumGraph,
+    progress: options?.graduationProgress,
   })
   const counted =
     progressDisplay === 'dedicated_bucket_credits'
@@ -645,6 +664,7 @@ export function poolProgressSummary(
   if (isFocusChainPool(pool) && t && hasStructuredChainLayout(pool)) {
     const equivalenceGroups = buildCourseEquivalenceGroups({
       curriculumGraph: options?.curriculumGraph,
+      progress: options?.graduationProgress,
       poolCourses: pool.courses,
     })
     const expandedCounted = expandNumbersWithEquivalence(countedNumbers, equivalenceGroups)
@@ -690,7 +710,7 @@ export function filterPoolCourses(
 
     if (!normalizedQuery) return true
 
-    const haystack = [course.courseNumber, course.title ?? '', ...(course.notes ?? [])]
+    const haystack = [course.courseNumber, course.title ?? '', course.titleHe ?? '', ...(course.notes ?? [])]
       .join(' ')
       .toLowerCase()
     return haystack.includes(normalizedQuery)
@@ -733,6 +753,7 @@ export function preparePoolCourseView(
     filter: PoolCourseFilter
     sort: PoolCourseSort
     curriculumGraph?: CurriculumGraph | null
+    graduationProgress?: GraduationProgress | null
     requiredCurriculumNumbers?: Set<string>
   },
 ): ElectivePoolCourse[] {
@@ -740,9 +761,11 @@ export function preparePoolCourseView(
     countedNumbers: options.completedNumbers,
     requiredCurriculumNumbers: options.requiredCurriculumNumbers,
     curriculumGraph: options.curriculumGraph,
+    progress: options.graduationProgress,
   })
   const groups = buildCourseEquivalenceGroups({
     curriculumGraph: options.curriculumGraph,
+    progress: options.graduationProgress,
     poolCourses: courses,
   })
   const expandedCompleted = expandNumbersWithEquivalence(options.completedNumbers, groups)
@@ -759,6 +782,7 @@ export function countDedupedPoolCourses(
     countedNumbers: Set<string>
     requiredCurriculumNumbers?: Set<string>
     curriculumGraph?: CurriculumGraph | null
+    progress?: GraduationProgress | null
   },
 ): number {
   return dedupeEquivalentPoolCourses(courses, options).length
@@ -770,6 +794,7 @@ export function dedupedPoolListedCount(
     countedNumbers: Set<string>
     requiredCurriculumNumbers?: Set<string>
     curriculumGraph?: CurriculumGraph | null
+    progress?: GraduationProgress | null
   },
 ): number {
   if (pool.courses.length === 0 && pool.courseCount != null) {
@@ -871,11 +896,13 @@ export function poolCourseFilterCounts(
   completedNumbers: Set<string>,
   options?: {
     curriculumGraph?: CurriculumGraph | null
+    graduationProgress?: GraduationProgress | null
     requiredCurriculumNumbers?: Set<string>
   },
 ): Record<PoolCourseFilter, number> {
   const groups = buildCourseEquivalenceGroups({
     curriculumGraph: options?.curriculumGraph,
+    progress: options?.graduationProgress,
     poolCourses: courses,
   })
   const expandedCompleted = expandNumbersWithEquivalence(completedNumbers, groups)
@@ -883,6 +910,7 @@ export function poolCourseFilterCounts(
     countedNumbers: completedNumbers,
     requiredCurriculumNumbers: options?.requiredCurriculumNumbers,
     curriculumGraph: options?.curriculumGraph,
+    progress: options?.graduationProgress,
   })
   const counted = deduped.filter((course) =>
     isCountedViaEquivalence(course.courseNumber, expandedCompleted, groups),

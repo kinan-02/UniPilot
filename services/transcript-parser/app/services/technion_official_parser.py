@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.schemas.parse_result import ParsedCourseEntry
+from app.services.course_attempts import assign_sequential_course_attempts
 
 COURSE_NUMBER_ONLY = re.compile(r"^0\d{7}$")
 CONCATENATED_ROW = re.compile(
@@ -58,6 +59,12 @@ class ParsedBlock:
     title: str | None
     confidence: float
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _AttemptBlock:
+    block: ParsedBlock
+    attempt: int
 
 
 def extract_student_id(raw_text: str) -> str | None:
@@ -384,18 +391,29 @@ def parse_technion_official_transcript(raw_text: str) -> tuple[list[ParsedCourse
         if existing is None or block.confidence >= existing.confidence:
             deduped[key] = block
 
+    attempt_rows = [
+        _AttemptBlock(block=block, attempt=1) for block in deduped.values()
+    ]
+    assigned_rows = assign_sequential_course_attempts(
+        attempt_rows,
+        course_number=lambda row: row.block.course_number,
+        semester_code=lambda row: row.block.semester_code,
+        attempt=lambda row: row.attempt,
+        with_attempt=lambda row, resolved: replace(row, attempt=resolved),
+    )
+
     courses = [
         ParsedCourseEntry(
-            courseNumber=block.course_number,
-            semesterCode=block.semester_code,
-            grade=block.grade,
-            creditsEarned=block.credits_earned,
-            attempt=1,
-            title=block.title,
-            confidence=block.confidence,
-            warnings=list(block.warnings),
+            courseNumber=row.block.course_number,
+            semesterCode=row.block.semester_code,
+            grade=row.block.grade,
+            creditsEarned=row.block.credits_earned,
+            attempt=row.attempt,
+            title=row.block.title,
+            confidence=row.block.confidence,
+            warnings=list(row.block.warnings),
         )
-        for block in deduped.values()
+        for row in assigned_rows
     ]
     courses.sort(key=lambda item: (item.semesterCode, item.courseNumber))
     return courses, warnings

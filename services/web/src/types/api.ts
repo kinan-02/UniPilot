@@ -157,6 +157,7 @@ export type CompletedCourse = {
   creditsEarned: number
   attempt: number
   source: string
+  recordedAt?: string
 }
 
 export type CourseProgressEntry = {
@@ -229,6 +230,8 @@ export type GraduationProgress = {
   missingRequirements?: MissingRequirementEntry[]
   ineligibleCredits?: IneligibleCreditEntry[]
   assumptions?: string[]
+  assumptionKeys?: string[]
+  catalogOverlapEquivalenceGroups?: string[][]
   statusSummary: string
 }
 
@@ -341,6 +344,8 @@ export type CurriculumGraph = {
   bottlenecks: Array<{ courseNumber: string; blockedBy: string[]; reason: string }>
   /** Same course under different track catalog codes (from vault). */
   crossTrackEquivalenceGroups?: string[][]
+  /** Parallel courses with no additional credit (מקצועות ללא זיכוי נוסף). */
+  catalogOverlapEquivalenceGroups?: string[][]
   transcriptSummary?: {
     completedCount: number
     failedCount: number
@@ -544,4 +549,46 @@ export type AdvisorReply = {
   eligibility?: Record<string, unknown> | null
   semesterResolution?: Record<string, unknown> | null
   retrievalStatus?: string | null
+}
+
+export type AgentSessionStatus = 'pending' | 'processing' | 'completed' | 'failed'
+
+export type AgentTurn = {
+  agent_role: string
+  action: string
+  payload: Record<string, unknown>
+  rationale: string
+  references: string[]
+}
+
+export type AgentSession = {
+  id: string
+  type: string
+  goal: string
+  status: AgentSessionStatus
+  finalDecision?: Record<string, unknown> | null
+  overriddenDecision?: Record<string, unknown> | null
+  utilityBreakdown?: Record<string, unknown> | null
+  transcript: AgentTurn[]
+  rounds: number
+  error?: string | null
+  approvedAt?: string | null
+  appliedAt?: string | null
+  appliedPlanId?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export type MasScheduleSlot = {
+  day: string
+  timeRange: string
+  slotType: string
+  group?: string
+}
+
+export type MasScheduleCourse = {
+  courseId: string
+  title: string
+  credits: number
+  slots: MasScheduleSlot[]
 }

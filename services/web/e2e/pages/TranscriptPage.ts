@@ -28,7 +28,11 @@ export class TranscriptPage extends BasePage {
     await expect(this.page.getByTestId(`transcript-row-${courseNumber}`)).toHaveCount(0)
   }
 
-  async addCompletedCourse(courseNumber: string, semesterCode: string) {
+  async addCompletedCourse(
+    courseNumber: string,
+    semesterCode: string,
+    options?: { grade?: number; creditsEarned?: number },
+  ) {
     await this.gotoTranscript()
 
     const catalogSearch = this.page.waitForResponse(
@@ -51,6 +55,14 @@ export class TranscriptPage extends BasePage {
     }
 
     await this.page.getByTestId('transcript-semester-custom').fill(semesterCode)
+
+    if (options?.grade != null) {
+      await this.addForm.getByLabel(/grade|ציון/i).fill(String(options.grade))
+    }
+    if (options?.creditsEarned != null) {
+      await this.addForm.getByLabel(/credits earned|נק״ז|נק"ז/i).fill(String(options.creditsEarned))
+    }
+
     const createResponse = this.page.waitForResponse(
       (response) =>
         response.url().includes('/completed-courses') &&

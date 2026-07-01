@@ -58,14 +58,14 @@ def test_is_passing_grade_uses_grade_field():
     assert is_passing_grade({"grade": 40}) is False
 
 
-def test_is_passing_grade_prefers_grade_points():
-    assert is_passing_grade({"grade": 40, "gradePoints": 82}) is True
-    assert is_passing_grade({"grade": 82, "gradePoints": 50}) is False
+def test_is_passing_grade_uses_grade_field_over_grade_points():
+    assert is_passing_grade({"grade": 82, "gradePoints": 50}) is True
+    assert is_passing_grade({"grade": 40, "gradePoints": 82}) is False
+    assert is_passing_grade({"gradePoints": 82}) is True
 
 
-def test_resolve_record_numeric_grade():
-    assert resolve_record_numeric_grade({"grade": 70}) == 70.0
-    assert resolve_record_numeric_grade({"gradePoints": 88}) == 88.0
+def test_resolve_record_numeric_grade_prefers_grade():
+    assert resolve_record_numeric_grade({"grade": 70, "gradePoints": 88}) == 70.0
 
 
 def test_parse_numeric_grade_returns_none_for_bool():

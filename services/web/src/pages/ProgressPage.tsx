@@ -20,8 +20,8 @@ import { Card, EmptyState, PageHeader } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
 import { formatCredits } from '../lib/utils'
 import {
+  buildFullTranscriptCourseNumbers,
   buildRequiredCurriculumCourseNumbers,
-  buildTranscriptCourseNumbers,
   findPoolsForBucket,
 } from '../lib/electivePools'
 import {
@@ -62,8 +62,11 @@ export function ProgressPage() {
   const electivePools = curriculumQuery.data?.curriculumGraph?.electiveBuckets ?? []
   const requirementProgress = progressQuery.data?.graduationProgress?.requirementProgress ?? []
   const progressCourseNumbers = useMemo(
-    () => buildTranscriptCourseNumbers(requirementProgress),
-    [requirementProgress],
+    () =>
+      progressQuery.data?.graduationProgress
+        ? buildFullTranscriptCourseNumbers(progressQuery.data.graduationProgress)
+        : new Set<string>(),
+    [progressQuery.data?.graduationProgress],
   )
   const requiredCurriculumNumbers = useMemo(
     () =>
@@ -157,7 +160,14 @@ export function ProgressPage() {
   }
 
   const progress = progressQuery.data?.graduationProgress
-  if (!progress) return null
+  if (!progress) {
+    return (
+      <EmptyState
+        title={t('progress.unavailable')}
+        description={t('progress.emptyProgress')}
+      />
+    )
+  }
 
   const statusKey = `progress.statusSummary.${progress.statusSummary}` as const
   const statusLabel =
@@ -183,7 +193,7 @@ export function ProgressPage() {
   const mandatoryRemainingCount = filterRemainingMandatoryCourses(
     progress.remainingMandatoryCourses,
     progress.completedMandatoryCourses,
-    curriculumGraph,
+    { curriculumGraph, progress },
   ).length
   const mandatoryCreditsCompleted = mandatory.reduce(
     (sum, bucket) => sum + bucket.creditsCompleted,
@@ -231,6 +241,7 @@ export function ProgressPage() {
         statusLabel={statusLabel}
         attentionCount={attentionCount}
         mandatoryRemainingCount={mandatoryRemainingCount}
+        curriculumGraph={curriculumGraph}
         t={t}
       />
 
@@ -265,6 +276,9 @@ export function ProgressPage() {
                   {t('common.credits')}
                 </span>
               </div>
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                {t('progress.mandatoryAggregateHint')}
+              </p>
               <div
                 className="mt-2 h-2 overflow-hidden rounded-full bg-stone-100"
                 role="progressbar"
@@ -304,7 +318,9 @@ export function ProgressPage() {
           requiredCurriculumNumbers={requiredCurriculumNumbers}
           transcriptNumbers={progressCourseNumbers}
           curriculumGraph={curriculumGraph}
+          graduationProgress={progress}
           expandedPoolId={expandedPoolId}
+          deepLinkPoolId={searchParams.get('pool')}
           t={t}
           onExpandedPoolChange={handleExpandedPoolChange}
         />
@@ -316,19 +332,41 @@ export function ProgressPage() {
         </Card>
       ) : null}
 
+      {curriculumGraph?.advisories?.length ? (
+        <Card className="scroll-mt-24 border-sky-200/80 bg-sky-50/50">
+          <h2 className="text-sm font-semibold text-sky-950">{t('progress.curriculumAdvisories')}</h2>
+          <ul className="mt-2 space-y-2">
+            {curriculumGraph.advisories.map((advisory) => (
+              <li key={advisory.code} className="text-sm text-sky-900">
+                {advisory.message}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
       {showCurriculum ? (
         <div id="progress-curriculum">
           <CurriculumGraphSection graph={curriculumGraph!} t={t} />
         </div>
       ) : null}
 
-      {progress.assumptions?.length ? (
+      {progress.assumptionKeys?.length || progress.assumptions?.length ? (
         <details className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
           <summary className="cursor-pointer text-sm font-medium">{t('progress.assumptions')}</summary>
           <ul className="mt-3 list-disc space-y-2 ps-5 text-sm text-[var(--color-text-muted)]">
-            {progress.assumptions.map((assumption) => (
-              <li key={assumption}>{assumption}</li>
-            ))}
+            {(progress.assumptionKeys ?? []).map((key) => {
+              const labelKey = `progress.assumptionItems.${key}` as const
+              const translated = t(labelKey)
+              const fallback =
+                progress.assumptions?.[progress.assumptionKeys?.indexOf(key) ?? -1] ?? key
+              return <li key={key}>{translated !== labelKey ? translated : fallback}</li>
+            })}
+            {!progress.assumptionKeys?.length
+              ? progress.assumptions?.map((assumption) => (
+                  <li key={assumption}>{assumption}</li>
+                ))
+              : null}
           </ul>
         </details>
       ) : null}

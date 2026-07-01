@@ -6,6 +6,10 @@ from typing import Any, Literal
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.curriculum.track_registry import (
+    program_code_for_track_slug,
+    resolve_track_slug_from_program,
+)
 from app.repositories import catalog_repository
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
@@ -39,7 +43,13 @@ async def get_graduation_progress_for_user(
     if not degree_program:
         return {"status": "degree_not_found"}
 
-    program_code = str(degree_program["programCode"])
+    academic_path = profile.get("academicPath") or {}
+    track_slug = academic_path.get("trackSlug") or resolve_track_slug_from_program(degree_program)
+    program_code = str(
+        degree_program.get("programCode") or program_code_for_track_slug(track_slug) or ""
+    )
+    if not program_code:
+        return {"status": "degree_not_found"}
 
     import asyncio
 
@@ -71,6 +81,20 @@ async def get_graduation_progress_for_user(
     course_ids = [str(record["courseId"]) for record in completed_records]
     catalog_courses = await catalog_repository.find_courses_by_ids(database, course_ids)
     catalog_courses_by_id = {str(course["_id"]): course for course in catalog_courses}
+
+    from app.services.catalog_overlap_groups import collect_overlap_partner_numbers
+
+    partner_numbers = collect_overlap_partner_numbers(list(catalog_courses_by_id.values()))
+    known_numbers = {
+        str(course.get("courseNumber") or course.get("number") or "")
+        for course in catalog_courses_by_id.values()
+        if course.get("courseNumber") or course.get("number")
+    }
+    missing_partners = sorted(number for number in partner_numbers if number not in known_numbers)
+    if missing_partners:
+        partner_courses = await catalog_repository.find_courses_by_numbers(database, missing_partners)
+        for course in partner_courses:
+            catalog_courses_by_id[str(course["_id"])] = course
 
     progress = calculate_graduation_progress(
         degree_program=degree_program,

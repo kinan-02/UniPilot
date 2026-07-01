@@ -26,13 +26,48 @@ export function parseTranscriptGrade(grade: string | number | undefined): number
   return Number.isFinite(numeric) ? numeric : null
 }
 
-/** Mirrors backend resolve_record_numeric_grade — gradePoints override raw grade. */
+/** Prefer the official numeric grade when present; exemptions may store points separately. */
 export function resolveEffectiveTranscriptGrade(record: CompletedCourse): number | null {
+  const grade = parseTranscriptGrade(record.grade)
+  if (grade != null && grade > 0) return grade
   if (record.gradePoints != null) {
     const points = parseTranscriptGrade(record.gradePoints)
     if (points != null) return points
   }
-  return parseTranscriptGrade(record.grade)
+  return grade
+}
+
+function parseRecordedAtTimestamp(value: string | undefined): number {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function compareLatestAttemptPrecedence(
+  left: CompletedCourse,
+  right: CompletedCourse,
+): number {
+  const leftAttempt = left.attempt ?? 1
+  const rightAttempt = right.attempt ?? 1
+  if (leftAttempt !== rightAttempt) return leftAttempt - rightAttempt
+  const leftRecorded = parseRecordedAtTimestamp(left.recordedAt)
+  const rightRecorded = parseRecordedAtTimestamp(right.recordedAt)
+  if (leftRecorded !== rightRecorded) return leftRecorded - rightRecorded
+  return -compareSemesterCodesDesc(left.semesterCode, right.semesterCode)
+}
+
+/** Latest transcript row per courseId, regardless of pass/fail. */
+export function pickLatestAttemptRecords(records: CompletedCourse[]): CompletedCourse[] {
+  const latestByCourseId = new Map<string, CompletedCourse>()
+
+  for (const record of records) {
+    const existing = latestByCourseId.get(record.courseId)
+    if (!existing || compareLatestAttemptPrecedence(record, existing) > 0) {
+      latestByCourseId.set(record.courseId, record)
+    }
+  }
+
+  return [...latestByCourseId.values()]
 }
 
 export function isPassingTranscriptRecord(record: CompletedCourse): boolean {
@@ -59,27 +94,9 @@ export function countsTowardWeightedAverage(record: CompletedCourse): boolean {
   return !isFailedTranscriptGrade(grade)
 }
 
-/** One effective row per courseId — mirrors backend build_effective_completions. */
+/** One effective row per courseId — latest attempt only, and it must be passing. */
 export function pickEffectiveTranscriptRecords(records: CompletedCourse[]): CompletedCourse[] {
-  const bestByCourseId = new Map<string, CompletedCourse>()
-
-  for (const record of records) {
-    if (!isPassingTranscriptRecord(record)) continue
-
-    const existing = bestByCourseId.get(record.courseId)
-    if (!existing) {
-      bestByCourseId.set(record.courseId, record)
-      continue
-    }
-
-    const candidateCredits = record.creditsEarned ?? 0
-    const existingCredits = existing.creditsEarned ?? 0
-    if (candidateCredits > existingCredits) {
-      bestByCourseId.set(record.courseId, record)
-    }
-  }
-
-  return [...bestByCourseId.values()]
+  return pickLatestAttemptRecords(records).filter(isPassingTranscriptRecord)
 }
 
 export function gradeBadgeTone(grade: string | number | undefined): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -142,6 +159,9 @@ export function computeTranscriptStats(records: CompletedCourse[]): TranscriptSt
 
 export function groupTranscriptBySemester(records: CompletedCourse[]): TranscriptSemesterGroup[] {
   const groups = new Map<string, CompletedCourse[]>()
+  const latestByCourseId = new Map(
+    pickLatestAttemptRecords(records).map((record) => [record.courseId, record]),
+  )
 
   for (const record of records) {
     const existing = groups.get(record.semesterCode) ?? []
@@ -155,11 +175,12 @@ export function groupTranscriptBySemester(records: CompletedCourse[]): Transcrip
       courses: [...courses].sort((left, right) =>
         (left.courseNumber ?? left.courseId).localeCompare(right.courseNumber ?? right.courseId),
       ),
-      semesterCredits: pickEffectiveTranscriptRecords(courses).reduce(
-        (sum, course) =>
-          countsTowardAccumulatedCredits(course) ? sum + (course.creditsEarned ?? 0) : sum,
-        0,
-      ),
+      semesterCredits: courses.reduce((sum, course) => {
+        const latest = latestByCourseId.get(course.courseId)
+        if (!latest || latest.semesterCode !== semesterCode) return sum
+        if (!countsTowardAccumulatedCredits(latest)) return sum
+        return sum + (latest.creditsEarned ?? 0)
+      }, 0),
     }))
     .sort((left, right) => compareSemesterCodesDesc(left.semesterCode, right.semesterCode))
 }

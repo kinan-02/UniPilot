@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from app.services.course_attempts import assign_sequential_course_attempts
 
 from app.schemas.parse_result import ParsedCourseEntry
 from app.services.course_number import normalize_course_number
@@ -177,6 +179,14 @@ def parse_courses_from_text(text: str) -> tuple[list[ParsedCourseEntry], list[st
         if existing is None or row.confidence >= existing.confidence:
             deduped[key] = row
 
+    assigned_rows = assign_sequential_course_attempts(
+        list(deduped.values()),
+        course_number=lambda row: row.course_number,
+        semester_code=lambda row: row.semester_code,
+        attempt=lambda row: row.attempt,
+        with_attempt=lambda row, resolved: replace(row, attempt=resolved),
+    )
+
     courses = [
         ParsedCourseEntry(
             courseNumber=row.course_number,
@@ -188,7 +198,7 @@ def parse_courses_from_text(text: str) -> tuple[list[ParsedCourseEntry], list[st
             confidence=row.confidence,
             warnings=list(row.warnings),
         )
-        for row in deduped.values()
+        for row in assigned_rows
     ]
     courses.sort(key=lambda item: (item.semesterCode, item.courseNumber))
     return courses, warnings

@@ -3,6 +3,7 @@ import {
   bucketCompletionPercent,
   filterRemainingMandatoryCourses,
   hasActionableGaps,
+  hasDegreeCreditBucketGap,
   isGeneralTechnionBucket,
   partitionRequirementBuckets,
   progressCatalogSubtitle,
@@ -129,8 +130,51 @@ describe('graduationProgress helpers', () => {
         { courseId: 'matrix:01040031', courseNumber: '01040031' },
       ],
       [{ courseId: 'real-id', courseNumber: '1040016' }],
-      graph,
+      { curriculumGraph: graph },
     )
     expect(remaining.map((course) => course.courseNumber)).toEqual(['01040031'])
+  })
+
+  it('detects credit/bucket gaps when open buckets and ineligible credits coexist', () => {
+    const gap = hasDegreeCreditBucketGap({
+      degreeId: 'd1',
+      completedCredits: 80,
+      transcriptCreditsTotal: 95,
+      totalRequiredCredits: 155,
+      creditsRemaining: 75,
+      completionPercentage: 51.6,
+      statusSummary: 'in_progress',
+      missingRequirements: [{ requirementId: 'r1' } as never],
+      ineligibleCredits: [{ courseId: 'x', creditsEarned: 15, reason: 'not_assigned_to_requirement' }],
+    })
+    expect(gap).toBe(true)
+  })
+
+  it('detects gap when credit buckets look complete but mandatory matrix courses remain', () => {
+    const gap = hasDegreeCreditBucketGap({
+      degreeId: 'd1',
+      completedCredits: 155,
+      totalRequiredCredits: 155,
+      creditsRemaining: 0,
+      completionPercentage: 100,
+      statusSummary: 'complete',
+      missingRequirements: [],
+      remainingMandatoryCourses: [{ courseNumber: '00940345', courseTitle: 'Discrete math' }],
+    })
+    expect(gap).toBe(true)
+  })
+
+  it('does not flag low-completion students with remaining mandatory courses only', () => {
+    const gap = hasDegreeCreditBucketGap({
+      degreeId: 'd1',
+      completedCredits: 7.5,
+      totalRequiredCredits: 155,
+      creditsRemaining: 147.5,
+      completionPercentage: 4.8,
+      statusSummary: 'in_progress',
+      missingRequirements: [],
+      remainingMandatoryCourses: [{ courseNumber: '00940345', courseTitle: 'Discrete math' }],
+    })
+    expect(gap).toBe(false)
   })
 })

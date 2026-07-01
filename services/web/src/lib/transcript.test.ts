@@ -68,6 +68,107 @@ describe('transcript utilities', () => {
     expect(stats.averageGrade).toBe(88)
   })
 
+  it('uses latest retake grade even when it is lower than an earlier attempt', () => {
+    const stats = computeTranscriptStats([
+      sampleRecord({
+        id: '1',
+        courseId: 'c1',
+        grade: '90',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2023-1',
+      }),
+      sampleRecord({
+        id: '2',
+        courseId: 'c1',
+        grade: '62',
+        creditsEarned: 3.5,
+        attempt: 2,
+        semesterCode: '2024-1',
+      }),
+    ])
+
+    expect(stats.totalCredits).toBe(3.5)
+    expect(stats.courseCount).toBe(1)
+    expect(stats.averageGrade).toBe(62)
+  })
+
+  it('excludes a course when the latest retake attempt failed', () => {
+    const stats = computeTranscriptStats([
+      sampleRecord({
+        id: '1',
+        courseId: 'c1',
+        grade: '88',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2023-1',
+      }),
+      sampleRecord({
+        id: '2',
+        courseId: 'c1',
+        grade: '40',
+        creditsEarned: 0,
+        attempt: 2,
+        semesterCode: '2024-1',
+      }),
+    ])
+
+    expect(stats.totalCredits).toBe(0)
+    expect(stats.courseCount).toBe(0)
+    expect(stats.averageGrade).toBeNull()
+  })
+
+  it('prefers later retake attempt when deduping transcript rows', () => {
+    const stats = computeTranscriptStats([
+      sampleRecord({
+        id: '1',
+        courseId: 'c1',
+        grade: '70',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2023-1',
+      }),
+      sampleRecord({
+        id: '2',
+        courseId: 'c1',
+        grade: '88',
+        creditsEarned: 3.5,
+        attempt: 2,
+        semesterCode: '2024-1',
+      }),
+    ])
+
+    expect(stats.totalCredits).toBe(3.5)
+    expect(stats.courseCount).toBe(1)
+    expect(stats.averageGrade).toBe(88)
+  })
+
+  it('prefers later recordedAt when attempt numbers tie', () => {
+    const stats = computeTranscriptStats([
+      sampleRecord({
+        id: '1',
+        courseId: 'c1',
+        grade: '70',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2024-1',
+        recordedAt: '2024-01-01T00:00:00.000Z',
+      }),
+      sampleRecord({
+        id: '2',
+        courseId: 'c1',
+        grade: '88',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2023-1',
+        recordedAt: '2024-06-01T00:00:00.000Z',
+      }),
+    ])
+
+    expect(stats.totalCredits).toBe(3.5)
+    expect(stats.averageGrade).toBe(88)
+  })
+
   it('uses gradePoints for exemptions and dedupes retakes by courseId', () => {
     const stats = computeTranscriptStats([
       sampleRecord({
@@ -108,6 +209,30 @@ describe('transcript utilities', () => {
     expect(groups.map((group) => group.semesterCode)).toEqual(['2024-1', '2023-2'])
     expect(groups[0].courses).toHaveLength(2)
     expect(groups[0].semesterCredits).toBe(10)
+  })
+
+  it('semester credit totals follow the global latest attempt, not per-semester pass history', () => {
+    const groups = groupTranscriptBySemester([
+      sampleRecord({
+        id: '1',
+        courseId: 'c1',
+        grade: '88',
+        creditsEarned: 3.5,
+        attempt: 1,
+        semesterCode: '2023-2',
+      }),
+      sampleRecord({
+        id: '2',
+        courseId: 'c1',
+        grade: '40',
+        creditsEarned: 0,
+        attempt: 2,
+        semesterCode: '2024-1',
+      }),
+    ])
+
+    expect(groups.find((group) => group.semesterCode === '2023-2')?.semesterCredits).toBe(0)
+    expect(groups.find((group) => group.semesterCode === '2024-1')?.semesterCredits).toBe(0)
   })
 
   it('filters records by course number or title', () => {

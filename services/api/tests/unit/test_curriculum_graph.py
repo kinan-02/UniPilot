@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bson import ObjectId
+
 from app.curriculum.data_quality import (
     build_credits_display,
     parse_alternatives_from_text,
@@ -275,6 +277,32 @@ def test_build_base_graph_parses_credits_from_notes_and_hint_raw():
     assert ("00960211", "00960221") in [
         tuple(group) for group in graph.get("crossTrackEquivalenceGroups", [])
     ]
+
+
+def test_build_base_graph_exposes_catalog_overlap_equivalence_groups():
+    graph = build_base_curriculum_graph(
+        track_slug="track-industrial-engineering-management",
+        program_code="009009-1-000",
+        catalog_year=2025,
+        catalog_version="2025-2026",
+        semester_matrix_documents=[],
+        pool_documents=[],
+        catalog_courses=[
+            {
+                "_id": ObjectId(),
+                "courseNumber": "02340114",
+                "noAdditionalCreditText": "02340117",
+            },
+            {
+                "_id": ObjectId(),
+                "courseNumber": "02340117",
+                "noAdditionalCreditText": "02340114",
+            },
+        ],
+    )
+    groups = graph.get("catalogOverlapEquivalenceGroups", [])
+    assert groups
+    assert any({"02340114", "02340117"} <= set(group) for group in groups)
 
 
 def test_prerequisite_sources_deduplicate_duplicate_prerequisite_ids():

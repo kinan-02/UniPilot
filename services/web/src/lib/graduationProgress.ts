@@ -78,7 +78,7 @@ export function hasActionableGaps(
   const remainingMandatory = filterRemainingMandatoryCourses(
     progress.remainingMandatoryCourses,
     progress.completedMandatoryCourses,
-    curriculumGraph,
+    { curriculumGraph, progress },
   )
   return Boolean(
     remainingMandatory.length > 0 ||
@@ -94,7 +94,7 @@ export function countAttentionItems(
   const remainingMandatory = filterRemainingMandatoryCourses(
     progress.remainingMandatoryCourses,
     progress.completedMandatoryCourses,
-    curriculumGraph,
+    { curriculumGraph, progress },
   )
   return (
     remainingMandatory.length +
@@ -115,8 +115,13 @@ function mandatoryGroupForCourse(
 export function filterRemainingMandatoryCourses(
   remaining: GraduationProgress['remainingMandatoryCourses'],
   completed: GraduationProgress['completedMandatoryCourses'],
-  curriculumGraph?: CurriculumGraph | null,
+  options?: {
+    curriculumGraph?: CurriculumGraph | null
+    progress?: GraduationProgress | null
+  },
 ): NonNullable<GraduationProgress['remainingMandatoryCourses']> {
+  const curriculumGraph = options?.curriculumGraph
+  const progress = options?.progress
   const completedKeys = new Set<string>()
   for (const course of completed ?? []) {
     for (const key of courseNumberKeys(course.courseNumber ?? '')) {
@@ -126,6 +131,7 @@ export function filterRemainingMandatoryCourses(
 
   const mandatoryGroups = buildMandatoryEquivalenceGroups({
     curriculumGraph,
+    progress,
     remainingMandatory: remaining,
     completedMandatory: completed,
   })
@@ -165,6 +171,31 @@ export function filterRemainingMandatoryCourses(
   }
 
   return filtered
+}
+
+export function hasDegreeCreditBucketGap(
+  progress: GraduationProgress,
+  curriculumGraph?: CurriculumGraph | null,
+): boolean {
+  const remainingMandatory = filterRemainingMandatoryCourses(
+    progress.remainingMandatoryCourses,
+    progress.completedMandatoryCourses,
+    { curriculumGraph, progress },
+  )
+  const highCompletion =
+    progress.completionPercentage >= 99.9 || progress.creditsRemaining <= 0.01
+  const openBuckets = (progress.missingRequirements?.length ?? 0) > 0
+  const transcriptGap =
+    progress.transcriptCreditsTotal != null &&
+    progress.transcriptCreditsTotal - progress.completedCredits > 0.01
+  const hasIneligible = (progress.ineligibleCredits?.length ?? 0) > 0
+
+  if (remainingMandatory.length > 0 && highCompletion) {
+    return true
+  }
+
+  if (!openBuckets) return false
+  return highCompletion || transcriptGap || hasIneligible
 }
 
 export function ineligibleCreditReasonLabel(

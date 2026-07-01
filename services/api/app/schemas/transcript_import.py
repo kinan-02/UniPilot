@@ -51,7 +51,7 @@ class CommitTranscriptCourseInput(BaseModel):
     semesterCode: str
     grade: float = Field(ge=0, le=100)
     creditsEarned: float
-    attempt: int | None = Field(default=1, ge=1, le=5)
+    attempt: int | None = Field(default=1, ge=1, le=10)
     title: str | None = None
 
     @field_validator("courseNumber", mode="before")

@@ -50,7 +50,7 @@ class CreateCompletedCourseRequest(BaseModel):
     grade: float = Field(ge=0, le=100)
     gradePoints: float | None = Field(default=None, ge=0, le=100)
     creditsEarned: float
-    attempt: int | None = Field(default=None, ge=1, le=5)
+    attempt: int | None = Field(default=None, ge=1, le=10)
     source: Literal["manual"] | None = None
     metadata: CompletedCourseMetadata | None = None
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildRequiredCurriculumCourseNumbers,
   buildTranscriptCourseNumbers,
+  buildFullTranscriptCourseNumbers,
   catalogSearchLink,
   classifyPool,
   filterPoolCourses,
@@ -444,6 +445,21 @@ describe('buildTranscriptCourseNumbers', () => {
       }),
     ])
     expect([...numbers].sort()).toEqual(['00940345', '00940411'])
+  })
+})
+
+describe('buildFullTranscriptCourseNumbers', () => {
+  it('includes ineligible transcript rows not assigned to buckets', () => {
+    const numbers = buildFullTranscriptCourseNumbers({
+      requirementProgress: [
+        bucket({
+          completedCourses: [{ courseId: '1', courseNumber: '00940345', creditsEarned: 3 }],
+        }),
+      ],
+      completedMandatoryCourses: [],
+      ineligibleCredits: [{ courseId: 'x', courseNumber: '02340117', creditsEarned: 4, reason: 'overlap_no_additional_credit' }],
+    })
+    expect([...numbers].sort()).toEqual(['00940345', '02340117'])
   })
 })
 

@@ -24,7 +24,7 @@ import { ChainRequirementView } from './ChainRequirementView'
 import { PoolCourseListItem } from './PoolCourseListItem'
 import { VirtualPoolCourseList } from './VirtualPoolCourseList'
 import { cn } from '../../lib/utils'
-import type { CurriculumGraph, ElectiveBucket, RequirementProgressEntry } from '../../types/api'
+import type { CurriculumGraph, ElectiveBucket, GraduationProgress, RequirementProgressEntry } from '../../types/api'
 import type { PoolCourseFilter } from '../../lib/electivePools'
 
 type ElectivePoolCourseListProps = {
@@ -34,6 +34,7 @@ type ElectivePoolCourseListProps = {
   transcriptNumbers: Set<string>
   requiredCurriculumNumbers: Set<string>
   curriculumGraph?: CurriculumGraph | null
+  graduationProgress?: GraduationProgress | null
   t: (key: string) => string
 }
 
@@ -44,6 +45,7 @@ export function ElectivePoolCourseList({
   transcriptNumbers: _transcriptNumbers,
   requiredCurriculumNumbers,
   curriculumGraph,
+  graduationProgress,
   t,
 }: ElectivePoolCourseListProps) {
   const { locale } = useTranslation()
@@ -59,9 +61,10 @@ export function ElectivePoolCourseList({
     () =>
       poolCourseFilterCounts(pool.courses, countedNumbers, {
         curriculumGraph,
+        graduationProgress,
         requiredCurriculumNumbers,
       }),
-    [countedNumbers, curriculumGraph, pool.courses, requiredCurriculumNumbers],
+    [countedNumbers, curriculumGraph, graduationProgress, pool.courses, requiredCurriculumNumbers],
   )
 
   const defaultCourseFilter = useMemo((): PoolCourseFilter => {
@@ -85,9 +88,10 @@ export function ElectivePoolCourseList({
     () =>
       buildCourseEquivalenceGroups({
         curriculumGraph,
+        progress: graduationProgress,
         poolCourses: pool.courses,
       }),
-    [curriculumGraph, pool.courses],
+    [curriculumGraph, graduationProgress, pool.courses],
   )
 
   const expandedCountedNumbers = useMemo(
@@ -103,12 +107,14 @@ export function ElectivePoolCourseList({
         filter: courseFilter,
         sort: courseFilter === 'counted' ? 'counted_first' : 'catalog',
         curriculumGraph,
+        graduationProgress,
         requiredCurriculumNumbers,
       }),
     [
       countedNumbers,
       courseFilter,
       curriculumGraph,
+      graduationProgress,
       deferredSearch,
       pool.courses,
       requiredCurriculumNumbers,
@@ -121,8 +127,9 @@ export function ElectivePoolCourseList({
         countedNumbers,
         requiredCurriculumNumbers,
         curriculumGraph,
+        progress: graduationProgress,
       }),
-    [countedNumbers, curriculumGraph, pool.courses, requiredCurriculumNumbers],
+    [countedNumbers, curriculumGraph, graduationProgress, pool.courses, requiredCurriculumNumbers],
   )
 
   if (useChainRequirementView) {

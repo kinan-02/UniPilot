@@ -23,6 +23,18 @@ def test_parse_courses_from_text_extracts_multiple_semesters():
     assert "00940313" in numbers
 
 
+def test_parse_courses_from_text_assigns_attempt_numbers_for_cross_semester_retakes():
+    text = """
+2023-2
+00960401 Data Science 3.0 40
+2024-1
+00960401 Data Science 3.0 85
+"""
+    courses, _ = parse_courses_from_text(text)
+    attempts = sorted((course.semesterCode, course.attempt) for course in courses if course.courseNumber == "00960401")
+    assert attempts == [("2023-2", 1), ("2024-1", 2)]
+
+
 def test_parse_courses_from_text_deduplicates_same_course_attempt():
     text = """
 2024-1

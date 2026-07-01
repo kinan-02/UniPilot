@@ -46,19 +46,21 @@ async def add_completed(
     grade: int | float = 82,
     credits: float = 3.5,
     attempt: int = 1,
-) -> None:
+    semester_code: str = "2024-1",
+):
     response = await client.post(
         "/completed-courses",
         headers={"Authorization": f"Bearer {token}"},
         json=build_completed_course_payload(
             course_id,
             creditsEarned=credits,
-            semesterCode="2024-1",
+            semesterCode=semester_code,
             grade=grade,
             attempt=attempt,
         ),
     )
     assert response.status_code == 201
+    return response
 
 
 async def fetch_progress(client, token: str) -> dict:
@@ -141,6 +143,50 @@ async def test_failing_grade_excluded_from_progress(auth_client, mongo_database)
     progress = await fetch_progress(auth_client, token)
     assert progress["completedCredits"] == 0
     assert progress["statusSummary"] == "not_started"
+
+
+@pytest.mark.asyncio
+async def test_latest_failed_retake_removes_course_from_progress(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "ext-retake-fail@example.com")
+    await create_profile(auth_client, token, fixtures["programId"])
+
+    await add_completed(auth_client, token, fixtures["courseBId"], grade=88, credits=3.5, attempt=1)
+    await add_completed(
+        auth_client,
+        token,
+        fixtures["courseBId"],
+        grade=40,
+        credits=0,
+        semester_code="2025-1",
+        attempt=1,
+    )
+
+    progress = await fetch_progress(auth_client, token)
+    assert progress["completedCredits"] == 0
+
+
+@pytest.mark.asyncio
+async def test_retake_after_failed_attempt_counts_in_graduation_progress(auth_client, mongo_database):
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    token = await register_access_token(auth_client, "ext-retake-semester@example.com")
+    await create_profile(auth_client, token, fixtures["programId"])
+
+    await add_completed(auth_client, token, fixtures["courseBId"], grade=40, credits=0, attempt=1)
+    second = await add_completed(
+        auth_client,
+        token,
+        fixtures["courseBId"],
+        grade=82,
+        credits=3.5,
+        semester_code="2025-1",
+        attempt=1,
+    )
+    assert second.status_code == 201
+    assert second.json()["data"]["completedCourse"]["attempt"] == 2
+
+    progress = await fetch_progress(auth_client, token)
+    assert progress["completedCredits"] == 3.5
 
 
 @pytest.mark.asyncio

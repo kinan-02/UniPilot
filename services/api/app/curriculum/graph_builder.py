@@ -25,6 +25,14 @@ def _serialize_cross_track_equivalence_groups() -> list[list[str]]:
     return [list(group) for group in KNOWN_CROSS_TRACK_EQUIVALENCE_GROUPS]
 
 
+def _serialize_catalog_overlap_equivalence_groups(
+    catalog_courses: list[dict[str, Any]],
+) -> list[list[str]]:
+    from app.services.catalog_overlap_groups import build_catalog_overlap_groups
+
+    return [sorted(group) for group in build_catalog_overlap_groups(catalog_courses)]
+
+
 def _course_number(document: dict[str, Any]) -> str | None:
     raw = document.get("courseNumber") or document.get("number")
     if raw is None:
@@ -277,6 +285,9 @@ def build_base_curriculum_graph(
         "edges": edges,
         "electiveBuckets": elective_buckets,
         "crossTrackEquivalenceGroups": _serialize_cross_track_equivalence_groups(),
+        "catalogOverlapEquivalenceGroups": _serialize_catalog_overlap_equivalence_groups(
+            catalog_courses,
+        ),
         "advisories": advisories,
         "bottlenecks": [],
     }

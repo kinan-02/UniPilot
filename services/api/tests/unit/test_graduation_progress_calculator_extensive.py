@@ -93,8 +93,8 @@ def _completion(course_id: str, grade: int | float, credits: float, **extra):
         ({"grade": 56}, True),
         ({"grade": 82}, True),
         ({"grade": 100}, True),
-        ({"grade": 40, "gradePoints": 82}, True),
-        ({"grade": 82, "gradePoints": 50}, False),
+        ({"grade": 40, "gradePoints": 82}, False),
+        ({"grade": 82, "gradePoints": 50}, True),
         ({"grade": "82"}, True),
         ({"grade": "55"}, True),
         ({"grade": "A+"}, False),
@@ -116,6 +116,53 @@ def test_effective_completions_picks_higher_credits_on_retry():
         ]
     )
     assert result[cid]["creditsEarned"] == 3.5
+
+
+def test_effective_completions_uses_latest_retake_even_when_grade_is_lower():
+    cid = str(ObjectId())
+    result = build_effective_completions(
+        [
+            {
+                "courseId": ObjectId(cid),
+                "grade": 90,
+                "creditsEarned": 3.5,
+                "attempt": 1,
+                "recordedAt": "2024-01-01T00:00:00Z",
+            },
+            {
+                "courseId": ObjectId(cid),
+                "grade": 62,
+                "creditsEarned": 3.5,
+                "attempt": 2,
+                "recordedAt": "2024-06-01T00:00:00Z",
+            },
+        ]
+    )
+    assert result[cid]["grade"] == 62
+    assert result[cid]["attempt"] == 2
+
+
+def test_effective_completions_excludes_course_when_latest_retake_fails():
+    cid = str(ObjectId())
+    result = build_effective_completions(
+        [
+            {
+                "courseId": ObjectId(cid),
+                "grade": 88,
+                "creditsEarned": 3.5,
+                "attempt": 1,
+                "recordedAt": "2024-01-01T00:00:00Z",
+            },
+            {
+                "courseId": ObjectId(cid),
+                "grade": 40,
+                "creditsEarned": 0,
+                "attempt": 2,
+                "recordedAt": "2024-08-01T00:00:00Z",
+            },
+        ]
+    )
+    assert cid not in result
 
 
 def test_effective_completions_tie_breaks_on_later_recorded_at_iso_strings():
@@ -216,7 +263,7 @@ def test_phase_15_0_ds_pool_rejects_non_listed_course():
     ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
     assert ds["creditsCompleted"] == 3.5
     assert ds["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 8.5
+    assert progress["completedCredits"] == 3.5
     assert progress["transcriptCreditsTotal"] == 8.5
     assert len(progress["ineligibleCredits"]) == 1
     assert progress["ineligibleCredits"][0]["courseNumber"] == "01040031"
@@ -564,12 +611,35 @@ def test_completion_without_catalog_records_ineligible_and_does_not_assign_credi
         catalog_courses_by_id={},
         completed_course_records=[_completion(unknown, 88, 3.5)],
     )
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 0
     assert progress["transcriptCreditsTotal"] == 3.5
     ds = progress["requirementProgress"][0]
     assert ds["creditsCompleted"] == 0
     assert len(progress["ineligibleCredits"]) == 1
     assert progress["ineligibleCredits"][0]["reason"] == "missing_catalog"
+
+
+def test_not_assigned_credits_excluded_from_degree_total():
+    in_pool = str(ObjectId())
+    out_pool = str(ObjectId())
+    catalog = {
+        **_catalog_entry(in_pool, "00940411", 3.5),
+        **_catalog_entry(out_pool, "99999999", 5.0),
+    }
+    progress = calculate_graduation_progress(
+        degree_program=_program(),
+        hard_requirements=[_bucket("elective-ds", 24.5)],
+        pool_documents=[_pool("elective-ds-pool", courseReferences=[{"courseNumber": "00940411"}])],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[
+            _completion(in_pool, 88, 3.5),
+            _completion(out_pool, 90, 5.0),
+        ],
+    )
+    assert progress["completedCredits"] == 3.5
+    assert progress["transcriptCreditsTotal"] == 8.5
+    assert any(row["reason"] == "not_assigned_to_requirement" for row in progress["ineligibleCredits"])
+    assert progress["assumptionKeys"]
 
 
 def test_pool_eligibility_accepts_prefix_when_explicit_list_also_present():

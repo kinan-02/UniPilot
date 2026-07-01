@@ -13,7 +13,9 @@ export const he = {
     plans: 'תכנון סמסטר',
     risks: 'סיכונים',
     advisor: 'יועץ',
+    agents: 'מתכנן סוכנים',
     profile: 'פרופיל',
+    integrations: 'אינטגרציות',
     signOut: 'התנתקות',
   },
   common: {
@@ -60,6 +62,34 @@ export const he = {
     googleAccountExists: 'כבר קיים חשבון עם האימייל הזה. התחבר עם הסיסמה שלך.',
     googleEmailUnverified: 'Google לא סיפק אימייל מאומת עבור החשבון הזה.',
     googleNotConfigured: 'התחברות Google אינה זמינה כרגע.',
+  },
+  integrations: {
+    title: 'אינטגרציות',
+    subtitle: 'חיבור חשבונות חיצוניים לגישת קריאה בלבד עבור הסוכן האקדמי.',
+    outlook: {
+      title: 'Microsoft Outlook',
+      description: 'קריאת תיבת דואר לסיוע במיילים מנהלתיים, מועדים והודעות פקולטה.',
+      connect: 'חיבור Outlook',
+      disconnect: 'ניתוק',
+      connectedAs: 'חשבון מחובר',
+      scopes: 'הרשאות',
+      connectSuccess: 'Outlook חובר בהצלחה.',
+      disconnectSuccess: 'Outlook נותק.',
+      disconnectedHint: 'חברו את חשבון Microsoft כדי לאפשר ל-UniPilot לקרוא דואר בשמכם.',
+      readOnlyNotice:
+        'גישת קריאה בלבד. UniPilot לא יכול לשלוח, למחוק או לשנות דואר. התוכן מטופל כנתונים לא מהימנים.',
+      notConfigured: 'אינטגרציית Outlook אינה מוגדרת בשרת זה.',
+      loadFailed: 'לא ניתן לטעון את סטטוס האינטגרציה.',
+      errors: {
+        generic: 'חיבור Outlook נכשל. נסו שוב.',
+        outlook_not_configured: 'אינטגרציית Outlook אינה מוגדרת בשרת זה.',
+        outlook_denied: 'התחברות Microsoft בוטלה.',
+        outlook_invalid_callback: 'תגובת התחברות Microsoft לא תקינה.',
+        outlook_invalid_state: 'פג תוקף ההתחברות. נסו לחבר שוב.',
+        outlook_missing_refresh_token: 'Microsoft לא החזיר refresh token. נסו שוב.',
+        outlook_auth_failed: 'התחברות Microsoft נכשלה. נסו שוב.',
+      },
+    },
   },
   validation: {
     emailRequired: 'נא להזין אימייל',
@@ -457,6 +487,40 @@ export const he = {
       low: 'ביטחון נמוך',
     },
   },
+  agentSessions: {
+    title: 'מתכנן רב-סוכנים',
+    subtitle:
+      'התחילו סשן תכנון אסינכרוני. סוכני Planner, Scout, Sentinel ו-Advocate מנהלים משא ומתן על תוכנית סמסטר מבוססת נתונים.',
+    multiAgentTitle: 'הסוכנים מראים את עבודתם',
+    multiAgentHint:
+      'הסשן רץ ברקע. בסיום תראו תמליל משא ומתן, ציון utility והערות העדפה רכות.',
+    promptPlan: 'תכננו לי את הסמסטר הבא עם עומס מאוזן',
+    promptCourse: 'תכננו את קורס 00140008 לסמסטר הבא',
+    goalLabel: 'מטרת התכנון',
+    goalPlaceholder: 'תארו מה לתכנן לסמסטר הבא…',
+    start: 'התחלת סשן',
+    negotiating: 'הסוכנים מנהלים משא ומתן על התוכנית…',
+    recommendedCourses: 'קורסים מומלצים',
+    utilityTitle: 'ציון utility',
+    utilityScore: 'ציון כולל: {score}',
+    softCritiquesTitle: 'הערות העדפה',
+    preferenceNote: 'הערת העדפה',
+    transcriptTitle: 'תמליל משא ומתן',
+    historyTitle: 'סשנים אחרונים',
+    avoidFriday: 'העדפה ליום שישי פנוי',
+    scheduleTitle: 'מערכת שבועית',
+    semesterLabel: 'סמסטר: {label}',
+    noScheduleSlots: 'אין שעות במערכת בקטלוג לקורסים אלה.',
+    approve: 'אישור ההמלצה',
+    approved: 'אושר',
+    applyPlan: 'החלה על תוכנית סמסטר',
+    applyingPlan: 'יוצר תוכנית סמסטר…',
+    appliedPlan: 'הוחל על תוכנית סמסטר',
+    openPlanner: 'פתיחה במתכנן',
+    approvalRequired: 'יש לאשר את ההמלצה לפני החלה על תוכנית הסמסטר.',
+    applySuccess: 'תוכנית הסמסטר נוצרה. ניתן לעדכן בחירת שיעורים במתכנן.',
+    applyError: 'לא ניתן להחיל את התוכנית',
+  },
   transcript: {
     title: 'גיליון ציונים',
     description:
@@ -556,6 +620,7 @@ export const he = {
     unavailable: 'התקדמות לא זמינה',
     noDegree: 'בחר תוכנית לימודים בפרופיל כדי לחשב התקדמות לתואר.',
     loadFailed: 'לא ניתן לטעון התקדמות לתואר.',
+    emptyProgress: 'לא התקבלו נתוני התקדמות. נסה לרענן או לעדכן את גיליון הציונים.',
     setupProfile: 'הגדרת פרופיל',
     updateTranscript: 'עדכון גיליון ציונים',
     overallCompletion: 'השלמה כוללת',
@@ -564,11 +629,14 @@ export const he = {
     creditsTowardDegree: 'נק״ז לעבר התואר',
     creditsRemainingInline: 'עוד {count} נק״ז נדרשים',
     transcriptCreditsNote: '{count} נק״ז רשומים בגיליון הציונים',
+    bucketCompletionMismatch:
+      'סך הנקודות נראה מלא, אך עדיין יש דרישות פתוחות — ראה חובה וטיפול נדרש למטה.',
     totalRequired: 'סה״כ נדרש',
     electiveProgress: 'נק״ז בחירה',
     electiveRemaining: 'בחירה שנותרה',
     mandatoryRemaining: 'קורסי חובה שנותרו',
     mandatoryAggregate: 'התקדמות נק״ז חובה',
+    mandatoryAggregateHint: 'סכום נקודות בדלי החובה — עשוי להיות שונה מסך הנקודות לתואר למעלה.',
     summaryRemainingHint: 'עד להשלמת סך הנקודות לתואר',
     summaryElectiveHint: 'עוד {remaining} נק״ז בחירה פתוחות',
     summaryMandatoryHint: 'קורסי חובה שטרם הושלמו',
@@ -600,6 +668,8 @@ export const he = {
       unknown: 'לא ניתן לייחס לדרישה',
       not_assigned_to_requirement: 'לא שויך לאף דרישת תואר',
       missing_catalog: 'הקורס לא נמצא בקטלוג',
+      overlap_no_additional_credit:
+        'חופף לקורס שהושלם אחר (מקצועות ללא זיכוי נוסף) — רק אחד נספר לנקודות',
     },
     completedInBucket: 'נספר כאן',
     remainingInBucket: 'עדיין חסר בדלי זה',
@@ -608,6 +678,23 @@ export const he = {
     noBuckets: 'אין פירוט דרישות זמין לתואר זה עדיין.',
     noTranscriptHint: 'הוסף קורסים שהושלמו בגיליון הציונים כדי לראות התקדמות מדויקת.',
     assumptions: 'איך זה מחושב',
+    assumptionItems: {
+      hard_requirements_matrix:
+        'דרישות קשיחות מ-degree_requirements; שורות semester_matrix מגדירות קורסי חובה בתכנית.',
+      strict_pool_eligibility:
+        'זכאות בריכות בחירה מקושרות נאכפת לדלי בחירה (קישור מפורש או מוסכמת שמות).',
+      passing_grade_threshold:
+        'ציונים מספריים מ-55 ומעלה נספרים להתקדמות; ציונים מתחת ל-55 אינם נכללים.',
+      catalog_overlap_rules:
+        'כללי חפיפה בקטלוג (מקצועות ללא זיכוי נוסף) מתייחסים לקורסים מקבילים כשקולים ומונעים ספירה כפולה.',
+      transcript_credit_preference:
+        'נקודות זכות מגיליון הציונים משמשות כשהן שונות מערך הקטלוג הנוכחי.',
+      degree_applied_credits:
+        'נקודות לתואר נספרות רק עבור קורסים ששובצו לדלי דרישה בגיליון הציונים.',
+      track_requirements:
+        'דרישות מסלול ייחודיות אינן נכללות עד לבחירת מסלול בפרופיל.',
+    },
+    curriculumAdvisories: 'הערות תכנית לימודים',
     attention: {
       title: 'מה עדיין דורש טיפול',
       subtitle: 'קורסי חובה, דלי נק״ז פתוחים, ושורות שלא נספרו מהגיליון',
@@ -774,7 +861,8 @@ export const he = {
       emptyCourseList: 'אין רשימת קורסים מפורשת בייצוא הקטלוג. כללי קידומת או שרשרת עדיין עשויים לחול.',
       prefixCatalogHint: 'קורסים נטענו מהקטלוג לפי קידומות מותרות ({prefixes}).',
       coursesTruncated: 'מוצגים 200 הקורסים הראשונים התואמים. השתמש בחיפוש הקטלוג לרשימה המלאה.',
-      searchPools: 'חיפוש בריכות…',
+      manualReviewRequired: 'כלל הקטלוג דורש בדיקה ידנית — אשר זכאות מול יועץ לימודים.',
+      deepLinkPoolMissing: 'הבריכה "{poolId}" לא נמצאה למסלול שלך.',
       searchCourses: 'חיפוש קורסים…',
       courseFilterLabel: 'סינון קורסים',
       courseLegendTitle: 'צבעי קורסים',

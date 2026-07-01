@@ -18,6 +18,8 @@ const t = (key: string) => {
     'progress.mandatoryRemaining': 'Mandatory courses left',
     'progress.summaryMandatoryHint': 'Required courses not yet satisfied',
     'progress.summaryAttentionLink': 'View {count} items needing attention',
+    'progress.bucketCompletionMismatch':
+      'Credit total looks complete, but some requirement buckets are still open — see Mandatory and Attention below.',
   }
   return labels[key] ?? key
 }
@@ -94,6 +96,28 @@ describe('ProgressSummaryCard', () => {
     expect(screen.getByText('0.0%')).toBeInTheDocument()
     expect(screen.getAllByText('155').length).toBeGreaterThan(0)
     expect(screen.getByText('No elective credits tracked yet')).toBeInTheDocument()
+  })
+
+  it('shows bucket mismatch note when credits look complete but mandatory courses remain', () => {
+    render(
+      <ProgressSummaryCard
+        progress={{
+          ...baseProgress,
+          completedCredits: 155,
+          creditsRemaining: 0,
+          completionPercentage: 100,
+          statusSummary: 'complete',
+          missingRequirements: [],
+          remainingMandatoryCourses: [{ courseNumber: '00940345', courseTitle: 'Discrete math' }],
+        }}
+        statusLabel="Complete"
+        t={t}
+      />,
+    )
+
+    expect(
+      screen.getByText(/Credit total looks complete, but some requirement buckets are still open/i),
+    ).toBeInTheDocument()
   })
 
   it('caps completion percentage display at 100%', () => {

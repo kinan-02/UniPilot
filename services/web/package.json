@@ -13,6 +13,7 @@
     "test:e2e:auth-session": "playwright test --project=auth-session",
     "test:e2e:critical": "playwright test --grep @critical",
     "test:e2e:a11y": "playwright test --project=accessibility",
+    "test:e2e:mas": "PLAYWRIGHT_WORKERS=1 playwright test --project=mas-user-journey",
     "test:e2e:report": "playwright show-report",
     "lint": "eslint .",
     "preview": "vite preview"

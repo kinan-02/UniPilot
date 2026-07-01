@@ -118,7 +118,7 @@ async def test_create_with_excluded_course_number_not_in_catalog(auth_client, mo
 
 
 @pytest.mark.asyncio
-async def test_duplicate_create_returns_409(auth_client, mongo_database):
+async def test_second_create_for_same_course_uses_next_attempt(auth_client, mongo_database):
     catalog = await seed_production_course_fixture(mongo_database)
     access_token = await register_access_token(auth_client, "completed-dup@example.com")
     payload = build_completed_course_payload(catalog["courseId"])
@@ -129,13 +129,19 @@ async def test_duplicate_create_returns_409(auth_client, mongo_database):
         json=payload,
     )
     assert first.status_code == 201
+    assert first.json()["data"]["completedCourse"]["attempt"] == 1
 
-    duplicate = await auth_client.post(
+    retake = await auth_client.post(
         "/completed-courses",
         headers={"Authorization": f"Bearer {access_token}"},
-        json=payload,
+        json={
+            **payload,
+            "semesterCode": "2025-1",
+            "grade": 92,
+        },
     )
-    assert duplicate.status_code == 409
+    assert retake.status_code == 201
+    assert retake.json()["data"]["completedCourse"]["attempt"] == 2
 
 
 @pytest.mark.asyncio

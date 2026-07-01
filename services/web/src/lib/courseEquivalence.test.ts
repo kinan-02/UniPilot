@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildCourseEquivalenceGroups,
+  catalogOverlapEquivalenceGroupsFromGraph,
+  catalogOverlapEquivalenceGroupsFromSources,
   crossTrackEquivalenceGroupsFromGraph,
   dedupeEquivalentPoolCourses,
   isCountedViaEquivalence,
@@ -30,6 +33,29 @@ describe('courseEquivalence', () => {
 
     const fallback = crossTrackEquivalenceGroupsFromGraph({})
     expect([...fallback[0]!]).toEqual(expect.arrayContaining(['00960211', '00960221']))
+  })
+
+  it('reads catalog overlap groups from curriculum graph API payload', () => {
+    const fromGraph = catalogOverlapEquivalenceGroupsFromGraph({
+      catalogOverlapEquivalenceGroups: [['02340114', '02340117']],
+    })
+    expect([...fromGraph[0]!]).toEqual(expect.arrayContaining(['02340114', '02340117']))
+
+    const groups = buildCourseEquivalenceGroups({
+      curriculumGraph: {
+        catalogOverlapEquivalenceGroups: [['02340114', '02340117']],
+      },
+    })
+    expect(isCountedViaEquivalence('02340117', new Set(['02340114']), groups)).toBe(true)
+  })
+
+  it('reads catalog overlap groups from progress payload when graph is absent', () => {
+    const fromProgress = catalogOverlapEquivalenceGroupsFromSources({
+      progress: {
+        catalogOverlapEquivalenceGroups: [['02340114', '02340117']],
+      } as import('../types/api').GraduationProgress,
+    })
+    expect([...fromProgress[0]!]).toEqual(expect.arrayContaining(['02340114', '02340117']))
   })
 
   it('shows only the completed code when duplicate cross-track entries exist in a pool', () => {

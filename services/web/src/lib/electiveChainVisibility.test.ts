@@ -4,7 +4,7 @@ import {
   filterPoolsByExclusiveChainSelection,
   resolveActiveExclusiveChainPool,
 } from './electiveChainVisibility'
-import type { ElectiveBucket, RequirementProgressEntry } from '../types/api'
+import type { ElectiveBucket, GraduationProgress, RequirementProgressEntry } from '../types/api'
 
 const t = (key: string) => key
 
@@ -82,6 +82,32 @@ describe('resolveActiveExclusiveChainPool', () => {
       t,
     )
     expect(active?.groupId).toContain('is-focus-chain-ml')
+  })
+
+  it('uses progress overlap groups when curriculum graph has no overlap metadata', () => {
+    const group = [
+      focusChainPool('is-focus-chain-performance', ['00960327', '00960324', '00960311']),
+      focusChainPool('is-focus-chain-ml', ['0970209', '0960212', '0970215']),
+    ]
+    const progress = {
+      degreeId: 'd1',
+      completedCredits: 0,
+      totalRequiredCredits: 155,
+      creditsRemaining: 155,
+      completionPercentage: 0,
+      statusSummary: 'not_started',
+      catalogOverlapEquivalenceGroups: [['00960327', '00960328']],
+    } satisfies GraduationProgress
+    const active = resolveActiveExclusiveChainPool(
+      group,
+      [facultyBucket()],
+      new Set(['00960328']),
+      t,
+      [],
+      null,
+      progress,
+    )
+    expect(active?.groupId).toContain('is-focus-chain-performance')
   })
 
   it('selects the chain with the strongest step progress', () => {

@@ -1,4 +1,4 @@
-import type { CurriculumGraph, ElectivePoolCourse } from '../types/api'
+import type { CurriculumGraph, ElectivePoolCourse, GraduationProgress } from '../types/api'
 import { courseNumberKeys } from './courseNumbers'
 
 /** Same course under different track catalog codes (see vault wiki 0960211 vs 0960221). */
@@ -53,12 +53,35 @@ export function crossTrackEquivalenceGroupsFromGraph(
   return knownCrossTrackEquivalenceGroups()
 }
 
+export function catalogOverlapEquivalenceGroupsFromGraph(
+  curriculumGraph?: CurriculumGraph | null,
+): Array<Set<string>> {
+  const fromApi = curriculumGraph?.catalogOverlapEquivalenceGroups ?? []
+  return fromApi.map((members) => keysForMembers(members))
+}
+
+export function catalogOverlapEquivalenceGroupsFromSources(options?: {
+  curriculumGraph?: CurriculumGraph | null
+  progress?: GraduationProgress | null
+}): Array<Set<string>> {
+  const fromGraph = catalogOverlapEquivalenceGroupsFromGraph(options?.curriculumGraph)
+  if (fromGraph.length) {
+    return fromGraph
+  }
+  const fromProgress = options?.progress?.catalogOverlapEquivalenceGroups ?? []
+  return fromProgress.map((members) => keysForMembers(members))
+}
+
 export function buildMandatoryEquivalenceGroups(options?: {
   curriculumGraph?: CurriculumGraph | null
+  progress?: GraduationProgress | null
   remainingMandatory?: Array<{ courseNumber?: string | null }>
   completedMandatory?: Array<{ courseNumber?: string | null }>
 }): Array<Set<string>> {
-  const groups: Array<Set<string>> = [...crossTrackEquivalenceGroupsFromGraph(options?.curriculumGraph)]
+  const groups: Array<Set<string>> = [
+    ...crossTrackEquivalenceGroupsFromGraph(options?.curriculumGraph),
+    ...catalogOverlapEquivalenceGroupsFromSources(options),
+  ]
 
   const relevantKeys = new Set<string>()
   for (const course of [
@@ -83,6 +106,7 @@ export function buildMandatoryEquivalenceGroups(options?: {
 
 export function buildCourseEquivalenceGroups(options?: {
   curriculumGraph?: CurriculumGraph | null
+  progress?: GraduationProgress | null
   poolCourses?: ElectivePoolCourse[]
 }): Array<Set<string>> {
   const groups: Array<Set<string>> = []
@@ -95,6 +119,7 @@ export function buildCourseEquivalenceGroups(options?: {
     groups.push(keysForMembers([course.courseNumber, ...(course.alternatives ?? [])]))
   }
 
+  groups.push(...catalogOverlapEquivalenceGroupsFromSources(options))
   groups.push(...crossTrackEquivalenceGroupsFromGraph(options?.curriculumGraph))
   return mergeOverlappingEquivalenceGroups(groups)
 }
@@ -142,10 +167,12 @@ export function dedupeEquivalentPoolCourses(
     countedNumbers: Set<string>
     requiredCurriculumNumbers?: Set<string>
     curriculumGraph?: CurriculumGraph | null
+    progress?: GraduationProgress | null
   },
 ): ElectivePoolCourse[] {
   const groups = buildCourseEquivalenceGroups({
     curriculumGraph: options.curriculumGraph,
+    progress: options.progress,
     poolCourses: courses,
   })
   const countedExpanded = expandNumbersWithEquivalence(options.countedNumbers, groups)

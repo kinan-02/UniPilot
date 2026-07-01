@@ -6,7 +6,12 @@ import {
   poolCountedCourseNumbers,
   progressBucketForPool,
 } from './electivePools'
-import type { CurriculumGraph, ElectiveBucket, RequirementProgressEntry } from '../types/api'
+import type {
+  CurriculumGraph,
+  ElectiveBucket,
+  GraduationProgress,
+  RequirementProgressEntry,
+} from '../types/api'
 import { buildCourseEquivalenceGroups, expandNumbersWithEquivalence } from './courseEquivalence'
 
 export type ChainEngagement = {
@@ -66,10 +71,12 @@ export function chainEngagement(
   t: (key: string) => string,
   allPools: ElectiveBucket[] = [],
   curriculumGraph?: CurriculumGraph | null,
+  graduationProgress?: GraduationProgress | null,
 ): ChainEngagement {
   const bucketCounted = poolCountedCourseNumbers(pool, bucket, allPools)
   const equivalenceGroups = buildCourseEquivalenceGroups({
     curriculumGraph,
+    progress: graduationProgress,
     poolCourses: pool.courses,
   })
   const expandedTranscript = expandNumbersWithEquivalence(transcriptNumbers, equivalenceGroups)
@@ -123,6 +130,7 @@ export function resolveActiveExclusiveChainPool(
   t: (key: string) => string,
   allPools: ElectiveBucket[] = [],
   curriculumGraph?: CurriculumGraph | null,
+  graduationProgress?: GraduationProgress | null,
 ): ElectiveBucket | null {
   if (group.length < 2) return null
 
@@ -135,6 +143,7 @@ export function resolveActiveExclusiveChainPool(
       t,
       allPools,
       curriculumGraph,
+      graduationProgress,
     )
     return { pool, engagement }
   })
@@ -160,7 +169,11 @@ export function filterPoolsByExclusiveChainSelection(
   requirementBuckets: RequirementProgressEntry[],
   transcriptNumbers: Set<string>,
   t: (key: string) => string,
-  options?: { showAllChainOptions?: boolean; curriculumGraph?: CurriculumGraph | null },
+  options?: {
+    showAllChainOptions?: boolean
+    curriculumGraph?: CurriculumGraph | null
+    graduationProgress?: GraduationProgress | null
+  },
 ): { pools: ElectiveBucket[]; hiddenExclusiveChainCount: number } {
   if (options?.showAllChainOptions) {
     return { pools, hiddenExclusiveChainCount: 0 }
@@ -178,6 +191,7 @@ export function filterPoolsByExclusiveChainSelection(
       t,
       pools,
       options?.curriculumGraph,
+      options?.graduationProgress,
     )
     if (!active) continue
     for (const pool of group) {

@@ -71,6 +71,19 @@ def build_mandatory_equivalence_groups(
     )
 
 
+def build_progress_equivalence_groups(
+    semester_matrix_documents: list[dict[str, Any]] | None,
+    catalog_courses: list[dict[str, Any]] | None = None,
+) -> list[set[str]]:
+    """Matrix + cross-track + catalog overlap (מקצועות ללא זיכוי נוסף) groups."""
+    from app.services.catalog_overlap_groups import build_catalog_overlap_groups
+
+    combined = [set(group) for group in build_mandatory_equivalence_groups(semester_matrix_documents)]
+    if catalog_courses:
+        combined.extend(build_catalog_overlap_groups(catalog_courses))
+    return merge_overlapping_equivalence_groups(combined)
+
+
 def merge_with_cross_track_equivalence_groups(groups: list[set[str]]) -> list[set[str]]:
     """Union matrix/graph groups with registrar-documented cross-track code pairs."""
     combined = [set(group) for group in groups]

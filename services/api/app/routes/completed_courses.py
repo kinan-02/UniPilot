@@ -109,6 +109,11 @@ async def create_completed_course_record(
             auth.user_id,
             create_payload_from_request(payload),
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from None
     except DuplicateKeyError:
         raise HTTPException(
             status_code=409,

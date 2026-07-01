@@ -99,6 +99,7 @@ def resolve_claiming_pool(
     pool_documents: list[dict[str, Any]],
     *,
     program_code: str,
+    equivalence_groups: list[set[str]] | None = None,
 ) -> dict[str, Any] | None:
     """Pick the single most specific pool that claims this course number."""
     from app.services.graduation_progress_calculator import is_course_eligible_for_pool
@@ -109,7 +110,12 @@ def resolve_claiming_pool(
     matching = [
         pool_document
         for pool_document in pool_documents
-        if is_course_eligible_for_pool(course_number, pool_document, program_code=program_code)
+        if is_course_eligible_for_pool(
+            course_number,
+            pool_document,
+            program_code=program_code,
+            equivalence_groups=equivalence_groups,
+        )
     ]
     if not matching:
         return None

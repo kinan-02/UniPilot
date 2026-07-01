@@ -112,6 +112,7 @@ export function TranscriptAddCourseForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
       setQuery('')
       setSelectedCourse(null)
       setError('')

@@ -36,6 +36,7 @@ export function TranscriptPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
     },
   })
 

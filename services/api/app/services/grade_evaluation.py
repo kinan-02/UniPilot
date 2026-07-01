@@ -31,11 +31,11 @@ def parse_numeric_grade(value: Any) -> float | None:
 
 
 def resolve_record_numeric_grade(record: dict[str, Any]) -> float | None:
-    """Prefer explicit gradePoints; fall back to numeric grade field."""
-    points = parse_numeric_grade(record.get("gradePoints"))
-    if points is not None:
-        return points
-    return parse_numeric_grade(record.get("grade"))
+    """Prefer the official numeric grade; fall back to gradePoints when grade is absent."""
+    grade = parse_numeric_grade(record.get("grade"))
+    if grade is not None:
+        return grade
+    return parse_numeric_grade(record.get("gradePoints"))
 
 
 def is_passing_numeric_grade(numeric_grade: float) -> bool:
@@ -45,11 +45,17 @@ def is_passing_numeric_grade(numeric_grade: float) -> bool:
 def is_passing_grade(record: dict[str, Any] | Any, grade_points: Any = None) -> bool:
     """Return True when the student passed (score at or above the minimum pass grade)."""
     if isinstance(record, dict):
-        numeric = resolve_record_numeric_grade(record)
-    else:
-        numeric = parse_numeric_grade(grade_points)
-        if numeric is None:
-            numeric = parse_numeric_grade(record)
+        grade = parse_numeric_grade(record.get("grade"))
+        if grade is not None:
+            return is_passing_numeric_grade(grade)
+        points = parse_numeric_grade(record.get("gradePoints"))
+        if points is not None:
+            return is_passing_numeric_grade(points)
+        return False
+
+    numeric = parse_numeric_grade(grade_points)
+    if numeric is None:
+        numeric = parse_numeric_grade(record)
 
     if numeric is None:
         return False

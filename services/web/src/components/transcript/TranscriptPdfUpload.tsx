@@ -123,6 +123,7 @@ export function TranscriptPdfUpload({ locale, t, featured = false }: TranscriptP
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
       const { createdCount, skippedCount, unresolvedCount } = data.importResult
       setSuccess(
         t('transcript.upload.importSuccess', {

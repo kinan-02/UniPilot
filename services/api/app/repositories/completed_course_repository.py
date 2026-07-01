@@ -9,6 +9,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings, get_settings
+from app.services.completed_course_attempts import MAX_COURSE_ATTEMPTS, resolve_available_attempt
 
 UpdateStatus = Literal["updated", "not_found", "not_editable"]
 DeleteStatus = Literal["deleted", "not_found", "not_editable"]
@@ -73,6 +74,27 @@ def build_completed_course_document(user_id: str, record_data: dict[str, Any]) -
     }
 
 
+async def find_used_attempts_for_course(
+    database: AsyncIOMotorDatabase,
+    user_id: str,
+    course_id: str,
+    *,
+    settings: Settings | None = None,
+) -> set[int]:
+    settings = settings or get_settings()
+    parsed_user_id = parse_object_id(user_id)
+    parsed_course_id = parse_object_id(course_id)
+    if parsed_user_id is None or parsed_course_id is None:
+        return set()
+
+    records = await database[settings.completed_courses_collection].find(
+        {"userId": parsed_user_id, "courseId": parsed_course_id},
+        {"attempt": 1},
+    ).to_list(length=MAX_COURSE_ATTEMPTS)
+
+    return {int(record.get("attempt") or 1) for record in records}
+
+
 async def create_completed_course(
     database: AsyncIOMotorDatabase,
     user_id: str,
@@ -81,7 +103,19 @@ async def create_completed_course(
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     settings = settings or get_settings()
-    document = build_completed_course_document(user_id, record_data)
+    course_id = str(record_data["courseId"])
+    used_attempts = await find_used_attempts_for_course(
+        database,
+        user_id,
+        course_id,
+        settings=settings,
+    )
+    resolved_attempt = resolve_available_attempt(
+        used_attempts,
+        record_data.get("attempt", 1),
+    )
+    resolved_record_data = {**record_data, "attempt": resolved_attempt}
+    document = build_completed_course_document(user_id, resolved_record_data)
     insert_result = await database[settings.completed_courses_collection].insert_one(document)
     return {
         "_id": insert_result.inserted_id,

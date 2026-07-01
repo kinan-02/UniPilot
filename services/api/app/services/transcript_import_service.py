@@ -29,8 +29,13 @@ async def commit_transcript_import(
     await ensure_completed_course_indexes(database)
 
     existing_records = await find_all_completed_courses_by_user_id(database, user_id)
-    existing_keys = {
-        (str(record.get("courseId")), int(record.get("attempt") or 1))
+    existing_signatures = {
+        (
+            str(record.get("courseId")),
+            str(record.get("semesterCode")),
+            record.get("grade"),
+            float(record.get("creditsEarned") or 0),
+        )
         for record in existing_records
     }
 
@@ -63,17 +68,17 @@ async def commit_transcript_import(
 
         course_id = str(course["_id"])
         attempt = row.attempt or 1
-        duplicate_key = (course_id, attempt)
-        if payload.skipDuplicates and duplicate_key in existing_keys:
+
+        credits_earned = resolve_import_credits(row, course)
+        grade_points = resolve_import_grade_points(row)
+        signature = (course_id, row.semesterCode, row.grade, float(credits_earned))
+        if payload.skipDuplicates and signature in existing_signatures:
             skipped_duplicates.append(row.courseNumber)
             continue
 
         metadata: dict[str, Any] = {"importSource": "transcript-pdf"}
         if row.title:
             metadata["importedTitle"] = row.title
-
-        credits_earned = resolve_import_credits(row, course)
-        grade_points = resolve_import_grade_points(row)
 
         record_data = {
             "courseId": course_id,
@@ -92,7 +97,7 @@ async def commit_transcript_import(
             skipped_duplicates.append(row.courseNumber)
             continue
 
-        existing_keys.add(duplicate_key)
+        existing_signatures.add(signature)
         course_summary = catalog_repository.course_summary_from_document(course)
         public_record = to_public_completed_course(record, course_summary)
         if public_record:

@@ -13,7 +13,9 @@ export const en: TranslationTree = {
     plans: 'Plans',
     risks: 'Risks',
     advisor: 'Advisor',
+    agents: 'Agent planner',
     profile: 'Profile',
+    integrations: 'Integrations',
     signOut: 'Sign out',
   },
   common: {
@@ -60,6 +62,34 @@ export const en: TranslationTree = {
     googleAccountExists: 'An account with this email already exists. Sign in with your password.',
     googleEmailUnverified: 'Google did not provide a verified email for this account.',
     googleNotConfigured: 'Google sign-in is not available right now.',
+  },
+  integrations: {
+    title: 'Integrations',
+    subtitle: 'Connect external accounts for read-only access by the academic agent.',
+    outlook: {
+      title: 'Microsoft Outlook',
+      description: 'Read your mailbox to help with admin emails, deadlines, and faculty announcements.',
+      connect: 'Connect Outlook',
+      disconnect: 'Disconnect',
+      connectedAs: 'Connected account',
+      scopes: 'Permissions',
+      connectSuccess: 'Outlook connected successfully.',
+      disconnectSuccess: 'Outlook disconnected.',
+      disconnectedHint: 'Connect your Microsoft account to let UniPilot read email on your behalf.',
+      readOnlyNotice:
+        'Read-only access. UniPilot cannot send, delete, or modify email. Content is treated as untrusted data.',
+      notConfigured: 'Outlook integration is not configured on this server.',
+      loadFailed: 'Could not load integration status.',
+      errors: {
+        generic: 'Outlook connection failed. Please try again.',
+        outlook_not_configured: 'Outlook integration is not configured on this server.',
+        outlook_denied: 'Microsoft sign-in was cancelled.',
+        outlook_invalid_callback: 'Invalid Microsoft sign-in response.',
+        outlook_invalid_state: 'Sign-in session expired. Please try connecting again.',
+        outlook_missing_refresh_token: 'Microsoft did not return a refresh token. Try again.',
+        outlook_auth_failed: 'Microsoft sign-in failed. Please try again.',
+      },
+    },
   },
   validation: {
     emailRequired: 'Email is required',
@@ -458,6 +488,40 @@ export const en: TranslationTree = {
       low: 'Low confidence',
     },
   },
+  agentSessions: {
+    title: 'Multi-agent planner',
+    subtitle:
+      'Start an async planning session. Planner, Scout, Sentinel, and Advocate agents negotiate on a grounded semester plan.',
+    multiAgentTitle: 'Agents show their work',
+    multiAgentHint:
+      'Sessions run in the background. You will see the negotiation transcript, utility score, and soft preference notes when complete.',
+    promptPlan: 'Plan my next semester with a balanced workload',
+    promptCourse: 'Plan course 00140008 for next semester',
+    goalLabel: 'Planning goal',
+    goalPlaceholder: 'Describe what you want planned for next semester…',
+    start: 'Start session',
+    negotiating: 'Agents are negotiating your plan…',
+    recommendedCourses: 'Recommended courses',
+    utilityTitle: 'Utility score',
+    utilityScore: 'Overall utility: {score}',
+    softCritiquesTitle: 'Preference notes',
+    preferenceNote: 'Preference note',
+    transcriptTitle: 'Negotiation transcript',
+    historyTitle: 'Recent sessions',
+    avoidFriday: 'Prefer Fridays off (שישי)',
+    scheduleTitle: 'Weekly schedule',
+    semesterLabel: 'Semester: {label}',
+    noScheduleSlots: 'No timetable slots in catalog for these courses.',
+    approve: 'Approve recommendation',
+    approved: 'Approved',
+    applyPlan: 'Apply to semester plan',
+    applyingPlan: 'Creating semester plan…',
+    appliedPlan: 'Applied to semester plan',
+    openPlanner: 'Open in planner',
+    approvalRequired: 'Approve the recommendation before applying it to your semester plan.',
+    applySuccess: 'Semester plan created. You can refine lesson selections in the planner.',
+    applyError: 'Could not apply plan',
+  },
   transcript: {
     title: 'Transcript',
     description:
@@ -557,6 +621,7 @@ export const en: TranslationTree = {
     unavailable: 'Progress unavailable',
     noDegree: 'Select a degree program in your profile to calculate graduation progress.',
     loadFailed: 'Unable to load graduation progress.',
+    emptyProgress: 'No graduation progress data was returned. Try refreshing or updating your transcript.',
     setupProfile: 'Set up profile',
     updateTranscript: 'Update transcript',
     overallCompletion: 'Overall completion',
@@ -565,11 +630,14 @@ export const en: TranslationTree = {
     creditsTowardDegree: 'Credits toward your degree',
     creditsRemainingInline: '{count} credits still needed',
     transcriptCreditsNote: '{count} credits recorded on your transcript',
+    bucketCompletionMismatch:
+      'Credit total looks complete, but some requirement buckets are still open — see Mandatory and Attention below.',
     totalRequired: 'Total required',
     electiveProgress: 'Elective credits',
     electiveRemaining: 'Elective remaining',
     mandatoryRemaining: 'Mandatory courses left',
     mandatoryAggregate: 'Mandatory credit progress',
+    mandatoryAggregateHint: 'Sum of mandatory bucket credits — may differ from the overall degree total above.',
     quickStats: 'Quick stats',
     status: 'Status',
     summarySubtitle: 'Progress toward your degree requirements',
@@ -602,6 +670,8 @@ export const en: TranslationTree = {
       unknown: 'Could not be applied',
       not_assigned_to_requirement: 'Not assigned to any requirement bucket',
       missing_catalog: 'Course not found in catalog',
+      overlap_no_additional_credit:
+        'Overlaps another completed course (מקצועות ללא זיכוי נוסף) — only one counts toward credits',
     },
     completedInBucket: 'Counted here',
     remainingInBucket: 'Still needed in this bucket',
@@ -610,6 +680,23 @@ export const en: TranslationTree = {
     noBuckets: 'No requirement breakdown is available for this degree yet.',
     noTranscriptHint: 'Add completed courses on your transcript to see accurate progress.',
     assumptions: 'How this is calculated',
+    assumptionItems: {
+      hard_requirements_matrix:
+        'Hard requirements from degree_requirements; semester_matrix rows assign mandatory curriculum courses.',
+      strict_pool_eligibility:
+        'course_pool eligibility enforced for linked elective buckets (explicit link or naming convention).',
+      passing_grade_threshold:
+        'Passing numeric grades of 55 and above count toward progress; grades below 55 are excluded.',
+      catalog_overlap_rules:
+        'Catalog overlap rules (מקצועות ללא זיכוי נוסף) treat parallel courses as equivalent and prevent double counting.',
+      transcript_credit_preference:
+        'Transcript credits earned are used when they differ from the current catalog credit value.',
+      degree_applied_credits:
+        'Degree-applied credits count only courses assigned to a requirement bucket on your transcript.',
+      track_requirements:
+        'Track-specific requirements excluded until student track is selected on profile.',
+    },
+    curriculumAdvisories: 'Curriculum notes',
     attention: {
       title: 'What still needs attention',
       subtitle: 'Mandatory courses, open credit buckets, and transcript rows not counted',
@@ -776,7 +863,8 @@ export const en: TranslationTree = {
       emptyCourseList: 'No explicit course list in the catalog export. Prefix or chain rules may still apply.',
       prefixCatalogHint: 'Courses loaded from catalog by allowed prefixes ({prefixes}).',
       coursesTruncated: 'Showing the first 200 matching courses. Use catalog search for the full list.',
-      searchPools: 'Search pools…',
+      manualReviewRequired: 'Catalog rule needs manual review — confirm eligibility with your advisor.',
+      deepLinkPoolMissing: 'Pool "{poolId}" was not found for your track.',
       searchCourses: 'Search courses…',
       courseFilterLabel: 'Filter courses',
       courseLegendTitle: 'Course colors',

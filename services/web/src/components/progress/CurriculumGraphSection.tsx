@@ -28,11 +28,8 @@ type TranslateFn = CurriculumGraphSectionProps['t']
 
 function displayNodeStatus(
   node: CurriculumGraphNode,
-  compact: boolean,
+  _compact: boolean,
 ): CurriculumGraphNode['status'] {
-  if (compact && node.status === 'verify_with_registrar') {
-    return 'available'
-  }
   return node.status
 }
 

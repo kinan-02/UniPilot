@@ -12,6 +12,7 @@ from app.services.graduation_requirement_links import (
 )
 
 from app.planning.prerequisite_resolver import canonical_course_number
+from app.services.completed_course_attempts import latest_attempt_rank
 from app.services.grade_evaluation import is_passing_grade, resolve_record_numeric_grade
 
 # Buckets with strict pool enforcement first, then general credit buckets.
@@ -53,38 +54,40 @@ def _recorded_at_timestamp(value: Any) -> float:
 def build_effective_completions(
     completed_course_records: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    best_by_course_id: dict[str, dict[str, Any]] = {}
+    """One row per courseId: the latest attempt only; must be passing to count."""
+    latest_by_course_id: dict[str, dict[str, Any]] = {}
+    latest_rank_by_course_id: dict[str, tuple[int, float, str]] = {}
 
     for record in completed_course_records:
+        course_id = normalize_id(record["courseId"])
+        rank = latest_attempt_rank(
+            attempt=int(record.get("attempt") or 1),
+            recorded_at_timestamp=_recorded_at_timestamp(record.get("recordedAt")),
+            semester_code=str(record.get("semesterCode") or ""),
+        )
+        existing_rank = latest_rank_by_course_id.get(course_id)
+        if existing_rank is not None and rank <= existing_rank:
+            continue
+
+        latest_rank_by_course_id[course_id] = rank
+        latest_by_course_id[course_id] = record
+
+    effective: dict[str, dict[str, Any]] = {}
+    for course_id, record in latest_by_course_id.items():
         if not is_passing_grade(record):
             continue
 
-        course_id = normalize_id(record["courseId"])
         numeric_grade = resolve_record_numeric_grade(record)
-        candidate = {
+        effective[course_id] = {
             "courseId": course_id,
             "creditsEarned": round_credits(record["creditsEarned"]),
             "grade": numeric_grade if numeric_grade is not None else record.get("grade"),
             "semesterCode": record.get("semesterCode"),
             "recordedAt": record.get("recordedAt"),
+            "attempt": int(record.get("attempt") or 1),
         }
 
-        existing = best_by_course_id.get(course_id)
-        if not existing:
-            best_by_course_id[course_id] = candidate
-            continue
-
-        if candidate["creditsEarned"] > existing["creditsEarned"]:
-            best_by_course_id[course_id] = candidate
-            continue
-
-        if candidate["creditsEarned"] == existing["creditsEarned"]:
-            if _recorded_at_timestamp(candidate.get("recordedAt")) > _recorded_at_timestamp(
-                existing.get("recordedAt")
-            ):
-                best_by_course_id[course_id] = candidate
-
-    return best_by_course_id
+    return effective
 
 
 def build_course_progress_entry(
@@ -94,12 +97,20 @@ def build_course_progress_entry(
     *,
     assigned_pool_group_id: str | None = None,
 ) -> dict[str, Any]:
+    catalog_credits = (catalog_course or {}).get("credits")
+    credits_earned = completion["creditsEarned"] if completion else None
+    credits_from_transcript = (
+        credits_earned is not None
+        and catalog_credits is not None
+        and round_credits(float(credits_earned)) != round_credits(float(catalog_credits))
+    )
     return {
         "courseId": course_id,
         "courseNumber": (catalog_course or {}).get("courseNumber") or (catalog_course or {}).get("number"),
         "courseTitle": (catalog_course or {}).get("title") or (catalog_course or {}).get("titleHebrew"),
-        "catalogCredits": (catalog_course or {}).get("credits"),
-        "creditsEarned": completion["creditsEarned"] if completion else None,
+        "catalogCredits": catalog_credits,
+        "creditsEarned": credits_earned,
+        "creditsFromTranscript": credits_from_transcript,
         "grade": completion.get("grade") if completion else None,
         "semesterCode": completion.get("semesterCode") if completion else None,
         "assignedPoolGroupId": assigned_pool_group_id,
@@ -146,6 +157,7 @@ def is_course_eligible_for_pool(
     pool_document: dict[str, Any] | None,
     *,
     program_code: str | None = None,
+    equivalence_groups: list[set[str]] | None = None,
 ) -> bool:
     if not pool_document or not course_number:
         return False
@@ -154,7 +166,12 @@ def is_course_eligible_for_pool(
     if rule.get("type") != "course_pool":
         return False
 
-    candidate_keys = _course_number_keys(course_number)
+    from app.services.catalog_overlap_groups import expand_keys_with_equivalence
+
+    candidate_keys = expand_keys_with_equivalence(
+        _course_number_keys(course_number),
+        equivalence_groups or [],
+    )
     allowed_numbers = _pool_course_numbers(pool_document)
     if allowed_numbers and bool(candidate_keys & allowed_numbers):
         return True
@@ -174,11 +191,17 @@ def is_course_eligible_for_pools(
     pool_documents: list[dict[str, Any]],
     *,
     program_code: str | None = None,
+    equivalence_groups: list[set[str]] | None = None,
 ) -> bool:
     if not pool_documents:
         return False
     return any(
-        is_course_eligible_for_pool(course_number, pool_document, program_code=program_code)
+        is_course_eligible_for_pool(
+            course_number,
+            pool_document,
+            program_code=program_code,
+            equivalence_groups=equivalence_groups,
+        )
         for pool_document in pool_documents
     )
 
@@ -220,9 +243,12 @@ def _dedupe_courses_by_id(course_entries: list[dict[str, Any]]) -> list[dict[str
 def _build_status_summary(
     completed_credits: float,
     missing_requirements: list[dict[str, Any]],
+    remaining_mandatory_courses: list[dict[str, Any]] | None = None,
 ) -> str:
     if completed_credits <= 0:
         return "not_started"
+    if remaining_mandatory_courses:
+        return "in_progress"
     if not missing_requirements:
         return "complete"
     if not any(item.get("isMandatory") for item in missing_requirements):
@@ -245,12 +271,29 @@ def calculate_graduation_progress(
         mandatory_group_for_course,
         resolve_claiming_pool,
     )
+    from app.services.catalog_overlap_groups import (
+        exclude_overlap_duplicate_credits,
+        overlap_group_for_course,
+    )
 
     program_code = str(degree_program["programCode"])
-    from app.services.course_reference_keys import build_matrix_mandatory_equivalence_groups
+    from app.services.course_reference_keys import (
+        build_matrix_mandatory_equivalence_groups,
+        build_progress_equivalence_groups,
+    )
 
     matrix_mandatory_groups = build_matrix_mandatory_equivalence_groups(semester_matrix_documents)
+    catalog_course_list = list(catalog_courses_by_id.values())
+    progress_equivalence_groups = build_progress_equivalence_groups(
+        semester_matrix_documents,
+        catalog_course_list,
+    )
     mandatory_groups = build_mandatory_equivalence_groups(semester_matrix_documents)
+    overlap_groups = [
+        group
+        for group in progress_equivalence_groups
+        if len(group) > 1
+    ]
     enforce_mandatory_bucket = bool(matrix_mandatory_groups)
     from app.services.course_reference_keys import (
         build_remaining_mandatory_course_entries,
@@ -264,6 +307,12 @@ def calculate_graduation_progress(
     mandatory_bucket_suffix = resolve_mandatory_bucket_suffix(buckets_by_suffix)
 
     effective_completions = build_effective_completions(completed_course_records)
+    overlap_excluded_ids = exclude_overlap_duplicate_credits(
+        effective_completions,
+        catalog_courses_by_id,
+        overlap_groups,
+        recorded_at_timestamp=_recorded_at_timestamp,
+    )
     assigned_course_ids: set[str] = set()
     assigned_mandatory_groups: set[frozenset[str]] = set()
     ineligible_credits: list[dict[str, Any]] = []
@@ -290,12 +339,15 @@ def calculate_graduation_progress(
         completed_courses: list[dict[str, Any]] = []
         remaining_courses: list[dict[str, Any]] = []
         credits_completed = 0.0
+        bucket_overlap_groups: set[frozenset[str]] = set()
 
         for course_id, completion in sorted(
             effective_completions.items(),
             key=lambda item: item[0],
         ):
             if course_id in assigned_course_ids:
+                continue
+            if course_id in overlap_excluded_ids:
                 continue
 
             catalog_course = catalog_courses_by_id.get(course_id)
@@ -305,13 +357,17 @@ def calculate_graduation_progress(
                 if course_number is not None:
                     course_number = str(course_number)
 
+            overlap_key = overlap_group_for_course(course_number, overlap_groups)
+            if overlap_key is not None and overlap_key in bucket_overlap_groups:
+                continue
+
             entry = build_course_progress_entry(course_id, catalog_course, completion)
 
             if (
                 enforce_mandatory_bucket
                 and mandatory_bucket_suffix is not None
                 and suffix != mandatory_bucket_suffix
-                and is_mandatory_curriculum_course(course_number, mandatory_groups)
+                and is_mandatory_curriculum_course(course_number, progress_equivalence_groups)
             ):
                 continue
 
@@ -320,12 +376,16 @@ def calculate_graduation_progress(
                     continue
 
                 if is_course_eligible_for_pools(
-                    course_number, eligibility_pools, program_code=program_code
+                    course_number,
+                    eligibility_pools,
+                    program_code=program_code,
+                    equivalence_groups=progress_equivalence_groups,
                 ):
                     claiming_pool = resolve_claiming_pool(
                         course_number,
                         eligibility_pools,
                         program_code=program_code,
+                        equivalence_groups=progress_equivalence_groups,
                     )
                     assigned_pool_group_id = (
                         str(claiming_pool.get("requirementGroupId"))
@@ -342,18 +402,22 @@ def calculate_graduation_progress(
                     )
                     credits_completed += completion["creditsEarned"]
                     assigned_course_ids.add(course_id)
+                    if overlap_key is not None:
+                        bucket_overlap_groups.add(overlap_key)
                 continue
 
             if suffix == mandatory_bucket_suffix and enforce_mandatory_bucket:
-                if not is_mandatory_curriculum_course(course_number, mandatory_groups):
+                if not is_mandatory_curriculum_course(course_number, progress_equivalence_groups):
                     continue
-                group_key = mandatory_group_for_course(course_number, mandatory_groups)
+                group_key = mandatory_group_for_course(course_number, progress_equivalence_groups)
                 if group_key is not None and group_key in assigned_mandatory_groups:
                     continue
                 completed_courses.append(entry)
                 assigned_course_ids.add(course_id)
                 if group_key is not None:
                     assigned_mandatory_groups.add(group_key)
+                if overlap_key is not None:
+                    bucket_overlap_groups.add(overlap_key)
                 if credits_completed < min_credits:
                     credits_completed += completion["creditsEarned"]
                 continue
@@ -364,6 +428,8 @@ def calculate_graduation_progress(
             completed_courses.append(entry)
             credits_completed += completion["creditsEarned"]
             assigned_course_ids.add(course_id)
+            if overlap_key is not None:
+                bucket_overlap_groups.add(overlap_key)
 
         if suffix == mandatory_bucket_suffix and enforce_mandatory_bucket:
             remaining_courses = filter_remaining_mandatory_courses(
@@ -374,7 +440,7 @@ def calculate_graduation_progress(
                 ),
                 completed_courses,
                 satisfied_group_keys=assigned_mandatory_groups,
-                mandatory_groups=mandatory_groups,
+                mandatory_groups=progress_equivalence_groups,
             )
 
         credits_completed = round_credits(credits_completed)
@@ -417,6 +483,16 @@ def calculate_graduation_progress(
             course_number = catalog_course.get("courseNumber") or catalog_course.get("number")
             if course_number is not None:
                 course_number = str(course_number)
+        if course_id in overlap_excluded_ids:
+            ineligible_credits.append(
+                {
+                    "courseId": course_id,
+                    "courseNumber": course_number,
+                    "creditsEarned": completion["creditsEarned"],
+                    "reason": "overlap_no_additional_credit",
+                }
+            )
+            continue
         ineligible_credits.append(
             {
                 "courseId": course_id,
@@ -431,11 +507,19 @@ def calculate_graduation_progress(
         or sum(float(r.get("minCredits") or 0) for r in buckets_by_suffix.values())
     )
     transcript_credits_total = round_credits(
-        sum(completion["creditsEarned"] for completion in effective_completions.values())
+        sum(
+            completion["creditsEarned"]
+            for course_id, completion in effective_completions.items()
+            if course_id not in overlap_excluded_ids
+        )
     )
-    # Top-level progress counts each passing transcript course once (see DATABASE_SCHEMA.md),
-    # not the sum of per-bucket caps used for individual requirement status.
-    completed_credits = transcript_credits_total
+    # Degree-applied credits count only courses assigned to a requirement bucket.
+    completed_credits = round_credits(
+        sum(
+            effective_completions[course_id]["creditsEarned"]
+            for course_id in assigned_course_ids
+        )
+    )
     credits_remaining = round_credits(max(0, total_required_credits - completed_credits))
     completion_percentage = (
         round_percentage(min(100, (completed_credits / total_required_credits) * 100))
@@ -456,7 +540,7 @@ def calculate_graduation_progress(
         remaining_mandatory_courses,
         completed_mandatory_courses,
         satisfied_group_keys=assigned_mandatory_groups,
-        mandatory_groups=mandatory_groups,
+        mandatory_groups=progress_equivalence_groups,
     )
 
     elective_credits_required = round_credits(
@@ -487,11 +571,43 @@ def calculate_graduation_progress(
         if entry["status"] != "satisfied"
     ]
 
+    from app.services.catalog_overlap_groups import build_catalog_overlap_groups
+
     assumptions = [
-        "Hard requirements from degree_requirements; semester_matrix rows assign mandatory curriculum courses.",
-        "course_pool eligibility enforced for linked elective buckets (explicit link or naming convention).",
-        "Passing numeric grades of 55 and above count toward progress; grades below 55 are excluded.",
-        "Track-specific requirements excluded until student track is selected on profile.",
+        "hard_requirements_matrix",
+        "strict_pool_eligibility",
+        "passing_grade_threshold",
+        "catalog_overlap_rules",
+        "transcript_credit_preference",
+        "degree_applied_credits",
+        "track_requirements",
+    ]
+    assumption_labels = {
+        "hard_requirements_matrix": (
+            "Hard requirements from degree_requirements; semester_matrix rows assign mandatory curriculum courses."
+        ),
+        "strict_pool_eligibility": (
+            "course_pool eligibility enforced for linked elective buckets (explicit link or naming convention)."
+        ),
+        "passing_grade_threshold": (
+            "Passing numeric grades of 55 and above count toward progress; grades below 55 are excluded."
+        ),
+        "catalog_overlap_rules": (
+            "Catalog overlap rules (מקצועות ללא זיכוי נוסף) treat parallel courses as equivalent and prevent double counting."
+        ),
+        "transcript_credit_preference": (
+            "Transcript credits earned are used when they differ from the current catalog credit value."
+        ),
+        "degree_applied_credits": (
+            "Degree-applied credits count only courses assigned to a requirement bucket on your transcript."
+        ),
+        "track_requirements": (
+            "Track-specific requirements excluded until student track is selected on profile."
+        ),
+    }
+
+    catalog_overlap_serialized = [
+        sorted(group) for group in build_catalog_overlap_groups(catalog_course_list)
     ]
 
     return {
@@ -512,6 +628,12 @@ def calculate_graduation_progress(
         "requirementProgress": requirement_progress,
         "missingRequirements": missing_requirements,
         "ineligibleCredits": ineligible_credits,
-        "assumptions": assumptions,
-        "statusSummary": _build_status_summary(completed_credits, missing_requirements),
+        "assumptions": [assumption_labels[key] for key in assumptions],
+        "assumptionKeys": assumptions,
+        "catalogOverlapEquivalenceGroups": catalog_overlap_serialized,
+        "statusSummary": _build_status_summary(
+            completed_credits,
+            missing_requirements,
+            remaining_mandatory_courses,
+        ),
     }
