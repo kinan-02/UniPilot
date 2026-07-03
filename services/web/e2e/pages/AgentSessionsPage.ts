@@ -22,7 +22,7 @@ export class AgentSessionsPage extends BasePage {
   }
 
   async gotoAgents() {
-    await this.page.getByRole('link', { name: /מתכנן סוכנים|Agent planner/i }).click()
+    await this.goto('/agents/legacy')
     await expect(this.pageRoot).toBeVisible({ timeout: 15_000 })
   }
 

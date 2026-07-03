@@ -938,6 +938,7 @@ export const en: TranslationTree = {
       catalogBadge: 'Interactive catalog',
       catalogHint: 'Browse catalog pools for your track. Each card shows the rule type, linked credit bucket, and your counted courses.',
       catalogHintSimple: 'Tap a pool to expand eligible courses inline — no separate panel.',
+      searchPools: 'Search pools…',
       generalTechnionPoolsTitle: 'General Technion requirements',
       generalTechnionPoolsHint:
         'University enrichment, free electives, and physical education — separate from faculty elective pools.',

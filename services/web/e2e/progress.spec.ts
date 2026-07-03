@@ -61,7 +61,8 @@ test.describe('Graduation progress — industry E2E', () => {
 
   test('filters pools via search', async ({ page }) => {
     const panel = page.getByTestId('elective-pools-panel')
-    const search = panel.getByPlaceholder(/Search pools|חיפוש בריכות/i)
+    const search = panel.locator('input[type="search"]')
+    await expect(search).toBeVisible({ timeout: 15_000 })
     await search.fill('physical education')
     await expect(
       panel.locator('[data-testid*="physical-education-pool"]'),

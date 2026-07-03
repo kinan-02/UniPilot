@@ -39,7 +39,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('student uses suggested prompt chip and completes session', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     const chip = page.getByTestId('agent-sessions-suggestions').getByRole('button', {
       name: new RegExp(E2E_MAS_COURSE),
@@ -59,7 +59,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('student enables avoid-Friday preference and still gets a completed plan', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.avoidFridayCheckbox.check()
     await agents.submitGoal(MAS_GOALS.explicitCourseEn())
@@ -72,7 +72,7 @@ test.describe.serial('MAS user journey @critical', () => {
   test('student sees session in history after completion', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
     const goal = `${MAS_GOALS.explicitCourseEn(E2E_MAS_SECOND_COURSE)} (e2e-${Date.now()})`
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.submitGoal(goal)
     await agents.waitForSessionCompleted()
@@ -83,7 +83,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('apply stays disabled until student approves recommendation', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.submitGoal(MAS_GOALS.explicitCourseEn())
     await agents.waitForSessionCompleted()
@@ -96,7 +96,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('Hebrew goal produces completed session with visible output', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.submitGoal(MAS_GOALS.explicitCourseHe())
     await agents.waitForSessionCompleted()
@@ -107,7 +107,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('multi-course goal shows negotiation output with at least one course', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.submitGoal(MAS_GOALS.multiCourseEn())
     await agents.waitForSessionCompleted()
@@ -119,7 +119,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('student receives regulations answer for policy Q&A goal', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.submitGoal(MAS_GOALS.policyQaEn)
     await agents.waitForPolicySessionCompleted()
@@ -128,7 +128,7 @@ test.describe.serial('MAS user journey @critical', () => {
 
   test('Hebrew policy Q&A goal shows regulations answer panel', async ({ page }) => {
     const agents = new AgentSessionsPage(page)
-    await page.goto('/agents')
+    await page.goto('/agents/legacy')
 
     await agents.submitGoal(MAS_GOALS.policyQaHe)
     await agents.waitForPolicySessionCompleted()

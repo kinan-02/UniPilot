@@ -34,6 +34,8 @@ export class TranscriptPage extends BasePage {
     options?: { grade?: number; creditsEarned?: number },
   ) {
     await this.gotoTranscript()
+    await expect(this.courseSearch).toBeVisible({ timeout: 15_000 })
+    await expect(this.courseSearch).toBeEnabled()
 
     const catalogSearch = this.page.waitForResponse(
       (response) =>

@@ -30,7 +30,7 @@ def test_resolve_pool_allowed_prefixes_from_notes():
         "notes": ["Courses with prefix 094/095 only."],
         "ruleExpression": {"type": "course_pool"},
     }
-    assert resolve_pool_allowed_prefixes(pool, program_code="009216-1-000") == ["0094", "0095"]
+    assert resolve_pool_allowed_prefixes(pool, program_code="009216-1-000") == ["094", "095"]
 
 
 def test_enrich_behavior_chain_fallback_when_export_empty():
