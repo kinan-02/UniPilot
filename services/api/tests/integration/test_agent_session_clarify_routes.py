@@ -40,7 +40,7 @@ async def test_clarify_agent_session_route(auth_client, mongo_database) -> None:
     )
 
     with patch(
-        "app.services.agent_session_clarify_service.enqueue_mas_session",
+        "app.services.agent_session_clarify_service.enqueue_existing_agent_session",
         new=AsyncMock(return_value=True),
     ):
         response = await auth_client.post(

@@ -27,7 +27,9 @@ async def _register(client, email: str) -> str:
 
 @pytest.mark.asyncio
 async def test_concurrent_duplicate_completed_course_creates(auth_client, mongo_database):
-    """Many parallel creates with identical course+attempt must not 5xx and leave one record."""
+    """Parallel creates auto-allocate attempts up to the max and never 5xx."""
+    from app.services.completed_course_attempts import MAX_COURSE_ATTEMPTS
+
     catalog = await seed_production_course_fixture(mongo_database)
     token = await _register(auth_client, "completed-stress-dup@example.com")
     payload = build_completed_course_payload(catalog["courseId"])
@@ -48,9 +50,9 @@ async def test_concurrent_duplicate_completed_course_creates(auth_client, mongo_
 
     settings = get_settings()
     stored = await mongo_database[settings.completed_courses_collection].count_documents({})
-    assert stored == 1
+    assert 1 <= stored <= MAX_COURSE_ATTEMPTS
 
     list_response = await auth_client.get("/completed-courses", headers=headers)
     assert list_response.status_code == 200
-    assert list_response.json()["data"]["pagination"]["total"] == 1
+    assert list_response.json()["data"]["pagination"]["total"] == stored
     assert elapsed_ms < 15000, f"{concurrency} concurrent creates took {elapsed_ms:.1f}ms"

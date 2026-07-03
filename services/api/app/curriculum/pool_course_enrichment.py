@@ -194,7 +194,9 @@ _PREFIX_TOKEN_PATTERN = re.compile(r"0?9[4-7]")
 
 def normalize_catalog_prefix(prefix: str) -> str:
     token = prefix.strip()
-    if len(token) == 3 and token.isdigit():
+    # Pad bare 3-digit faculty codes (e.g. "940") but keep already-zero-prefixed
+    # codes like "094" so they still match 8-digit numbers such as 09400101.
+    if len(token) == 3 and token.isdigit() and not token.startswith("0"):
         return f"0{token}"
     return token
 

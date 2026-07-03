@@ -23,9 +23,12 @@ test.describe('Graduation progress — industry E2E', () => {
     await expect(panel).toBeVisible({ timeout: 15_000 })
 
     await expect(
-      page.getByRole('heading', {
-        name: /General Technion requirements|דרישות כלל-טכניוניות/i,
-      }),
+      page
+        .getByTestId('elective-pools-panel')
+        .getByRole('heading', {
+          name: /General Technion requirements|דרישות כלל-טכניוניות/i,
+        })
+        .first(),
     ).toBeVisible()
 
     const facultyBeforeGeneral = await panel.evaluate((root) => {

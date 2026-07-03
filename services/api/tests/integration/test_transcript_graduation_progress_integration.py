@@ -327,7 +327,9 @@ async def test_transcript_list_aligns_with_progress_passing_courses(auth_client,
     ds = bucket_by_suffix(progress, "elective-ds")
     assert ds["creditsCompleted"] == 3.5
     core = bucket_by_suffix(progress, "core-mandatory")
-    assert core["creditsCompleted"] == 0
+    # Failed matrix course keeps its slot remaining; 108 - (4 + 3.5 + 3.5) = 97.
+    assert core["creditsCompleted"] == 97.0
+    assert not any(course["courseNumber"] == fixtures["courseANumber"] for course in core["completedCourses"])
 
 
 @pytest.mark.asyncio

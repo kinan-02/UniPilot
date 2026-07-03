@@ -52,6 +52,19 @@ async def seed_graduation_progress_15_1_fixtures(database) -> dict[str, str]:
     await database[settings.catalog_rules_collection].insert_many(
         [
             {
+                "productionKey": f"technion-dds:advisory-rule:catalog:{PROGRAM_CODE}:semester-1-matrix:2025-2026",
+                "institutionId": "technion",
+                "programCode": PROGRAM_CODE,
+                "requirementGroupId": f"{PROGRAM_CODE}:semester-1-matrix",
+                "recordType": "catalog_rule",
+                "title": "Semester 1 matrix",
+                "ruleExpression": {"type": "semester_matrix", "operator": "all_of", "semester": 1},
+                "courseReferences": [{"courseNumber": "00940345"}],
+                "advisoryOnly": True,
+                "enforceInGraduationProgress": False,
+                "status": "published",
+            },
+            {
                 "productionKey": f"technion-dds:pool:{PROGRAM_CODE}:custom-ds-pool:2025-2026",
                 "institutionId": "technion",
                 "programCode": PROGRAM_CODE,
