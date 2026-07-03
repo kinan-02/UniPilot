@@ -22,6 +22,7 @@ from app.planning.academic_risk_analyzer import normalize_course_id
 from app.repositories import catalog_repository
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
+from app.services.degree_program_resolver import resolve_degree_program_for_profile
 from app.services.catalog_cache import get_cached_json, set_cached_json
 
 
@@ -161,10 +162,7 @@ async def get_curriculum_graph_for_user(
     if not degree_id:
         return {"status": "degree_not_selected"}
 
-    program_document = await catalog_repository.find_degree_program_by_id(
-        database,
-        str(degree_id),
-    )
+    program_document = await resolve_degree_program_for_profile(database, profile)
     if not program_document:
         return {"status": "degree_not_found"}
 

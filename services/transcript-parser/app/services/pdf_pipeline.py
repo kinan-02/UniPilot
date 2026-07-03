@@ -18,6 +18,7 @@ from app.services.technion_official_parser import (
 from app.services.text_line_parser import parse_courses_from_text
 
 PIPELINE_VERSION = "0.3.0-official-he-en"
+TRANSCRIPT_FORMAT_SUMMARY = "technion_official_summary"
 EXTRACTOR_NAME = "pymupdf-text"
 
 
@@ -57,6 +58,8 @@ def parse_technion_transcript_pdf(content: bytes) -> ParseTranscriptResult:
         pipelineVersion=PIPELINE_VERSION,
         textCharCount=len(text),
         ocrUsed=False,
+        transcriptFormat=TRANSCRIPT_FORMAT_SUMMARY,
+        showsAllAttempts=False,
     )
 
     return ParseTranscriptResult(

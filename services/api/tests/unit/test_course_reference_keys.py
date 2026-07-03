@@ -12,6 +12,8 @@ from app.services.course_reference_keys import (
     mandatory_group_for_course,
     merge_overlapping_equivalence_groups,
     resolve_mandatory_bucket_suffix,
+    qualifies_for_required_bucket,
+    should_skip_redundant_core_bucket,
 )
 from app.services.graduation_progress_calculator import is_course_eligible_for_pool
 
@@ -84,6 +86,55 @@ def test_filter_remaining_mandatory_courses_drops_completed_parallel():
     assert remaining[0]["courseNumber"] == "01040031"
 
 
+def test_resolve_mandatory_bucket_suffix_prefers_required_over_faculty_and_core():
+    buckets = {
+        "core": {"isMandatory": True},
+        "faculty-electives": {"isMandatory": True},
+        "required": {"isMandatory": True},
+        "enrichment": {"isMandatory": False},
+    }
+    assert resolve_mandatory_bucket_suffix(buckets) == "required"
+
+
+def test_qualifies_for_required_bucket_rejects_pe_overlap_only_group():
+    mandatory_groups = [{"02340124"}]
+    progress_groups = [
+        {"02340124"},
+        {"03940800", "03940801", "03940803"},
+    ]
+    assert qualifies_for_required_bucket(
+        "02340124",
+        mandatory_equivalence_groups=mandatory_groups,
+        progress_equivalence_groups=progress_groups,
+    )
+    assert not qualifies_for_required_bucket(
+        "03940803",
+        mandatory_equivalence_groups=mandatory_groups,
+        progress_equivalence_groups=progress_groups,
+    )
+
+
+def test_qualifies_for_required_bucket_accepts_overlap_substitute_for_matrix_slot():
+    mandatory_groups = [{"02340117"}]
+    progress_groups = [{"02340114", "02340117", "02340221"}]
+    assert qualifies_for_required_bucket(
+        "02340114",
+        mandatory_equivalence_groups=mandatory_groups,
+        progress_equivalence_groups=progress_groups,
+    )
+
+
+def test_should_skip_redundant_core_bucket_for_cs_style_programs():
+    buckets = {
+        "required": {"isMandatory": True},
+        "enrichment": {"isMandatory": False},
+        "physical-education": {"isMandatory": False},
+        "core": {"isMandatory": True},
+    }
+    assert should_skip_redundant_core_bucket("core", buckets) is True
+    assert should_skip_redundant_core_bucket("required", buckets) is False
+
+
 def test_resolve_mandatory_bucket_suffix_prefers_core_then_technion():
     buckets = {
         "track-mandatory-courses": {"isMandatory": True},
@@ -117,6 +168,42 @@ def test_build_remaining_mandatory_course_entries_skips_cross_track_satisfied_gr
     satisfied = {frozenset(group) for group in groups if "00960211" in group}
     remaining = build_remaining_mandatory_course_entries(matrix, satisfied)
     assert remaining == []
+
+
+def test_filter_remaining_mandatory_ignores_catalog_overlap_groups():
+    """Catalog overlap must not satisfy unrelated matrix mandatory slots."""
+    matrix_groups = build_mandatory_equivalence_groups(
+        [{"courseReferences": [{"courseNumber": "02360343"}]}]
+    )
+    merged_overlap_group = [{"02360343", "02340292", "02340218"}]
+    satisfied = {frozenset(merged_overlap_group[0])}
+    remaining = filter_remaining_mandatory_courses(
+        [{"courseNumber": "02360343"}],
+        [{"courseNumber": "02340292"}],
+        satisfied_group_keys=satisfied,
+        mandatory_groups=matrix_groups,
+    )
+    assert len(remaining) == 1
+    assert remaining[0]["courseNumber"] == "02360343"
+
+    wrongly_filtered = filter_remaining_mandatory_courses(
+        [{"courseNumber": "02360343"}],
+        [{"courseNumber": "02340292"}],
+        satisfied_group_keys=satisfied,
+        mandatory_groups=merged_overlap_group,
+    )
+    assert wrongly_filtered == []
+
+
+def test_filter_remaining_mandatory_drops_transcript_completed_even_when_not_assigned():
+    remaining = filter_remaining_mandatory_courses(
+        [{"courseNumber": "01040031"}, {"courseNumber": "02340123"}],
+        [],
+        mandatory_groups=[{"01040031"}, {"02340123"}],
+        transcript_completed_keys={"01040031"},
+    )
+    assert len(remaining) == 1
+    assert remaining[0]["courseNumber"] == "02340123"
 
 
 def test_filter_remaining_mandatory_drops_entry_already_in_completed_keys_for_group():

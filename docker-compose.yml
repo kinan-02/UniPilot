@@ -26,10 +26,24 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
       E2E_GOOGLE_OAUTH_STUB: ${E2E_GOOGLE_OAUTH_STUB:-true}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+      MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI:-}
+      MICROSOFT_SCOPES: ${MICROSOFT_SCOPES:-User.Read Mail.Read offline_access}
+      MICROSOFT_TOKEN_ENCRYPTION_KEY: ${MICROSOFT_TOKEN_ENCRYPTION_KEY:-}
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       TECHNION_RAW_DIR: ${TECHNION_RAW_DIR:-/app/data/raw/technion}
+      CATALOG_VAULT_WIKI_PATH: ${CATALOG_VAULT_WIKI_PATH:-/app/data/academic/wiki}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.llmod.ai/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-MB5R2CF-azure/text-embedding-3-small}
+      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
+      EMBEDDING_INDEX_ENABLED: ${EMBEDDING_INDEX_ENABLED:-true}
+      EMBEDDING_INDEX_CACHE_PATH: ${EMBEDDING_INDEX_CACHE_PATH:-/app/data/cache/wiki_embedding_index.json}
+      EMBEDDING_INDEX_BATCH_SIZE: ${EMBEDDING_INDEX_BATCH_SIZE:-64}
     volumes:
       - ./services/data-engineering/data/raw/technion:/app/data/raw/technion:ro
+      - ./services/data-engineering/data/catalog_valut/catalog_valut/wiki:/app/data/academic/wiki:ro
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -199,6 +213,76 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  mas:
+    build:
+      context: ./services/mas
+    env_file:
+      - .env
+    environment:
+      MAS_SERVICE_PORT: ${MAS_SERVICE_PORT:-3003}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-unipilot_dev_redis_password}@redis:6379
+      MAS_QUEUE_NAME: ${MAS_QUEUE_NAME:-mas_agent_jobs}
+      MAS_WORKER_ENABLED: ${MAS_WORKER_ENABLED:-true}
+      ACADEMIC_WIKI_PATH: ${ACADEMIC_WIKI_PATH:-/app/data/academic/wiki}
+      ACADEMIC_TECHNION_RAW_DIR: ${ACADEMIC_TECHNION_RAW_DIR:-/app/data/raw/technion}
+      ACADEMIC_DEFAULT_SEMESTER_FILE: ${ACADEMIC_DEFAULT_SEMESTER_FILE:-courses_2025_201.json}
+      ACADEMIC_CATALOG_JSON: ${ACADEMIC_CATALOG_JSON:-/app/data/raw/technion/courses_2025_201.json}
+      MAS_OPENAI_API_KEY: ${MAS_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}
+      MAS_OPENAI_BASE_URL: ${MAS_OPENAI_BASE_URL:-${OPENAI_BASE_URL:-}}
+      MAS_OPENAI_CHAT_MODEL: ${MAS_OPENAI_CHAT_MODEL:-${OPENAI_CHAT_MODEL:-gpt-5-mini}}
+      MAS_MAX_NEGOTIATION_ROUNDS: ${MAS_MAX_NEGOTIATION_ROUNDS:-3}
+      API_SERVICE_URL: http://api:${API_PORT:-8000}
+      API_REQUEST_TIMEOUT_SECONDS: ${API_REQUEST_TIMEOUT_SECONDS:-30}
+    volumes:
+      - ./services/data-engineering/data/catalog_valut/catalog_valut/wiki:/app/data/academic/wiki:ro
+      - ./services/data-engineering/data/raw/technion:/app/data/raw/technion:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,urllib.request; port=os.environ.get('MAS_SERVICE_PORT','3003'); urllib.request.urlopen(f'http://localhost:{port}/health').read()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - unipilot-internal
+
+  outlook-mcp:
+    build:
+      context: ./services/outlook-mcp
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+      MICROSOFT_REDIRECT_URI: ${MICROSOFT_REDIRECT_URI:-}
+      MICROSOFT_SCOPES: ${MICROSOFT_SCOPES:-User.Read Mail.Read offline_access}
+      MICROSOFT_TOKEN_ENCRYPTION_KEY: ${MICROSOFT_TOKEN_ENCRYPTION_KEY:-}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
+      OUTLOOK_MCP_LOG_LEVEL: ${OUTLOOK_MCP_LOG_LEVEL:-INFO}
+    depends_on:
+      mongo:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - unipilot-internal

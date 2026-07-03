@@ -32,6 +32,8 @@ class ParseMetadataResponse(BaseModel):
     pipelineVersion: str
     textCharCount: int
     ocrUsed: bool = False
+    transcriptFormat: str = "unknown"
+    showsAllAttempts: bool = False
 
 
 class ParseTranscriptPreviewResponse(BaseModel):
@@ -53,6 +55,7 @@ class CommitTranscriptCourseInput(BaseModel):
     creditsEarned: float
     attempt: int | None = Field(default=1, ge=1, le=10)
     title: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
     @field_validator("courseNumber", mode="before")
     @classmethod
@@ -85,6 +88,7 @@ class CommitTranscriptImportRequest(BaseModel):
 
     courses: list[CommitTranscriptCourseInput] = Field(min_length=1, max_length=100)
     skipDuplicates: bool = True
+    replaceExisting: bool = False
 
 
 class UnresolvedTranscriptCourse(BaseModel):
@@ -104,3 +108,4 @@ class CommitTranscriptImportResponse(BaseModel):
     createdCount: int
     skippedCount: int
     unresolvedCount: int
+    replacedCount: int = 0

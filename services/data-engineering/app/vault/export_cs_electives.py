@@ -167,6 +167,7 @@ def cs_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, Any]
 
     groups = _science_chain_groups(page, program_code)
     groups.extend(_specialization_groups(page, program_code))
+    groups.extend(_faculty_list_support_pools(page, program_code))
     return groups
 
 
@@ -183,4 +184,37 @@ def cs_elective_groups_from_source(
 
     groups = _science_chain_groups(source, program_code)
     groups.extend(_specialization_groups(source, program_code))
+    groups.extend(_faculty_list_support_pools(source, program_code))
     return groups
+
+
+def _faculty_list_support_pools(page: WikiPage, program_code: str) -> list[dict[str, Any]]:
+    """List A (CS faculty) and List B (extra-faculty) prefix pools for faculty-electives."""
+    return [
+        _course_pool_group(
+            program_code=program_code,
+            group_suffix="cs-faculty-list-a-pool",
+            title="CS faculty electives List A",
+            course_refs=[],
+            rule_expression={
+                "type": "course_pool",
+                "operator": "min_credits",
+                "allowedPrefixes": ["023"],
+            },
+            catalog_description="All Computer Science faculty courses (List A).",
+            notes=["Wiki: בחירה מרשימה א' — כל מקצועות הפקולטה למדעי המחשב."],
+        ),
+        _course_pool_group(
+            program_code=program_code,
+            group_suffix="cs-additional-faculty-electives",
+            title="CS extra-faculty electives List B",
+            course_refs=[],
+            rule_expression={
+                "type": "course_pool",
+                "operator": "min_credits",
+                "allowedPrefixes": ["004", "009", "010", "011", "012", "013", "032"],
+            },
+            catalog_description="Extra-faculty courses eligible for CS faculty elective credits (List B).",
+            notes=["Wiki: בחירה מרשימה ב' — מקצועות חוץ-פקולטיים."],
+        ),
+    ]

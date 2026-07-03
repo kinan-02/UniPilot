@@ -14,6 +14,7 @@ from app.repositories import catalog_repository
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
 from app.services.course_reference_keys import course_number_keys
+from app.services.degree_program_resolver import resolve_degree_program_for_profile
 from app.services.graduation_progress_calculator import calculate_graduation_progress
 from app.services.graduation_catalog_context import enrich_pool_documents_for_program
 
@@ -26,6 +27,77 @@ ProgressStatus = Literal[
 
 
 MAX_OVERLAP_CATALOG_HOPS = 10
+
+
+async def _resolve_degree_program_for_profile(
+    database: AsyncIOMotorDatabase,
+    profile: dict[str, Any],
+) -> dict[str, Any] | None:
+    return await resolve_degree_program_for_profile(database, profile)
+
+
+def ensure_cs_faculty_support_pools(
+    program_code: str,
+    pool_documents: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Inject List A/B faculty pools for CS tracks when catalog promotion predates export."""
+    if not program_code.startswith("023"):
+        return pool_documents
+
+    existing_suffixes = {
+        str(document.get("requirementGroupId") or "").split(":", 1)[-1]
+        for document in pool_documents
+    }
+    faculty_bucket = f"{program_code}:faculty-electives"
+    extras: list[dict[str, Any]] = []
+
+    if "cs-faculty-list-a-pool" not in existing_suffixes:
+        extras.append(
+            {
+                "requirementGroupId": f"{program_code}:cs-faculty-list-a-pool",
+                "linkedCreditBucketId": faculty_bucket,
+                "ruleExpression": {
+                    "type": "course_pool",
+                    "operator": "min_credits",
+                    "allowedPrefixes": ["023"],
+                },
+                "courseReferences": [],
+            }
+        )
+    if "cs-additional-faculty-electives" not in existing_suffixes:
+        extras.append(
+            {
+                "requirementGroupId": f"{program_code}:cs-additional-faculty-electives",
+                "linkedCreditBucketId": faculty_bucket,
+                "ruleExpression": {
+                    "type": "course_pool",
+                    "operator": "min_credits",
+                    "allowedPrefixes": ["004", "009", "010", "011", "012", "013", "032"],
+                },
+                "courseReferences": [],
+            }
+        )
+
+    if not extras:
+        return pool_documents
+    return [*pool_documents, *extras]
+
+
+async def _catalog_courses_for_completed_records(
+    database: AsyncIOMotorDatabase,
+    completed_records: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    course_ids = [str(record["courseId"]) for record in completed_records if record.get("courseId")]
+    catalog_courses = await catalog_repository.find_courses_by_ids(database, course_ids)
+    catalog_courses_by_id = {str(course["_id"]): course for course in catalog_courses}
+
+    from app.services.completed_course_catalog_repair import repair_stale_completed_course_catalog_links
+
+    return await repair_stale_completed_course_catalog_links(
+        database,
+        completed_records,
+        catalog_courses_by_id,
+    )
 
 
 async def _load_transitive_overlap_partner_catalog(
@@ -64,6 +136,38 @@ async def _load_transitive_overlap_partner_catalog(
 
         if len(known_numbers) == previous_size:
             return
+
+
+async def _load_matrix_mandatory_catalog(
+    database: AsyncIOMotorDatabase,
+    semester_matrix_documents: list[dict[str, Any]] | None,
+    catalog_courses_by_id: dict[str, dict[str, Any]],
+) -> None:
+    """Load catalog rows for semester-matrix mandatory courses (remaining-slot credits)."""
+    from app.services.course_reference_keys import course_reference_number_keys
+    from app.services.matrix_semester_filters import filter_executable_matrix_documents
+
+    known_numbers: set[str] = set()
+    for course in catalog_courses_by_id.values():
+        number = course.get("courseNumber") or course.get("number")
+        if number is not None:
+            known_numbers |= course_number_keys(str(number))
+
+    matrix_numbers: set[str] = set()
+    for document in filter_executable_matrix_documents(semester_matrix_documents):
+        for reference in document.get("courseReferences") or []:
+            matrix_numbers |= course_reference_number_keys(reference)
+
+    missing_numbers = sorted(number for number in matrix_numbers if number not in known_numbers)
+    if not missing_numbers:
+        return
+
+    matrix_courses = await catalog_repository.find_courses_by_numbers(
+        database,
+        missing_numbers,
+    )
+    for course in matrix_courses:
+        catalog_courses_by_id[str(course["_id"])] = course
 
 
 async def _synthetic_completed_records_for_numbers(
@@ -118,10 +222,7 @@ async def get_graduation_progress_for_user(
     if not degree_id:
         return {"status": "degree_not_selected"}
 
-    degree_program = await catalog_repository.find_degree_program_by_id(
-        database,
-        str(degree_id),
-    )
+    degree_program = await _resolve_degree_program_for_profile(database, profile)
     if not degree_program:
         return {"status": "degree_not_found"}
 
@@ -157,14 +258,16 @@ async def get_graduation_progress_for_user(
     pool_documents = await enrich_pool_documents_for_program(
         database,
         program_code=program_code,
-        pool_documents=pool_documents,
+        pool_documents=ensure_cs_faculty_support_pools(program_code, pool_documents),
     )
 
-    course_ids = [str(record["courseId"]) for record in completed_records]
-    catalog_courses = await catalog_repository.find_courses_by_ids(database, course_ids)
-    catalog_courses_by_id = {str(course["_id"]): course for course in catalog_courses}
+    completed_records, catalog_courses_by_id = await _catalog_courses_for_completed_records(
+        database,
+        completed_records,
+    )
 
     await _load_transitive_overlap_partner_catalog(database, catalog_courses_by_id)
+    await _load_matrix_mandatory_catalog(database, semester_matrix_documents, catalog_courses_by_id)
 
     progress = calculate_graduation_progress(
         degree_program=degree_program,
@@ -174,6 +277,15 @@ async def get_graduation_progress_for_user(
         completed_course_records=completed_records,
         semester_matrix_documents=semester_matrix_documents,
     )
+    if profile.get("currentSemesterCode"):
+        from app.services.pool_constraint_evaluator import build_advisory_warnings
+
+        progress["advisoryWarnings"] = build_advisory_warnings(
+            program_code=program_code,
+            completed_course_records=completed_records,
+            catalog_courses_by_id=catalog_courses_by_id,
+            current_semester_code=str(profile.get("currentSemesterCode")),
+        )
 
     return {"status": "ok", "progress": progress}
 
@@ -200,10 +312,7 @@ async def preview_graduation_progress_for_user(
     if not degree_id:
         return {"status": "degree_not_selected"}
 
-    degree_program = await catalog_repository.find_degree_program_by_id(
-        database,
-        str(degree_id),
-    )
+    degree_program = await _resolve_degree_program_for_profile(database, profile)
     if not degree_program:
         return {"status": "degree_not_found"}
 
@@ -237,7 +346,7 @@ async def preview_graduation_progress_for_user(
     pool_documents = await enrich_pool_documents_for_program(
         database,
         program_code=program_code,
-        pool_documents=pool_documents,
+        pool_documents=ensure_cs_faculty_support_pools(program_code, pool_documents),
     )
 
     if completed_course_numbers is not None:
@@ -269,11 +378,13 @@ async def preview_graduation_progress_for_user(
                 *await _synthetic_completed_records_for_numbers(database, to_add),
             ]
 
-    course_ids = [str(record["courseId"]) for record in completed_records]
-    catalog_courses = await catalog_repository.find_courses_by_ids(database, course_ids)
-    catalog_courses_by_id = {str(course["_id"]): course for course in catalog_courses}
+    completed_records, catalog_courses_by_id = await _catalog_courses_for_completed_records(
+        database,
+        completed_records,
+    )
 
     await _load_transitive_overlap_partner_catalog(database, catalog_courses_by_id)
+    await _load_matrix_mandatory_catalog(database, semester_matrix_documents, catalog_courses_by_id)
 
     progress = calculate_graduation_progress(
         degree_program=degree_program,

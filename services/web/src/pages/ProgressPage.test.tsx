@@ -109,7 +109,6 @@ describe('ProgressPage', () => {
           { courseId: 'done-1', courseNumber: '1040016', courseTitle: 'Algebra alt' },
         ],
         remainingMandatoryCourses: [
-          { courseId: 'matrix-1040065', courseNumber: '1040065', courseTitle: 'Algebra' },
           { courseId: 'matrix-1', courseNumber: '01040031', courseTitle: 'Intro CS' },
         ],
         ineligibleCredits: [
@@ -298,7 +297,7 @@ describe('ProgressPage', () => {
     renderProgress()
     expect(await screen.findByTestId('progress-summary-card')).toBeInTheDocument()
     expect(
-      await screen.findByText(/unable to load elective pools|לא ניתן לטעון/i),
+      await screen.findByText(/unable to load required curriculum graph|לא ניתן לטעון/i),
     ).toBeInTheDocument()
   })
 

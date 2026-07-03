@@ -5,7 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-ALT_PATTERN = re.compile(r"Alt:\s*(\d{6,8})", re.IGNORECASE)
+ALT_PATTERN = re.compile(
+    r"Alt(?:ernatives)?\s*:\s*([0-9,\s/]+)",
+    re.IGNORECASE,
+)
+SINGLE_ALT_PATTERN = re.compile(r"Alt:\s*(\d{6,8})", re.IGNORECASE)
 CREDITS_RANGE_PATTERN = re.compile(
     r"^(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)"
 )
@@ -18,6 +22,11 @@ def parse_alternatives_from_text(*texts: str | None) -> list[str]:
         if not text:
             continue
         for match in ALT_PATTERN.finditer(text):
+            for number in re.findall(r"\d{6,8}", match.group(1)):
+                if number not in seen:
+                    seen.add(number)
+                    alternatives.append(number)
+        for match in SINGLE_ALT_PATTERN.finditer(text):
             number = match.group(1)
             if number not in seen:
                 seen.add(number)

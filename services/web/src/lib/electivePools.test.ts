@@ -478,28 +478,53 @@ describe('buildRequiredCurriculumCourseNumbers', () => {
         }),
       ],
       {
-        completedMandatory: [{ courseId: '1', courseNumber: '00940345', creditsEarned: 4 }],
         remainingMandatory: [{ courseNumber: '01040031', courseTitle: 'Intro CS' }],
-        curriculumGraph: {
-          trackSlug: 'track-dne',
-          programCode: '009216-1-000',
-          catalogYear: 2025,
-          viewDefault: 'semester_swimlanes',
-          semesterLanes: [],
-          nodes: [{ courseNumber: '00940219', title: 'Data structures', semester: 2 }],
-          edges: [],
-          bottlenecks: [],
-          electiveBuckets: [],
-        },
       },
     )
     expect([...numbers].sort()).toEqual(['01040031'])
   })
 
-  it('excludes cross-track equivalents already satisfied on transcript', () => {
+  it('trusts API remaining mandatory list for cross-track slots', () => {
     const numbers = buildRequiredCurriculumCourseNumbers([], {
-      completedMandatory: [{ courseId: 'done', courseNumber: '00960211' }],
       remainingMandatory: [{ courseNumber: '00960221', courseTitle: 'E-commerce models' }],
+      curriculumGraph: {
+        trackSlug: 'track-ise',
+        programCode: '009118-1-000',
+        catalogYear: 2025,
+        viewDefault: 'semester_swimlanes',
+        semesterLanes: [],
+        nodes: [
+          {
+            nodeId: 'node-ecom',
+            courseNumber: '00960221',
+            title: 'E-commerce models',
+            semester: 4,
+            status: 'available',
+            credits: { display: '3.5', value: 3.5, uncertain: false },
+            alternatives: [],
+            dataQuality: {
+              manualReviewRequired: false,
+              confidence: 'high',
+              hasAlternatives: false,
+              creditsUncertain: false,
+              verifyWithRegistrar: false,
+            },
+            prerequisiteNumbers: [],
+            missingPrerequisites: [],
+            isBottleneck: false,
+          },
+        ],
+        edges: [],
+        bottlenecks: [],
+        electiveBuckets: [],
+      },
+    })
+    expect([...numbers]).toEqual(['00960221'])
+  })
+
+  it('returns empty when API reports no remaining mandatory courses', () => {
+    const numbers = buildRequiredCurriculumCourseNumbers([], {
+      remainingMandatory: [],
       curriculumGraph: {
         trackSlug: 'track-ise',
         programCode: '009118-1-000',
@@ -535,8 +560,9 @@ describe('buildRequiredCurriculumCourseNumbers', () => {
     expect(numbers.size).toBe(0)
   })
 
-  it('includes curriculum node alternatives in the required set', () => {
+  it('includes curriculum node alternatives for outstanding mandatory slots', () => {
     const numbers = buildRequiredCurriculumCourseNumbers([], {
+      remainingMandatory: [{ courseNumber: '1040065', courseTitle: 'Algebra' }],
       curriculumGraph: {
         trackSlug: 'track-dne',
         programCode: '009216-1-000',
@@ -666,6 +692,50 @@ describe('poolCreditsCompleted', () => {
     })
     expect(courseMatchesPoolCatalog('00960324', listPool)).toBe(true)
     expect(poolCreditsCompleted(listPool, facultyBucket, [listPool])).toBe(3.5)
+  })
+
+  it('trusts assignedPoolGroupId when the API assigned bucket courses to pools', () => {
+    const assignedBucket = bucket({
+      requirementGroupId: '009118-1-000:elective-faculty',
+      creditsCompleted: 9.5,
+      completedCourses: [
+        {
+          courseId: '1',
+          courseNumber: '00970215',
+          creditsEarned: 3.0,
+          assignedPoolGroupId: '009118-1-000:is-focus-chain-ml',
+        },
+        {
+          courseId: '2',
+          courseNumber: '00960266',
+          creditsEarned: 3.5,
+          assignedPoolGroupId: '009118-1-000:is-additional-faculty-electives',
+        },
+        {
+          courseId: '3',
+          courseNumber: '00940312',
+          creditsEarned: 4.0,
+          assignedPoolGroupId: '009118-1-000:core-mandatory',
+        },
+      ],
+    })
+    const mlPool = pool({
+      groupId: '009118-1-000:is-focus-chain-ml',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'choose_chain', chooseCount: 3 },
+      courses: [{ courseNumber: '00970215' }],
+      allowedPrefixes: ['0094', '0095', '0096', '0097'],
+    })
+    const additionalPool = pool({
+      groupId: '009118-1-000:is-additional-faculty-electives',
+      linkedCreditBucketId: '009118-1-000:elective-faculty',
+      rule: { type: 'course_pool', operator: 'min_credits', allowedPrefixes: ['0094', '0096'] },
+      courses: [],
+      allowedPrefixes: ['0094', '0096'],
+    })
+    expect(poolMatchedBucketCourses(mlPool, assignedBucket, [mlPool, additionalPool])).toHaveLength(1)
+    expect(poolCreditsCompleted(mlPool, assignedBucket, [mlPool, additionalPool])).toBe(3.0)
+    expect(poolCreditsCompleted(additionalPool, assignedBucket, [mlPool, additionalPool])).toBe(3.5)
   })
 })
 

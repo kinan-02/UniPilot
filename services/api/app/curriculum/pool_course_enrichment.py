@@ -8,11 +8,28 @@ from typing import Any
 FACULTY_ELECTIVE_PREFIXES: tuple[str, ...] = ("0094", "0095", "0096", "0097")
 EXPLORER_PREFIX_QUERY_LIMIT = 500
 
+# CHE university enrichment: legacy 039405* plus humanities-center 0324xxxx series.
+ENRICHMENT_CHE_PREFIXES: tuple[str, ...] = (
+    "039405",
+    "032402",
+    "032403",
+    "032404",
+    "032405",
+    "032406",
+    "032409",
+)
+
+# Mandatory English / scientific-writing courses must not count as enrichment.
+ENRICHMENT_EXCLUDED_COURSE_NUMBERS: tuple[str, ...] = (
+    "03240033",
+    "03240455",
+)
+
 KNOWN_POOL_PREFIXES_BY_SUFFIX: dict[str, tuple[str, ...]] = {
     "elective-faculty-pool": FACULTY_ELECTIVE_PREFIXES,
     "ie-additional-faculty-electives": FACULTY_ELECTIVE_PREFIXES,
     "is-additional-faculty-electives": FACULTY_ELECTIVE_PREFIXES,
-    "enrichment-pool": ("039405",),
+    "enrichment-pool": ENRICHMENT_CHE_PREFIXES,
     "physical-education-pool": ("039408", "039409"),
 }
 
@@ -158,12 +175,24 @@ def resolve_pool_allowed_prefixes(
         for prefix in (rule.get("allowedPrefixes") or [])
         if prefix
     ]
-    if explicit:
-        return explicit
 
     group_id = str(pool_document.get("requirementGroupId") or "")
     suffix = _pool_suffix(group_id, program_code)
     known = KNOWN_POOL_PREFIXES_BY_SUFFIX.get(suffix)
+
+    if suffix == "enrichment-pool":
+        merged: list[str] = []
+        seen: set[str] = set()
+        for prefix in [*explicit, *(known or ENRICHMENT_CHE_PREFIXES)]:
+            normalized = normalize_catalog_prefix(str(prefix))
+            if normalized not in seen:
+                seen.add(normalized)
+                merged.append(normalized)
+        return merged
+
+    if explicit:
+        return explicit
+
     if known:
         return list(known)
 

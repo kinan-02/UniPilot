@@ -57,6 +57,18 @@ A focus chain (שרשרת מיקוד) is a coherent cluster of three courses tha
 
 *Note: With instructor approval, 0980413 may substitute for 0960570 or Part 3.*
 
+#### Chains 4–8: List-based focus chains (catalog 2025/2026)
+
+The official IEM catalog also offers five additional focus chains where the student completes **any 3 courses** from the listed cluster:
+
+| Chain | Domain | Rule |
+|-------|--------|------|
+| **Chain D** | Data & information systems | Any 3 from the DIS elective list |
+| **Chain E** | Operations research & game theory | Any 3 from the combined OR + game theory list |
+| **Chain F** | Statistics | Any 3 from the statistics elective list |
+| **Chain G** | Economics | Any 3 from the economics elective list |
+| **Chain H** | Behavioral sciences & management | Any 3 from the behavioral sciences elective list |
+
 ---
 
 ### ISE Track Chains

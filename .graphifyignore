@@ -1,0 +1,29 @@
+# Academic wiki vault — domain content, not dev codebase (~20k nodes)
+services/data-engineering/data/catalog_valut/**
+
+# Large / licensing-sensitive catalog data
+services/data-engineering/data/raw/**
+services/data-engineering/data/generated/**
+services/data-engineering/data/reports/**
+
+# ECC Cursor bundle — not UniPilot product code (~2900 markdown files)
+.cursor/**
+
+# Build artifacts and dependencies
+**/node_modules/
+**/.venv/
+**/dist/
+**/build/
+**/__pycache__/
+**/.coverage*
+**/coverage/
+
+# Local env and logs
+.env
+**/*.log
+
+# OS and IDE
+.DS_Store
+
+# Verification artifacts
+scripts/verification_report.json

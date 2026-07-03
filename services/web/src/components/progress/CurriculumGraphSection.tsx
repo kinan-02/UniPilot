@@ -537,7 +537,7 @@ function MindMapView({ graph, t }: { graph: CurriculumGraph; t: TranslateFn }) {
 }
 
 export function CurriculumGraphSection({ graph, t }: CurriculumGraphSectionProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(() => graph.nodes.length > 0)
   const completedNodes = graph.nodes.filter((node) => node.status === 'completed').length
   const inProgressNodes = graph.nodes.filter((node) => node.status === 'in_progress').length
   const bottleneckCount = graph.bottlenecks.length

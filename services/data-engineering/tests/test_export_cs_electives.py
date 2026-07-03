@@ -26,7 +26,7 @@ def _load_general_4year_page() -> WikiPage:
 def test_cs_elective_groups_only_for_general_4year_track() -> None:
     page = _load_general_4year_page()
     groups = cs_elective_groups(page, GENERAL_4YEAR_PROGRAM_CODE)
-    assert len(groups) == 16
+    assert len(groups) == 18
     suffixes = {group["groupId"].split(":", 1)[1] for group in groups}
     assert "cs-science-chain-physics-mm" in suffixes
     assert "cs-spec-group-11" in suffixes
@@ -86,5 +86,8 @@ def test_cs_elective_groups_returns_empty_when_specialization_section_missing() 
         english_body="**Track code:** 023023-1-000\n",
     )
     groups = cs_elective_groups(stripped, GENERAL_4YEAR_PROGRAM_CODE)
-    assert len(groups) == 5
-    assert all("science-chain" in group["groupId"] for group in groups)
+    assert len(groups) == 7
+    assert all(
+        "science-chain" in group["groupId"] or "faculty-list" in group["groupId"] or "additional-faculty" in group["groupId"]
+        for group in groups
+    )

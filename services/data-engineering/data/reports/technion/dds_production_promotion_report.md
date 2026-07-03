@@ -1,8 +1,8 @@
 # DDS Production Promotion Report (Phase 12)
 
-Promotion run: `dds-promotion-4b29ce342e75`
-Started: 2026-06-27T12:43:40+00:00
-Finished: 2026-06-27T12:43:42+00:00
+Promotion run: `dds-promotion-1c7d820335ae`
+Started: 2026-07-03T09:16:38+00:00
+Finished: 2026-07-03T09:18:48+00:00
 Status: **completed**
 Gate status: **pass-with-warnings**
 Dry run: **False**
@@ -13,74 +13,74 @@ Production writes performed: **True**
 - nonExecutableRulesPolicy: `advisory-only`
 - enforceNonExecutableRulesInProduction: `False`
 - productionExcludedCoursePolicy: `omit-from-production-do-not-ingest`
-- productionExcludedCourseNumbers: 242
+- productionExcludedCourseNumbers: 51
 
 ## Counts planned
 - degreePrograms: 5
-- catalogPathOptions: 15
+- catalogPathOptions: 17
 - catalogFaculties: 1
-- hardDegreeRequirements: 21
-- advisoryCatalogRules: 70
-- courses: 2433
-- courseOfferings: 5963
-- skippedItems: 305
-- skippedExcludedCourses: 235
+- hardDegreeRequirements: 26
+- advisoryCatalogRules: 54
+- courses: 2613
+- courseOfferings: 6580
+- skippedItems: 104
+- skippedExcludedCourses: 50
 
 ## Counts written
 - degree_programs: 5
-- degree_requirements: 21
-- catalog_rules: 70
-- courses: 2433
-- course_offerings: 5963
+- degree_requirements: 26
+- catalog_rules: 54
+- courses: 2613
+- course_offerings: 6580
 
 ## Production collection counts
 ### Before
-- catalog_faculties: 16
-- catalog_path_options: 256
-- catalog_rules: 749
-- course_offerings: 6234
-- courses: 2485
-- degree_programs: 58
-- degree_requirements: 306
-- promotion_runs: 35
+- catalog_faculties: 17
+- catalog_path_options: 271
+- catalog_rules: 987
+- course_offerings: 6450
+- courses: 2585
+- degree_programs: 61
+- degree_requirements: 316
+- promotion_runs: 47
 ### After
 - catalog_faculties: 17
 - catalog_path_options: 271
-- catalog_rules: 819
-- course_offerings: 5963
-- courses: 2433
-- degree_programs: 63
-- degree_requirements: 327
-- promotion_runs: 36
+- catalog_rules: 995
+- course_offerings: 6580
+- courses: 2613
+- degree_programs: 61
+- degree_requirements: 319
+- promotion_runs: 48
 
 ## Skipped excluded courses
-- `00440102` — production-excluded-by-catalog-signoff
 - `00960226` — production-excluded-by-catalog-signoff
 - `00960244` — production-excluded-by-catalog-signoff
 - `00960311` — production-excluded-by-catalog-signoff
-- `00960335` — production-excluded-by-catalog-signoff
 - `00960351` — production-excluded-by-catalog-signoff
 - `00970280` — production-excluded-by-catalog-signoff
+- `00960335` — production-excluded-by-catalog-signoff
 - `00980455` — production-excluded-by-catalog-signoff
-- `01040000` — production-excluded-by-catalog-signoff
-- `01040012` — production-excluded-by-catalog-signoff
-- `01040013` — production-excluded-by-catalog-signoff
-- `01040030` — production-excluded-by-catalog-signoff
-- `01040031` — production-excluded-by-catalog-signoff
-- `01040032` — production-excluded-by-catalog-signoff
-- `01040033` — production-excluded-by-catalog-signoff
-- `01040034` — production-excluded-by-catalog-signoff
-- `01040038` — production-excluded-by-catalog-signoff
-- `01040064` — production-excluded-by-catalog-signoff
-- `01040066` — production-excluded-by-catalog-signoff
-- `01040112` — production-excluded-by-catalog-signoff
-- ... and 215 more
+- `00960251` — production-excluded-by-catalog-signoff
+- `00960293` — production-excluded-by-catalog-signoff
+- `00960470` — production-excluded-by-catalog-signoff
+- `00970200` — production-excluded-by-catalog-signoff
+- `00970211` — production-excluded-by-catalog-signoff
+- `00970216` — production-excluded-by-catalog-signoff
+- `00970245` — production-excluded-by-catalog-signoff
+- `00970272` — production-excluded-by-catalog-signoff
+- `00970329` — production-excluded-by-catalog-signoff
+- `01200124` — production-excluded-by-catalog-signoff
+- `02340252` — production-excluded-by-catalog-signoff
+- `02360268` — production-excluded-by-catalog-signoff
+- `02360278` — production-excluded-by-catalog-signoff
+- ... and 30 more
 
 ## Advisory rule handling
 - Non-executable groups promoted to `catalog_rules` with `enforceInGraduationProgress: false`.
 
 ## Rollback notes
-- Delete production docs with promotionRunId=dds-promotion-4b29ce342e75 to roll back this run.
+- Delete production docs with promotionRunId=dds-promotion-1c7d820335ae to roll back this run.
 - Do not delete staging data.
 - Advisory catalog rules remain non-enforced in graduation progress.
 

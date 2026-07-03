@@ -7,6 +7,7 @@ from app.db.mongo import close_mongo_client, set_test_database
 from app.middleware.auth_rate_limiter import reset_in_memory_rate_limit_store
 from app.security.refresh_tokens import reset_in_memory_refresh_token_store
 from app.security.oauth_state import reset_in_memory_oauth_state_store
+from app.security.outlook_oauth_state import reset_in_memory_outlook_oauth_state_store
 from app.main import create_app
 from app.routes.auth import reset_user_indexes_state
 from app.routes.completed_courses import reset_completed_course_indexes_state
@@ -19,6 +20,11 @@ from app.routes.student_profile import reset_student_profile_indexes_state
 def reset_runtime_state(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
     monkeypatch.setenv("JWT_EXPIRES_IN", "1h")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("AGENT_LLM_EXPLANATION_ENABLED", "false")
+    monkeypatch.setenv("AGENT_LLM_INTENT_FALLBACK_ENABLED", "false")
+    monkeypatch.setenv("AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED", "false")
+    monkeypatch.setenv("AGENT_LLM_VALIDATION_ENABLED", "false")
     get_settings.cache_clear()
     set_test_database(None)
     close_mongo_client()
@@ -30,7 +36,8 @@ def reset_runtime_state(monkeypatch):
     reset_in_memory_rate_limit_store()
     reset_in_memory_refresh_token_store()
     reset_in_memory_oauth_state_store()
-    reset_in_memory_oauth_state_store()
+    reset_in_memory_outlook_oauth_state_store()
+    reset_in_memory_outlook_oauth_state_store()
     yield
     get_settings.cache_clear()
     set_test_database(None)
@@ -43,6 +50,7 @@ def reset_runtime_state(monkeypatch):
     reset_in_memory_rate_limit_store()
     reset_in_memory_refresh_token_store()
     reset_in_memory_oauth_state_store()
+    reset_in_memory_outlook_oauth_state_store()
 
 
 @pytest.fixture

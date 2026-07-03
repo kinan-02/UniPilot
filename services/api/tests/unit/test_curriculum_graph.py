@@ -22,6 +22,10 @@ def test_parse_credits_range_detects_en_dash():
 
 def test_parse_alternatives_from_notes():
     assert parse_alternatives_from_text("Alt: 1040016 (if retake needed)") == ["1040016"]
+    assert parse_alternatives_from_text("Alternatives: 00440252, 02340252") == [
+        "00440252",
+        "02340252",
+    ]
 
 
 def test_build_credits_display_marks_range_uncertain():

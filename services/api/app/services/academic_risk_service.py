@@ -104,6 +104,59 @@ async def build_plan_view_from_adhoc(
     }
 
 
+async def preview_academic_risks_for_user(
+    database: AsyncIOMotorDatabase,
+    user_id: str,
+    *,
+    course_numbers: list[str],
+    semester_code: str,
+    max_credits: float | None = None,
+    min_credits: float | None = None,
+) -> dict[str, Any]:
+    """Analyze ad-hoc course numbers without persisting (MAS Risk Sentinel integration)."""
+    context = await load_planning_context(database, user_id)
+    if context["status"] != "ok":
+        return context
+
+    catalog_courses = await catalog_repository.find_courses_by_numbers(database, course_numbers)
+    courses_by_number: dict[str, dict[str, Any]] = {}
+    for course in catalog_courses:
+        number = str(course.get("courseNumber") or course.get("number") or "")
+        if not number:
+            continue
+        courses_by_number[number] = course
+        if number.isdigit():
+            courses_by_number[number.zfill(8)] = course
+
+    resolved_ids: list[str] = []
+    for number in course_numbers:
+        normalized = number.zfill(8) if number.isdigit() else number
+        course = courses_by_number.get(normalized) or courses_by_number.get(number)
+        if course is not None:
+            resolved_ids.append(str(course["_id"]))
+
+    if not resolved_ids:
+        return {"status": "validation_error", "errors": ["No matching catalog courses for analysis."]}
+
+    options = {
+        "semesterCode": semester_code,
+        "courseIds": resolved_ids,
+        "maxCredits": max_credits,
+        "minCredits": min_credits,
+    }
+    plan_view = await build_plan_view_from_adhoc(database, context["degree"], options)
+    analysis_data = analyze_academic_risks(
+        profile=context["profile"],
+        degree=context["degree"],
+        catalog_courses=context["catalogCourses"],
+        pool_documents=context["poolDocuments"],
+        graduation_progress=context["graduationProgress"],
+        completed_course_records=context["completedCourseRecords"],
+        plan_view=plan_view,
+    )
+    return {"status": "ok", "analysis": analysis_data}
+
+
 async def analyze_and_store_academic_risks(
     database: AsyncIOMotorDatabase,
     user_id: str,

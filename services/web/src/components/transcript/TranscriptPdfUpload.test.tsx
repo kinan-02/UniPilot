@@ -191,7 +191,9 @@ describe('TranscriptPdfUpload', () => {
     await user.click(screen.getByTestId('transcript-upload-commit'))
 
     await waitFor(() => {
-      expect(endpoints.transcriptImportApi.commit).toHaveBeenCalledWith(previewFixture.courses)
+      expect(endpoints.transcriptImportApi.commit).toHaveBeenCalledWith(previewFixture.courses, {
+        replaceExisting: true,
+      })
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['transcript'] })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })

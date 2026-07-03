@@ -50,7 +50,61 @@
           "suffix": "ie-focus-chain-operations-research",
           "operator": "choose_chain",
           "minCourseRefs": 4,
-          "maxCourseRefs": 8,
+          "maxCourseRefs": 12,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-data-systems",
+          "operator": "choose_chain",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 25,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-or-game-theory",
+          "operator": "choose_chain",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-statistics",
+          "operator": "choose_chain",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-economics",
+          "operator": "choose_chain",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009009-1-000",
+          "trackSlug": "track-industrial-engineering-management",
+          "suffix": "ie-focus-chain-behavior-management",
+          "operator": "choose_chain",
+          "minCourseRefs": 3,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true
+        },
+        {
+          "programCode": "009216-1-000",
+          "trackSlug": "track-data-information-engineering",
+          "suffix": "dne-starred-project-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -170,7 +224,7 @@
           "suffix": "cs-spec-group-03",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -301,7 +355,7 @@
           "suffix": "aero-cluster-2-elective-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -328,7 +382,7 @@
           "suffix": "aero-cluster-5-elective-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -337,7 +391,7 @@
           "suffix": "aero-cluster-6-elective-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -473,7 +527,7 @@
           "suffix": "biology-faculty-elective-list-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -482,7 +536,7 @@
           "suffix": "biology-faculty-elective-list-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -491,7 +545,7 @@
           "suffix": "biology-list-a-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -500,7 +554,7 @@
           "suffix": "biology-list-b-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -636,7 +690,7 @@
           "suffix": "biotech-track-a-experience-and-research-cluster-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -654,7 +708,7 @@
           "suffix": "biotech-track-b-experience-and-research-cluster-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -840,7 +894,7 @@
           "suffix": "civil-hebrew-group-א-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -935,7 +989,7 @@
           "suffix": "edu-elective-subsection-03-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -971,7 +1025,7 @@
           "suffix": "edu-elective-list-ג-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1087,7 +1141,7 @@
           "suffix": "ece-spec-group-02",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00440202",
@@ -1217,7 +1271,7 @@
           "suffix": "ece-spec-group-01",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00440334",
@@ -1230,7 +1284,7 @@
           "suffix": "ece-spec-group-02",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00440191",
@@ -1418,7 +1472,7 @@
           "suffix": "ece-spec-group-01",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00440334",
@@ -1431,7 +1485,7 @@
           "suffix": "ece-spec-group-02",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00440191",
@@ -1475,7 +1529,7 @@
           "suffix": "ece-spec-group-05",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00460248",
@@ -1631,7 +1685,7 @@
           "suffix": "ece-elective-semester-3-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1640,7 +1694,7 @@
           "suffix": "ece-elective-semester-4-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1689,7 +1743,7 @@
           "suffix": "ece-spec-group-02",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00440191",
@@ -1829,7 +1883,7 @@
           "suffix": "ece-spec-group-12",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true,
           "mustIncludeCourseNumbers": [
             "00460243",
@@ -1862,7 +1916,7 @@
           "suffix": "ece-elective-semester-1-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1889,7 +1943,7 @@
           "suffix": "ece-elective-semester-4-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1898,7 +1952,7 @@
           "suffix": "ece-elective-semester-5-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1971,7 +2025,7 @@
           "suffix": "math-science-elective-chain",
           "operator": "choose_chain",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -1989,7 +2043,7 @@
           "suffix": "math-faculty-elective-list-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -2007,7 +2061,7 @@
           "suffix": "math-elective-advanced-physics-elective-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         }
       ]
@@ -2048,7 +2102,7 @@
           "suffix": "mech-elective-list-ג-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -2093,7 +2147,7 @@
           "suffix": "mech-elective-subsection-03-pool",
           "operator": "choose_n",
           "minCourseRefs": 15,
-          "maxCourseRefs": 15,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -2119,6 +2173,15 @@
     "medicine": {
       "deprecatedPoolSuffixes": [],
       "pools": [
+        {
+          "programCode": "027396-1-000",
+          "trackSlug": "track-medicine-dual-data-information-engineering",
+          "suffix": "dual-hash-project-pool",
+          "operator": "choose_n",
+          "minCourseRefs": 10,
+          "maxCourseRefs": 20,
+          "requiresCatalogDescription": true
+        },
         {
           "programCode": "027197-1-000",
           "trackSlug": "track-medicine-bsc",
@@ -2166,7 +2229,7 @@
           "suffix": "physics-elective-list-a-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -2184,7 +2247,7 @@
           "suffix": "physics-elective-list-c-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -2211,7 +2274,7 @@
           "suffix": "physics-elective-list-2-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {
@@ -2229,7 +2292,7 @@
           "suffix": "physics-elective-semesters-5-6-pool",
           "operator": "choose_n",
           "minCourseRefs": 7,
-          "maxCourseRefs": 7,
+          "maxCourseRefs": 20,
           "requiresCatalogDescription": true
         },
         {

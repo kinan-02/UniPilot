@@ -31,6 +31,16 @@ This plan covers:
 - Automatic MongoDB write without user review
 - OCR for scanned transcripts (planned fallback)
 - Registrar / SSO official sync (`source: official` bulk import)
+- **Full Technion transcript** PDFs that list every retake attempt (only the **summary** variant is supported today)
+
+### Technion transcript PDF types
+
+| Variant | On PDF | UniPilot support |
+|---------|--------|------------------|
+| **Summary** (`technion_official_summary`) | One row per course; grade from the last time taken; no retake history | **Supported** — primary import target |
+| **Full / detailed** | Every attempt including מועד ב and failed retakes | **Not yet** — use manual entries or text paste for extra attempts |
+
+Parse metadata includes `transcriptFormat` and `showsAllAttempts: false` for summary imports.
 
 ## 3) Architecture
 

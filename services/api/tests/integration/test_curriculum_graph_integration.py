@@ -135,7 +135,7 @@ async def test_curriculum_graph_returns_400_when_degree_not_found(auth_client, m
             "catalogYear": 2025,
             "currentSemesterCode": "2025-1",
             "degreeId": ghost_degree_id,
-            "academicPath": {"trackSlug": "track-data-information-engineering"},
+            "academicPath": {},
             "preferences": {},
             "revision": 1,
             "createdAt": datetime.now(timezone.utc),
@@ -150,6 +150,41 @@ async def test_curriculum_graph_returns_400_when_degree_not_found(auth_client, m
     )
     assert response.status_code == 400
     assert "degree" in response.json()["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_curriculum_graph_resolves_stale_degree_id_via_track_slug(auth_client, mongo_database):
+    from bson import ObjectId
+    from datetime import datetime, timezone
+
+    from app.security.jwt import create_access_token
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    ghost_user_oid = ObjectId()
+    await mongo_database["student_profiles"].insert_one(
+        {
+            "userId": ghost_user_oid,
+            "institutionId": "technion",
+            "programType": "BSc",
+            "catalogYear": 2025,
+            "currentSemesterCode": "2025-1",
+            "degreeId": ObjectId(),
+            "academicPath": {"trackSlug": "track-data-information-engineering"},
+            "preferences": {},
+            "revision": 1,
+            "createdAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(timezone.utc),
+        }
+    )
+    token = create_access_token(user_id=str(ghost_user_oid), email="stale-degree-graph@example.com")
+
+    response = await auth_client.get(
+        "/graduation-progress/curriculum-graph",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    graph = response.json()["data"]["curriculumGraph"]
+    assert graph["programCode"] == "009216-1-000"
 
 
 @pytest.mark.asyncio

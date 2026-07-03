@@ -214,4 +214,58 @@ def faculty_elective_groups(
             _reprefix_groups(inherited, program_code),
         )
 
-    return groups
+    return _dual_medicine_pool_overrides(page, program_code, groups, page_index)
+
+
+def _dual_medicine_pool_overrides(
+    page: WikiPage,
+    program_code: str,
+    groups: list[dict[str, Any]],
+    pages: dict[str, WikiPage],
+) -> list[dict[str, Any]]:
+    if program_code != "027396-1-000":
+        return groups
+
+    from app.vault.export_dds_catalog import _course_pool_group, _dne_starred_course_refs
+
+    updated: list[dict[str, Any]] = []
+    has_hash_pool = False
+    for group in groups:
+        copied = dict(group)
+        suffix = _group_suffix(str(copied.get("groupId") or ""))
+        if suffix == "elective-ds-pool":
+            copied["minCredits"] = 11.0
+            copied["title"] = "Dual-degree engineering electives"
+            notes = list(copied.get("notes") or [])
+            notes.append("Must include at least 5.0 credits from the dual DNE list and 1 # project course.")
+            copied["notes"] = notes
+        if suffix == "dual-hash-project-pool":
+            has_hash_pool = True
+        updated.append(copied)
+
+    if not has_hash_pool:
+        dne_page = pages.get("track-data-information-engineering")
+        if dne_page is not None:
+            hash_refs = _dne_starred_course_refs({dne_page.slug: dne_page})
+            if hash_refs:
+                updated.append(
+                    _course_pool_group(
+                        program_code=program_code,
+                        group_suffix="dual-hash-project-pool",
+                        title="Dual-degree data-intensive project course",
+                        course_refs=hash_refs,
+                        rule_expression={
+                            "type": "course_pool",
+                            "operator": "choose_n",
+                            "chooseCount": 1,
+                            "chain": "dual_hash_projects",
+                        },
+                        catalog_description=(
+                            "Complete at least one engineering elective marked # "
+                            "(data-intensive project course)."
+                        ),
+                        notes=["At least one # project course required among engineering electives."],
+                    )
+                )
+
+    return updated

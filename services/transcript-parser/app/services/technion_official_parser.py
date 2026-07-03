@@ -1,4 +1,16 @@
-"""Parse Technion official transcript PDF text (Hebrew and English layouts)."""
+"""Parse Technion official transcript PDF text (Hebrew and English layouts).
+
+Technion issues two official PDF variants:
+
+1. **Summary transcript (supported here)** — one row per course showing only the
+   semester and grade from the *latest* time the course was taken. Earlier fails
+   or retakes are not listed.
+2. **Full transcript (not supported yet)** — lists every attempt including retakes
+   and מועד ב rows.
+
+Imports from the summary PDF therefore yield at most one row per course number.
+Retake history must be added manually (or via a future full-transcript importer).
+"""
 
 from __future__ import annotations
 

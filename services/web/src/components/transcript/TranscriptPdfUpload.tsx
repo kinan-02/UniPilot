@@ -119,17 +119,18 @@ export function TranscriptPdfUpload({ locale, t, featured = false }: TranscriptP
   })
 
   const commitMutation = useMutation({
-    mutationFn: () => transcriptImportApi.commit(selectedCourses),
+    mutationFn: () => transcriptImportApi.commit(selectedCourses, { replaceExisting: true }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
       queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
-      const { createdCount, skippedCount, unresolvedCount } = data.importResult
+      const { createdCount, skippedCount, unresolvedCount, replacedCount = 0 } = data.importResult
       setSuccess(
         t('transcript.upload.importSuccess', {
           created: createdCount,
           skipped: skippedCount,
           unresolved: unresolvedCount,
+          replaced: replacedCount,
         }),
       )
       resetPreview()
@@ -344,6 +345,15 @@ export function TranscriptPdfUpload({ locale, t, featured = false }: TranscriptP
               </div>
             ) : null}
 
+            {preview.parseMetadata.transcriptFormat === 'technion_official_summary' ? (
+              <p
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 px-4 py-3 text-sm text-[var(--color-text-muted)]"
+                data-testid="transcript-summary-format-notice"
+              >
+                {t('transcript.summaryTranscriptNotice')}
+              </p>
+            ) : null}
+
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div className="relative flex-1 lg:max-w-sm">
                 <Search
@@ -474,9 +484,14 @@ export function TranscriptPdfUpload({ locale, t, featured = false }: TranscriptP
             )}
 
             <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-white/95 p-4 shadow-[var(--shadow-soft)] backdrop-blur-sm">
-              <p className="text-sm text-[var(--color-text-muted)]">
-                {t('transcript.upload.selectedCount', { count: selectedCourses.length })}
-              </p>
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  {t('transcript.upload.selectedCount', { count: selectedCourses.length })}
+                </p>
+                <p className="text-xs text-amber-900/90 text-pretty">
+                  {t('transcript.upload.replaceNotice')}
+                </p>
+              </div>
               <Button
                 type="button"
                 disabled={selectedCourses.length === 0 || commitMutation.isPending}

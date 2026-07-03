@@ -404,6 +404,8 @@ Future transcript ingestion or registrar sync will insert `official` / `imported
 
 Upload an official Technion transcript PDF for parsing. Forwards to internal `transcript-parser` service; **does not write** to MongoDB.
 
+Supported PDF type: Technion **summary** transcript (`parseMetadata.transcriptFormat: technion_official_summary`) — one row per course with the grade from the last attempt. Retake history is not on this PDF variant.
+
 **Request:** `multipart/form-data` with field `file` (PDF, max `TRANSCRIPT_IMPORT_MAX_UPLOAD_BYTES`, default 5 MiB).
 
 **Success (`200`):** `{ success, data: { parsePreview }, error: null }` — see `docs/planning/TRANSCRIPT_PDF_IMPORT_PLAN.md` for `parsePreview` shape.

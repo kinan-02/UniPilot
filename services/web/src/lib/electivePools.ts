@@ -9,8 +9,6 @@ import { courseNumberKeys, canonicalCourseNumber } from './courseNumbers'
 import {
   buildCourseEquivalenceGroups,
   dedupeEquivalentPoolCourses,
-  equivalenceGroupForCourse,
-  equivalenceGroupKey,
   expandNumbersWithEquivalence,
   isCountedViaEquivalence,
 } from './courseEquivalence'
@@ -284,89 +282,56 @@ export function buildRequiredCurriculumCourseNumbers(
   options?: {
     curriculumGraph?: CurriculumGraph | null
     remainingMandatory?: GraduationProgress['remainingMandatoryCourses']
-    completedMandatory?: GraduationProgress['completedMandatoryCourses']
   },
 ): Set<string> {
-  const satisfied = new Set<string>()
-  const candidateNumbers: string[] = []
+  const outstandingKeys = new Set<string>()
+  const outstandingNumbers: string[] = []
+  const hasApiRemainingList = options?.remainingMandatory !== undefined
 
-  for (const course of options?.completedMandatory ?? []) {
-    addCourseNumberKeys(satisfied, course.courseNumber)
+  for (const course of options?.remainingMandatory ?? []) {
+    if (!course.courseNumber) continue
+    outstandingNumbers.push(course.courseNumber)
+    addCourseNumberKeys(outstandingKeys, course.courseNumber)
   }
-
-  const hasApiMandatoryLists =
-    (options?.completedMandatory?.length ?? 0) > 0 ||
-    (options?.remainingMandatory?.length ?? 0) > 0
 
   for (const bucket of requirementProgress ?? []) {
     if (bucket.isMandatory === false) continue
-    for (const course of bucket.completedCourses ?? []) {
-      addCourseNumberKeys(satisfied, course.courseNumber)
-    }
-    if (!hasApiMandatoryLists) {
-      for (const course of bucket.remainingCourses ?? []) {
-        if (course.courseNumber) candidateNumbers.push(course.courseNumber)
-      }
+    for (const course of bucket.remainingCourses ?? []) {
+      if (!course.courseNumber) continue
+      outstandingNumbers.push(course.courseNumber)
+      addCourseNumberKeys(outstandingKeys, course.courseNumber)
     }
   }
 
-  for (const course of options?.remainingMandatory ?? []) {
-    if (course.courseNumber) candidateNumbers.push(course.courseNumber)
-  }
+  const result = new Set<string>()
 
-  if (hasApiMandatoryLists) {
-    const remainingKeys = new Set<string>()
-    for (const course of options?.remainingMandatory ?? []) {
-      for (const key of courseNumberKeys(course.courseNumber ?? '')) {
-        remainingKeys.add(key)
-      }
+  if (outstandingNumbers.length > 0) {
+    for (const courseNumber of outstandingNumbers) {
+      addCourseNumberKeys(result, courseNumber)
     }
     for (const node of options?.curriculumGraph?.nodes ?? []) {
       const members = [node.courseNumber, ...(node.alternatives ?? [])]
       const memberKeys = members.flatMap((member) => [...courseNumberKeys(member)])
-      if (!memberKeys.some((key) => remainingKeys.has(key))) continue
+      if (!memberKeys.some((key) => outstandingKeys.has(key))) continue
       for (const member of members) {
-        candidateNumbers.push(member)
+        addCourseNumberKeys(result, member)
       }
     }
-  } else {
-    for (const node of options?.curriculumGraph?.nodes ?? []) {
-      candidateNumbers.push(node.courseNumber)
-      for (const alternative of node.alternatives ?? []) {
-        candidateNumbers.push(alternative)
-      }
+    return result
+  }
+
+  if (hasApiRemainingList) {
+    return result
+  }
+
+  for (const node of options?.curriculumGraph?.nodes ?? []) {
+    addCourseNumberKeys(result, node.courseNumber)
+    for (const alternative of node.alternatives ?? []) {
+      addCourseNumberKeys(result, alternative)
     }
   }
 
-  const groups = buildCourseEquivalenceGroups({
-    curriculumGraph: options?.curriculumGraph,
-  })
-  const satisfiedExpanded = expandNumbersWithEquivalence(satisfied, groups)
-  const outstanding = new Set<string>()
-  const seenGroupKeys = new Set<string>()
-
-  for (const courseNumber of candidateNumbers) {
-    if (isCountedViaEquivalence(courseNumber, satisfied, groups)) continue
-
-    const group = equivalenceGroupForCourse(courseNumber, groups)
-    if (!group) {
-      if (!courseNumberKeys(courseNumber).some((key) => satisfiedExpanded.has(key))) {
-        outstanding.add(courseNumber)
-      }
-      continue
-    }
-
-    const groupKey = equivalenceGroupKey(group)
-    if (seenGroupKeys.has(groupKey)) continue
-    if ([...group].some((key) => satisfiedExpanded.has(key))) continue
-
-    for (const key of group) {
-      outstanding.add(key)
-    }
-    seenGroupKeys.add(groupKey)
-  }
-
-  return outstanding
+  return result
 }
 
 export function isCountedCourse(courseNumber: string, countedNumbers: Set<string>): boolean {
@@ -425,10 +390,6 @@ export function resolvePoolProgressDisplay(
   pool: ElectiveBucket,
   allPools: ElectiveBucket[] = [],
 ): PoolProgressDisplay {
-  const bucketSharers = explorerPoolsForBucket(pool, allPools)
-  if (bucketSharers.length > 1) {
-    return computePoolProgressDisplay(pool, allPools)
-  }
   if (pool.progressDisplay) {
     return pool.progressDisplay
   }
@@ -518,6 +479,9 @@ export function poolMatchedBucketCourses(
   allPools: ElectiveBucket[] = [],
 ) {
   const progressDisplay = resolvePoolProgressDisplay(pool, allPools)
+  const bucketAssignsPools = (bucket.completedCourses ?? []).some(
+    (course) => Boolean(course.assignedPoolGroupId),
+  )
 
   if (progressDisplay === 'dedicated_bucket_credits') {
     return (bucket.completedCourses ?? []).filter((course) => {
@@ -534,6 +498,9 @@ export function poolMatchedBucketCourses(
     if (course.assignedPoolGroupId) {
       return course.assignedPoolGroupId === pool.groupId
     }
+    if (bucketAssignsPools) {
+      return false
+    }
     return courseMatchesPoolCatalog(course.courseNumber, pool)
   })
 
@@ -541,7 +508,8 @@ export function poolMatchedBucketCourses(
     matched = matched.filter(
       (course) =>
         course.courseNumber &&
-        !isCourseClaimedByExplicitSiblingPool(course.courseNumber, pool, allPools),
+        (course.assignedPoolGroupId === pool.groupId ||
+          !isCourseClaimedByExplicitSiblingPool(course.courseNumber, pool, allPools)),
     )
   }
 
@@ -681,6 +649,14 @@ export function poolProgressSummary(
     }
   } else if (pool.rule.operator === 'choose_n' && chainStepsRequired != null) {
     chainStepsCompleted = Math.min(counted, chainStepsRequired)
+  }
+
+  const apiEvaluation = bucket.poolConstraints?.allPools?.find(
+    (entry) => entry.requirementGroupId === pool.groupId,
+  )
+  if (apiEvaluation?.stepsRequired != null) {
+    chainStepsRequired = apiEvaluation.stepsRequired
+    chainStepsCompleted = apiEvaluation.stepsCompleted ?? 0
   }
 
   return {

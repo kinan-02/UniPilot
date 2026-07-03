@@ -201,11 +201,13 @@ Full contract: `docs/API_SPEC.md`. API version **1.0.0**.
 
 Register via the web UI at `/register`, complete onboarding with a degree program, then explore catalog, transcript, progress, plans, and risks from the sidebar.
 
-### Transcript retakes and progress
+### Transcript import and progress
 
-Graduation progress uses the **latest attempt** per course (later semester, then attempt number, then import time). The latest attempt must be **passing** to count toward credits and requirements. Same-semester retakes (including מועד ב) are supported on PDF import.
+Technion publishes **two** official PDF transcript types. UniPilot currently imports the **summary** variant: **one row per course** with the grade from the **last** time you took it. Earlier fails or retakes are **not** on that PDF. If you need full attempt history in UniPilot, add retakes manually on the transcript page (or wait for full-transcript import support).
 
-If you imported a transcript before retake fixes shipped, re-upload the official PDF from **Transcript → Import** so missing attempts are added. Rows already stored with the same course, semester, and grade are skipped as duplicates on commit.
+Summary PDF totals (accumulated credits and GPA) match the **Transcript** and **Progress** headline numbers. Requirement buckets on Progress may still assign fewer credits when pool or overlap rules apply (`degreeAppliedCredits`).
+
+Re-upload after parser fixes so pass/exemption metadata is stored. Duplicate rows (same course, semester, and grade) are skipped on commit.
 
 ### Manual semester planner
 

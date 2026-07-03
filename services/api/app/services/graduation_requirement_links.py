@@ -13,21 +13,50 @@ EXPLORER_POOL_CREDIT_BUCKET_SUFFIX: dict[str, str] = {
     "ie-focus-chain-game-theory": "elective-faculty",
     "ie-focus-chain-advanced-industry": "elective-faculty",
     "ie-focus-chain-operations-research": "elective-faculty",
+    "ie-focus-chain-data-systems": "elective-faculty",
+    "ie-focus-chain-or-game-theory": "elective-faculty",
+    "ie-focus-chain-statistics": "elective-faculty",
+    "ie-focus-chain-economics": "elective-faculty",
+    "ie-focus-chain-behavior-management": "elective-faculty",
     "ie-additional-faculty-electives": "elective-faculty",
+    "dne-starred-project-pool": "elective-ds",
+    "science-elective-supplement-pool": "core-mandatory",
+    "dual-hash-project-pool": "elective-ds",
     "is-behavior-science-chain": "elective-faculty",
     "is-focus-chain-performance": "elective-faculty",
     "is-focus-chain-ml": "elective-faculty",
     "is-focus-chain-game-theory": "elective-faculty",
     "is-additional-faculty-electives": "elective-faculty",
+    "cs-faculty-list-a-pool": "faculty-electives",
+    "cs-additional-faculty-electives": "faculty-electives",
 }
 
 # Maps credit-bucket suffix (after programCode) to course_pool group suffix.
 ENFORCED_BUCKET_POOL_SUFFIXES: dict[str, str] = {
     "elective-ds": "elective-ds-pool",
     "elective-faculty": "elective-faculty-pool",
+    "faculty-electives": "faculty-electives-pool",
     "enrichment": "enrichment-pool",
     "physical-education": "physical-education-pool",
 }
+
+# Buckets that enforce linked pool eligibility when pools exist (free-elective stays greedy).
+STRICT_POOL_BUCKET_SUFFIXES: frozenset[str] = frozenset(ENFORCED_BUCKET_POOL_SUFFIXES.keys())
+
+# Buckets that also require sub-pool constraints (choose_n / choose_chain), not credits alone.
+CONSTRAINT_ENFORCED_BUCKET_SUFFIXES: frozenset[str] = frozenset(
+    {
+        "core-mandatory",
+        "elective-ds",
+        "elective-faculty",
+    }
+)
+
+# CS wiki pools map to the faculty-electives credit bucket.
+FACULTY_ELECTIVE_POOL_SUFFIX_PREFIXES: tuple[str, ...] = (
+    "cs-spec-group-",
+    "cs-science-chain-",
+)
 
 # course_pool groups enforced for graduation eligibility in Phase 15.
 ENFORCED_POOL_RULE_TYPES = frozenset({"course_pool"})
@@ -134,10 +163,7 @@ def collect_eligibility_pools_for_bucket(
     else:
         primary_group = conventional_group
 
-    strict = bool(pools) and (
-        bucket_suffix in ENFORCED_BUCKET_POOL_SUFFIXES
-        or bool(explicit_pools)
-    )
+    strict = bool(pools) and bucket_suffix in STRICT_POOL_BUCKET_SUFFIXES
     return pools, primary_group, strict
 
 
@@ -160,6 +186,9 @@ def credit_bucket_id_for_pool(
     explorer_bucket_suffix = EXPLORER_POOL_CREDIT_BUCKET_SUFFIX.get(suffix)
     if explorer_bucket_suffix:
         return bucket_group_id(program_code, explorer_bucket_suffix)
+
+    if any(suffix.startswith(pool_prefix) for pool_prefix in FACULTY_ELECTIVE_POOL_SUFFIX_PREFIXES):
+        return bucket_group_id(program_code, "faculty-electives")
 
     if suffix.endswith("-pool"):
         bucket_suffix = suffix[: -len("-pool")]

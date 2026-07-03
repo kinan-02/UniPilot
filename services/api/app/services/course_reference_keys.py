@@ -127,9 +127,12 @@ def filter_remaining_mandatory_courses(
     *,
     satisfied_group_keys: set[frozenset[str]] | None = None,
     mandatory_groups: list[set[str]] | None = None,
+    transcript_completed_keys: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Drop remaining slots already satisfied by a completed course or equivalence group."""
     completed_keys = completed_mandatory_course_number_keys(completed_courses)
+    if transcript_completed_keys:
+        completed_keys |= transcript_completed_keys
     filtered: list[dict[str, Any]] = []
     seen_group_keys: set[frozenset[str]] = set()
 
@@ -189,6 +192,31 @@ def mandatory_group_for_course(
     return None
 
 
+def resolve_mandatory_assignment_group(
+    course_number: str | None,
+    *,
+    mandatory_equivalence_groups: list[set[str]],
+    progress_equivalence_groups: list[set[str]],
+) -> frozenset[str] | None:
+    """Map a completed course (including catalog-overlap substitutes) to a matrix mandatory group."""
+    direct = mandatory_group_for_course(course_number, mandatory_equivalence_groups)
+    if direct is not None:
+        return direct
+
+    progress_group = mandatory_group_for_course(course_number, progress_equivalence_groups)
+    if progress_group is None:
+        return None
+
+    matrix_keys = matrix_mandatory_number_keys(mandatory_equivalence_groups)
+    if not matrix_keys or not (progress_group & matrix_keys):
+        return None
+
+    for group in mandatory_equivalence_groups:
+        if group & progress_group:
+            return frozenset(group)
+    return None
+
+
 def is_mandatory_curriculum_course(
     course_number: str | None,
     mandatory_groups: list[set[str]] | set[str],
@@ -200,10 +228,70 @@ def is_mandatory_curriculum_course(
     return any(course_matches_equivalence_group(course_number, group) for group in mandatory_groups)
 
 
+def matrix_mandatory_number_keys(
+    mandatory_equivalence_groups: list[set[str]],
+) -> set[str]:
+    keys: set[str] = set()
+    for group in mandatory_equivalence_groups:
+        keys |= group
+    return keys
+
+
+def qualifies_for_required_bucket(
+    course_number: str | None,
+    *,
+    mandatory_equivalence_groups: list[set[str]],
+    progress_equivalence_groups: list[set[str]],
+) -> bool:
+    """Matrix mandatory courses and overlap/cross-track substitutes only — not PE overlap groups."""
+    if not course_number:
+        return False
+    if is_mandatory_curriculum_course(course_number, mandatory_equivalence_groups):
+        return True
+    matrix_keys = matrix_mandatory_number_keys(mandatory_equivalence_groups)
+    group = mandatory_group_for_course(course_number, progress_equivalence_groups)
+    if group is None or not matrix_keys:
+        return False
+    return bool(group & matrix_keys)
+
+
+def should_skip_redundant_core_bucket(
+    bucket_suffix: str,
+    buckets_by_suffix: dict[str, dict[str, Any]],
+) -> bool:
+    """Skip legacy מקצועות ליבה buckets when required + technion-wide split buckets exist."""
+    if bucket_suffix != "core":
+        return False
+    has_required = (
+        "required" in buckets_by_suffix or "required-courses" in buckets_by_suffix
+    )
+    has_technion_split = (
+        "enrichment" in buckets_by_suffix and "physical-education" in buckets_by_suffix
+    )
+    return has_required and has_technion_split
+
+
 MANDATORY_BUCKET_SUFFIX_PRIORITY: tuple[str, ...] = (
     "core-mandatory",
+    "required",
+    "required-courses",
     "mandatory-technion-and-faculty-courses",
     "track-mandatory-courses",
+)
+
+# Credit buckets that satisfy elective/technion-wide rules — never the matrix mandatory target.
+NON_MANDATORY_MATRIX_BUCKET_SUFFIXES: frozenset[str] = frozenset(
+    {
+        "faculty-electives",
+        "elective-faculty",
+        "elective-ds",
+        "elective-general",
+        "core",
+        "technion-wide-electives",
+        "enrichment",
+        "physical-education",
+        "free-elective",
+    }
 )
 
 
@@ -216,6 +304,8 @@ def resolve_mandatory_bucket_suffix(
         if requirement and bool(requirement.get("isMandatory", True)):
             return suffix
     for suffix, requirement in buckets_by_suffix.items():
+        if suffix in NON_MANDATORY_MATRIX_BUCKET_SUFFIXES:
+            continue
         if bool(requirement.get("isMandatory", True)):
             return suffix
     return None

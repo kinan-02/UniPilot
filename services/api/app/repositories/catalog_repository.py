@@ -595,6 +595,19 @@ async def get_degree_program_by_code(
     return to_public_degree_program(document)
 
 
+async def find_degree_program_by_code(
+    database: AsyncIOMotorDatabase,
+    program_code: str,
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any] | None:
+    """Return raw published degree program document for a program code."""
+    settings = settings or get_settings()
+    return await database[settings.degree_programs_collection].find_one(
+        {**PUBLISHED_STATUS_FILTER, "programCode": program_code}
+    )
+
+
 async def find_degree_program_by_id(
     database: AsyncIOMotorDatabase,
     degree_id: str,

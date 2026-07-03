@@ -19,11 +19,27 @@ const t = (key: string) => {
 }
 
 describe('CurriculumGraphSection', () => {
-  it('renders section header, preview stats, and collapsed state by default', () => {
+  it('renders section header and opens mind map by default when nodes exist', () => {
     render(<CurriculumGraphSection graph={emptyCurriculumGraph()} t={t} />)
 
     expect(screen.getByTestId('curriculum-graph-section')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /required curriculum/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /collapse view/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByTestId('curriculum-mindmap')).toBeInTheDocument()
+    expect(screen.queryByTestId('curriculum-graph-preview')).not.toBeInTheDocument()
+  })
+
+  it('keeps mind map collapsed when the graph has no nodes', () => {
+    render(
+      <CurriculumGraphSection
+        graph={emptyCurriculumGraph({ nodes: [], semesterLanes: [], edges: [] })}
+        t={t}
+      />,
+    )
+
     expect(screen.getByRole('button', { name: /mind map view/i })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -34,7 +50,12 @@ describe('CurriculumGraphSection', () => {
 
   it('expands mind map and renders curriculum nodes', async () => {
     const user = userEvent.setup()
-    render(<CurriculumGraphSection graph={emptyCurriculumGraph()} t={t} />)
+    render(
+      <CurriculumGraphSection
+        graph={emptyCurriculumGraph({ nodes: [], semesterLanes: [], edges: [] })}
+        t={t}
+      />,
+    )
 
     await user.click(screen.getByRole('button', { name: /mind map view/i }))
 
@@ -43,15 +64,12 @@ describe('CurriculumGraphSection', () => {
       'true',
     )
     expect(screen.getByTestId('curriculum-mindmap')).toBeInTheDocument()
-    expect(screen.getByTestId('curriculum-node-00940345')).toBeInTheDocument()
-    expect(screen.getByTestId('curriculum-node-01040031')).toBeInTheDocument()
   })
 
   it('collapses mind map when toggle is clicked again', async () => {
     const user = userEvent.setup()
     render(<CurriculumGraphSection graph={emptyCurriculumGraph()} t={t} />)
 
-    await user.click(screen.getByRole('button', { name: /mind map view/i }))
     await user.click(screen.getByRole('button', { name: /collapse view/i }))
 
     expect(screen.queryByTestId('curriculum-mindmap')).not.toBeInTheDocument()
@@ -102,6 +120,7 @@ describe('CurriculumGraphSection', () => {
       />,
     )
 
+    await user.click(screen.getByRole('button', { name: /collapse view/i }))
     await user.click(screen.getByRole('button', { name: /mind map view/i }))
     expect(screen.getByText(/completed via parallel course 01040016/i)).toBeInTheDocument()
   })

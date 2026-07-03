@@ -166,8 +166,23 @@ See [[focus-chains]] for full details. Available chains for IEM:
 #### Chain C: Operations Research (חקר ביצועים)
 **Part 1:** [[00960327-nonlinear-or-models|0960327]] (מודלים לא לינאריים בחקר ביצועים)  
 **Part 2:** [[00960570-game-theory-economic-behavior|0960570]] (תורת המשחקים והתנהגות כלכלית)  
-**Part 3** — one of: [[00960311-optimization-theory-algorithms|0960311]] / [[00960335-optimization-under-uncertainty|0960335]]  
+**Part 3** — one of: [[00960311-optimization-theory-algorithms|0960311]] / [[00960335-optimization-under-uncertainty|0960335]] / 0960351 / [[00970135-multidisciplinary-research-in|0970135]] / [[00970280-algorithms-in-uncertainty-scen|0970280]] / [[00970325-theory-and-methods-in-sparse-o|0970325]] / 0970334  
 *(With advisor approval, 0980413 may substitute for [[00960570-game-theory-economic-behavior|0960570]] or Part 3)*
+
+#### Chain D: Data & Information Systems (מערכות נתונים ומידע)
+Complete **3 courses** from: [[00940288-course|0940288]] / [[00960200-mathematical-tools-for-data-sc|0960200]] / [[00960212-probabilistic-graphical-models|0960212]] / [[00960222-language-computation-and-cogni|0960222]] / [[00960235-intelligent-interactive-system|0960235]] / [[00960244-research-methodologies-in-natu|0960244]] / [[00960262-information-retrieval|0960262]] / [[00960291-highfrequency-algorithmic-trad|0960291]] / [[00960292-prediction-methods-in-fintech|0960292]] / [[00960293-computational-learning-in-port|0960293]] / 0960622 / [[00970200-deep-learning|0970200]] / [[00970215-nlp-methods|0970215]] / [[00970216-advanced-nlp|0970216]] / [[00970217-seminar-in-natural-language-pr|0970217]] / [[00970244-cognitive-robots|0970244]] / [[00970245-mechanism-design-for-data-scie|0970245]] / [[00970246-computational-social-models|0970246]] / [[00970248-machine-learning-in-medicine|0970248]] / [[00970280-algorithms-in-uncertainty-scen|0970280]] / [[00970400-causal-inference|0970400]]
+
+#### Chain E: Operations Research & Game Theory (חקר ביצועים ותורת המשחקים)
+Complete **3 courses** from: [[00960226-computation-game-theory-economics|0960226]] / [[00960311-optimization-theory-algorithms|0960311]] / [[00960335-optimization-under-uncertainty|0960335]] / [[00960336-optimization-methods-in-machin|0960336]] / [[00960573-auction-theory|0960573]] / [[00970317-cooperative-game-theory|0970317]] / [[00970325-theory-and-methods-in-sparse-o|0970325]] / 0970334
+
+#### Chain F: Statistics (סטטיסטיקה)
+Complete **3 courses** from: [[00960414-industrial-statistics|0960414]] / [[00960415-topics-in-regression|0960415]] / [[00960425-time-series-and-forecasting|0960425]] / [[00960450-multiple-comparisons|0960450]] / [[00960470-semiparametric-models|0960470]] / [[00960475-design-of-experiments|0960475]] / [[00970449-nonparametric-statistics|0970449]]
+
+#### Chain G: Economics (כלכלה)
+Complete **3 courses** from: [[0940503-course|0940503]] / [[00940504-course|0940504]] / [[00940513-course|0940513]] / 0960556 / 0970510 / 0970540
+
+#### Chain H: Behavioral Sciences & Management (מדעי ההתנהגות וניהול)
+Complete **3 courses** from: [[00940697-project-research|0940697]] / 0950622 / 0960266 / [[00960600-organizational-behavior|0960600]] / [[00960606-behavioral-economics-technology|0960606]] / [[00960617-thinking-decision-making|0960617]] / [[00960620-human-factors-engineering|0960620]] / 0960622 / 0960690 / 0960692 / [[00960693-psychological-cognitive-networks|0960693]]
 
 ### Group 4 — Additional Faculty Electives
 

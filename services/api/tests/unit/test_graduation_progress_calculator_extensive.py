@@ -11,6 +11,7 @@ from app.services.grade_evaluation import is_passing_grade
 from app.services.graduation_progress_calculator import (
     build_effective_completions,
     calculate_graduation_progress,
+    compute_transcript_accumulated_credits,
     is_course_eligible_for_pool,
     round_credits,
     round_percentage,
@@ -268,6 +269,19 @@ def test_pool_eligibility_wrong_rule_type():
 # --- Phase 15.0 naming convention ---
 
 
+def test_compute_transcript_accumulated_credits_sums_latest_passing_rows():
+    older = str(ObjectId())
+    newer = str(ObjectId())
+    effective = build_effective_completions(
+        [
+            _completion(older, 40, 0, semesterCode="2023-1"),
+            _completion(older, 88, 4.0, semesterCode="2024-1"),
+            _completion(newer, 90, 3.5, semesterCode="2024-2"),
+        ]
+    )
+    assert compute_transcript_accumulated_credits(effective) == 7.5
+
+
 def test_phase_15_0_ds_pool_rejects_non_listed_course():
     in_pool = str(ObjectId())
     out_pool = str(ObjectId())
@@ -290,8 +304,9 @@ def test_phase_15_0_ds_pool_rejects_non_listed_course():
     ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
     assert ds["creditsCompleted"] == 3.5
     assert ds["eligibilityEnforcement"] == "strict_pool"
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 8.5
     assert progress["transcriptCreditsTotal"] == 8.5
+    assert progress["degreeAppliedCredits"] == 3.5
     assert len(progress["ineligibleCredits"]) == 1
     assert progress["ineligibleCredits"][0]["courseNumber"] == "01040031"
 
@@ -549,7 +564,8 @@ def test_mandatory_matrix_course_reserved_for_core_not_elective_pool():
     ds = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":elective-ds"))
     core = next(r for r in progress["requirementProgress"] if r["requirementGroupId"].endswith(":core-mandatory"))
     assert ds["creditsCompleted"] == 0
-    assert core["creditsCompleted"] == 4.0
+    assert core["creditsCompleted"] == 108.0
+    assert core["status"] == "satisfied"
     assert any(course["courseNumber"] == "00940345" for course in core["completedCourses"])
 
 
@@ -638,8 +654,9 @@ def test_completion_without_catalog_records_ineligible_and_does_not_assign_credi
         catalog_courses_by_id={},
         completed_course_records=[_completion(unknown, 88, 3.5)],
     )
-    assert progress["completedCredits"] == 0
+    assert progress["completedCredits"] == 3.5
     assert progress["transcriptCreditsTotal"] == 3.5
+    assert progress["degreeAppliedCredits"] == 0
     ds = progress["requirementProgress"][0]
     assert ds["creditsCompleted"] == 0
     assert len(progress["ineligibleCredits"]) == 1
@@ -663,8 +680,9 @@ def test_not_assigned_credits_excluded_from_degree_total():
             _completion(out_pool, 90, 5.0),
         ],
     )
-    assert progress["completedCredits"] == 3.5
+    assert progress["completedCredits"] == 8.5
     assert progress["transcriptCreditsTotal"] == 8.5
+    assert progress["degreeAppliedCredits"] == 3.5
     assert any(row["reason"] == "not_assigned_to_requirement" for row in progress["ineligibleCredits"])
     assert progress["assumptionKeys"]
 

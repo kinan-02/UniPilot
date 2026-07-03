@@ -134,6 +134,8 @@ export type TranscriptParsePreview = {
     pipelineVersion: string
     textCharCount: number
     ocrUsed: boolean
+    transcriptFormat?: string
+    showsAllAttempts?: boolean
   }
 }
 
@@ -144,6 +146,7 @@ export type TranscriptImportResult = {
   createdCount: number
   skippedCount: number
   unresolvedCount: number
+  replacedCount?: number
 }
 
 export type CompletedCourse = {
@@ -158,6 +161,12 @@ export type CompletedCourse = {
   attempt: number
   source: string
   recordedAt?: string
+  metadata?: {
+    passGrade?: boolean
+    exemption?: boolean
+    importSource?: string
+    importedTitle?: string
+  }
 }
 
 export type CourseProgressEntry = {
@@ -169,6 +178,35 @@ export type CourseProgressEntry = {
   grade?: string | number
   semesterCode?: string
   assignedPoolGroupId?: string | null
+}
+
+export type PoolConstraintEvaluation = {
+  requirementGroupId?: string
+  title?: string
+  operator?: string
+  status?: string
+  stepsCompleted?: number
+  stepsRequired?: number
+  creditsCompleted?: number
+  creditsRequired?: number
+  satisfied?: boolean
+  usedPhysics1mRule?: boolean
+}
+
+export type PoolConstraintsSummary = {
+  constraintsSatisfied?: boolean
+  mandatoryPools?: PoolConstraintEvaluation[]
+  focusChains?: PoolConstraintEvaluation[]
+  scienceSupplement?: PoolConstraintEvaluation | null
+  allPools?: PoolConstraintEvaluation[]
+}
+
+export type ProgressAdvisoryWarning = {
+  code: string
+  severity?: string
+  message: string
+  courseNumber?: string
+  completedSemesterIndex?: number
 }
 
 export type RequirementProgressEntry = {
@@ -186,6 +224,7 @@ export type RequirementProgressEntry = {
   creditsRemaining: number
   completedCourses?: CourseProgressEntry[]
   remainingCourses?: CourseProgressEntry[]
+  poolConstraints?: PoolConstraintsSummary | null
 }
 
 export type MissingRequirementEntry = {
@@ -205,6 +244,7 @@ export type MissingRequirementEntry = {
 export type IneligibleCreditEntry = {
   courseId: string
   courseNumber?: string
+  courseTitle?: string
   creditsEarned: number
   reason?: string
   linkedPoolGroupId?: string
@@ -219,6 +259,7 @@ export type GraduationProgress = {
   catalogVersion?: string
   completedCredits: number
   transcriptCreditsTotal?: number
+  degreeAppliedCredits?: number
   totalRequiredCredits: number
   creditsRemaining: number
   completionPercentage: number
@@ -232,6 +273,7 @@ export type GraduationProgress = {
   assumptions?: string[]
   assumptionKeys?: string[]
   catalogOverlapEquivalenceGroups?: string[][]
+  advisoryWarnings?: ProgressAdvisoryWarning[]
   statusSummary: string
 }
 
@@ -551,7 +593,12 @@ export type AdvisorReply = {
   retrievalStatus?: string | null
 }
 
-export type AgentSessionStatus = 'pending' | 'processing' | 'completed' | 'failed'
+export type AgentSessionStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'awaiting_clarification'
 
 export type AgentTurn = {
   agent_role: string

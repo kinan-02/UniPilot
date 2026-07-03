@@ -110,6 +110,7 @@ async def test_suggest_semester_courses_sets_partial_and_empty_flags():
         )
 
     assert result["status"] == "ok"
+    assert result["offeredCourseNumbers"] == ["10001"]
     explanation = result["explanation"]
     assert explanation["partialPlan"] is True
     assert explanation["emptyPlan"] is False

@@ -265,8 +265,9 @@ def test_dual_overlapping_transcript_courses_count_once_toward_degree():
             },
         ],
     )
-    assert progress["completedCredits"] == 3.5
-    assert progress["transcriptCreditsTotal"] == 3.5
+    assert progress["completedCredits"] == 7.5
+    assert progress["transcriptCreditsTotal"] == 7.5
+    assert progress["degreeAppliedCredits"] == 3.5
     assert any(
         {"02340114", "02340117"} <= set(group)
         for group in progress["catalogOverlapEquivalenceGroups"]
@@ -332,3 +333,117 @@ def test_matrix_alternatives_without_catalog_overlap_do_not_exclude_transcript_c
         row for row in progress["ineligibleCredits"] if row["reason"] == "overlap_no_additional_credit"
     ]
     assert overlap_rows == []
+
+
+def test_catalog_overlap_assigns_all_mandatory_slots_but_counts_credit_once():
+    """Separate matrix mandatory slots in one overlap group all appear in core-mandatory."""
+    course_ids = [str(ObjectId()) for _ in range(3)]
+    catalog = {
+        course_ids[0]: {
+            "courseNumber": "00940224",
+            "credits": 4.0,
+            "noAdditionalCreditText": "00940345 00970447",
+        },
+        course_ids[1]: {
+            "courseNumber": "00940345",
+            "credits": 4.0,
+            "noAdditionalCreditText": "00940224 00970447",
+        },
+        course_ids[2]: {
+            "courseNumber": "00970447",
+            "credits": 4.0,
+            "noAdditionalCreditText": "00940224 00940345",
+        },
+    }
+    progress = calculate_graduation_progress(
+        degree_program={
+            "_id": ObjectId(),
+            "programCode": "009118-1-000",
+            "totalCredits": 155.0,
+        },
+        hard_requirements=[
+            {
+                "_id": ObjectId(),
+                "requirementGroupId": "009118-1-000:core-mandatory",
+                "minCredits": 107.5,
+                "isMandatory": True,
+                "ruleExpression": {"type": "credit_bucket"},
+            }
+        ],
+        pool_documents=[],
+        catalog_courses_by_id=catalog,
+        completed_course_records=[
+            {
+                "courseId": ObjectId(course_id),
+                "grade": 88,
+                "creditsEarned": 4.0,
+                "recordedAt": f"2024-0{index + 1}-01T00:00:00Z",
+            }
+            for index, course_id in enumerate(course_ids)
+        ],
+        semester_matrix_documents=[
+            {"courseReferences": [{"courseNumber": "00940224"}]},
+            {"courseReferences": [{"courseNumber": "00940345"}]},
+            {"courseReferences": [{"courseNumber": "00970447"}]},
+        ],
+    )
+    core = next(
+        entry
+        for entry in progress["requirementProgress"]
+        if entry["requirementGroupId"].endswith(":core-mandatory")
+    )
+    completed_numbers = {course["courseNumber"] for course in core["completedCourses"]}
+    assert completed_numbers == {"00940224", "00940345", "00970447"}
+    assert core["creditsCompleted"] == 107.5
+    assert core["creditsRemaining"] == 0.0
+    assert core["status"] == "satisfied"
+    overlap_rows = [
+        row for row in progress["ineligibleCredits"] if row["reason"] == "overlap_no_additional_credit"
+    ]
+    assert overlap_rows == []
+
+
+def test_mandatory_bucket_credits_track_remaining_slot_credits():
+    """Completed + remaining slot credits should sum to the bucket minimum."""
+    completed_id = str(ObjectId())
+    remaining_id = str(ObjectId())
+    progress = calculate_graduation_progress(
+        degree_program={
+            "_id": ObjectId(),
+            "programCode": "009118-1-000",
+            "totalCredits": 155.0,
+        },
+        hard_requirements=[
+            {
+                "_id": ObjectId(),
+                "requirementGroupId": "009118-1-000:core-mandatory",
+                "minCredits": 10.0,
+                "isMandatory": True,
+                "ruleExpression": {"type": "credit_bucket"},
+            }
+        ],
+        pool_documents=[],
+        catalog_courses_by_id={
+            completed_id: {"courseNumber": "00940101", "credits": 4.0},
+            remaining_id: {"courseNumber": "00940102", "credits": 3.5},
+        },
+        completed_course_records=[
+            {
+                "courseId": ObjectId(completed_id),
+                "grade": 88,
+                "creditsEarned": 4.0,
+            }
+        ],
+        semester_matrix_documents=[
+            {"courseReferences": [{"courseNumber": "00940101"}]},
+            {"courseReferences": [{"courseNumber": "00940102"}]},
+        ],
+    )
+    core = next(
+        entry
+        for entry in progress["requirementProgress"]
+        if entry["requirementGroupId"].endswith(":core-mandatory")
+    )
+    assert core["creditsCompleted"] == 6.5
+    assert core["creditsRemaining"] == 3.5
+    assert len(core["remainingCourses"]) == 1

@@ -8,29 +8,38 @@ faculty: faculty-medicine
 electiveSource: track-data-information-engineering
 sources: 1
 created: 2026-06-22
-updated: 2026-06-24
+updated: 2026-06-28
 ---
 
 # Medicine + Data and Information Engineering Dual Track
 
-**Faculty:** [[faculty-medicine]]
-**Program code:** 027396-1-000
-**Total Credits:** ~223.5 נ"ז
+**Faculty:** [[faculty-medicine]]  
+**Program code:** 027396-1-000  
+**Total credits required:** 241.5  
+**Duration:** ~5 years pre-clinical + 3 clinical years for M.D.
 
 ## Overview
 
-Dual MD + B.Sc. program combining [[faculty-medicine]] with [[faculty-dds]] (DNE track). Students earn both an MD and a B.Sc. in Data and Information Engineering. The program takes approximately 5+3 years, producing graduates capable of leading data-driven medicine and clinical AI research.
+Dual MD + B.Sc. program combining [[faculty-medicine]] with [[faculty-dds]] (DNE track). See [[program-dual-medicine]] for the full curriculum.
 
-_Full course table: see [[technion-medicine-catalog-2025-2026]]. PDF extraction not reliable for this track due to two-column layout._
+## Credit Breakdown
 
-## נתונים בעברית
+| Category | Credits |
+|----------|---------|
+| Required courses (engineering and medicine) | 225.5 |
+| DNE engineering electives | 11.0 |
+| Medical electives | 0.0 |
+| Physical Education | 2.0 |
+| University requirements (English) | 3.0 |
+| **Total** | **241.5** |
 
-**פקולטה:** [[faculty-medicine]]
-**נקודות זכות:** ~223.5 נ"ז
+## Engineering Electives (11.0 credits)
 
-מסלול משולב ל-MD + בוגר בהנדסת נתונים ומידע (DNE) ב[[faculty-dds]]. הסטודנטים מקבלים גם תואר MD וגם תואר בוגר בהנדסת נתונים. התכנית נמשכת כ-5+3 שנים ומכשירה רופאים מומחי נתונים.
+Must include at least **5.0 credits** from the dual-degree DNE elective list and at least **1 course marked #** (data-intensive project).
+
+See [[program-dual-medicine]] for the full elective list and semester plan.
 
 ## Sources
 
+- [[program-dual-medicine]]
 - [[technion-medicine-catalog-2025-2026]]
-- [[technion-full-catalog-2025-2026]]

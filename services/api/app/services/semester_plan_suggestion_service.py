@@ -221,6 +221,13 @@ async def suggest_semester_courses(
     return {
         "status": "ok",
         "plannedCourses": selected_courses,
+        "offeredCourseNumbers": sorted(
+            {
+                str(number).strip()
+                for number in offerings_by_number.keys()
+                if str(number).strip()
+            }
+        ),
         "explanation": explanation,
     }
 

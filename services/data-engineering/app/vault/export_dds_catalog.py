@@ -216,6 +216,10 @@ def build_course_reference(
         alt_number = normalize_course_number(match.group(1))
         if alt_number and alt_number not in alternatives:
             alternatives.append(alt_number)
+    for alt_number in collect_course_numbers_from_text(code):
+        normalized = normalize_course_number(alt_number)
+        if normalized and normalized != course_number and normalized not in alternatives:
+            alternatives.append(normalized)
 
     credits_range = None
     if credits_hint_raw:
@@ -333,6 +337,29 @@ def _credit_bucket_groups(program_code: str, config: dict[str, Any]) -> list[dic
     return groups
 
 
+def _is_advisory_matrix_row(row: dict[str, str | None]) -> bool:
+    """Skip placeholder / advisory semester-matrix rows (science slots, PE, etc.)."""
+    code = (row.get("code") or "").strip()
+    name = (row.get("name") or "").strip()
+    notes = (row.get("notes") or "").strip()
+    haystack = f"{code} {name} {notes}".lower()
+    advisory_markers = (
+        "מקצוע מדעי",
+        "קורס מתמטי נוסף",
+        "חינוך גופני",
+        "(see list)",
+        "see list",
+        "see above",
+        "see 4-year",
+    )
+    if not code or code in {"—", "-"} or "see " in haystack:
+        return True
+    if any(marker.lower() in haystack for marker in advisory_markers):
+        return True
+    number = resolve_course_number_token(code)
+    return number in {None, "00000004"}
+
+
 def _semester_matrix_groups(
     page: WikiPage,
     program_code: str,
@@ -347,19 +374,22 @@ def _semester_matrix_groups(
         next_heading = re.search(r"^#{2,3}\s+", english[start:], re.MULTILINE)
         section = english[start : start + next_heading.start()] if next_heading else english[start:]
         tables = parse_markdown_tables(section)
+        if not tables:
+            continue
         course_refs: list[dict[str, Any]] = []
-        for table in tables:
-            for row in _table_course_rows(table, pages=pages):
-                ref = build_course_reference(
-                    row["code"] or "",
-                    title_hint=row.get("name"),
-                    credits_hint=parse_credits_value(row.get("credits")),
-                    credits_hint_raw=row.get("credits"),
-                    source_page=page.path,
-                    notes=[row["notes"]] if row.get("notes") else [],
-                )
-                if ref is not None:
-                    course_refs.append(ref)
+        for row in _table_course_rows(tables[0], pages=pages):
+            if _is_advisory_matrix_row(row):
+                continue
+            ref = build_course_reference(
+                row["code"] or "",
+                title_hint=row.get("name"),
+                credits_hint=parse_credits_value(row.get("credits")),
+                credits_hint_raw=row.get("credits"),
+                source_page=page.path,
+                notes=[row["notes"]] if row.get("notes") else [],
+            )
+            if ref is not None:
+                course_refs.append(ref)
         if not course_refs:
             continue
         groups.append(
@@ -573,7 +603,16 @@ FACULTY_ADDITIONAL_RULE: dict[str, Any] = {
 ENRICHMENT_POOL_RULE: dict[str, Any] = {
     "type": "course_pool",
     "operator": "min_credits",
-    "allowedPrefixes": ["039405"],
+    "allowedPrefixes": [
+        "039405",
+        "032402",
+        "032403",
+        "032404",
+        "032405",
+        "032406",
+        "032409",
+    ],
+    "excludedCourseNumbers": ["03240033", "03240455"],
 }
 
 PHYSICAL_EDUCATION_POOL_RULE: dict[str, Any] = {
@@ -649,7 +688,10 @@ def _general_technion_elective_groups(
             min_credits=enrichment,
             rule_expression=ENRICHMENT_POOL_RULE,
             catalog_description=GENERAL_TECHNION_ENRICHMENT_DESCRIPTION,
-            notes=["Eligible courses use catalog prefix 039405 (CHE enrichment)."],
+            notes=[
+                "Eligible CHE enrichment courses use prefixes 039405 or humanities-center "
+                "032402–032409 (excluding mandatory English 03240033)."
+            ],
         ),
         _course_pool_group(
             program_code=program_code,
@@ -671,6 +713,57 @@ def _general_technion_elective_groups(
             catalog_description=GENERAL_TECHNION_PHYSICAL_EDUCATION_DESCRIPTION,
             notes=["Eligible courses use catalog prefixes 039408 or 039409."],
         ),
+    ]
+
+
+PHYSICS_1M_COURSE_NUMBER = "01140071"
+PHYSICS_1_COURSE_NUMBER = "01140051"
+SCIENCE_SUPPLEMENT_CREDITS_PHYSICS_1 = 5.5
+SCIENCE_SUPPLEMENT_CREDITS_PHYSICS_1M = 4.5
+
+
+def _science_requirement_groups(
+    pages: dict[str, WikiPage],
+    program_code: str,
+) -> list[dict[str, Any]]:
+    """Science supplement beyond Physics 1 / Physics 1M (shared across DDS B.Sc. tracks)."""
+    dne_page = pages.get("track-data-information-engineering")
+    if dne_page is None:
+        return []
+
+    english = dne_page.english_body
+    section_start = english.find("## Science Course Requirement")
+    if section_start < 0:
+        return []
+    section = english[section_start : english.find("\n## ", section_start + 1)]
+    tables = parse_markdown_tables(section)
+    refs: list[dict[str, Any]] = []
+    for table in tables:
+        refs.extend(_table_course_refs(dne_page, table))
+
+    if not refs:
+        return []
+
+    return [
+        _course_pool_group(
+            program_code=program_code,
+            group_suffix="science-elective-supplement-pool",
+            title="Science course supplement",
+            course_refs=refs,
+            min_credits=SCIENCE_SUPPLEMENT_CREDITS_PHYSICS_1,
+            rule_expression={
+                "type": "course_pool",
+                "operator": "min_credits",
+                "physics1CourseNumber": PHYSICS_1_COURSE_NUMBER,
+                "physics1mCourseNumber": PHYSICS_1M_COURSE_NUMBER,
+                "supplementCreditsIfPhysics1m": SCIENCE_SUPPLEMENT_CREDITS_PHYSICS_1M,
+            },
+            catalog_description=(
+                "Beyond Physics 1 (1140051), earn 5.5 more credits from the approved science list; "
+                "if taking Physics 1M (1140071), only 4.5 additional credits are required."
+            ),
+            notes=["Excess science credits count toward free electives."],
+        )
     ]
 
 
@@ -715,6 +808,27 @@ def _dne_elective_groups(page: WikiPage, program_code: str, config: dict[str, An
                     notes=["Must include at least 2 courses marked * in the source catalog."],
                 )
             )
+            starred_refs = _dne_starred_course_refs({page.slug: page})
+            if starred_refs:
+                groups.append(
+                    _course_pool_group(
+                        program_code=program_code,
+                        group_suffix="dne-starred-project-pool",
+                        title="DNE data-intensive project courses",
+                        course_refs=starred_refs,
+                        rule_expression={
+                            "type": "course_pool",
+                            "operator": "choose_n",
+                            "chooseCount": 2,
+                            "chain": "dne_starred_projects",
+                        },
+                        catalog_description=(
+                            "Complete at least 2 DNE elective courses marked * "
+                            "(data-intensive project courses)."
+                        ),
+                        notes=["Must include at least 2 courses marked * in the source catalog."],
+                    )
+                )
             groups.append(
                 _course_pool_group(
                     program_code=program_code,
@@ -780,6 +894,11 @@ def _iem_elective_groups(page: WikiPage, program_code: str) -> list[dict[str, An
         "Chain A": "ie-focus-chain-game-theory",
         "Chain B": "ie-focus-chain-advanced-industry",
         "Chain C": "ie-focus-chain-operations-research",
+        "Chain D": "ie-focus-chain-data-systems",
+        "Chain E": "ie-focus-chain-or-game-theory",
+        "Chain F": "ie-focus-chain-statistics",
+        "Chain G": "ie-focus-chain-economics",
+        "Chain H": "ie-focus-chain-behavior-management",
     }
     for label, suffix in chain_map.items():
         start = focus_section.find(label)
@@ -846,7 +965,25 @@ def _iem_focus_chain_description(label: str) -> str:
             "Group 3 — Operations research focus chain. Complete all 3 parts: "
             "Part 1 (required): 0960327 Nonlinear models in operations research. "
             "Part 2 (required): 0960570 Game theory and economic behavior (0980413 may substitute). "
-            "Part 3: one of 0960311, 0960335."
+            "Part 3: one of 0960311, 0960335, 0960351, 0970135, 0970280, 0970325, 0970334."
+        ),
+        "Chain D": (
+            "Group 3 — Data & information systems focus chain. Complete any 3 courses "
+            "from the catalog data-systems list."
+        ),
+        "Chain E": (
+            "Group 3 — Operations research & game theory focus chain. Complete any 3 courses "
+            "from the combined OR and game-theory list."
+        ),
+        "Chain F": (
+            "Group 3 — Statistics focus chain. Complete any 3 courses from the statistics elective list."
+        ),
+        "Chain G": (
+            "Group 3 — Economics focus chain. Complete any 3 courses from the economics elective list."
+        ),
+        "Chain H": (
+            "Group 3 — Behavioral sciences & management focus chain. Complete any 3 courses "
+            "from the behavioral sciences elective list."
         ),
     }
     return descriptions.get(label, "Complete one 3-course focus chain from the catalog.")
@@ -974,6 +1111,7 @@ def build_program(page: WikiPage, config: dict[str, Any], pages: dict[str, WikiP
     elif page.slug == "track-information-systems-engineering":
         requirement_groups.extend(_is_elective_groups(page, program_code, pages))
 
+    requirement_groups.extend(_science_requirement_groups(pages, program_code))
     requirement_groups.extend(_general_technion_elective_groups(program_code))
 
     return {

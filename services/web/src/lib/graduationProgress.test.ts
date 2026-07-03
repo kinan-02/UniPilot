@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  apiRemainingMandatoryCourses,
   bucketCompletionPercent,
-  filterRemainingMandatoryCourses,
   hasActionableGaps,
   hasDegreeCreditBucketGap,
   isGeneralTechnionBucket,
+  overlapIneligibleCredits,
   partitionRequirementBuckets,
   progressCatalogSubtitle,
   statusBadgeTone,
@@ -43,8 +44,10 @@ describe('graduationProgress helpers', () => {
       sampleBucket({ requirementGroupId: '009216-1-000:free-elective', isMandatory: false }),
     ]
     const { mandatory, elective, generalTechnion } = partitionRequirementBuckets(buckets)
-    expect(mandatory).toHaveLength(2)
-    expect(elective).toHaveLength(0)
+    expect(mandatory).toHaveLength(1)
+    expect(mandatory[0]?.requirementGroupId).toBe('009216-1-000:core-mandatory')
+    expect(elective).toHaveLength(1)
+    expect(elective[0]?.requirementGroupId).toBe('009216-1-000:elective-ds')
     expect(generalTechnion).toHaveLength(2)
   })
 
@@ -100,57 +103,49 @@ describe('graduationProgress helpers', () => {
     ).toBe(false)
   })
 
-  it('filters remaining mandatory courses already satisfied by parallel completion', () => {
-    const graph = {
-      trackSlug: 'track',
-      programCode: '009216-1-000',
-      catalogYear: 2025,
-      viewDefault: 'semester_swimlanes' as const,
-      semesterLanes: [],
-      nodes: [
-        {
-          nodeId: 'node-algebra',
-          courseNumber: '1040065',
-          title: 'Algebra',
-          semester: 1,
-          status: 'available' as const,
-          credits: { display: '5', value: 5, uncertain: false },
-          alternatives: ['1040016'],
-          dataQuality: {
-            manualReviewRequired: false,
-            confidence: 'high' as const,
-            hasAlternatives: true,
-            creditsUncertain: false,
-            verifyWithRegistrar: true,
-          },
-          prerequisiteNumbers: [],
-          missingPrerequisites: [],
-          isBottleneck: false,
-        },
+  it('returns API remaining mandatory courses without client re-filtering', () => {
+    const progress: GraduationProgress = {
+      degreeId: 'abc',
+      completedCredits: 70,
+      totalRequiredCredits: 155,
+      creditsRemaining: 85,
+      completionPercentage: 45,
+      statusSummary: 'in_progress',
+      remainingMandatoryCourses: [
+        { courseId: 'm1', courseNumber: '02340123', courseTitle: 'OS' },
+        { courseId: 'm2', courseNumber: '02360343', courseTitle: 'Theory' },
       ],
-      edges: [],
-      bottlenecks: [],
-      electiveBuckets: [],
     }
-    const remaining = filterRemainingMandatoryCourses(
-      [
-        { courseId: 'matrix:1040065', courseNumber: '1040065' },
-        { courseId: 'matrix:01040031', courseNumber: '01040031' },
+    expect(apiRemainingMandatoryCourses(progress).map((course) => course.courseNumber)).toEqual([
+      '02340123',
+      '02360343',
+    ])
+  })
+
+  it('counts overlap ineligible credits in attention totals', () => {
+    const progress: GraduationProgress = {
+      degreeId: 'abc',
+      completedCredits: 70,
+      totalRequiredCredits: 155,
+      creditsRemaining: 85,
+      completionPercentage: 45,
+      statusSummary: 'in_progress',
+      ineligibleCredits: [
+        { courseId: 'o1', courseNumber: '02340117', creditsEarned: 4, reason: 'overlap_no_additional_credit' },
       ],
-      [{ courseId: 'real-id', courseNumber: '1040016' }],
-      { curriculumGraph: graph },
-    )
-    expect(remaining.map((course) => course.courseNumber)).toEqual(['01040031'])
+    }
+    expect(overlapIneligibleCredits(progress)).toHaveLength(1)
   })
 
   it('detects credit/bucket gaps when open buckets and ineligible credits coexist', () => {
     const gap = hasDegreeCreditBucketGap({
       degreeId: 'd1',
-      completedCredits: 80,
+      completedCredits: 95,
       transcriptCreditsTotal: 95,
+      degreeAppliedCredits: 80,
       totalRequiredCredits: 155,
-      creditsRemaining: 75,
-      completionPercentage: 51.6,
+      creditsRemaining: 60,
+      completionPercentage: 61.3,
       statusSummary: 'in_progress',
       missingRequirements: [{ requirementId: 'r1' } as never],
       ineligibleCredits: [{ courseId: 'x', creditsEarned: 15, reason: 'not_assigned_to_requirement' }],

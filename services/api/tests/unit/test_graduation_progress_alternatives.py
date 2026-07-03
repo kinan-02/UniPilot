@@ -80,7 +80,8 @@ def test_parallel_matrix_course_counts_toward_core_mandatory():
         for entry in progress["requirementProgress"]
         if entry["requirementGroupId"].endswith(":core-mandatory")
     )
-    assert core["creditsCompleted"] == 5.0
+    assert core["creditsCompleted"] == 108.0
+    assert core["status"] == "satisfied"
     assert any(course["courseNumber"] == "1040016" for course in core["completedCourses"])
     assert progress["ineligibleCredits"] == []
     remaining_numbers = {
@@ -267,7 +268,8 @@ def test_matrix_mandatory_assigns_to_technion_faculty_bucket_when_no_core_mandat
         for entry in progress["requirementProgress"]
         if entry["requirementGroupId"].endswith(":track-mandatory-courses")
     )
-    assert technion["creditsCompleted"] == 4.0
+    assert technion["creditsCompleted"] == 89.0
+    assert technion["status"] == "satisfied"
     assert any(course["courseNumber"] == "00140102" for course in technion["completedCourses"])
     assert track["creditsCompleted"] == 0
     assert progress["ineligibleCredits"] == []

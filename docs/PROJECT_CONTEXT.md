@@ -1,6 +1,6 @@
 # UniPilot AI — Project Context (Source of Truth)
 
-Last updated: 2026-06-28
+Last updated: 2026-07-03
 Use it before starting major coding, architecture updates, or roadmap decisions.
 
 If this file and another doc conflict:
@@ -45,7 +45,7 @@ Current stage: **auth (incl. Google OAuth + remember-me) + student profile + cat
 
 Architecture pattern:
 - `api` receives client requests and exposes `/health`, auth routes (register, login, refresh, logout, Google OAuth, remember-me cookies), protected `/student-profile` CRUD, protected `/completed-courses` CRUD, protected `/graduation-progress`, protected `/semester-plans` generate/history routes, protected `/academic-risks` analyze/history routes, protected `/transcript-import/parse` + `/transcript-import/commit`, and read-only catalog routes (`/catalog/*`).
-- `transcript-parser` is an internal FastAPI service for official transcript PDF extraction (called by `api` only).
+- `transcript-parser` is an internal FastAPI service for official transcript PDF extraction (called by `api` only). It targets Technion **summary** transcripts (one row per course, latest grade only); full multi-attempt PDFs are not supported yet.
 - `worker` and `ai` are internal services for async pipeline foundation.
 - `redis` is queue/rate-limit infrastructure foundation.
 - `mongo` is persistent data store (named volume).
@@ -67,6 +67,25 @@ The **Node.js / Express** reference backend has been **removed**. **`services/ap
 | Historical plan | `docs/planning/PYTHON_BACKEND_MIGRATION_PLAN.md` (archived reference) |
 
 **Do not** reintroduce a second API container or expose internal services to the host.
+
+### UniPilot Agent overhaul (in progress — 2026-07-03)
+
+The legacy MAS negotiation runtime (`services/mas`, `/agent/sessions`) is being **replaced** by a supervisor-orchestrator agent inside `services/api`, per [`Agent_spec.md`](../Agent_spec.md) and [`docs/planning/AGENT_OVERHAUL_PLAN.md`](planning/AGENT_OVERHAUL_PLAN.md).
+
+| Item | Status |
+|---|---|
+| `POST/GET /agent/conversations` | Done (Phase 1) |
+| `POST /agent/conversations/{id}/messages` (JSON + SSE) | Done (Phase 1) |
+| Orchestrator, intent router, task planner, entity resolver | Done (Phase 1) |
+| Graduation progress workflow (deterministic) | Done (first workflow) |
+| Context builder, retrieval layer, wiki RAG | Done (Phase 2) |
+| Graduation progress workflow (deterministic audit → blocks) | Done (Phase 3) |
+| Course question workflow (eligibility, offering, contribution, prerequisites) | Done (Phase 4) |
+| Transcript import workflow (review table + confirmed import) | Done (Phase 5) |
+| Semester planning workflow (options + confirmed save) | Done (Phase 6) |
+| RAG profiles, hybrid retrieval, evaluation harness | Done (Phase 7 baseline) |
+| Agentic RAG: query decomposition, multi-step retrieval, refinement | Done (Phase 7 advanced) |
+| Legacy `/agent/sessions` + `services/mas` | Deprecated path — still running until UI migrates |
 
 ### Python Phase 2 status (implemented)
 

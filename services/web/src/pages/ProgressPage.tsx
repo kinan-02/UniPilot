@@ -6,8 +6,8 @@ import { progressApi } from '../api/endpoints'
 import { isAuthError } from '../auth/AuthContext'
 import {
   ProgressEmptyTranscriptHint,
-  RequirementBucketRow,
 } from '../components/progress/ProgressSections'
+import { ProgressBucketSection } from '../components/progress/ProgressBucketSection'
 import { ProgressAttentionPanel } from '../components/progress/ProgressAttentionPanel'
 import { ProgressCompletionCelebration } from '../components/progress/ProgressCompletionCelebration'
 import { ProgressPageNav } from '../components/progress/ProgressPageNav'
@@ -18,17 +18,15 @@ import { ProgressLoadingSkeleton } from '../components/progress/ProgressLoadingS
 import { ProgressSummaryCard } from '../components/progress/ProgressSummaryCard'
 import { Card, EmptyState, PageHeader } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
-import { formatCredits } from '../lib/utils'
 import {
   buildFullTranscriptCourseNumbers,
   buildRequiredCurriculumCourseNumbers,
-  findPoolsForBucket,
 } from '../lib/electivePools'
 import {
-  bucketCompletionPercent,
   countAttentionItems,
-  filterRemainingMandatoryCourses,
+  apiRemainingMandatoryCourses,
   hasActionableGaps,
+  overlapIneligibleCredits,
   partitionRequirementBuckets,
 } from '../lib/graduationProgress'
 import type { ElectiveBucket, RequirementProgressEntry } from '../types/api'
@@ -73,11 +71,9 @@ export function ProgressPage() {
       buildRequiredCurriculumCourseNumbers(requirementProgress, {
         curriculumGraph: curriculumQuery.data?.curriculumGraph,
         remainingMandatory: progressQuery.data?.graduationProgress?.remainingMandatoryCourses,
-        completedMandatory: progressQuery.data?.graduationProgress?.completedMandatoryCourses,
       }),
     [
       curriculumQuery.data?.curriculumGraph,
-      progressQuery.data?.graduationProgress?.completedMandatoryCourses,
       progressQuery.data?.graduationProgress?.remainingMandatoryCourses,
       requirementProgress,
     ],
@@ -175,12 +171,19 @@ export function ProgressPage() {
       ? t(statusKey)
       : progress.statusSummary.replace(/_/g, ' ')
 
-  const { mandatory } = partitionRequirementBuckets(progress.requirementProgress)
+  const { mandatory, elective, generalTechnion } = partitionRequirementBuckets(
+    progress.requirementProgress,
+  )
   const showTranscriptHint =
     progress.statusSummary === 'not_started' || progress.completedCredits <= 0
   const curriculumGraph = curriculumQuery.data?.curriculumGraph
-  const showAttention = hasActionableGaps(progress, curriculumGraph)
-  const attentionCount = countAttentionItems(progress, curriculumGraph)
+  const curriculumLoadError =
+    curriculumQuery.isError && curriculumQuery.error instanceof Error
+      ? curriculumQuery.error.message
+      : null
+  const showAttention =
+    hasActionableGaps(progress) || overlapIneligibleCredits(progress).length > 0
+  const attentionCount = countAttentionItems(progress)
   const showCurriculum = Boolean(curriculumGraph)
   const showPools =
     !curriculumQuery.isLoading || curriculumQuery.data
@@ -190,32 +193,31 @@ export function ProgressPage() {
     !showAttention &&
     (progress.statusSummary === 'complete' ||
       progress.statusSummary === 'mandatory_requirements_met')
-  const mandatoryRemainingCount = filterRemainingMandatoryCourses(
-    progress.remainingMandatoryCourses,
-    progress.completedMandatoryCourses,
-    { curriculumGraph, progress },
-  ).length
-  const mandatoryCreditsCompleted = mandatory.reduce(
-    (sum, bucket) => sum + bucket.creditsCompleted,
-    0,
-  )
-  const mandatoryCreditsRequired = mandatory.reduce((sum, bucket) => sum + bucket.minCredits, 0)
-  const mandatoryAggregatePercent = bucketCompletionPercent(
-    mandatoryCreditsCompleted,
-    mandatoryCreditsRequired,
-  )
+  const mandatoryRemainingCount = apiRemainingMandatoryCourses(progress).length
+  const progressAdvisories = progress.advisoryWarnings ?? []
+  const curriculumAdvisories = curriculumGraph?.advisories ?? []
+  const mergedAdvisoryCodes = new Set<string>()
+  const mergedAdvisories = [...progressAdvisories, ...curriculumAdvisories].filter((advisory) => {
+    if (mergedAdvisoryCodes.has(advisory.code)) return false
+    mergedAdvisoryCodes.add(advisory.code)
+    return true
+  })
   const navSections = [
     { id: 'progress-overview', label: t('progress.nav.overview') },
     ...(showAttention
       ? [{ id: 'progress-attention', label: t('progress.nav.attention') }]
       : []),
+    ...(showCurriculum || curriculumQuery.isError
+      ? [{ id: 'progress-curriculum', label: t('progress.nav.curriculum') }]
+      : []),
     ...(mandatory.length
       ? [{ id: 'progress-mandatory', label: t('progress.nav.mandatory') }]
       : []),
-    ...(showPools ? [{ id: 'elective-pools-panel', label: t('progress.nav.pools') }] : []),
-    ...(showCurriculum
-      ? [{ id: 'progress-curriculum', label: t('progress.nav.curriculum') }]
+    ...(elective.length ? [{ id: 'progress-elective', label: t('progress.nav.elective') }] : []),
+    ...(generalTechnion.length
+      ? [{ id: 'progress-general-technion', label: t('progress.nav.generalTechnion') }]
       : []),
+    ...(showPools ? [{ id: 'elective-pools-panel', label: t('progress.nav.pools') }] : []),
   ]
 
   return (
@@ -241,7 +243,6 @@ export function ProgressPage() {
         statusLabel={statusLabel}
         attentionCount={attentionCount}
         mandatoryRemainingCount={mandatoryRemainingCount}
-        curriculumGraph={curriculumGraph}
         t={t}
       />
 
@@ -252,61 +253,64 @@ export function ProgressPage() {
       ) : null}
 
       {showAttention ? (
-        <ProgressAttentionPanel
-          progress={progress}
+        <ProgressAttentionPanel progress={progress} t={t} />
+      ) : null}
+
+      {showCurriculum ? (
+        <div id="progress-curriculum">
+          <CurriculumGraphSection graph={curriculumGraph!} t={t} />
+        </div>
+      ) : curriculumQuery.isError ? (
+        <Card className="scroll-mt-24 border-dashed" id="progress-curriculum">
+          <h2 className="text-lg font-semibold">{t('progress.curriculum.title')}</h2>
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+            {t('progress.curriculum.loadFailed')}
+          </p>
+          {curriculumLoadError ? (
+            <p className="mt-2 text-sm text-amber-900 text-pretty">{curriculumLoadError}</p>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {mandatory.length ? (
+        <ProgressBucketSection
+          id="progress-mandatory"
+          title={t('progress.mandatoryBuckets')}
+          hint={t('progress.mandatoryBucketsHint')}
+          aggregateLabel={t('progress.mandatoryAggregate')}
+          aggregateHint={t('progress.mandatoryAggregateHint')}
+          buckets={mandatory}
+          electivePools={electivePools}
           curriculumGraph={curriculumGraph}
+          onExplorePool={electivePools.length ? handleExplorePool : undefined}
           t={t}
         />
       ) : null}
 
-      {mandatory.length ? (
-        <Card className="scroll-mt-24" id="progress-mandatory">
-          <div className="mb-4 space-y-3">
-            <div>
-              <h2 className="text-lg font-semibold">{t('progress.mandatoryBuckets')}</h2>
-              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                {t('progress.mandatoryBucketsHint')}
-              </p>
-            </div>
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="font-medium">{t('progress.mandatoryAggregate')}</span>
-                <span className="tabular-nums text-[var(--color-text-muted)]">
-                  {formatCredits(mandatoryCreditsCompleted)} / {formatCredits(mandatoryCreditsRequired)}{' '}
-                  {t('common.credits')}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                {t('progress.mandatoryAggregateHint')}
-              </p>
-              <div
-                className="mt-2 h-2 overflow-hidden rounded-full bg-stone-100"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(mandatoryAggregatePercent)}
-                aria-label={t('progress.mandatoryBuckets')}
-              >
-                <div
-                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
-                  style={{ width: `${mandatoryAggregatePercent}%` }}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {mandatory.map((bucket) => (
-              <RequirementBucketRow
-                key={bucket.requirementGroupId}
-                bucket={bucket}
-                linkedPools={findPoolsForBucket(bucket, electivePools)}
-                onExplorePool={electivePools.length ? handleExplorePool : undefined}
-                curriculumGraph={curriculumGraph}
-                t={t}
-              />
-            ))}
-          </div>
-        </Card>
+      {elective.length ? (
+        <ProgressBucketSection
+          id="progress-elective"
+          title={t('progress.electiveBuckets')}
+          hint={t('progress.electiveBucketsHint')}
+          buckets={elective}
+          electivePools={electivePools}
+          curriculumGraph={curriculumGraph}
+          onExplorePool={electivePools.length ? handleExplorePool : undefined}
+          t={t}
+        />
+      ) : null}
+
+      {generalTechnion.length ? (
+        <ProgressBucketSection
+          id="progress-general-technion"
+          title={t('progress.generalTechnionBuckets')}
+          hint={t('progress.generalTechnionBucketsHint')}
+          buckets={generalTechnion}
+          electivePools={electivePools}
+          curriculumGraph={curriculumGraph}
+          onExplorePool={electivePools.length ? handleExplorePool : undefined}
+          t={t}
+        />
       ) : null}
 
       {curriculumQuery.isLoading && !curriculumQuery.data ? (
@@ -324,31 +328,19 @@ export function ProgressPage() {
           t={t}
           onExpandedPoolChange={handleExpandedPoolChange}
         />
-      ) : curriculumQuery.isError ? (
-        <Card className="border-dashed">
-          <p className="text-sm text-[var(--color-text-muted)]">
-            {t('progress.electiveExplorer.loadFailed')}
-          </p>
-        </Card>
       ) : null}
 
-      {curriculumGraph?.advisories?.length ? (
-        <Card className="scroll-mt-24 border-sky-200/80 bg-sky-50/50">
+      {mergedAdvisories.length ? (
+        <Card className="scroll-mt-24 border-sky-200/80 bg-sky-50/50" id="progress-advisories">
           <h2 className="text-sm font-semibold text-sky-950">{t('progress.curriculumAdvisories')}</h2>
           <ul className="mt-2 space-y-2">
-            {curriculumGraph.advisories.map((advisory) => (
-              <li key={advisory.code} className="text-sm text-sky-900">
+            {mergedAdvisories.map((advisory) => (
+              <li key={advisory.code} className="text-sm text-sky-900 text-pretty">
                 {advisory.message}
               </li>
             ))}
           </ul>
         </Card>
-      ) : null}
-
-      {showCurriculum ? (
-        <div id="progress-curriculum">
-          <CurriculumGraphSection graph={curriculumGraph!} t={t} />
-        </div>
       ) : null}
 
       {progress.assumptionKeys?.length || progress.assumptions?.length ? (

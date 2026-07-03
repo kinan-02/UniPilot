@@ -26,6 +26,11 @@ class ParseMetadata(BaseModel):
     pipelineVersion: str
     textCharCount: int = Field(ge=0)
     ocrUsed: bool = False
+    transcriptFormat: str = Field(
+        default="unknown",
+        description="technion_official_summary = one row per course (latest grade only)",
+    )
+    showsAllAttempts: bool = False
 
 
 class ParseTranscriptResult(BaseModel):

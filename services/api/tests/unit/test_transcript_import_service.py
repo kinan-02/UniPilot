@@ -143,6 +143,31 @@ async def test_commit_transcript_import_stores_same_semester_pass_after_fail(mon
 
 
 @pytest.mark.asyncio
+async def test_commit_transcript_import_stores_pass_and_exemption_metadata(mongo_database):
+    course = await seed_production_course_fixture(mongo_database)
+    user_id = "665f2b0f2a3f7b2a1a9a7c06"
+
+    result = await commit_transcript_import(
+        mongo_database,
+        user_id,
+        CommitTranscriptImportRequest(
+            courses=[
+                CommitTranscriptCourseInput(
+                    courseNumber=course["courseNumber"],
+                    semesterCode="2024-1",
+                    grade=56,
+                    creditsEarned=3,
+                    warnings=["Recorded as pass grade"],
+                )
+            ]
+        ),
+    )
+
+    assert result["createdCount"] == 1
+    assert result["created"][0]["metadata"]["passGrade"] is True
+
+
+@pytest.mark.asyncio
 async def test_commit_transcript_import_resolves_unpadded_course_number(mongo_database):
     course = await seed_production_course_fixture(mongo_database)
     user_id = "665f2b0f2a3f7b2a1a9a7c02"
@@ -165,3 +190,44 @@ async def test_commit_transcript_import_resolves_unpadded_course_number(mongo_da
 
     assert result["createdCount"] == 1
     assert result["unresolvedCount"] == 0
+
+
+@pytest.mark.asyncio
+async def test_commit_transcript_import_replace_existing_removes_prior_pdf_rows(mongo_database):
+    course = await seed_production_course_fixture(mongo_database)
+    from app.repositories.completed_course_repository import create_completed_course
+
+    user_id = "665f2b0f2a3f7b2a1a9a7c10"
+    await create_completed_course(
+        mongo_database,
+        user_id,
+        {
+            **build_completed_course_payload(course["courseId"]),
+            "source": "imported",
+            "metadata": {
+                "importSource": "transcript-pdf",
+                "importedCourseNumber": course["courseNumber"],
+            },
+        },
+    )
+
+    result = await commit_transcript_import(
+        mongo_database,
+        user_id,
+        CommitTranscriptImportRequest(
+            replaceExisting=True,
+            courses=[
+                CommitTranscriptCourseInput(
+                    courseNumber=course["courseNumber"],
+                    semesterCode="2025-1",
+                    grade=90,
+                    creditsEarned=3,
+                )
+            ],
+        ),
+    )
+
+    assert result["replacedCount"] == 1
+    assert result["createdCount"] == 1
+    assert result["skippedCount"] == 0
+    assert result["created"][0]["metadata"]["importedCourseNumber"] == course["courseNumber"]

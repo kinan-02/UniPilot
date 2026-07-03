@@ -53,21 +53,21 @@ Legend — Priority: P0 (must), P1 (should), P2 (nice). Status: `todo` / `in-pro
 
 | ID | Feature | Priority | Phase | Status |
 |----|---------|----------|-------|--------|
-| AI-1 | Redis job queue + worker consumer | P0 | 3 | todo |
-| AI-2 | Internal AI service integration | P0 | 3 | todo |
-| AI-3 | Job model + states in MongoDB | P0 | 3 | todo |
-| AI-4 | Enqueue endpoint (202 + job id) | P0 | 3 | todo |
-| AI-5 | Job status/result endpoint (protected) | P0 | 3 | todo |
-| AI-6 | Rate limiting on AI endpoints | P0 | 3 | todo |
-| AI-7 | AI response validation + timeouts/retries | P0 | 3 | todo |
+| AI-1 | Redis job queue + worker consumer | P0 | 3 | done |
+| AI-2 | Internal AI service integration | P0 | 3 | done |
+| AI-3 | Job model + states in MongoDB | P0 | 3 | done |
+| AI-4 | Enqueue endpoint (202 + job id) | P0 | 3 | done |
+| AI-5 | Job status/result endpoint (protected) | P0 | 3 | done |
+| AI-6 | Rate limiting on AI endpoints | P0 | 3 | done |
+| AI-7 | AI response validation + timeouts/retries | P0 | 3 | done |
 
 ## AI Decision Features
 
 | ID | Feature | Priority | Phase | Status |
 |----|---------|----------|-------|--------|
-| DEC-1 | Course/path recommendation request | P1 | 4 | todo |
+| DEC-1 | Course/path recommendation request | P1 | 4 | done |
 | DEC-2 | "What-if" academic scenario analysis | P1 | 4 | todo |
-| DEC-3 | Decision history per student | P2 | 4 | todo |
+| DEC-3 | Decision history per student | P2 | 4 | done |
 
 ## Quality & Delivery
 

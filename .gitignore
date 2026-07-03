@@ -36,3 +36,9 @@ services/data-engineering/data/reports/technion/dds_staging_quality_report.json
 # Graphify (local cache; commit graph.json + GRAPH_REPORT.md if sharing with team)
 graphify-out/cost.json
 graphify-out/cache/
+
+# RAG embedding index cache (generated locally)
+services/api/data/cache/wiki_embedding_index.json
+services/api/data/cache/wiki_embedding_index.compact.pkl.gz
+services/api/data/cache/wiki_embedding_index.meta.json
+services/api/data/cache/backups/

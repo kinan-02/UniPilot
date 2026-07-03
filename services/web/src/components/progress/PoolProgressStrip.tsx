@@ -79,10 +79,7 @@ export function PoolProgressStrip({
     progressDisplay,
     allPools,
   )
-  const barCredits =
-    progressDisplay === 'shared_bucket_credits'
-      ? creditProgress.displayCreditsCompleted
-      : creditProgress.bucketCreditsCompleted
+  const barCredits = creditProgress.bucketCreditsCompleted
   const percent = bucketCompletionPercent(barCredits, creditProgress.bucketMinCredits)
   const bucketTitle = localizedBucketTitle(linkedBucket, t)
   const isShared = progressDisplay === 'shared_bucket_credits'
@@ -151,9 +148,7 @@ export function PoolProgressBadge({
   )
   return (
     <Badge tone={linkedBucket.status === 'satisfied' ? 'success' : 'primary'}>
-      {progressDisplay === 'shared_bucket_credits'
-        ? formatCredits(creditProgress.displayCreditsCompleted)
-        : `${Math.round(percent)}%`}
+      {`${Math.round(percent)}%`}
     </Badge>
   )
 }

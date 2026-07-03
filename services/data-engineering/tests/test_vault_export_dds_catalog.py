@@ -78,7 +78,15 @@ def test_export_includes_general_technion_elective_pools():
         for group in document["programs"][0]["requirementGroups"]
         if group["groupId"] == "009216-1-000:enrichment-pool"
     )
-    assert enrichment["ruleExpression"]["allowedPrefixes"] == ["039405"]
+    assert enrichment["ruleExpression"]["allowedPrefixes"] == [
+        "039405",
+        "032402",
+        "032403",
+        "032404",
+        "032405",
+        "032406",
+        "032409",
+    ]
     assert enrichment.get("catalogDescription")
 
 

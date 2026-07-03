@@ -3,14 +3,13 @@ import { Badge, Card } from '../ui/Card'
 import { interpolateTemplate } from '../../lib/electivePools'
 import { progressCatalogSubtitle, statusBadgeTone, hasDegreeCreditBucketGap } from '../../lib/graduationProgress'
 import { formatCredits, formatPercent } from '../../lib/utils'
-import type { CurriculumGraph, GraduationProgress } from '../../types/api'
+import type { GraduationProgress } from '../../types/api'
 
 type ProgressSummaryCardProps = {
   progress: GraduationProgress
   statusLabel: string
   attentionCount?: number
   mandatoryRemainingCount?: number
-  curriculumGraph?: CurriculumGraph | null
   t: (key: string) => string
   id?: string
 }
@@ -65,7 +64,6 @@ export function ProgressSummaryCard({
   statusLabel,
   attentionCount = 0,
   mandatoryRemainingCount = 0,
-  curriculumGraph,
   t,
   id = 'progress-overview',
 }: ProgressSummaryCardProps) {
@@ -74,11 +72,7 @@ export function ProgressSummaryCard({
   const electiveCompleted = progress.completedElectiveCredits ?? 0
   const electiveRemaining = progress.remainingElectiveCredits ?? 0
   const electiveTotal = electiveCompleted + electiveRemaining
-  const transcriptTotal = progress.transcriptCreditsTotal
-  const showTranscriptNote =
-    transcriptTotal != null &&
-    Math.abs(transcriptTotal - progress.completedCredits) > 0.01
-  const showBucketGapNote = hasDegreeCreditBucketGap(progress, curriculumGraph)
+  const showBucketGapNote = hasDegreeCreditBucketGap(progress)
 
   return (
     <Card
@@ -121,13 +115,6 @@ export function ProgressSummaryCard({
                 count: formatCredits(progress.creditsRemaining),
               })}
             </p>
-            {showTranscriptNote ? (
-              <p className="mt-2 text-xs text-[var(--color-text-muted)] text-pretty">
-                {interpolateTemplate(t('progress.transcriptCreditsNote'), {
-                  count: formatCredits(transcriptTotal ?? 0),
-                })}
-              </p>
-            ) : null}
             {showBucketGapNote ? (
               <p className="mt-2 text-xs text-amber-800 text-pretty">
                 {t('progress.bucketCompletionMismatch')}

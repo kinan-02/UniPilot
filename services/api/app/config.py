@@ -1,7 +1,32 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_API_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resolve_repo_root() -> Path:
+    """Repo root on host (UniPilot/); in Docker fall back to API root (/app)."""
+    config_path = Path(__file__).resolve()
+    for parent in config_path.parents:
+        if (parent / "docker-compose.yml").is_file():
+            return parent
+    return _API_ROOT
+
+
+_REPO_ROOT = _resolve_repo_root()
+
+
+def _settings_env_files() -> tuple[str, ...]:
+    paths: list[str] = []
+    for candidate in (_REPO_ROOT / ".env", _API_ROOT / ".env", Path.cwd() / ".env"):
+        if candidate.is_file():
+            resolved = str(candidate.resolve())
+            if resolved not in paths:
+                paths.append(resolved)
+    return tuple(paths) if paths else (".env",)
 
 # Dev-only default for Docker first-run; rejected when ENVIRONMENT=production.
 DEV_JWT_SECRET = "unipilot_dev_jwt_secret_change_in_production"
@@ -51,6 +76,38 @@ class Settings(BaseSettings):
     transcript_import_rate_limit_max: int = 10
     ai_service_url: str | None = None
     ai_advisor_timeout_seconds: int = 120
+    mas_queue_name: str = "mas_agent_jobs"
+    agent_sessions_collection: str = "agent_sessions"
+    agent_conversations_collection: str = "agent_conversations"
+    agent_messages_collection: str = "agent_messages"
+    agent_runs_collection: str = "agent_runs"
+    agent_steps_collection: str = "agent_steps"
+    agent_tool_calls_collection: str = "agent_tool_calls"
+    agent_action_proposals_collection: str = "agent_action_proposals"
+    agent_max_retrieval_attempts: int = 3
+    agent_max_tool_calls_per_run: int = 12
+    agent_max_workflow_steps: int = 20
+    agent_agentic_retrieval_enabled: bool = Field(
+        default=True,
+        validation_alias="AGENT_AGENTIC_RETRIEVAL_ENABLED",
+    )
+    agent_llm_validation_enabled: bool = Field(
+        default=False,
+        validation_alias="AGENT_LLM_VALIDATION_ENABLED",
+    )
+    agent_llm_explanation_enabled: bool = Field(
+        default=True,
+        validation_alias="AGENT_LLM_EXPLANATION_ENABLED",
+    )
+    agent_llm_intent_fallback_enabled: bool = Field(
+        default=True,
+        validation_alias="AGENT_LLM_INTENT_FALLBACK_ENABLED",
+    )
+    agent_llm_preference_extraction_enabled: bool = Field(
+        default=True,
+        validation_alias="AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED",
+    )
+    agent_assumptions_collection: str = "agent_assumptions"
     transcript_parser_url: str | None = None
     transcript_parser_timeout_seconds: int = 60
     transcript_import_max_upload_bytes: int = 5 * 1024 * 1024
@@ -76,12 +133,36 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str | None = None
     e2e_google_oauth_stub: bool = False
+    microsoft_client_id: str | None = None
+    microsoft_tenant_id: str = "common"
+    microsoft_redirect_uri: str | None = None
+    microsoft_scopes: str = "User.Read Mail.Read offline_access"
+    microsoft_token_encryption_key: str | None = None
     refresh_token_session_ttl_seconds: int = 24 * 60 * 60
     refresh_token_remember_ttl_seconds: int = 30 * 24 * 60 * 60
     technion_raw_dir: str | None = None
+    catalog_vault_wiki_path: str | None = None
+    agent_wiki_retrieval_limit: int = 5
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_base_url: str | None = Field(default=None, validation_alias="OPENAI_BASE_URL")
+    openai_chat_model: str | None = Field(default=None, validation_alias="OPENAI_CHAT_MODEL")
+    embedding_api_key: str | None = Field(default=None, validation_alias="EMBEDDING_API_KEY")
+    embedding_base_url: str | None = Field(default=None, validation_alias="EMBEDDING_BASE_URL")
+    embedding_model: str | None = Field(default=None, validation_alias="EMBEDDING_MODEL")
+    embedding_enabled: bool = Field(default=True, validation_alias="EMBEDDING_ENABLED")
+    embedding_index_enabled: bool = Field(default=True, validation_alias="EMBEDDING_INDEX_ENABLED")
+    embedding_index_cache_path: str | None = Field(
+        default=None,
+        validation_alias="EMBEDDING_INDEX_CACHE_PATH",
+    )
+    embedding_index_batch_size: int = Field(default=64, validation_alias="EMBEDDING_INDEX_BATCH_SIZE")
+    embedding_index_cache_backup_count: int = Field(
+        default=3,
+        validation_alias="EMBEDDING_INDEX_CACHE_BACKUP_COUNT",
+    )
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_settings_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -132,6 +213,62 @@ class Settings(BaseSettings):
             return configured.rstrip("/")
         return "http://ai:3001"
 
+    def resolved_embedding_api_key(self) -> str:
+        return (self.embedding_api_key or "").strip()
+
+    def resolved_embedding_base_url(self) -> str:
+        configured = (self.embedding_base_url or "").strip()
+        if configured:
+            return configured.rstrip("/")
+        return "https://api.llmod.ai/v1"
+
+    def resolved_embedding_model(self) -> str:
+        configured = (self.embedding_model or "").strip()
+        if configured:
+            return configured
+        return "MB5R2CF-azure/text-embedding-3-small"
+
+    def embeddings_available(self) -> bool:
+        return bool(self.embedding_enabled and self.resolved_embedding_api_key())
+
+    def resolved_embedding_index_cache_path(self) -> str:
+        configured = (self.embedding_index_cache_path or "").strip()
+        local_default = str(_API_ROOT / "data" / "cache" / "wiki_embedding_index.json")
+        if configured:
+            if configured.startswith("/app/") and self.environment != "production":
+                return local_default
+            return configured
+        if self.environment == "production":
+            return "/app/data/cache/wiki_embedding_index.json"
+        return local_default
+
+    def wiki_vector_index_enabled(self) -> bool:
+        return bool(self.embedding_index_enabled and self.embeddings_available())
+
+    def resolved_embedding_index_cache_backup_count(self) -> int:
+        return max(0, int(self.embedding_index_cache_backup_count or 3))
+
+    def is_agentic_retrieval_enabled(self) -> bool:
+        return bool(self.agent_agentic_retrieval_enabled)
+
+    def is_agent_llm_validation_enabled(self) -> bool:
+        return bool(self.agent_llm_validation_enabled)
+
+    def is_agent_llm_explanation_enabled(self) -> bool:
+        if not (self.openai_api_key or "").strip():
+            return False
+        return bool(self.agent_llm_explanation_enabled)
+
+    def is_agent_llm_intent_fallback_enabled(self) -> bool:
+        if not (self.openai_api_key or "").strip():
+            return False
+        return bool(self.agent_llm_intent_fallback_enabled)
+
+    def is_agent_llm_preference_extraction_enabled(self) -> bool:
+        if not (self.openai_api_key or "").strip():
+            return False
+        return bool(self.agent_llm_preference_extraction_enabled)
+
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()
 
@@ -150,6 +287,28 @@ class Settings(BaseSettings):
         if self.environment == "production":
             return False
         return bool(self.e2e_google_oauth_stub and self.google_oauth_enabled())
+
+    def resolved_microsoft_redirect_uri(self) -> str:
+        configured = (self.microsoft_redirect_uri or "").strip()
+        if configured:
+            return configured
+        return f"{self.resolved_web_app_url()}/api/integrations/outlook/callback"
+
+    def resolved_microsoft_scopes(self) -> list[str]:
+        return [scope.strip() for scope in self.microsoft_scopes.split() if scope.strip()]
+
+    def microsoft_oauth_enabled(self) -> bool:
+        client_id = (self.microsoft_client_id or "").strip()
+        encryption_key = (self.microsoft_token_encryption_key or "").strip()
+        return bool(client_id and encryption_key)
+
+    def require_microsoft_token_encryption_key(self) -> bytes:
+        raw = (self.microsoft_token_encryption_key or "").strip()
+        if not raw:
+            raise RuntimeError(
+                "MICROSOFT_TOKEN_ENCRYPTION_KEY is required for Outlook token storage."
+            )
+        return raw.encode("utf-8")
 
     @field_validator("mongo_root_password", mode="before")
     @classmethod

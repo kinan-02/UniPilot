@@ -125,6 +125,9 @@ def extract_program_code(page: WikiPage) -> str | None:
 
 _BUCKET_SLUG_ALIASES: dict[str, str] = {
     "free-electives": "free-elective",
+    "required-courses-engineering-and-medicine": "core-mandatory",
+    "dne-engineering-electives": "elective-ds",
+    "university-requirements-english": "free-elective",
 }
 
 _HEBREW_BUCKET_KEYWORDS: tuple[tuple[str, str], ...] = (
@@ -179,6 +182,66 @@ def _dedupe_requirement_groups(groups: list[dict[str, Any]]) -> list[dict[str, A
         if incoming_refs:
             existing["courseReferences"] = _merge_unique_course_refs(existing_refs, incoming_refs)
     return list(merged.values())
+
+
+_CANONICAL_TRACK_SLUG_PRIORITY: tuple[str, ...] = (
+    "track-computer-science-general-3year",
+    "track-computer-science-general-4year",
+)
+
+
+def _program_canonical_sort_key(program: dict[str, Any]) -> tuple[int, int, str]:
+    metadata = program.get("metadata") or {}
+    wiki_slug = str(metadata.get("wikiPage") or "")
+    program_kind = str(metadata.get("programKind") or "")
+    is_specialization = 1 if program_kind == "bsc_specialization" else 0
+    slug_priority = (
+        _CANONICAL_TRACK_SLUG_PRIORITY.index(wiki_slug)
+        if wiki_slug in _CANONICAL_TRACK_SLUG_PRIORITY
+        else len(_CANONICAL_TRACK_SLUG_PRIORITY)
+    )
+    return (is_specialization, slug_priority, wiki_slug)
+
+
+def _collapse_programs_by_code(programs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep one degree program per programCode; specializations must not pollute matrix rules."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for program in programs:
+        code = str(program.get("programCode") or "")
+        if not code:
+            continue
+        grouped.setdefault(code, []).append(program)
+
+    collapsed: list[dict[str, Any]] = []
+    for candidates in grouped.values():
+        if len(candidates) == 1:
+            collapsed.append(candidates[0])
+            continue
+
+        canonical = sorted(candidates, key=_program_canonical_sort_key)[0]
+        merged_groups = list(canonical.get("requirementGroups") or [])
+        matrix_group_ids = {
+            str(group.get("groupId"))
+            for group in merged_groups
+            if (group.get("ruleExpression") or {}).get("type") == "semester_matrix"
+        }
+        for alternate in candidates:
+            if alternate is canonical:
+                continue
+            for group in alternate.get("requirementGroups") or []:
+                rule_type = (group.get("ruleExpression") or {}).get("type")
+                group_id = str(group.get("groupId") or "")
+                if rule_type == "semester_matrix" or group_id in matrix_group_ids:
+                    continue
+                merged_groups.append(group)
+
+        collapsed.append(
+            {
+                **canonical,
+                "requirementGroups": _dedupe_requirement_groups(merged_groups),
+            }
+        )
+    return collapsed
 
 
 def _bucket_requirement_type(label: str) -> str:
@@ -329,18 +392,53 @@ def inherit_parent_track_title_hints(
     return filled
 
 
+def _max_inherited_semester(page: WikiPage) -> int | None:
+    """Cap parent semester matrices for accelerated tracks that defer early semesters."""
+    body = page.english_body or ""
+    if re.search(r"Semesters?\s+1\s*[-–]\s*4.*identical", body, re.IGNORECASE):
+        return 4
+    if re.search(r"סמסטרים\s+1,\s*2,\s*3,\s*4", body):
+        return 4
+    duration = extract_field(body, "Duration") or ""
+    if "3 year" in duration.lower() and page.frontmatter.get("electiveSource"):
+        return 4
+    return None
+
+
 def _semester_matrices_for_track(
     page: WikiPage,
     program_code: str,
     pages: dict[str, WikiPage],
 ) -> list[dict[str, Any]]:
-    groups = _semester_matrix_groups(page, program_code, pages=pages)
-    if groups:
-        return groups
+    child_groups = _semester_matrix_groups(page, program_code, pages=pages)
     source_slug = _resolve_elective_source_slug(page, pages)
-    if source_slug and source_slug in pages:
-        return _semester_matrix_groups(pages[source_slug], program_code, pages=pages)
-    return []
+    parent_groups: list[dict[str, Any]] = []
+    if source_slug and source_slug in pages and source_slug != page.slug:
+        parent_groups = _semester_matrix_groups(pages[source_slug], program_code, pages=pages)
+
+    max_inherited = _max_inherited_semester(page)
+    if max_inherited is not None:
+        parent_groups = [
+            group
+            for group in parent_groups
+            if int((group.get("ruleExpression") or {}).get("semester") or 0) <= max_inherited
+        ]
+
+    if not parent_groups:
+        return child_groups
+    if not child_groups:
+        return parent_groups
+
+    child_semesters = {
+        int((group.get("ruleExpression") or {}).get("semester") or 0) for group in child_groups
+    }
+    merged = [
+        group
+        for group in parent_groups
+        if int((group.get("ruleExpression") or {}).get("semester") or 0) not in child_semesters
+    ]
+    merged.extend(child_groups)
+    return merged
 
 
 def build_generic_program(
@@ -395,6 +493,10 @@ def build_generic_program(
     requirement_groups.extend(
         faculty_elective_groups(page, program_code, faculty_id, pages=pages)
     )
+    if page.slug == "track-medicine-dual-data-information-engineering":
+        from app.vault.export_dds_catalog import _science_requirement_groups
+
+        requirement_groups.extend(_science_requirement_groups(pages, program_code))
     requirement_groups = _dedupe_requirement_groups(requirement_groups)
 
     return {
@@ -467,6 +569,8 @@ def export_faculty_vault_catalog(
         if program is not None:
             programs.append(program)
             exported_program_slugs.add(slug)
+
+    programs = _collapse_programs_by_code(programs)
 
     if not programs:
         raise ValueError(

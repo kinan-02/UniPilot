@@ -247,6 +247,24 @@ async def update_completed_course_by_id_and_user_id(
     return {"status": "updated", "record": update_result}
 
 
+async def delete_imported_completed_courses_by_user_id(
+    database: AsyncIOMotorDatabase,
+    user_id: str,
+    *,
+    settings: Settings | None = None,
+) -> int:
+    """Remove all PDF-imported transcript rows for a user (manual rows are kept)."""
+    settings = settings or get_settings()
+    parsed_user_id = parse_object_id(user_id)
+    if parsed_user_id is None:
+        return 0
+
+    result = await database[settings.completed_courses_collection].delete_many(
+        {"userId": parsed_user_id, "source": "imported"},
+    )
+    return int(result.deleted_count)
+
+
 async def delete_completed_course_by_id_and_user_id(
     database: AsyncIOMotorDatabase,
     record_id: str,

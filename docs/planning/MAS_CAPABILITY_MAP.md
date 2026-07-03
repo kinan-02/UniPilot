@@ -1,7 +1,7 @@
 # UniPilot AI — Multi-Agent System (MAS) Capability Map
 
-Last updated: 2026-06-29
-Status: **Design / brainstorm consolidation** (pre-planning). No implementation yet.
+Last updated: 2026-07-01
+Status: **MAS-2 (P3 complete)** — tool cache, API graduation preview, expanded what-if + UI.
 
 This document consolidates the autonomous Multi-Agent System (MAS) design for UniPilot:
 the agent roster, the coordination protocol, the full capability catalog, data
@@ -539,3 +539,92 @@ re-planning), career-goal reverse planning, and research/lab matching.
 | `DEC-1` Course/path recommendation | MAS-1 / MAS-2 |
 | `DEC-2` What-if scenario analysis | MAS-2 |
 | `DEC-3` Decision history per student | MAS-1 (`GET /agent/sessions`) |
+
+---
+
+## 16) Implementation status (MAS-1.5 snapshot)
+
+Tracked against the running codebase as of 2026-07-01. Legend: **Done** | **Partial** | **Not started**.
+
+### Runtime & platform (§0.A)
+
+| ID | Capability | Status | Notes |
+|---|---|---|---|
+| A1 | Async `POST /agent/sessions` → 202 | **Done** | `services/api/app/routes/agent_sessions.py` |
+| A2 | Owner-scoped GET + list | **Done** | JWT + Mongo ownership |
+| A3 | Blackboard in worker | **Done** | Typed artifacts + per-variant `variantEvaluations` on blackboard/finalDecision |
+| A4 | Propose → critique → veto → revise | **Done** | `orchestrator/workflow/planning.py` phase runner; parallel soft critics |
+| A5 | Utility arbitration | **Done** | Scores use progress + preference reports per variant |
+| A6 | Deadlock soft-relaxation | **Done** | Relax `avoidDays`/`minCredits`; commit `best_seen_plan` |
+| A7 | Pre-commit validator | **Done** | `workflow/validate.py` runs on every commit before explainer/red-team |
+| A8 | Transcript + decision in Mongo | **Done** | `agent_sessions` + `studentSummary` in `finalDecision` |
+| A9 | Internal AI per-agent prompts | **Done** | All LLM layers use `OPENAI_CHAT_MODEL` / `MAS_OPENAI_CHAT_MODEL` (e.g. deepseek-v4-pro) |
+| A10 | Rate limit + validation | **Done** | AI rate limit on create; Pydantic body validation |
+| A11 | Human approve irreversible | **Done** | `POST /agent/sessions/:id/approve` + UI gate before apply |
+| A12 | Human override | **Done** | `POST /agent/sessions/:id/override` |
+
+### Agent roster (§0.B) — planning vertical
+
+| Agent | Status | Module |
+|---|---|---|
+| B0 Goal Analyst | **Done** | `goal_analyst.py` + `llm/goal_analyst_layer.py` |
+| B1 Arbiter | **Done** | Multi-candidate utility commit + `arbitration.py` |
+| B2 Planner | **Done** | L0 route, L1 tool loop, L1.5 repair, L3 multi-candidate sanitize |
+| B3 Catalog Scout | **Done** | Typed `FeasibilityReport`; hard veto |
+| B4 Risk Sentinel | **Done** | Credit overload veto + probation pressure signal |
+| B5 Student Advocate | **Done** | Soft critiques + structured trade-offs |
+| B5b Progress Scout | **Done** | `progress_scout.py` + `plan_progress.py` (soft critic) |
+| B5c Explainer | **Done** | Post-commit `studentSummary` (read-only LLM narration) |
+| B6 Policy Responder | **Partial** | `policy_responder.py` + `workflow/policy.py` — wiki RAG Q&A (MAS-3 scaffold) |
+| B7–B10 | **Not started** | Admin email draft / external verticals |
+
+### First vertical (C1 next-semester planning)
+
+| Item | Status |
+|---|---|
+| C1 Next-semester planning | **Done** | Multi-variant plans; schedule in `finalDecision`; apply API + UI |
+| Web UI for sessions | **Done** | Transcript, **reasoning trace**, schedule, utility, student summary, what-if, replay, approve, apply |
+
+### MAS-2 progress (P0–P3)
+
+| Item | Status | Notes |
+|---|---|---|
+| Unified hard constraint gate | **Done** | `plan_hard_constraints.py` — catalog + academic risk |
+| Per-variant soft evaluation | **Done** | Progress + Advocate per variant before arbiter |
+| Graduation progress API | **Done** | `GET /internal/graduation-progress/users/:id` |
+| Session bootstrap API | **Done** | `GET /internal/session-bootstrap/users/:id` — user context + graduation + curriculum graph + `planningContext` (Progress-aligned transcript/priorities) |
+| Progress-aligned planning context | **Done** | `planning_context_service.py` + MAS `user_context_loader` applies `planningContext`; sessions fail fast when `planningReady` is false |
+| API Mongo catalog for MAS planning | **Done** | `POST /internal/semester-suggestions/users/:id` + MAS `api_catalog.py`; catalog validation and planner seeding use Mongo offerings when `catalog_source=api_mongo` |
+| Canonical user context API | **Done** | `GET /internal/user-context/users/:id` — shared with advisor |
+| MAS context loader | **Done** | `user_context_loader.py` — bootstrap → split API → Mongo fallback; `context_source` metadata |
+| User-context E2E verification | **Done** | `session_bootstrap_and_path_context` in `scripts/test_mas_extensive_e2e.py` |
+| Goal clarification gate | **Done** | `awaiting_clarification` + `POST .../clarify` |
+| Redis blackboard snapshots + replay | **Done** | `GET /agent/sessions/:id/replay` + UI |
+| Academic risk cache (parallel preload) | **Done** | `academic_risk_cache.py` |
+| What-if fail course | **Done** | `WHAT_IF_FAIL` intent + context adjustment |
+| Tool result cache (planner) | **Done** | Redis per-session cache for graph tools |
+| Graduation projection per variant | **Done** | `graduation_progress_projection.py` |
+| Expanded what-if scenarios | **Done** | fail, light load, summer term, switch track |
+| What-if comparison in finalDecision | **Done** | `whatIf` + `whatIfComparison` |
+| What-if UI panel | **Done** | `AgentSessionsPage` baseline vs scenario |
+| Full graduation recompute API | **Done** | `POST /internal/graduation-progress/preview/users/:id` |
+| Red-team agent | **Done** | `red_team.py` post-commit critique + `redTeamReview` in finalDecision |
+| Counterfactual explanations | **Done** | `counterfactual_explanations.py` + UI panel |
+| Second opinion (H5) | **Done** | `POST /agent/sessions/:id/second-opinion` + utility profiles |
+| Tool cache hit metrics | **Done** | `tool:cache_hits` / `tool:cache_misses` planner references |
+| Agent reasoning trace (CoT) | **Done** | `reasoningTrace` on all 9 agents including catalog_scout/risk_sentinel hard gates |
+| "Why?" on demand (H3) | **Done** | `POST /agent/sessions/:id/why` + UI ask form |
+| Composable planning workflow | **Done** | `orchestrator/workflow/*` phase runner |
+| Effector gateway | **Done** | `effectors/gateway.py` — catalog, risk, graduation, validator |
+| Live negotiation streaming (H2) | **Done** | `GET /agent/sessions/:id/stream` SSE + live UI panel |
+| Session continuations | **Done** | clarify resume + second-opinion lineage via `sessions/continuations.py` |
+| Graduation projection via gateway | **Done** | `variant_evaluation` → gateway `preview_graduation_progress` |
+| Worker session_completed replay | **Done** | `persist_session_completion_event` + SSE `session_completed` |
+| MAS unit test coverage | **Done** | **80%** (147 tests) — worker, clients, processor, user context |
+| Path-aligned planner ranking | **Done** | `path_relevant_planner.py` — graduation mandatory first, not random catalog |
+
+### Open decisions (§14) — resolved for v1
+
+- **Agent roster size for v1:** lean five — Planner, Scout, Sentinel, Advocate, Arbiter (**decided**).
+- **First decision target:** next-semester planning (**decided**).
+- **MAS service split:** dedicated `services/mas/` container, not extending `ai` advisor (**decided**).

@@ -2,76 +2,23 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
-from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.clients.ai_advisor_client import AiAdvisorClientError, ask_advisor
 from app.config import Settings, get_settings
-from app.repositories.catalog_repository import find_courses_by_ids
-from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
-from app.repositories.student_profile_repository import find_student_profile_by_user_id
-from app.services.graduation_progress_calculator import build_effective_completions
-
-
-def _json_safe_value(value: Any) -> Any:
-    if isinstance(value, ObjectId):
-        return str(value)
-    if isinstance(value, datetime):
-        return value.isoformat().replace("+00:00", "Z")
-    if isinstance(value, dict):
-        return {key: _json_safe_value(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe_value(item) for item in value]
-    return value
-
-
-def _primary_track_slug(profile: dict[str, Any] | None) -> str | None:
-    if not profile:
-        return None
-    academic_path = profile.get("academicPath") or {}
-    track_slug = academic_path.get("trackSlug")
-    if isinstance(track_slug, str) and track_slug.strip():
-        return track_slug.strip()
-    return None
+from app.services.student_user_context_service import build_student_user_context
 
 
 async def build_advisor_user_context(
     database: AsyncIOMotorDatabase,
     user_id: str,
 ) -> dict[str, Any]:
-    profile = await find_student_profile_by_user_id(database, user_id)
-    completed_records = await find_all_completed_courses_by_user_id(database, user_id)
-    effective_completions = build_effective_completions(completed_records)
-    course_ids = list(effective_completions.keys())
-    catalog_courses = await find_courses_by_ids(database, course_ids)
-    number_by_id = {
-        str(course.get("_id")): str(course.get("number"))
-        for course in catalog_courses
-        if course.get("number")
-    }
-    completed_numbers = [
-        number_by_id[course_id]
-        for course_id in course_ids
-        if course_id in number_by_id
-    ]
-
-    if not profile:
-        return {"completed_courses": completed_numbers}
-
-    return _json_safe_value(
-        {
-            "track_slug": _primary_track_slug(profile),
-            "faculty": profile.get("facultyId"),
-            "catalog_year": profile.get("catalogYear"),
-            "completed_courses": completed_numbers,
-            "display_name": profile.get("displayName"),
-            "degree_id": profile.get("degreeId"),
-            "plan_semester_code": profile.get("currentSemesterCode"),
-        }
-    )
+    context = await build_student_user_context(database, user_id)
+    if "user_id" in context:
+        return {key: value for key, value in context.items() if key != "user_id"}
+    return context
 
 
 async def ask_advisor_for_user(

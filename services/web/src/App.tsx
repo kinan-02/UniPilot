@@ -16,7 +16,10 @@ import { PlanDetailPage } from './pages/PlanDetailPage'
 import { PlanBuilderPage } from './pages/PlanBuilderPage'
 import { RisksPage } from './pages/RisksPage'
 import { AdvisorPage } from './pages/AdvisorPage'
+import { AgentSessionsPage } from './pages/AgentSessionsPage'
+import { AgentPage } from './pages/AgentPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { IntegrationsPage } from './pages/IntegrationsPage'
 import { SharedPlanPage } from './pages/SharedPlanPage'
 import { ProtectedRoute, PublicOnlyRoute, ProfileGuard } from './routes/Guards'
 
@@ -49,6 +52,7 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />
                 <Route element={<ProfileGuard />}>
+                  <Route path="/agent" element={<AgentPage />} />
                   <Route element={<AppLayout />}>
                     <Route index element={<DashboardPage />} />
                     <Route path="catalog" element={<CatalogPage />} />
@@ -60,7 +64,10 @@ export default function App() {
                     <Route path="plans/:id" element={<PlanDetailPage />} />
                     <Route path="risks" element={<RisksPage />} />
                     <Route path="advisor" element={<AdvisorPage />} />
+                    <Route path="agents" element={<Navigate to="/agent" replace />} />
+                    <Route path="agents/legacy" element={<AgentSessionsPage />} />
                     <Route path="profile" element={<ProfilePage />} />
+                    <Route path="settings/integrations" element={<IntegrationsPage />} />
                   </Route>
                 </Route>
               </Route>

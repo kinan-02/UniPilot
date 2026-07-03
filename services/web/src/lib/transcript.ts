@@ -86,6 +86,35 @@ export function isPassingTranscriptRecord(record: CompletedCourse): boolean {
   return grade >= PASSING_GRADE_THRESHOLD
 }
 
+export function isExemptionTranscriptRecord(record: CompletedCourse): boolean {
+  if (record.metadata?.exemption) return true
+  const grade = parseTranscriptGrade(record.grade)
+  return grade === 0 && (record.creditsEarned ?? 0) === 0
+}
+
+/** Pass rows are stored with a synthetic grade; they earn credits but not GPA points. */
+export function isPassGradeTranscriptRecord(record: CompletedCourse): boolean {
+  if (record.metadata?.passGrade === true) return true
+  // Legacy PDF imports encoded Technion "Pass" as numeric 56 before metadata existed.
+  if (
+    (record.source === 'imported' || record.source === 'import') &&
+    parseTranscriptGrade(record.grade) === 56
+  ) {
+    return true
+  }
+  return false
+}
+
+export function countsOnTranscriptSummary(record: CompletedCourse): boolean {
+  if (isExemptionTranscriptRecord(record)) return true
+  return isPassingTranscriptRecord(record)
+}
+
+/** Latest row per course that still appears on the official transcript summary. */
+export function pickTranscriptSummaryRecords(records: CompletedCourse[]): CompletedCourse[] {
+  return pickLatestAttemptRecords(records).filter(countsOnTranscriptSummary)
+}
+
 /** Technion transcript failures are strictly between 0 and the minimum pass grade. */
 export function isFailedTranscriptGrade(grade: number | null): boolean {
   if (grade == null) return false
@@ -98,6 +127,7 @@ export function countsTowardAccumulatedCredits(record: CompletedCourse): boolean
 }
 
 export function countsTowardWeightedAverage(record: CompletedCourse): boolean {
+  if (isExemptionTranscriptRecord(record) || isPassGradeTranscriptRecord(record)) return false
   if ((record.creditsEarned ?? 0) <= 0) return false
   const grade = resolveEffectiveTranscriptGrade(record)
   if (grade == null) return false
@@ -120,13 +150,8 @@ export function gradeBadgeTone(grade: string | number | undefined): 'success' | 
 
 export { compareSemesterCodesDesc } from './semester'
 
-export function computeTranscriptStats(
-  records: CompletedCourse[],
-  options?: { excludedCourseIds?: ReadonlySet<string> },
-): TranscriptStats {
-  const effectiveRecords = pickEffectiveTranscriptRecords(records).filter(
-    (record) => !options?.excludedCourseIds?.has(record.courseId),
-  )
+export function computeTranscriptStats(records: CompletedCourse[]): TranscriptStats {
+  const summaryRecords = pickTranscriptSummaryRecords(records)
   let totalCredits = 0
   let weightedGradeSum = 0
   let weightedCreditTotal = 0
@@ -142,7 +167,7 @@ export function computeTranscriptStats(
     }
   }
 
-  for (const record of effectiveRecords) {
+  for (const record of summaryRecords) {
     semesterCodes.add(record.semesterCode)
     if (countsTowardAccumulatedCredits(record)) {
       totalCredits += record.creditsEarned ?? 0
@@ -161,7 +186,7 @@ export function computeTranscriptStats(
   const orderedSemesters = [...semesterCodes].sort(compareSemesterCodesDesc)
 
   return {
-    courseCount: effectiveRecords.length,
+    courseCount: summaryRecords.length,
     totalCredits,
     averageGrade: weightedCreditTotal > 0 ? weightedGradeSum / weightedCreditTotal : null,
     manualCount,
@@ -172,10 +197,7 @@ export function computeTranscriptStats(
   }
 }
 
-export function groupTranscriptBySemester(
-  records: CompletedCourse[],
-  options?: { excludedCourseIds?: ReadonlySet<string> },
-): TranscriptSemesterGroup[] {
+export function groupTranscriptBySemester(records: CompletedCourse[]): TranscriptSemesterGroup[] {
   const groups = new Map<string, CompletedCourse[]>()
   const latestByCourseId = new Map(
     pickLatestAttemptRecords(records).map((record) => [record.courseId, record]),
@@ -194,7 +216,6 @@ export function groupTranscriptBySemester(
         (left.courseNumber ?? left.courseId).localeCompare(right.courseNumber ?? right.courseId),
       ),
       semesterCredits: courses.reduce((sum, course) => {
-        if (options?.excludedCourseIds?.has(course.courseId)) return sum
         const latest = latestByCourseId.get(course.courseId)
         if (!latest || latest.semesterCode !== semesterCode) return sum
         if (!countsTowardAccumulatedCredits(latest)) return sum

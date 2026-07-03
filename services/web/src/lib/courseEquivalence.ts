@@ -72,15 +72,14 @@ export function catalogOverlapEquivalenceGroupsFromSources(options?: {
   return fromProgress.map((members) => keysForMembers(members))
 }
 
-export function buildMandatoryEquivalenceGroups(options?: {
+/** Matrix / curriculum parallels only — excludes catalog overlap (מקצועות ללא זיכוי נוסף). */
+export function buildMatrixMandatoryEquivalenceGroups(options?: {
   curriculumGraph?: CurriculumGraph | null
-  progress?: GraduationProgress | null
   remainingMandatory?: Array<{ courseNumber?: string | null }>
   completedMandatory?: Array<{ courseNumber?: string | null }>
 }): Array<Set<string>> {
   const groups: Array<Set<string>> = [
     ...crossTrackEquivalenceGroupsFromGraph(options?.curriculumGraph),
-    ...catalogOverlapEquivalenceGroupsFromSources(options),
   ]
 
   const relevantKeys = new Set<string>()
@@ -102,6 +101,18 @@ export function buildMandatoryEquivalenceGroups(options?: {
   }
 
   return mergeOverlappingEquivalenceGroups(groups)
+}
+
+export function buildMandatoryEquivalenceGroups(options?: {
+  curriculumGraph?: CurriculumGraph | null
+  progress?: GraduationProgress | null
+  remainingMandatory?: Array<{ courseNumber?: string | null }>
+  completedMandatory?: Array<{ courseNumber?: string | null }>
+}): Array<Set<string>> {
+  return mergeOverlappingEquivalenceGroups([
+    ...buildMatrixMandatoryEquivalenceGroups(options),
+    ...catalogOverlapEquivalenceGroupsFromSources(options),
+  ])
 }
 
 export function buildCourseEquivalenceGroups(options?: {

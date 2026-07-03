@@ -10,6 +10,7 @@ from app.repositories import catalog_repository
 from app.planning.prerequisite_resolver import canonical_course_number
 from app.repositories.completed_course_repository import (
     create_completed_course,
+    delete_imported_completed_courses_by_user_id,
     ensure_completed_course_indexes,
     find_all_completed_courses_by_user_id,
     to_public_completed_course,
@@ -39,6 +40,10 @@ async def commit_transcript_import(
     payload: CommitTranscriptImportRequest,
 ) -> dict[str, Any]:
     await ensure_completed_course_indexes(database)
+
+    replaced_count = 0
+    if payload.replaceExisting:
+        replaced_count = await delete_imported_completed_courses_by_user_id(database, user_id)
 
     existing_records = await find_all_completed_courses_by_user_id(database, user_id)
     existing_signatures = {
@@ -109,7 +114,16 @@ async def commit_transcript_import(
             skipped_duplicates.append(row.courseNumber)
             continue
 
-        metadata: dict[str, Any] = {"importSource": "transcript-pdf"}
+        metadata: dict[str, Any] = {
+            "importSource": "transcript-pdf",
+            "importedCourseNumber": normalized_number,
+        }
+        for warning in row.warnings or []:
+            lowered = warning.lower()
+            if "pass grade" in lowered:
+                metadata["passGrade"] = True
+            if "exemption" in lowered:
+                metadata["exemption"] = True
         if row.title:
             metadata["importedTitle"] = row.title
 
@@ -144,4 +158,5 @@ async def commit_transcript_import(
         "createdCount": len(created),
         "skippedCount": len(skipped_duplicates),
         "unresolvedCount": len(unresolved),
+        "replacedCount": replaced_count,
     }

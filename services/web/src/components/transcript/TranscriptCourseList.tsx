@@ -15,7 +15,6 @@ type TranscriptCourseListProps = {
   t: (key: string) => string
   onDelete: (id: string) => void
   deletingId?: string | null
-  excludedCourseIds?: ReadonlySet<string>
 }
 
 export function TranscriptCourseList({
@@ -24,7 +23,6 @@ export function TranscriptCourseList({
   t,
   onDelete,
   deletingId = null,
-  excludedCourseIds,
 }: TranscriptCourseListProps) {
   const [filter, setFilter] = useState('')
   const [semesterFilter, setSemesterFilter] = useState('')
@@ -39,10 +37,7 @@ export function TranscriptCourseList({
     if (!semesterFilter) return byText
     return byText.filter((record) => record.semesterCode === semesterFilter)
   }, [filter, records, semesterFilter])
-  const groups = useMemo(
-    () => groupTranscriptBySemester(filteredRecords, { excludedCourseIds }),
-    [excludedCourseIds, filteredRecords],
-  )
+  const groups = useMemo(() => groupTranscriptBySemester(filteredRecords), [filteredRecords])
 
   return (
     <div className="space-y-4" data-testid="transcript-course-list">
