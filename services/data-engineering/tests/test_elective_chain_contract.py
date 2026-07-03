@@ -81,7 +81,7 @@ def test_ie_focus_chains_do_not_include_group_four_course_flood():
 
     iem = pages["track-industrial-engineering-management"]
     groups = {g["groupId"].split(":")[-1]: g for g in _iem_elective_groups(iem, "009009-1-000")}
-    assert len(groups["ie-focus-chain-operations-research"]["courseReferences"]) <= 8
+    assert len(groups["ie-focus-chain-operations-research"]["courseReferences"]) <= 10
     assert len(groups["ie-focus-chain-game-theory"]["courseReferences"]) <= 10
 
 

@@ -349,6 +349,7 @@ def map_staging_advisory_requirement_to_production(
         "recordType": "advisory_requirement_group",
         "title": group.get("title"),
         "requirementType": group.get("requirementType"),
+        "minCredits": group.get("minCredits"),
         "courseReferences": group.get("courseReferences", []),
         "catalogDescription": group.get("catalogDescription"),
         "ruleExpression": group.get("ruleExpression"),

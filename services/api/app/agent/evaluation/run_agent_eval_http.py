@@ -44,7 +44,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("/tmp/agent_eval_http_report.json"),
+        default=Path("agent_eval_http_report.json"),
         help="JSON report output path",
     )
     parser.add_argument(

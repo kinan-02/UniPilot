@@ -14,6 +14,7 @@ const t = (key: string) => key
 type ContractPool = {
   programCode: string
   suffix: string
+  operator?: string
   minCourseRefs: number
 }
 
@@ -41,16 +42,18 @@ function ddsPools(): ContractPool[] {
   return loadContract().faculties.dds?.pools ?? []
 }
 
-function chainPool(suffix: string, count: number): ElectiveBucket {
+function chainPool(entry: ContractPool): ElectiveBucket {
+  const count = entry.minCourseRefs
+  const operator = entry.operator ?? 'choose_chain'
   const courses = Array.from({ length: count }, (_, index) => ({
     courseNumber: String(960600 + index).padStart(8, '0'),
     title: `Course ${index}`,
     credits: 3,
   }))
   return {
-    groupId: `program:${suffix}`,
-    title: suffix,
-    rule: { type: 'choose_chain' },
+    groupId: `program:${entry.suffix}`,
+    title: entry.suffix,
+    rule: { type: operator, operator },
     courses,
     courseCount: courses.length,
     linkedCreditBucketId: 'elective-faculty',
@@ -60,7 +63,7 @@ function chainPool(suffix: string, count: number): ElectiveBucket {
 describe('electiveChainRegression', () => {
   it('every contract pool has a structured chain layout', () => {
     for (const entry of ddsPools()) {
-      const pool = chainPool(entry.suffix, entry.minCourseRefs)
+      const pool = chainPool(entry)
       expect(hasStructuredChainLayout(pool)).toBe(true)
       const layout = resolvePoolChainLayout(pool)
       expect(layout).not.toBeNull()

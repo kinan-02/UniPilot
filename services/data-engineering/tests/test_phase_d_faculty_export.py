@@ -494,7 +494,10 @@ def test_export_biology_expected_program_codes_match_per_track_programs() -> Non
     biology_doc, _ = export_faculty_vault_catalog(faculty_id="biology")
     program_codes = [program["programCode"] for program in biology_doc["programs"]]
     assert biology_doc["source"]["expectedProgramCodes"] == sorted(program_codes)
-    assert program_codes.count("013043-1-000") > 1
+    assert "013043-1-000" in program_codes
+    exported_slugs = biology_doc["parserReport"]["trackPagesExported"]
+    assert "track-biology-general" in exported_slugs
+    assert "track-biology-human-development" in exported_slugs
 
 
 def test_export_cross_faculty_canonical_mirrors_have_elective_pools() -> None:
@@ -532,7 +535,7 @@ def test_export_cross_faculty_canonical_mirrors_have_elective_pools() -> None:
 def test_export_faculty_vault_catalog_exports_each_primary_track_slug(
     monkeypatch,
 ) -> None:
-    """Each exportable track slug gets its own program document (codes may repeat)."""
+    """Each exportable track slug is recorded; shared program codes collapse to one document."""
     program_code = "099999-1-000"
     pages = {
         "track-dup-a": WikiPage(
@@ -592,25 +595,23 @@ def test_export_faculty_vault_catalog_exports_each_primary_track_slug(
         lambda readiness: readiness,
     )
     doc, _ = export_faculty_vault_catalog(faculty_id="test")
-    assert len(doc["programs"]) == 2
-    assert {program["metadata"]["wikiPage"] for program in doc["programs"]} == {
-        "track-dup-a",
-        "track-dup-b",
-    }
+    assert len(doc["programs"]) == 1
+    assert doc["parserReport"]["trackPagesExported"] == ["track-dup-a", "track-dup-b"]
+    assert doc["programs"][0]["metadata"]["wikiPage"] == "track-dup-a"
 
 
 def test_export_faculty_vault_catalog_exports_shared_code_per_track_slug() -> None:
     biology_doc, _ = export_faculty_vault_catalog(faculty_id="biology")
     biology_slugs = {(program["programCode"], program["metadata"]["wikiPage"]) for program in biology_doc["programs"]}
     assert ("013043-1-000", "track-biology-general") in biology_slugs
-    assert ("013043-1-000", "track-biology-human-development") in biology_slugs
-    assert len(biology_doc["programs"]) >= 4
+    assert "track-biology-human-development" in biology_doc["parserReport"]["trackPagesExported"]
+    assert len(biology_doc["programs"]) >= 2
 
     cs_doc, _ = export_faculty_vault_catalog(faculty_id="computer-science")
     cs_slugs = [program["metadata"]["wikiPage"] for program in cs_doc["programs"]]
     assert "track-computer-science-general-3year" in cs_slugs
     assert "track-computer-science-general-4year" in cs_slugs
-    assert len(cs_doc["programs"]) >= 8
+    assert len(cs_doc["programs"]) >= 7
 
 
 def test_export_faculty_vault_catalog_skips_duplicate_slug(monkeypatch) -> None:

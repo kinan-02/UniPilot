@@ -3051,3 +3051,194 @@ class TestGateAdditional322And759:
         )
         assert "status" in report.qualityReportSummary
         assert report.qualityReportSummary.get("sourcePath") == "live-computed"
+
+
+class TestRemainingCoverageGaps:
+    def test_science_requirement_groups_missing_page_and_empty_refs(self):
+        from app.vault.export_dds_catalog import _science_requirement_groups
+        from app.vault.loader import WikiPage
+
+        assert _science_requirement_groups({}, "009216-1-000") == []
+
+        page = WikiPage(
+            slug="track-data-information-engineering",
+            path=Path("/tmp/dne.md"),
+            frontmatter={},
+            body="",
+            english_body="## Science Course Requirement\n\nNo tables here.\n\n## Next\n",
+        )
+        assert _science_requirement_groups(
+            {"track-data-information-engineering": page},
+            "009216-1-000",
+        ) == []
+
+    def test_collapse_programs_skips_empty_program_code(self):
+        from app.vault.export_faculty_vault_catalog import _collapse_programs_by_code
+
+        programs = [
+            {"programCode": "", "metadata": {"wikiPage": "a"}},
+            {"programCode": "001", "metadata": {"wikiPage": "b"}, "requirementGroups": []},
+        ]
+        collapsed = _collapse_programs_by_code(programs)
+        assert len(collapsed) == 1
+        assert collapsed[0]["programCode"] == "001"
+
+    def test_max_inherited_semester_hebrew_pattern(self):
+        from app.vault.export_faculty_vault_catalog import _max_inherited_semester
+        from app.vault.loader import WikiPage
+
+        page = WikiPage(
+            slug="track-x",
+            path=Path("/tmp/x.md"),
+            frontmatter={},
+            body="",
+            english_body="סמסטרים 1, 2, 3, 4 זהים למסלול הכללי",
+        )
+        assert _max_inherited_semester(page) == 4
+
+    def test_medicine_dual_dne_includes_science_groups(self):
+        from app.vault.export_faculty_vault_catalog import build_generic_program
+        from app.vault.loader import WikiPage
+
+        dne = WikiPage(
+            slug="track-data-information-engineering",
+            path=Path("/tmp/dne.md"),
+            frontmatter={"faculty": "faculty-dds"},
+            body="",
+            english_body=(
+                "## Science Course Requirement\n\n"
+                "| Code | Course |\n|---|---|\n| 01140052 | Physics 2 |\n\n"
+                "## Next\n"
+            ),
+        )
+        page = WikiPage(
+            slug="track-medicine-dual-data-information-engineering",
+            path=Path("/tmp/med.md"),
+            frontmatter={"faculty": "faculty-medicine"},
+            body="",
+            english_body="**Track code:** 027396-1-000\n",
+        )
+        program = build_generic_program(
+            page,
+            faculty_id="medicine",
+            pages={
+                page.slug: page,
+                dne.slug: dne,
+            },
+        )
+        assert program is not None
+        group_ids = {group["groupId"] for group in program["requirementGroups"]}
+        assert any(gid.endswith(":science-elective-supplement-pool") for gid in group_ids)
+
+    def test_dual_hash_project_pool_notes_and_append(self):
+        from app.vault.faculty_elective_enrichers import _dual_medicine_pool_overrides
+        from app.vault.loader import WikiPage
+
+        dne = WikiPage(
+            slug="track-data-information-engineering",
+            path=Path("/tmp/dne.md"),
+            frontmatter={},
+            body="",
+            english_body=(
+                "## DNE Elective Course List\n\n"
+                "| Code | Course | Notes |\n|---|---|---|\n"
+                "| 00970215 | Project * | * |\n\n"
+                "## Next\n"
+            ),
+        )
+        groups = [
+            {
+                "groupId": "027396-1-000:elective-ds-pool",
+                "title": "DS",
+                "courseReferences": [{"courseNumber": "00940411"}],
+                "notes": [],
+            },
+            {
+                "groupId": "027396-1-000:dual-hash-project-pool",
+                "title": "Existing hash",
+                "courseReferences": [{"courseNumber": "00970215"}],
+                "notes": [],
+            },
+        ]
+        page = WikiPage(
+            slug="track-medicine-dual-data-information-engineering",
+            path=Path("/tmp/med.md"),
+            frontmatter={},
+            body="",
+            english_body="",
+        )
+        with_existing = _dual_medicine_pool_overrides(
+            page,
+            "027396-1-000",
+            groups,
+            {dne.slug: dne},
+        )
+        assert sum(1 for g in with_existing if g["groupId"].endswith(":dual-hash-project-pool")) == 1
+        ds = next(g for g in with_existing if g["groupId"].endswith(":elective-ds-pool"))
+        assert any("dual DNE" in note for note in ds["notes"])
+
+        without_hash = _dual_medicine_pool_overrides(
+            page,
+            "027396-1-000",
+            [groups[0]],
+            {dne.slug: dne},
+        )
+        assert any(g["groupId"].endswith(":dual-hash-project-pool") for g in without_hash)
+
+    def test_parity_min_credits_advisory_linked_bucket_skip(self):
+        from app.vault.verify_vault_production_parity import (
+            GroupSnapshot,
+            compare_group_snapshots,
+        )
+
+        expected = GroupSnapshot(
+            group_id="009009-1-000:science-elective-supplement-pool",
+            program_code="009009-1-000",
+            classification="advisory",
+            title="Science",
+            requirement_type="elective",
+            min_credits=5.5,
+            rule_type="course_pool",
+            rule_operator="min_credits",
+            rule_min_credits=None,
+            rule_semester=None,
+            course_numbers=(),
+            course_refs=(),
+        )
+        actual = GroupSnapshot(
+            group_id="009009-1-000:science-elective-supplement-pool",
+            program_code="009009-1-000",
+            classification="advisory",
+            title="Science",
+            requirement_type="elective",
+            min_credits=None,
+            rule_type="course_pool",
+            rule_operator="min_credits",
+            rule_min_credits=None,
+            rule_semester=None,
+            course_numbers=(),
+            course_refs=(),
+        )
+        linked = GroupSnapshot(
+            group_id="009009-1-000:core-mandatory",
+            program_code="009009-1-000",
+            classification="hard",
+            title="Core",
+            requirement_type="core",
+            min_credits=5.5,
+            rule_type="credit_bucket",
+            rule_operator=None,
+            rule_min_credits=None,
+            rule_semester=None,
+            course_numbers=(),
+            course_refs=(),
+        )
+        mismatches = compare_group_snapshots(
+            expected,
+            actual,
+            expected_all={
+                expected.group_id: expected,
+                linked.group_id: linked,
+            },
+        )
+        assert mismatches == []

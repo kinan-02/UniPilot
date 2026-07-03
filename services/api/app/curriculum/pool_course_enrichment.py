@@ -133,7 +133,61 @@ FOCUS_CHAIN_FALLBACK_NUMBERS: dict[str, tuple[str, ...]] = {
         "0960311",
         "0960335",
     ),
+    "ie-focus-chain-data-systems": (
+        "0960311",
+        "0960335",
+        "0960327",
+        "0960570",
+    ),
+    "ie-focus-chain-or-game-theory": (
+        "0960327",
+        "0960226",
+        "0960578",
+        "0970317",
+    ),
+    "ie-focus-chain-statistics": (
+        "0960414",
+        "0960415",
+        "0960425",
+        "0960450",
+    ),
+    "ie-focus-chain-economics": (
+        "0960226",
+        "0960570",
+        "0970317",
+        "0960606",
+    ),
+    "ie-focus-chain-behavior-management": (
+        "0960600",
+        "0960620",
+        "0960617",
+        "0960690",
+    ),
 }
+
+_DNE_STARRED_PROJECT_NUMBERS: tuple[str, ...] = (
+    "0960222",
+    "0960231",
+    "0960235",
+    "0960262",
+    "0960324",
+    "0960693",
+    "0970135",
+    "0970200",
+    "0970215",
+    "0970216",
+    "0970222",
+    "0970247",
+    "0970248",
+    "0970272",
+    "0970400",
+)
+
+CHOOSE_N_CHAIN_FALLBACK_NUMBERS.update(
+    {
+        "dne-starred-project-pool": _DNE_STARRED_PROJECT_NUMBERS,
+    }
+)
 
 _PREFIX_TOKEN_PATTERN = re.compile(r"0?9[4-7]")
 

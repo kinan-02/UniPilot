@@ -555,6 +555,7 @@ def export_faculty_vault_catalog(
     faculty_track_slug_set = frozenset(track_slugs)
     programs: list[dict[str, Any]] = []
     exported_program_slugs: set[str] = set()
+    exported_track_slugs: list[str] = []
     for slug in track_slugs:
         page = pages.get(slug)
         if page is None or not should_export_degree_program(
@@ -569,6 +570,7 @@ def export_faculty_vault_catalog(
         if program is not None:
             programs.append(program)
             exported_program_slugs.add(slug)
+            exported_track_slugs.append(slug)
 
     programs = _collapse_programs_by_code(programs)
 
@@ -597,7 +599,7 @@ def export_faculty_vault_catalog(
         "exporter": "vault-export-specialized",
         "faculty": faculty_id,
         "wikiRoot": wiki_source,
-        "trackPagesExported": [program["metadata"]["wikiPage"] for program in programs],
+        "trackPagesExported": exported_track_slugs,
         "courseJsonSources": [
             _relative_vault_path(path) for path in (course_json_paths or default_course_json_paths())
         ],

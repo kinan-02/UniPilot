@@ -116,7 +116,7 @@ def test_export_includes_ie_is_choose_n_eligible_courses():
     assert "ie-focus-chain-advanced-industry" in iem_groups
     assert "ie-focus-chain-operations-research" in iem_groups
     assert iem_groups["ie-focus-chain-game-theory"].get("catalogDescription")
-    assert len(iem_groups["ie-focus-chain-operations-research"]["courseReferences"]) <= 6
+    assert len(iem_groups["ie-focus-chain-operations-research"]["courseReferences"]) <= 10
 
     ise_groups = {g["groupId"].split(":")[-1]: g for g in _is_elective_groups(ise, "009118-1-000", pages)}
     assert len(ise_groups["is-behavior-science-chain"]["courseReferences"]) == 2

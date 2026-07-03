@@ -117,8 +117,8 @@ def test_resolve_prefers_raw_dir_over_mongo_codes(tmp_path: Path) -> None:
     assert resolved == ["2025-2"]
 
 
-def test_resolve_uses_only_raw_dir_when_configured(tmp_path: Path) -> None:
-    assert resolve_planner_semester_codes(raw_dir=tmp_path, mongo_codes=["2025-2"]) == []
+def test_resolve_falls_back_to_mongo_when_raw_dir_has_no_semester_files(tmp_path: Path) -> None:
+    assert resolve_planner_semester_codes(raw_dir=tmp_path, mongo_codes=["2025-2"]) == ["2025-2"]
     (tmp_path / "courses_2024_200.json").write_text("[]", encoding="utf-8")
     assert resolve_planner_semester_codes(raw_dir=tmp_path, mongo_codes=["2025-2"]) == ["2024-1"]
 

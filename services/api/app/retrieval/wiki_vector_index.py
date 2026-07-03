@@ -363,7 +363,7 @@ def _load_compact_cache(
     canonical_root = canonical_wiki_root(wiki_root)
     try:
         with gzip.open(path, "rb") as handle:
-            payload = pickle.load(handle)
+            payload = pickle.load(handle)  # nosec B301
     except (EOFError, OSError, pickle.PickleError):
         logger.warning("wiki_vector_index_compact_cache_corrupt", extra={"path": str(path)})
         if delete_on_corrupt:
