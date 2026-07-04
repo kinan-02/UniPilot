@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     completed_courses_collection: str = "completed_courses"
     semester_plans_collection: str = "semester_plans"
     academic_risks_collection: str = "academic_risks"
+    advisor_conversations_collection: str = "advisor_conversations"
+    ai_jobs_collection: str = "ai_jobs"
+    simulation_scenarios_collection: str = "simulation_scenarios"
+    simulation_results_collection: str = "simulation_results"
+    worker_queue_name: str = "ai_jobs"
     web_app_url: str = "http://localhost:3000"
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: str | None = None

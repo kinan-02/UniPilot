@@ -520,9 +520,19 @@ export type SemesterPlan = {
   readOnly?: boolean
 }
 
+export type AcademicRiskSummary = {
+  totalRisks: number
+  highestSeverity?: 'high' | 'medium' | 'low' | string | null
+  counts?: {
+    low?: number
+    medium?: number
+    high?: number
+  }
+}
+
 export type AcademicRiskAnalysis = {
   id: string
-  summary?: string
+  summary?: AcademicRiskSummary | string
   status?: string
   semesterCode?: string
   risks?: Array<{
@@ -531,6 +541,111 @@ export type AcademicRiskAnalysis = {
     title?: string
     message?: string
   }>
+}
+
+export type SimulationOpType = 'drop_course' | 'add_course' | 'add_planned_course' | 'change_track'
+
+export type SimulationOperation =
+  | { type: 'drop_course'; courseNumber: string }
+  | { type: 'add_course'; courseNumber: string; grade?: number; semesterCode?: string | null }
+  | { type: 'add_planned_course'; courseNumber: string }
+  | { type: 'change_track'; trackSlug: string }
+
+export type SimulationScenario = {
+  id: string
+  name: string
+  description?: string | null
+  operations: SimulationOperation[]
+  semesterCode?: string | null
+  planId?: string | null
+  naturalLanguagePrompt?: string | null
+  status?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export type SimulationGraduationSnapshot = {
+  completedCredits?: number
+  totalRequiredCredits?: number
+  creditsRemaining?: number
+  completionPercentage?: number
+  statusSummary?: string
+}
+
+export type SimulationSnapshot = {
+  graduation?: SimulationGraduationSnapshot
+  risk?: Record<string, unknown> | null
+  trackSlug?: string | null
+}
+
+export type SimulationProgressDelta = {
+  completedCreditsDelta?: number
+  creditsRemainingDelta?: number
+  completionPercentageDelta?: number
+}
+
+export type SimulationResult = {
+  id: string
+  scenarioId: string
+  status?: string | null
+  beforeSnapshot: SimulationSnapshot
+  afterSnapshot: SimulationSnapshot
+  deltas: {
+    progress?: SimulationProgressDelta
+    risk?: Record<string, unknown> | null
+  }
+  summary?: string | null
+  narrative?: string | null
+  warnings?: string[]
+  jobId?: string | null
+  generatedAt?: string | null
+  createdAt?: string | null
+}
+
+export type SimulationRunResponse =
+  | {
+      asyncAccepted: false
+      simulationResult: SimulationResult
+    }
+  | {
+      asyncAccepted: true
+      job: AiJob
+    }
+
+export type AdvisorAgentTrace = {
+  retrievalAgent: {
+    status?: string | null
+    iterations?: number | null
+    steps?: Array<Record<string, unknown>>
+  }
+  profileAgentInvocations?: Array<Record<string, unknown>>
+  planningAgentInvocations?: Array<Record<string, unknown>>
+  regulationAgentInvocations?: Array<Record<string, unknown>>
+  retrievalBlocks?: Array<Record<string, unknown>>
+  semesterResolution?: Record<string, unknown> | null
+}
+
+export type AiJob = {
+  id: string
+  type: string
+  status: 'pending' | 'processing' | 'completed' | 'failed' | string
+  payload: Record<string, unknown>
+  result?: Record<string, unknown> | null
+  error?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+}
+
+export type AdvisorConversation = {
+  id: string
+  title: string
+  summary: string
+  exchangeCount: number
+  lastConfidence?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 export type AdvisorReply = {
@@ -544,4 +659,17 @@ export type AdvisorReply = {
   eligibility?: Record<string, unknown> | null
   semesterResolution?: Record<string, unknown> | null
   retrievalStatus?: string | null
+  agentTrace?: AdvisorAgentTrace
 }
+
+export type AdvisorAskResponse =
+  | {
+      asyncAccepted: false
+      advisor: AdvisorReply
+      conversation?: AdvisorConversation
+    }
+  | {
+      asyncAccepted: true
+      offloadReason?: string | null
+      job: AiJob
+    }

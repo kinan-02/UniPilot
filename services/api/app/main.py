@@ -14,6 +14,8 @@ from app.db.catalog_indexes import ensure_catalog_indexes
 from app.db.mongo import close_mongo_client, get_database
 from app.db.redis import close_redis
 from app.routes.advisor import router as advisor_router
+from app.routes.ai_jobs import router as ai_jobs_router
+from app.routes.internal_ai_jobs import router as internal_ai_jobs_router
 from app.routes.auth import router as auth_router
 from app.routes.catalog import router as catalog_router
 from app.routes.completed_courses import router as completed_courses_router
@@ -23,6 +25,7 @@ from app.routes.academic_risks import router as academic_risks_router
 from app.routes.semester_plans import router as semester_plans_router
 from app.routes.student_profile import router as student_profile_router
 from app.routes.transcript_import import router as transcript_import_router
+from app.routes.simulations import router as simulations_router
 from app.config import get_settings
 
 
@@ -69,7 +72,10 @@ def create_app() -> FastAPI:
     app.include_router(semester_plans_router)
     app.include_router(academic_risks_router)
     app.include_router(transcript_import_router)
+    app.include_router(simulations_router)
     app.include_router(advisor_router)
+    app.include_router(ai_jobs_router)
+    app.include_router(internal_ai_jobs_router)
     return app
 
 

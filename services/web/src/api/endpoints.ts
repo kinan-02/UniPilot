@@ -1,7 +1,13 @@
 import { apiRequest, apiUpload, getApiBaseUrl } from '../lib/api'
 import type {
   AcademicRiskAnalysis,
-  AdvisorReply,
+  AdvisorAskResponse,
+  AdvisorConversation,
+  AiJob,
+  SimulationOperation,
+  SimulationResult,
+  SimulationRunResponse,
+  SimulationScenario,
   AuthPayload,
   CatalogFaculty,
   CatalogPathOption,
@@ -287,11 +293,91 @@ export const plansApi = {
 }
 
 export const advisorApi = {
-  ask: (question: string) =>
-    apiRequest<{ advisor: AdvisorReply }>('/advisor/ask', {
-      method: 'POST',
-      body: { question },
+  listConversations: (page = 1, limit = 30) =>
+    apiRequest<{
+      conversations: AdvisorConversation[]
+      pagination: { total: number; page: number; limit: number }
+    }>(`/advisor/conversations?page=${page}&limit=${limit}`),
+  getConversation: (conversationId: string) =>
+    apiRequest<{ conversation: AdvisorConversation }>(`/advisor/conversations/${conversationId}`),
+  deleteConversation: (conversationId: string) =>
+    apiRequest<{ deleted: boolean }>(`/advisor/conversations/${conversationId}`, {
+      method: 'DELETE',
     }),
+  ask: (
+    question: string,
+    options: {
+      includeAgentTrace?: boolean
+      conversationId?: string | null
+      executionMode?: 'auto' | 'sync' | 'async'
+    } = {},
+  ) =>
+    apiRequest<AdvisorAskResponse>('/advisor/ask', {
+      method: 'POST',
+      body: {
+        question,
+        include_agent_trace: options.includeAgentTrace ?? false,
+        execution_mode: options.executionMode ?? 'auto',
+        ...(options.conversationId ? { conversation_id: options.conversationId } : {}),
+      },
+    }),
+  createJob: (type: 'advisor_deep_plan', payload: Record<string, unknown>) =>
+    apiRequest<{ status: string; job: AiJob }>('/ai/jobs', {
+      method: 'POST',
+      body: { type, payload },
+    }),
+  getJob: (jobId: string) => apiRequest<{ job: AiJob }>(`/ai/jobs/${jobId}`),
+  listJobs: (page = 1, limit = 20) =>
+    apiRequest<{ jobs: AiJob[]; pagination: { total: number; page: number; limit: number } }>(
+      `/ai/jobs?page=${page}&limit=${limit}`,
+    ),
+}
+
+export const simulationsApi = {
+  list: (page = 1, limit = 30) =>
+    apiRequest<{
+      simulationScenarios: SimulationScenario[]
+      pagination: { total: number; page: number; limit: number }
+    }>(`/simulations/scenarios?page=${page}&limit=${limit}`),
+  get: (scenarioId: string) =>
+    apiRequest<{ simulationScenario: SimulationScenario }>(`/simulations/scenarios/${scenarioId}`),
+  create: (body: {
+    name: string
+    operations: SimulationOperation[]
+    description?: string
+    semesterCode?: string
+    planId?: string
+    naturalLanguagePrompt?: string
+  }) =>
+    apiRequest<{ simulationScenario: SimulationScenario }>('/simulations/scenarios', {
+      method: 'POST',
+      body,
+    }),
+  createFromText: (body: {
+    text: string
+    name?: string
+    semesterCode?: string
+    planId?: string
+  }) =>
+    apiRequest<{
+      simulationScenario: SimulationScenario
+      parsedOperations: SimulationOperation[]
+    }>('/simulations/scenarios/from-text', {
+      method: 'POST',
+      body,
+    }),
+  run: (scenarioId: string, executionMode: 'auto' | 'sync' | 'async' = 'auto') =>
+    apiRequest<SimulationRunResponse>(`/simulations/scenarios/${scenarioId}/run`, {
+      method: 'POST',
+      body: { executionMode },
+    }),
+  getResult: (resultId: string) =>
+    apiRequest<{ simulationResult: SimulationResult }>(`/simulations/results/${resultId}`),
+  listResults: (scenarioId: string, page = 1, limit = 20) =>
+    apiRequest<{
+      simulationResults: SimulationResult[]
+      pagination: { total: number; page: number; limit: number }
+    }>(`/simulations/scenarios/${scenarioId}/results?page=${page}&limit=${limit}`),
 }
 
 export const risksApi = {

@@ -140,12 +140,13 @@ services:
       - .env
     environment:
       WORKER_PORT: ${WORKER_PORT}
-      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME}
-      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-ai_jobs}
+      API_SERVICE_URL: http://api:8000
       REDIS_URL: redis://:${REDIS_PASSWORD:-unipilot_dev_redis_password}@redis:6379
-      AI_SERVICE_URL: http://ai:${AI_SERVICE_PORT}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
     depends_on:
+      api:
+        condition: service_healthy
       mongo:
         condition: service_healthy
       redis:

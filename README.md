@@ -6,9 +6,9 @@ UniPilot AI is an AI-powered academic decision support platform. The **FastAPI**
 - Production Technion DDS catalog (`/catalog/*`)
 - Graduation progress, semester planning (auto + manual + weekly schedule + versioning)
 - Deterministic academic risk analysis
-- Docker-first deployment with MongoDB, Redis, worker, and AI stubs
-
-Simulation and async AI recommendation features are not implemented yet.
+- What-if simulation council (structured scenarios with before/after graduation impact)
+- AI academic advisor with async deep-analysis jobs
+- Docker-first deployment with MongoDB, Redis, worker, and AI services
 
 ## Services
 
@@ -18,8 +18,8 @@ Simulation and async AI recommendation features are not implemented yet.
 | `api` | FastAPI REST API | `API_PORT` (default **8000**) |
 | `transcript-parser` | Internal Technion transcript PDF extraction | none |
 | `data-engineering` | Internal staging / promotion CLI | none |
-| `worker` | Internal async job stub | none |
-| `ai` | Internal inference stub | none |
+| `worker` | Internal async AI jobs (advisor deep plan, simulation runs) | none |
+| `ai` | Internal inference (advisor, simulation narrator) | none |
 | `mongo` | Persistence (`mongo_data` volume) | none |
 | `redis` | Rate limits / future queue | none |
 
@@ -183,12 +183,28 @@ The web UI defaults to **Hebrew** (RTL) with an in-app language switcher (Hebrew
 | Progress | `GET /graduation-progress`, `GET /graduation-progress/curriculum-graph` |
 | Plans | `POST /semester-plans/generate`, `POST /semester-plans/suggest-courses`, `POST /semester-plans/suggest-schedule`, `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions` |
 | Risks | `POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id` |
+| Simulations | `POST /simulations/scenarios`, `POST /simulations/scenarios/from-text`, `POST /simulations/scenarios/:id/run`, `GET /simulations/scenarios`, `GET /simulations/results/:id` |
+| Advisor | `POST /advisor/ask`, `GET /advisor/conversations`, `GET /advisor/conversations/:id` |
+| Async AI jobs | `POST /ai/jobs`, `GET /ai/jobs/:id`, `GET /ai/jobs` |
 
 Full contract: `docs/API_SPEC.md`. API version **1.0.0**.
 
 ### Quick start flow
 
-Register via the web UI at `/register`, complete onboarding with a degree program, then explore catalog, transcript, progress, plans, and risks from the sidebar.
+Register via the web UI at `/register`, complete onboarding with a degree program, then explore catalog, transcript, progress, plans, risks, **What-If simulations**, and the **Advisor** from the sidebar.
+
+### What-if simulations
+
+Open **`/simulations`** (sidebar: **What-If**) to describe hypothetical changes in natural language — drop a course, add planned courses, switch track — and see deterministic before/after graduation impact. Heavy scenarios run as background jobs (same polling UX as the advisor).
+
+Entry points elsewhere in the app link into the simulator with pre-filled text:
+
+- **Semester plan detail** — “Open in What-If simulator” for the current plan
+- **Graduation progress** — per remaining mandatory course under “Needs attention”
+- **Academic risks** — “Open in What-If simulator” on each finding
+- **Advisor** — suggested when your question looks like a what-if scenario
+
+Deep link format: `/simulations?text=...&planId=...&autoBuild=1` (auto-builds the scenario on load).
 
 ### Manual semester planner
 

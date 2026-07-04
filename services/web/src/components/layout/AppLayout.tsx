@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BookOpen,
   CalendarDays,
+  FlaskConical,
   GraduationCap,
   LayoutDashboard,
   LogOut,
@@ -30,6 +31,7 @@ export function AppLayout() {
     { to: '/progress', label: t('nav.progress'), icon: GraduationCap },
     { to: '/plans', label: t('nav.plans'), icon: CalendarDays },
     { to: '/risks', label: t('nav.risks'), icon: ShieldAlert },
+    { to: '/simulations', label: t('nav.whatIf'), icon: FlaskConical },
     { to: '/advisor', label: t('nav.advisor'), icon: MessageCircle },
     { to: '/profile', label: t('nav.profile'), icon: UserCircle },
   ]

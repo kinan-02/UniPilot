@@ -136,6 +136,7 @@ Client polls:  api → MongoDB → job status / result
 - Index: `docs/README.md`
 - Status: `docs/PROJECT_CONTEXT.md`
 - API: `docs/API_SPEC.md`
+- Advisor agents: `docs/architecture/ADVISOR_AGENTS.md`
 - Phases: `docs/planning/IMPLEMENTATION_PHASES.md`
 - Backlog: `docs/planning/FEATURE_BACKLOG.md`
 - Ingestion: `docs/DATA_INGESTION_ARCHITECTURE.md`

@@ -3,12 +3,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Card } from '../ui/Card'
 import { CourseChipList } from './ProgressSections'
+import { OpenInWhatIfLink } from '../simulations/OpenInWhatIfLink'
 import {
   filterRemainingMandatoryCourses,
   bucketCompletionPercent,
   ineligibleCreditReasonLabel,
 } from '../../lib/graduationProgress'
 import { catalogSearchLink, interpolateTemplate, localizedBucketTitle } from '../../lib/electivePools'
+import { buildAddPlannedCourseText } from '../../lib/simulationLinks'
 import { formatCredits, cn } from '../../lib/utils'
 import type { CurriculumGraph, GraduationProgress } from '../../types/api'
 import type { useTranslation } from '../../i18n'
@@ -104,7 +106,20 @@ export function ProgressAttentionPanel({ progress, curriculumGraph, t }: Progres
                   {remainingMandatory.length}
                 </span>
               </div>
-              <CourseChipList courses={remainingMandatory} />
+              <ul className="flex flex-wrap gap-3">
+                {remainingMandatory.map((course) => (
+                  <li key={course.courseId} className="space-y-1">
+                    <CourseChipList courses={[course]} />
+                    {course.courseNumber ? (
+                      <OpenInWhatIfLink
+                        text={buildAddPlannedCourseText(course.courseNumber)}
+                        className="text-xs"
+                        testId={`simulate-mandatory-${course.courseNumber}`}
+                      />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             </section>
           ) : null}
 

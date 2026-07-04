@@ -12,9 +12,16 @@ from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
+from app.schemas.advisor import UserContextPayload
 from app.services.academic_graph_engine import AcademicGraphEngine
 from app.services.graph_tools import build_graph_tools, parse_tool_result
+from app.services.planning_agent import run_planning_agent
+from app.services.profile_agent import run_profile_agent
+from app.services.regulation_agent import RegulationAgentResult, run_regulation_agent
 from app.services.semester_catalog import resolve_semester_from_query
+
+# Backward-compatible alias used by scripts and graph_registry.
+UserContext = UserContextPayload
 
 COURSE_CODE_RE = re.compile(r"\d{8}")
 HEBREW_RE = re.compile(r"[\u0590-\u05FF]")
@@ -33,15 +40,31 @@ DEFAULT_FALLBACK_HE = (
 )
 
 
-class UserContext(BaseModel):
-    track_slug: str | None = None
-    faculty: str | None = None
-    catalog_year: int | None = None
-    completed_courses: list[str] = Field(default_factory=list)
-    display_name: str | None = None
-    degree_id: str | None = None
-    semester_filename: str | None = None
-    plan_semester_code: str | None = None
+class ConsultProfileAgentInput(BaseModel):
+    sub_question: str = Field(
+        description="Student-specific sub-question for the profile specialist agent."
+    )
+    reasoning: str = Field(
+        description="Why profile data is needed to answer the main question."
+    )
+
+
+class ConsultPlanningAgentInput(BaseModel):
+    sub_question: str = Field(
+        description="Planning sub-question for the planning swarm specialist."
+    )
+    reasoning: str = Field(
+        description="Why graduation progress, semester plan, or risk data is needed."
+    )
+
+
+class ConsultRegulationAgentInput(BaseModel):
+    sub_question: str = Field(
+        description="Regulation/rights sub-question for the regulation specialist."
+    )
+    reasoning: str = Field(
+        description="Why policy, student rights, or appeal process data is needed."
+    )
 
 
 class AdvisorResponse(BaseModel):
@@ -135,6 +158,7 @@ def _default_fallback(question: str) -> str:
 
 def _block_key(block: dict[str, Any]) -> tuple[Any, ...]:
     return (
+        block.get("source"),
         block.get("intent"),
         block.get("course_id"),
         block.get("wiki_slug"),
@@ -192,6 +216,120 @@ def _build_finish_tool(state: dict[str, Any]) -> StructuredTool:
     )
 
 
+def _build_consult_profile_tool(
+    ctx: UserContextPayload,
+    engine: AcademicGraphEngine,
+    profile_invocations: list[dict[str, Any]],
+) -> StructuredTool:
+    def consult_profile_agent(sub_question: str, reasoning: str) -> str:
+        """Delegate a student-specific sub-question to the profile specialist agent."""
+        result = run_profile_agent(sub_question, ctx, engine)
+        profile_invocations.append(
+            {
+                "sub_question": sub_question,
+                "reasoning": reasoning,
+                "status": result.status,
+                "steps": result.steps,
+                "blocks": result.blocks,
+            }
+        )
+        return json.dumps(
+            {
+                "status": result.status,
+                "block_count": len(result.blocks),
+                "blocks": result.blocks,
+            },
+            ensure_ascii=False,
+        )
+
+    return StructuredTool.from_function(
+        func=consult_profile_agent,
+        name="consult_profile_agent",
+        description=(
+            "Delegate to the profile specialist when the question needs the student's "
+            "transcript, academic path, or personal eligibility (e.g. 'can I take X?')."
+        ),
+        args_schema=ConsultProfileAgentInput,
+    )
+
+
+def _build_consult_regulation_tool(
+    engine: AcademicGraphEngine,
+    regulation_invocations: list[dict[str, Any]],
+) -> StructuredTool:
+    def consult_regulation_agent(sub_question: str, reasoning: str) -> str:
+        result: RegulationAgentResult = run_regulation_agent(sub_question, engine)
+        regulation_invocations.append(
+            {
+                "sub_question": sub_question,
+                "reasoning": reasoning,
+                "status": result.status,
+                "message": result.message,
+                "steps": result.steps,
+                "blocks": result.blocks,
+                "cited_slugs": result.cited_slugs,
+                "suggested_contacts": result.suggested_contacts,
+            }
+        )
+        return json.dumps(
+            {
+                "status": result.status,
+                "message": result.message,
+                "blocks": result.blocks,
+                "cited_slugs": result.cited_slugs,
+                "suggested_contacts": result.suggested_contacts,
+            },
+            ensure_ascii=False,
+        )
+
+    return StructuredTool.from_function(
+        func=consult_regulation_agent,
+        name="consult_regulation_agent",
+        description=(
+            "Delegate regulation and student-rights questions to the Regulation specialist. "
+            "Use for grade appeals, ombudsman, leave of absence, disciplinary rules, and policy text."
+        ),
+        args_schema=ConsultRegulationAgentInput,
+    )
+
+
+def _build_consult_planning_tool(
+    ctx: UserContextPayload,
+    planning_invocations: list[dict[str, Any]],
+) -> StructuredTool:
+    def consult_planning_agent(sub_question: str, reasoning: str) -> str:
+        """Delegate plan/progress/risk sub-questions to the planning swarm specialist."""
+        result = run_planning_agent(sub_question, ctx)
+        planning_invocations.append(
+            {
+                "sub_question": sub_question,
+                "reasoning": reasoning,
+                "status": result.status,
+                "steps": result.steps,
+                "blocks": result.blocks,
+            }
+        )
+        return json.dumps(
+            {
+                "status": result.status,
+                "block_count": len(result.blocks),
+                "blocks": result.blocks,
+            },
+            ensure_ascii=False,
+        )
+
+    return StructuredTool.from_function(
+        func=consult_planning_agent,
+        name="consult_planning_agent",
+        description=(
+            "Delegate when the question needs graduation progress, semester planning, "
+            "degree completion gaps, or academic risk analysis "
+            "(e.g. 'what should I take next semester?', 'am I on track to graduate?')."
+        ),
+        args_schema=ConsultPlanningAgentInput,
+    )
+
+
 def run_retrieval_agent(
     question: str,
     engine: AcademicGraphEngine,
@@ -208,9 +346,15 @@ def run_retrieval_agent(
     ctx = user_context or UserContext()
     limit = max_iterations or _max_iterations()
     agent_state: dict[str, Any] = {"finish": None}
+    profile_invocations: list[dict[str, Any]] = []
+    planning_invocations: list[dict[str, Any]] = []
+    regulation_invocations: list[dict[str, Any]] = []
     graph_tools = build_graph_tools(engine, technion_raw_dir, ctx.completed_courses)
     finish_tool = _build_finish_tool(agent_state)
-    all_tools = graph_tools + [finish_tool]
+    consult_tool = _build_consult_profile_tool(ctx, engine, profile_invocations)
+    planning_tool = _build_consult_planning_tool(ctx, planning_invocations)
+    regulation_tool = _build_consult_regulation_tool(engine, regulation_invocations)
+    all_tools = graph_tools + [consult_tool, planning_tool, regulation_tool, finish_tool]
     llm = _build_llm().bind_tools(all_tools)
 
     accumulated: list[dict[str, Any]] = []
@@ -240,8 +384,20 @@ def run_retrieval_agent(
                 "- retrieve_graph_data: fetch wiki and/or semester JSON facts\n"
                 "- list_wiki_catalog / list_semester_catalogs: browse available sources\n"
                 "- select_semester_catalog: switch semester JSON before offering lookups\n"
+                "- consult_profile_agent: delegate student-specific sub-questions "
+                "(transcript, track, personal eligibility)\n"
+                "- consult_planning_agent: delegate graduation progress, semester plan, "
+                "and academic risk sub-questions\n"
+                "- consult_regulation_agent: delegate grade appeals, ombudsman, leave of absence, "
+                "student rights, and other policy questions\n"
                 "- finish_retrieval: stop when context is sufficient OR confirmed missing\n\n"
-                "For schedule/syllabus/prerequisites, ensure the correct semester catalog is active.\n"
+                "Use consult_profile_agent when the answer depends on THIS student's "
+                "completed courses, track, or whether they can take a course.\n"
+                "Use consult_planning_agent for degree completion, next-semester planning, "
+                "or risk questions — numbers must come from planning tools, not guesses.\n"
+                "Use consult_regulation_agent for regulations, appeals, ombudsman, leave, "
+                "and student rights — policy text must come from the regulation specialist.\n"
+                "Use graph tools for course catalog facts, schedules, and syllabi.\n"
                 "If the user did not specify a semester, use the active default and note the assumption.\n"
                 "Never invent facts. Avoid duplicate retrievals.\n"
                 f"Maximum {limit} rounds."
@@ -252,7 +408,9 @@ def run_retrieval_agent(
                 f"Question: {question}\n"
                 f"Detected course codes: {', '.join(codes_in_question) or 'none'}\n"
                 f"{semester_note}\n"
-                "Profile will be merged later — focus on wiki + semester retrieval now."
+                "Student profile is available via consult_profile_agent when needed.\n"
+                "Planning snapshots (progress, plan, risk) via consult_planning_agent when needed.\n"
+                "Regulation and student-rights policy via consult_regulation_agent when needed."
             )
         ),
     ]
@@ -299,6 +457,40 @@ def run_retrieval_agent(
                 new_blocks = _dedupe_blocks(accumulated, [block])
                 accumulated.extend(new_blocks)
                 step_record["retrieved_blocks"].extend(new_blocks)
+            elif name == "consult_profile_agent":
+                try:
+                    payload = json.loads(tool_output)
+                except json.JSONDecodeError:
+                    payload = {}
+                profile_blocks = payload.get("blocks") or []
+                new_blocks = _dedupe_blocks(accumulated, profile_blocks)
+                accumulated.extend(new_blocks)
+                step_record["retrieved_blocks"].extend(new_blocks)
+                step_record["profile_agent"] = profile_invocations[-1] if profile_invocations else None
+            elif name == "consult_planning_agent":
+                try:
+                    payload = json.loads(tool_output)
+                except json.JSONDecodeError:
+                    payload = {}
+                planning_blocks = payload.get("blocks") or []
+                new_blocks = _dedupe_blocks(accumulated, planning_blocks)
+                accumulated.extend(new_blocks)
+                step_record["retrieved_blocks"].extend(new_blocks)
+                step_record["planning_agent"] = (
+                    planning_invocations[-1] if planning_invocations else None
+                )
+            elif name == "consult_regulation_agent":
+                try:
+                    payload = json.loads(tool_output)
+                except json.JSONDecodeError:
+                    payload = {}
+                regulation_blocks = payload.get("blocks") or []
+                new_blocks = _dedupe_blocks(accumulated, regulation_blocks)
+                accumulated.extend(new_blocks)
+                step_record["retrieved_blocks"].extend(new_blocks)
+                step_record["regulation_agent"] = (
+                    regulation_invocations[-1] if regulation_invocations else None
+                )
 
             messages.append(ToolMessage(content=tool_output, tool_call_id=tool_call_id))
 
@@ -350,7 +542,7 @@ def run_retrieval_agent(
     )
 
 
-def _merge_user_profile(user_context: UserContext) -> dict[str, Any]:
+def _merge_user_profile(user_context: UserContextPayload) -> dict[str, Any]:
     """Explicit profile envelope merged after retrieval, before synthesis."""
     return {
         "track_slug": user_context.track_slug,
@@ -359,6 +551,12 @@ def _merge_user_profile(user_context: UserContext) -> dict[str, Any]:
         "completed_courses": user_context.completed_courses,
         "display_name": user_context.display_name,
         "degree_id": user_context.degree_id,
+        "plan_semester_code": user_context.plan_semester_code,
+        "program_type": user_context.program_type,
+        "institution_id": user_context.institution_id,
+        "academic_path": user_context.academic_path,
+        "preferences": user_context.preferences,
+        "transcript_count": len(user_context.transcript),
         "completed_count": len(user_context.completed_courses),
     }
 
@@ -515,6 +713,10 @@ def _synthesis_messages(
             "Answer ONLY from retrieval_blocks and user_profile.\n"
             "Match the question language (Hebrew or English).\n"
             "Personalize using track_slug and completed_courses when relevant.\n"
+            "When planning_agent blocks are present, cite graduation credits, plan courses, "
+            "and risk severities exactly as given — do not recompute.\n"
+            "When regulation_agent blocks are present, include wiki_slugs from cited_sources "
+            "in wiki_slugs and mention suggested_contacts when relevant.\n"
             "Copy eligibility facts exactly from retrieval blocks — do not recompute.\n"
             "Include contacts only when the answer references who to contact."
             f"{json_rules}"
@@ -628,6 +830,22 @@ def advise(
     )
     profile = _merge_user_profile(ctx)
 
+    profile_invocations = [
+        step.get("profile_agent")
+        for step in retrieval.steps
+        if step.get("profile_agent")
+    ]
+    planning_invocations = [
+        step.get("planning_agent")
+        for step in retrieval.steps
+        if step.get("planning_agent")
+    ]
+    regulation_invocations = [
+        step.get("regulation_agent")
+        for step in retrieval.steps
+        if step.get("regulation_agent")
+    ]
+
     response = synthesize_answer(
         question,
         retrieval.blocks,
@@ -652,6 +870,9 @@ def advise(
             "iterations": len(retrieval.steps),
             "steps": retrieval.steps,
         },
+        "profile_agent_invocations": profile_invocations,
+        "planning_agent_invocations": planning_invocations,
+        "regulation_agent_invocations": regulation_invocations,
         "retrieval_blocks": retrieval.blocks,
         "user_profile": profile,
         "response": response.model_dump(),

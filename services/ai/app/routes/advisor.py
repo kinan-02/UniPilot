@@ -6,7 +6,8 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.core.responses import error_response, success_response
 from app.dependencies.internal_auth import require_internal_service_token
-from app.schemas.advisor import AdviseRequest, RetrieveRequest
+from app.schemas.advisor import AdviseRequest, RetrieveRequest, SummarizeConversationRequest
+from app.services.conversation_summarizer import summarize_conversation_exchange
 from app.services.graph_registry import graph_registry
 
 router = APIRouter(tags=["advisor"])
@@ -64,6 +65,20 @@ async def advise_route(body: AdviseRequest) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return success_response(result)
+
+
+@router.post("/summarize-conversation", dependencies=[Depends(require_internal_service_token)])
+async def summarize_conversation_route(body: SummarizeConversationRequest) -> dict:
+    try:
+        result = summarize_conversation_exchange(
+            previous_summary=body.previous_summary,
+            user_message=body.user_message.strip(),
+            advisor_answer=body.advisor_answer.strip(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return success_response(result.model_dump())
 
 
 @router.post("/infer", dependencies=[Depends(require_internal_service_token)])

@@ -2,12 +2,14 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import { plansApi } from '../api/endpoints'
+import { OpenInWhatIfLink } from '../components/simulations/OpenInWhatIfLink'
 import { ExamSummaryPanel } from '../components/plans/ExamSummaryPanel'
 import { SharePlanPanel } from '../components/plans/SharePlanPanel'
 import { WeeklyScheduleGrid } from '../components/plans/WeeklyScheduleGrid'
 import { Button } from '../components/ui/Button'
 import { Badge, Card, PageHeader, Spinner } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
+import { buildPlanWhatIfText } from '../lib/simulationLinks'
 import { formatCredits } from '../lib/utils'
 
 export function PlanDetailPage() {
@@ -58,6 +60,12 @@ export function PlanDetailPage() {
         description={plan.explanation?.summary}
         action={
           <div className="flex flex-wrap gap-2">
+            <OpenInWhatIfLink
+              text={buildPlanWhatIfText(plan)}
+              planId={plan.id}
+              variant="button"
+              testId="plan-what-if"
+            />
             {isManual && plan.status !== 'archived' ? (
               <Link to={`/plans/${plan.id}/edit`}>
                 <Button variant="secondary">

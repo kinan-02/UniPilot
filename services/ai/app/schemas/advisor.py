@@ -5,6 +5,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class TranscriptEntryPayload(BaseModel):
+    course_number: str
+    semester_code: str | None = None
+    grade: str | None = None
+    credits_earned: float | None = None
+
+
 class UserContextPayload(BaseModel):
     track_slug: str | None = None
     faculty: str | None = None
@@ -14,6 +21,12 @@ class UserContextPayload(BaseModel):
     degree_id: str | None = None
     semester_filename: str | None = None
     plan_semester_code: str | None = None
+    institution_id: str | None = None
+    program_type: str | None = None
+    academic_path: dict[str, Any] = Field(default_factory=dict)
+    preferences: dict[str, Any] = Field(default_factory=dict)
+    transcript: list[TranscriptEntryPayload] = Field(default_factory=list)
+    planning_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class RetrieveRequest(BaseModel):
@@ -37,6 +50,12 @@ class RetrieveRequest(BaseModel):
 class AdviseRequest(BaseModel):
     question: str = Field(min_length=1)
     user_context: UserContextPayload = Field(default_factory=UserContextPayload)
+
+
+class SummarizeConversationRequest(BaseModel):
+    previous_summary: str | None = None
+    user_message: str = Field(min_length=1)
+    advisor_answer: str = Field(min_length=1)
 
 
 class GraphActionResult(BaseModel):

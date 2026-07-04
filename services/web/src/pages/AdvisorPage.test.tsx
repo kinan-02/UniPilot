@@ -8,6 +8,11 @@ import { I18nProvider } from '../i18n'
 vi.mock('../api/endpoints', () => ({
   advisorApi: {
     ask: vi.fn(),
+    createJob: vi.fn(),
+    getJob: vi.fn(),
+    listConversations: vi.fn().mockResolvedValue({ conversations: [] }),
+    getConversation: vi.fn(),
+    deleteConversation: vi.fn(),
   },
 }))
 
@@ -33,5 +38,9 @@ describe('AdvisorPage', () => {
     expect(screen.getByTestId('advisor-page')).toBeInTheDocument()
     expect(screen.getByTestId('advisor-input')).toBeInTheDocument()
     expect(screen.getByTestId('advisor-submit')).toBeInTheDocument()
+    expect(screen.getByTestId('advisor-show-trace')).toBeInTheDocument()
+    expect(screen.getByTestId('advisor-prefer-instant')).toBeInTheDocument()
+    expect(screen.getByTestId('advisor-history')).toBeInTheDocument()
+    expect(screen.getByTestId('advisor-new-chat')).toBeInTheDocument()
   })
 })

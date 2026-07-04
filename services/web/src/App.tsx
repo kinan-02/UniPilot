@@ -15,6 +15,7 @@ import { PlansPage } from './pages/PlansPage'
 import { PlanDetailPage } from './pages/PlanDetailPage'
 import { PlanBuilderPage } from './pages/PlanBuilderPage'
 import { RisksPage } from './pages/RisksPage'
+import { SimulationsPage } from './pages/SimulationsPage'
 import { AdvisorPage } from './pages/AdvisorPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SharedPlanPage } from './pages/SharedPlanPage'
@@ -59,6 +60,7 @@ export default function App() {
                     <Route path="plans/:id/edit" element={<PlanBuilderPage />} />
                     <Route path="plans/:id" element={<PlanDetailPage />} />
                     <Route path="risks" element={<RisksPage />} />
+                    <Route path="simulations" element={<SimulationsPage />} />
                     <Route path="advisor" element={<AdvisorPage />} />
                     <Route path="profile" element={<ProfilePage />} />
                   </Route>
