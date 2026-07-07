@@ -1,0 +1,23 @@
+{
+  "id": "real_world_like_mixed_he_en_course_question",
+  "kind": "course_question",
+  "name": "Mixed Hebrew/English course question",
+  "description": "Realistic bilingual course prerequisite question.",
+  "user_message": "מה הקורס קדם ל-Data Structures 234218? Is it intro programming?",
+  "compact_context": {
+    "intent": "course_question",
+    "workflow": "course_question_workflow"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"primaryIntent": "course_question"},
+    "plannerDiagnostics": {"workflowName": "course_question_workflow"}
+  },
+  "live_response_summary": {"textPreview": "Course 234218 typically requires intro programming.", "blockCount": 1},
+  "expected": {
+    "expected_intent": "course_question",
+    "expected_workflow": "course_question_workflow",
+    "must_not_write_student_data": true,
+    "must_not_create_proposed_actions": true
+  },
+  "tags": ["real_world_like", "course_question", "bilingual"]
+}

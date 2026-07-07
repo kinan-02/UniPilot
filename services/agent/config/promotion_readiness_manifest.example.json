@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1",
+  "generatedAt": "2026-07-06T00:00:00Z",
+  "reviewedAt": "2026-07-06T00:00:00Z",
+  "reviewedBy": "human-review",
+  "sourceReport": "unipilot-agent-readiness.json",
+  "suiteRunId": "local-fixtures-2026-07-06",
+  "candidates": [
+    {
+      "candidateId": "synthesis_text_promotion.course_question_workflow",
+      "level": "ready_for_limited_promotion",
+      "approved": true,
+      "scope": ["course_question_workflow"],
+      "expiresAt": "2026-08-05T00:00:00Z",
+      "notes": "Approved for text-only promotion in local/dev."
+    },
+    {
+      "candidateId": "synthesis_text_promotion.graduation_progress_workflow",
+      "level": "ready_for_limited_promotion",
+      "approved": true,
+      "scope": ["graduation_progress_workflow"],
+      "expiresAt": "2026-08-05T00:00:00Z",
+      "notes": "Approved for text-only promotion in local/dev."
+    },
+    {
+      "candidateId": "synthesis_text_promotion.requirement_explanation_workflow",
+      "level": "ready_for_limited_promotion",
+      "approved": true,
+      "scope": ["requirement_explanation_workflow"],
+      "expiresAt": "2026-08-05T00:00:00Z",
+      "notes": "Approved for text-only promotion in local/dev."
+    }
+  ]
+}

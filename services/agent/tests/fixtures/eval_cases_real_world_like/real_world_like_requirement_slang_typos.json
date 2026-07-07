@@ -1,0 +1,22 @@
+{
+  "id": "real_world_like_requirement_slang_typos",
+  "kind": "requirement_explanation",
+  "name": "Requirement explanation with slang and typos",
+  "description": "Messy wording for degree requirement explanation.",
+  "user_message": "wats the diffrence between faculty electives and free electives?? thx",
+  "compact_context": {
+    "intent": "requirement_explanation",
+    "workflow": "requirement_explanation_workflow"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"primaryIntent": "requirement_explanation"},
+    "synthesisDiagnostics": {"status": "candidate_ready", "safeToShow": true, "confidence": 0.9}
+  },
+  "live_response_summary": {"textPreview": "Faculty electives must be from your faculty; free electives are broader.", "blockCount": 1},
+  "expected": {
+    "expected_intent": "requirement_explanation",
+    "expected_workflow": "requirement_explanation_workflow",
+    "expected_synthesis_status": "candidate_ready"
+  },
+  "tags": ["real_world_like", "requirement_explanation"]
+}

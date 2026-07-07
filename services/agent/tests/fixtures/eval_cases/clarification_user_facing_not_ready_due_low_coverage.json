@@ -1,0 +1,20 @@
+{
+  "id": "clarification_user_facing_not_ready_due_low_coverage",
+  "name": "Clarification low-coverage diagnostic case",
+  "kind": "clarification_cross_turn",
+  "user_message": "Which track should I follow?",
+  "compact_context": {"workflow": "graduation_progress_workflow", "intent": "graduation_progress"},
+  "retrieval_metadata": {
+    "taskUnderstanding": {"intent": "graduation_progress"},
+    "clarificationDiagnostics": {
+      "status": "skipped",
+      "action": "skip",
+      "reason": "insufficient_coverage"
+    }
+  },
+  "live_response_summary": {"textPreview": "Please specify whether you mean research or industry track.", "proposedActionCount": 0, "blockCount": 0},
+  "expected": {
+    "expected_clarification_action": "skipped"
+  },
+  "tags": ["clarification"]
+}

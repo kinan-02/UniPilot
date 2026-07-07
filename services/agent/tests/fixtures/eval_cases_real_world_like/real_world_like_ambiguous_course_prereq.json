@@ -1,0 +1,21 @@
+{
+  "id": "real_world_like_ambiguous_course_prereq",
+  "kind": "course_question",
+  "name": "Ambiguous course prerequisite question",
+  "description": "User references a course by informal nickname.",
+  "user_message": "Do I need linear before algorithms? (I mean the intro linear algebra one)",
+  "compact_context": {
+    "intent": "course_question",
+    "workflow": "course_question_workflow"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"primaryIntent": "course_question"},
+    "plannerDiagnostics": {"workflowName": "course_question_workflow"}
+  },
+  "live_response_summary": {"textPreview": "Intro linear algebra is commonly required before algorithms.", "blockCount": 1},
+  "expected": {
+    "expected_intent": "course_question",
+    "expected_workflow": "course_question_workflow"
+  },
+  "tags": ["real_world_like", "course_question", "ambiguous_entity"]
+}

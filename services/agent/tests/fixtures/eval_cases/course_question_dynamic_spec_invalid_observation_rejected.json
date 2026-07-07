@@ -1,0 +1,29 @@
+{
+  "id": "course_question_dynamic_spec_invalid_observation_rejected",
+  "name": "Invalid dynamic spec observation rejected",
+  "kind": "course_question",
+  "description": "Dynamic agent spec rejected due to invalid observation contract.",
+  "user_message": "Tell me about course Z prerequisites.",
+  "compact_context": {
+    "workflow": "course_question_workflow",
+    "intent": "course_question"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"intent": "course_question"},
+    "plannerDynamicAgents": {
+      "specCount": 1,
+      "agents": [{"status": "rejected", "reason": "invalid_observation"}]
+    }
+  },
+  "live_response_summary": {
+    "textPreview": "I could not validate a dynamic lookup spec for course Z.",
+    "proposedActionCount": 0,
+    "blockCount": 0
+  },
+  "expected": {
+    "expected_workflow": "course_question_workflow",
+    "expected_dynamic_spec_count": 1,
+    "expected_dynamic_spec_statuses": ["rejected"]
+  },
+  "tags": ["dynamic_agent", "course_question"]
+}

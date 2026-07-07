@@ -1,0 +1,17 @@
+{
+  "id": "read_only_promotion",
+  "name": "Read-only promotion",
+  "purpose": "read_only_promotion",
+  "description": "Cases covering read-only promotion gate behavior.",
+  "case_ids": [
+    "graduation_progress_oracle_valid",
+    "graduation_progress_missing_requirement_detected",
+    "synthesis_promotion_valid_text_only"
+  ],
+  "minimum_case_count": 2,
+  "required_for_candidates": [
+    "workflow_promotion.graduation_progress_workflow",
+    "specialist_text_promotion.graduation_progress_agent",
+    "synthesis_text_promotion.requirement_explanation_workflow"
+  ]
+}

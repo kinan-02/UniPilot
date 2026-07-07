@@ -1,0 +1,36 @@
+{
+  "id": "synthesis_promotion_valid_text_only",
+  "name": "Valid synthesis text-only promotion",
+  "kind": "synthesis_promotion",
+  "description": "Safe synthesis candidate promoted as text-only replacement.",
+  "user_message": "Explain my graduation progress briefly.",
+  "compact_context": {
+    "workflow": "graduation_progress_workflow",
+    "intent": "graduation_progress"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"intent": "graduation_progress"},
+    "synthesisDiagnostics": {
+      "status": "candidate_ready",
+      "safeToShow": true,
+      "confidence": 0.95
+    },
+    "synthesisPromotion": {
+      "status": "promoted",
+      "promoted": true,
+      "reasons": [{"code": "text_promotion_applied"}]
+    },
+    "monitorDiagnostics": {"signals": []},
+    "planRepairDiagnostics": {"modeUsed": "continue"}
+  },
+  "live_response_summary": {
+    "textPreview": "Synthesized: you need 117 more credits including B and C.",
+    "proposedActionCount": 0,
+    "blockCount": 0
+  },
+  "expected": {
+    "expected_synthesis_status": "candidate_ready",
+    "expected_synthesis_promotion": "promoted"
+  },
+  "tags": ["synthesis", "promotion"]
+}

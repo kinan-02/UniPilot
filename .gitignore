@@ -36,9 +36,24 @@ services/data-engineering/data/reports/technion/dds_staging_quality_report.json
 # Graphify (local cache; commit graph.json + GRAPH_REPORT.md if sharing with team)
 graphify-out/cost.json
 graphify-out/cache/
+**/graphify-out/cost.json
+**/graphify-out/cache/
 
-# RAG embedding index cache (generated locally)
+# Golden-set eval traces and local debug artifacts
+services/agent/tmp/
+**/final_answer_eval_traces/
+**/final_answer_eval_traces_raw/
+**/raw_llm/
+**/raw_llm_debug/
+
 services/api/data/cache/wiki_embedding_index.json
 services/api/data/cache/wiki_embedding_index.compact.pkl.gz
 services/api/data/cache/wiki_embedding_index.meta.json
 services/api/data/cache/backups/
+
+# Agent service's own copy of the same generated embedding cache (Jul-2026 —
+# services/agent is a standalone service with its own retrieval index build)
+services/agent/data/cache/wiki_embedding_index.json
+services/agent/data/cache/wiki_embedding_index.compact.pkl.gz
+services/agent/data/cache/wiki_embedding_index.meta.json
+services/agent/data/cache/backups/

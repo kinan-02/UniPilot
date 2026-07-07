@@ -1,0 +1,43 @@
+{
+  "id": "graduation_progress_missing_requirement_detected",
+  "name": "Graduation missing mandatory courses detected",
+  "kind": "graduation_progress",
+  "description": "Response acknowledges missing mandatory courses B and C.",
+  "user_message": "What courses am I still missing for graduation?",
+  "synthetic_world": {
+    "degree": {
+      "totalRequiredCredits": 120,
+      "mandatoryCourses": ["A", "B", "C"]
+    },
+    "courses": {
+      "A": {"credits": 3, "prerequisites": []},
+      "B": {"credits": 4, "prerequisites": ["A"]},
+      "C": {"credits": 3, "prerequisites": []}
+    },
+    "student": {"completedCourses": ["A"]}
+  },
+  "compact_context": {
+    "workflow": "graduation_progress_workflow",
+    "intent": "graduation_progress"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"intent": "graduation_progress"},
+    "plannerDiagnostics": {"workflowName": "graduation_progress_workflow"},
+    "monitorDiagnostics": {"signals": [{"kind": "missing_requirement"}]}
+  },
+  "live_response_summary": {
+    "textPreview": "You still need mandatory courses B and C.",
+    "proposedActionCount": 0,
+    "blockCount": 1
+  },
+  "expected": {
+    "expected_intent": "graduation_progress",
+    "expected_workflow": "graduation_progress_workflow",
+    "expected_monitor_signals": ["missing_requirement"],
+    "expected_oracle_facts": {
+      "completedCredits": 3,
+      "missingMandatoryCourses": ["B", "C"]
+    }
+  },
+  "tags": ["oracle", "graduation", "monitor"]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "real_world_like_next_semester_missing_prefs",
+  "kind": "semester_planning",
+  "name": "Next semester without preferences",
+  "description": "Student asks what to take next semester with no stated preferences.",
+  "user_message": "What should I take next semester? I haven't decided anything yet.",
+  "compact_context": {
+    "intent": "semester_plan_generation",
+    "workflow": "semester_planning_workflow"
+  },
+  "retrieval_metadata": {
+    "clarificationDiagnostics": {"questions": [{"ambiguityType": "preference", "consequence": "medium"}]},
+    "clarificationState": {"status": "pending"}
+  },
+  "live_response_summary": {"textPreview": "I can suggest options once preferences are clearer.", "blockCount": 0},
+  "expected": {
+    "expected_intent": "semester_plan_generation",
+    "expected_workflow": "semester_planning_workflow",
+    "expected_clarification_action": "ask_user",
+    "must_not_write_student_data": true
+  },
+  "tags": ["real_world_like", "semester_planning", "clarification"]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "synthesis_promotion_blocked_by_uncertainty",
+  "name": "Synthesis promotion blocked by unresolved uncertainty",
+  "kind": "synthesis_promotion",
+  "user_message": "Explain whether I meet the elective requirement.",
+  "compact_context": {"workflow": "requirement_explanation_workflow", "intent": "requirement_explanation"},
+  "retrieval_metadata": {
+    "taskUnderstanding": {"intent": "requirement_explanation"},
+    "synthesisDiagnostics": {
+      "status": "candidate_ready_with_warnings",
+      "safeToShow": true,
+      "confidence": 0.88
+    },
+    "synthesisPromotion": {
+      "status": "blocked",
+      "promoted": false,
+      "reasons": [{"code": "unresolved_high_severity_conflicts"}]
+    }
+  },
+  "live_response_summary": {"textPreview": "Elective requirement explanation.", "proposedActionCount": 0, "blockCount": 1},
+  "expected": {
+    "expected_synthesis_status": "candidate_ready_with_warnings",
+    "expected_synthesis_promotion": "blocked",
+    "expected_required_reason_codes": ["unresolved_high_severity_conflicts"]
+  },
+  "tags": ["synthesis", "promotion", "safety"]
+}

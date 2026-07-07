@@ -1,0 +1,626 @@
+{
+  "metadata": {
+    "version": "1.1",
+    "created": "2026-06-25",
+    "updated": "2026-07-06",
+    "description": "Evaluation cases for the Technion Academic Advisor agent system. Ground-truth answers are derived exclusively from the wiki knowledge base at catalog_valut/wiki/. Each case includes the key facts the agent response must contain to be considered correct.",
+    "source_of_truth": "catalog_valut/wiki/",
+    "case_count": 25
+  },
+  "cases": [
+    {
+      "id": "case_001",
+      "query_type": "course_prerequisites_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What are the prerequisites for Theory of Computation (course 02360343)? And which tracks require it?",
+      "correct_answer": {
+        "summary": "Theory of Computation (תורת החישוביות, 02360343) is a 3-credit undergraduate Computer Science course. It has two prerequisites: Intro to Set Theory and Automata for CS (02340129) and Algorithms 1 (02340247). It is required in 11 tracks.",
+        "key_facts": [
+          "Course code: 02360343",
+          "Hebrew name: תורת החישוביות",
+          "Credits: 3.0",
+          "Level: undergraduate",
+          "Prerequisite 1: 02340129 — מבוא לתורת הקבוצות ואוטומטים למדמ\"ח (Intro to Set Theory and Automata for CS)",
+          "Prerequisite 2: 02340247 — אלגוריתמים 1 (Algorithms 1)",
+          "Required in track: track-computer-science-general-4year",
+          "Required in track: track-computer-science-general-3year",
+          "Required in track: track-software-engineering",
+          "Required in track: track-computer-engineering",
+          "Required in track: track-cs-mathematics",
+          "Required in track: track-cs-physics",
+          "Required in track: track-cs-medicine-dual",
+          "Required in track: track-computer-science-cyber",
+          "Required in track: track-computer-science-data-ml",
+          "Required in track: track-computer-science-bioinformatics",
+          "Required in track: track-chemical-engineering",
+          "Total tracks requiring this course: 11"
+        ],
+        "source_wiki_pages": [
+          "wiki/courses/023-cs/02360343-theory-of-computation.md"
+        ]
+      },
+      "evaluation_notes": "The agent must report both prerequisites (not just one). The full list of 11 required-in tracks should be present or clearly summarized. A wrong credit count or missing prerequisite is a hard failure."
+    },
+    {
+      "id": "case_002",
+      "query_type": "regulation_reasoning",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I took Moed A in a course and got 72. Then I decided to try Moed B to improve my grade, but I only got 58. What is my official final grade for this course?",
+      "correct_answer": {
+        "summary": "The official final grade is 58 — the Moed B result. According to Technion undergraduate regulations, the last grade is always the determining grade, regardless of whether it is higher or lower than the previous attempt. Since 58 ≥ 55 the student still passes, but the 72 from Moed A no longer counts.",
+        "key_facts": [
+          "The determining grade is always the last grade taken (Moed A or Moed B)",
+          "The final grade is 58, not 72",
+          "The rule applies even when the later grade is lower than the earlier one",
+          "58 is a passing grade (passing threshold is 55)",
+          "Both Moed A and Moed B grades count in cumulative GPA calculations (not just one)",
+          "Source regulation: Section 5.3 / תקנה 3.1.3"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "The agent must state the final grade is 58 (not 72) and explain why (last-grade rule). It should also note the student still passes (58 ≥ 55). A common failure mode is stating the higher grade counts, or saying both grades are averaged."
+    },
+    {
+      "id": "case_003",
+      "query_type": "track_structure_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "How many total credits do I need to graduate from the 4-year General Computer Science track (track code 023023), and how are they broken down by category?",
+      "correct_answer": {
+        "summary": "The 4-year General CS track (023023-1-000) requires 155.0 total credits, broken down as: 87.0 required courses, 56.0 faculty elective credits, and 12.0 Technion-wide electives. The Technion-wide block includes at least 6 enrichment credits and at least 2 PE credits.",
+        "key_facts": [
+          "Total credits required: 155.0",
+          "Required courses (מקצועות חובה): 87.0 credits",
+          "Faculty electives (מקצועות בחירה פקולטית): 56.0 credits",
+          "Technion-wide electives (מקצועות בחירה כלל-טכניונית): 12.0 credits",
+          "87.0 + 56.0 + 12.0 = 155.0",
+          "Technion-wide block includes at least 6 credits of enrichment courses (קורסי העשרה)",
+          "Technion-wide block includes at least 2 credits of Physical Education",
+          "Duration: 4 years (8 semesters)",
+          "Degree: מוסמך למדעים (B.Sc.) במדעי המחשב",
+          "Faculty: faculty-computer-science"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/tracks/track-computer-science-general-4year.md"
+        ]
+      },
+      "evaluation_notes": "The three category credit counts and the 155 total are the critical facts. The agent should not confuse this with the 3-year CS track (118.5 credits). Mentioning only the total without the breakdown is a partial failure."
+    },
+    {
+      "id": "case_004",
+      "query_type": "reverse_lookup_cross_reference",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I'm looking at course הסתברות מ (Probability M, code 00940412). Which study tracks formally require this course?",
+      "correct_answer": {
+        "summary": "Course 00940412 (הסתברות מ / Advanced Probability) is a required course in 9 BSc tracks spanning Computer Science, Data Science, Education, and Industrial Engineering.",
+        "key_facts": [
+          "Track 1: track-computer-science-general-4year (General CS 4-year)",
+          "Track 2: track-computer-science-data-ml (CS — Data Analysis & ML concentration)",
+          "Track 3: track-computer-science-bioinformatics (CS — Bioinformatics)",
+          "Track 4: track-cs-physics (CS + Physics combined)",
+          "Track 5: track-data-information-engineering (DNE — Data & Information Engineering)",
+          "Track 6: track-education-computer-science (Education in CS)",
+          "Track 7: track-industrial-engineering-management (IEM)",
+          "Track 8: track-information-systems-engineering (ISE)",
+          "Track 9: track-software-engineering (Software Engineering)",
+          "Total: 9 tracks",
+          "Course is filed under faculty-dds but also required by CS and Education tracks"
+        ],
+        "source_wiki_pages": [
+          "wiki/courses/009-dds/00940412-probability.md"
+        ]
+      },
+      "evaluation_notes": "The agent must enumerate all 9 tracks. Missing tracks — especially the less obvious ones like track-education-computer-science or track-cs-physics — indicate a partial retrieval failure. The agent should not confuse this course with 00940411 (the alternative probability course)."
+    },
+    {
+      "id": "case_005",
+      "query_type": "comprehensive_regulation_listing",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "What are all the conditions under which a Technion undergraduate student is placed in Non-Regular Academic Standing (מצב אקדמי לא תקין)? I want the complete list.",
+      "correct_answer": {
+        "summary": "A student is placed in Non-Regular Academic Standing if any ONE of 8 conditions is met. These span GPA, course success rate, language requirements, physics placement, pace of study, and first-year credit accumulation.",
+        "key_facts": [
+          "Any single condition is sufficient — all 8 are OR-conditions",
+          "Condition 1: Weighted cumulative GPA is below 65",
+          "Condition 2: Course success rate is below 66%",
+          "Condition 3: Was in non-regular standing the previous semester and did not fulfill the prescribed study plan",
+          "Condition 4: Did not complete the Physics placement exam by the required date (Part A before semester 3, Part B before semester 4)",
+          "Condition 5: Did not complete English language studies by the end of the 4th semester",
+          "Condition 6: Did not complete Hebrew language studies by the end of the 2nd semester",
+          "Condition 7: Is studying 2 or more years beyond the standard degree duration (from semester 13 onward for 4-year tracks; semester 11 for 3-year tracks)",
+          "Condition 8: Accumulated fewer than 27 credits from the recommended study plan in the first two semesters combined",
+          "Regulation reference: Section 5.6 / תקנה 3.1.5",
+          "Process after trigger: faculty advising invitation → faculty recommendation to Dean → student may appeal"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "All 8 conditions must be present for a full-credit answer. Common failures: listing only GPA and success-rate (conditions 1–2) and missing the language, physics, pace, and first-year conditions. The agent should also clarify that any one condition is sufficient (OR logic, not AND). Missing the process description is a minor deduction."
+    },
+    {
+      "id": "case_006",
+      "query_type": "program_admission_requirements",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I'm a DDS student interested in the Inter-Faculty Robotics Minor. What are the admission requirements, and how many credits do I need to complete it?",
+      "correct_answer": {
+        "summary": "The Inter-Faculty Robotics Minor requires a cumulative GPA of at least 87.0 and at least 60 accumulated credit points in the home program before formal registration. The minor itself requires 27 credits beyond home-track requirements, distributed across 5 course lists. Completing the minor earns a Technion Certificate in addition to the faculty degree.",
+        "key_facts": [
+          "Admission requirement 1: cumulative GPA ≥ 87.0",
+          "Admission requirement 2: at least 60 credit points accumulated in home program",
+          "Formal registration: submit student request form to faculty secretariat",
+          "Students may begin taking minor courses before formal registration",
+          "Total credits for minor: 27 credit points (beyond home-track requirements)",
+          "Course lists: 5 lists (Prerequisites, Intro to Robotics, Learning & AI, Practical Lab, Core Robotics)",
+          "List 2 requirement: exactly 1 Intro to Robotics course",
+          "List 5 requirement: at least 4 core robotics courses, of which at least 2 from outside home faculty",
+          "Award upon completion: Technion Certificate (תעודה טכניונית) in addition to faculty degree",
+          "Available to BSc students in all three DDS tracks and other participating faculties"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/programs/minor-robotics.md"
+        ]
+      },
+      "evaluation_notes": "The two admission gates (GPA ≥87 AND ≥60 credits) are both critical — missing either is a hard failure. The 27-credit total must be stated. A common error is confusing this with a lower GPA threshold. The agent should note that the 27 credits are beyond home-track requirements."
+    },
+    {
+      "id": "case_007",
+      "query_type": "track_structure_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What is the total credit requirement for the Biomedical Engineering BSc track, and how are the credits broken down by category?",
+      "correct_answer": {
+        "summary": "The Biomedical Engineering BSc track (033033-1-000) requires 160.0 total credits, broken down as: 118.0 mandatory, 30.0 faculty electives, and 12.0 Technion-wide electives. The Technion-wide block is further divided into 6.0 enrichment, 4.0 free elective, and 2.0 physical education credits.",
+        "key_facts": [
+          "Program code: 033033-1-000",
+          "Total credits: 160.0",
+          "Mandatory courses (חובה): 118.0 credits",
+          "Faculty elective courses: 30.0 credits",
+          "Technion-wide electives: 12.0 credits",
+          "Of which: enrichment (העשרה): 6.0 credits",
+          "Of which: free elective (בחירה חופשית): 4.0 credits",
+          "Of which: physical education (חינוך גופני): 2.0 credits",
+          "Duration: 4 years (8 semesters)",
+          "Degree: מוסמך למדעים בהנדסה ביו-רפואית (BSc in Biomedical Engineering)",
+          "Faculty: faculty-biomedical-engineering"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/tracks/track-biomedical-engineering.md"
+        ]
+      },
+      "evaluation_notes": "The total of 160.0 and the three-way split (118+30+12) are the primary facts. The further breakdown of the 12.0 Technion-wide credits into 6+4+2 sub-categories is a secondary fact. Common error: confusing this with the CS 4-year track (155 credits)."
+    },
+    {
+      "id": "case_008",
+      "query_type": "track_structure_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "What courses are scheduled in the first semester of the Biomedical Engineering BSc track, and what are their credit values?",
+      "correct_answer": {
+        "summary": "Semester 1 of the BME track contains 6 scheduled items totaling 19.5 credits (excluding the 0-credit lab safety course). The semester includes Calculus 1M2, Linear Algebra 1M2, Physics 1M, General Chemistry, and Biology 1.",
+        "key_facts": [
+          "Course 1: 01040042 — Calculus 1M2 (חדו\"א 1מ2) — 5.0 credits",
+          "Course 2: 01040065 — Linear Algebra 1M2 (אלגברה 1מ2) — 5.0 credits",
+          "Course 3: 01140071 — Physics 1M (פיזיקה 1מ) — 3.5 credits",
+          "Course 4: 01250001 — General Chemistry (כימיה כללית) — 3.0 credits",
+          "Course 5: 01340058 — Biology 1 (ביולוגיה 1) — 3.0 credits",
+          "Course 6: 00440102 — Electrical Lab Safety (בטיחות במעבדות חשמל) — 0.0 credits",
+          "Semester 1 total: 19.5 credits",
+          "Alternative for Calculus: 1040018 (Calculus 1M); alternative for Linear Algebra: 1040016 (Linear Algebra 1M)",
+          "Recommended free elective: 3340021 Trends in Biomedical Engineering"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/tracks/track-biomedical-engineering.md"
+        ]
+      },
+      "evaluation_notes": "All 5 credited courses and the 0-credit lab safety course should be listed. The 19.5 credit total is a key fact. Missing Biology 1 or confusing the exact codes is a failure. The agent should note the alternative course options for Calculus and Linear Algebra."
+    },
+    {
+      "id": "case_009",
+      "query_type": "regulation_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What is the maximum number of credits I can take in a single semester at Technion without special approval?",
+      "correct_answer": {
+        "summary": "The maximum course load without special approval is 29 credits per semester. Exceeding this limit requires both a recommendation from the faculty head and approval from the Dean of Undergraduate Studies.",
+        "key_facts": [
+          "Maximum course load without special approval: 29 credits per semester",
+          "To exceed 29 credits: requires faculty head recommendation AND Dean of Undergraduate Studies approval",
+          "Regulation reference: Section 5.1 of undergraduate regulations",
+          "Rule of thumb referenced in regulations: 50–60 work hours/week ≈ 20 credits/semester"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "The number 29 must be stated precisely. The agent should also mention that exceeding it requires special approval (not just mention the number in isolation). A common failure is stating a different threshold or omitting the approval process."
+    },
+    {
+      "id": "case_010",
+      "query_type": "regulation_reasoning",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I'm currently enrolled in a 4-year CS track (155 credits required) and want to add a second degree in Industrial Engineering & Management (155 credits required). How many total credits will I need to complete both degrees?",
+      "correct_answer": {
+        "summary": "For a dual degree, the minimum combined credit requirement is 0.75 × (sum of credits required by each track). With CS at 155 and IEM at 155, the sum is 310 and the minimum is 0.75 × 310 = 232.5 credits. The student must also have accumulated at least 72 credits before applying for the additional degree. The second degree is granted only after completing the primary degree, with a supplementary-plan average ≥ 65.",
+        "key_facts": [
+          "Dual degree minimum combined credits formula: 0.75 × (sum of credits required by each track)",
+          "CS 4-year track credits: 155",
+          "IEM track credits: 155",
+          "Sum: 155 + 155 = 310",
+          "0.75 × 310 = 232.5 credits minimum",
+          "Prerequisite to apply: must have accumulated at least 72 credits in the primary track",
+          "Additional degree granted only after completing primary degree",
+          "Supplementary-plan average for additional degree: ≥ 65",
+          "Regulation reference: Section 1 (Dual Degree / Additional Degree) of undergraduate regulations"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md",
+          "wiki/entities/tracks/track-computer-science-general-4year.md",
+          "wiki/entities/tracks/track-industrial-engineering-management.md"
+        ]
+      },
+      "evaluation_notes": "The agent must apply the 0.75 formula correctly (not just add both totals). The answer 232.5 must appear. A common error is answering 310 (sum without the 0.75 reduction) or 155 (primary track only). The 72-credit prerequisite for applying is a secondary but important fact."
+    },
+    {
+      "id": "case_011",
+      "query_type": "regulation_reasoning",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I passed a required course with grade 60 in semester A of 2024/25. I want to retake it to try to improve my grade. Until when can I register to retake it?",
+      "correct_answer": {
+        "summary": "Grade improvement (retaking a passed course) is allowed only in the two semesters immediately following the semester in which the passing grade was received. Since the passing grade was received in semester A of 2024/25 (winter 2024), the student may retake the course in semester B of 2024/25 (spring 2025) or semester A of 2025/26 (winter 2025) — but not later. Exceptional extensions require faculty recommendation and Dean approval.",
+        "key_facts": [
+          "Grade improvement window: two semesters immediately following the semester the passing grade was received",
+          "Grade was received in semester A 2024/25 (winter 2024)",
+          "Permitted retake semesters: semester B 2024/25 (spring 2025) OR semester A 2025/26 (winter 2025)",
+          "After that window: not permitted without exceptional approval",
+          "Exceptional extension requires: faculty recommendation + Dean of Undergraduate Studies approval",
+          "Mandatory (חובה) courses where the last grade is failing: may be retaken with no time limit",
+          "In this case (grade 60 = passing), the 2-semester window applies",
+          "The last grade is always the determining grade — retaking could lower the grade",
+          "Regulation reference: Section 5.3(b) of undergraduate regulations"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "The exact window (2 semesters following the passing semester) must be stated. The agent should concretely identify the two permitted semesters given the 2024/25 semester A start. A common error is saying 'one year' or omitting that there is a deadline at all. The agent should also note the risk that the new (last) grade becomes binding even if lower."
+    },
+    {
+      "id": "case_012",
+      "query_type": "regulation_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I've been studying in the Software Engineering track for 3 semesters and want to transfer to the 4-year General CS track. Which transfer option applies to me, and what is the requirement?",
+      "correct_answer": {
+        "summary": "After 2 or more semesters (with a fixed basket of courses completed), a student falls under Transfer Option B. Under Option B, the student must be in the top quartile of students in the target track. This is stricter than Option A (which applies in the first 2 semesters and requires regular academic standing with GPA ≥ 65 and success rate ≥ 66%).",
+        "key_facts": [
+          "Applicable option: Option B (student has completed ≥ 2 semesters)",
+          "Option B requirement: must be in the top quartile of students in the target track",
+          "Option A (first 2 semesters): admission data must match target unit threshold + regular academic standing (GPA ≥ 65, success rate ≥ 66%)",
+          "Option C (all other cases): forwarded to faculty unit for recommendation to Dean",
+          "Regulation reference: Section 5.11 (Transfer Between Admission Tracks, תקנה 3.1.7)",
+          "The student studied 3 semesters → Option A is no longer available"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "The agent must identify that 3 semesters triggers Option B (not Option A). The specific Option B threshold — top quartile — must be stated. A common error is describing Option A rules (GPA ≥ 65) as if they apply after 2 semesters."
+    },
+    {
+      "id": "case_013",
+      "query_type": "track_structure_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What is the total credit requirement for the Industrial Engineering & Management (IEM) track, and how are the credits broken down?",
+      "correct_answer": {
+        "summary": "The IEM track (009009-1-000) requires 155.0 total credits, broken down as: 103.0 required courses, 40.0 faculty electives, 6.0 university enrichment (CHE courses), 4.0 free electives, and 2.0 physical education credits.",
+        "key_facts": [
+          "Program code: 009009-1-000",
+          "Total credits: 155.0",
+          "Required courses: 103.0 credits",
+          "Faculty electives: 40.0 credits",
+          "University enrichment (CHE courses): 6.0 credits",
+          "Free electives: 4.0 credits",
+          "Physical Education: 2.0 credits",
+          "103 + 40 + 6 + 4 + 2 = 155",
+          "Duration: 4 years (8 semesters)",
+          "Degree: מוסמך למדעים בהנדסת תעשייה וניהול (B.Sc.)",
+          "Faculty: faculty-dds"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/tracks/track-industrial-engineering-management.md"
+        ]
+      },
+      "evaluation_notes": "The IEM credit breakdown is more granular than other tracks — it splits the Technion-wide block into CHE enrichment (6), free (4), and PE (2) rather than a single 12-credit block. All five categories must be present. A common error is conflating IEM's structure with the CS or BME track structures."
+    },
+    {
+      "id": "case_014",
+      "query_type": "track_structure_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "What is the capstone requirement for the Industrial Engineering & Management track, and when in the program does it occur?",
+      "correct_answer": {
+        "summary": "The IEM track capstone is course 00940195 (Design Project 1, פרויקט תכן 1), worth 3.5 credits, scheduled in Semester 8 (the final semester of the 4-year program).",
+        "key_facts": [
+          "Course code: 00940195",
+          "Course name: Design Project 1 (פרויקט תכן 1)",
+          "Credits: 3.5",
+          "Semester: Semester 8 (final semester of IEM track)",
+          "This is a required course in the IEM track",
+          "Faculty: faculty-dds"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/tracks/track-industrial-engineering-management.md"
+        ]
+      },
+      "evaluation_notes": "The course code (00940195), credit value (3.5), and semester placement (8 / final) are the three critical facts. A common error is confusing this with a thesis requirement or placing it in a different semester."
+    },
+    {
+      "id": "case_015",
+      "query_type": "track_structure_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What is the total credit requirement for the Computer Science & Medicine dual-degree program?",
+      "correct_answer": {
+        "summary": "The Computer Science & Medicine dual-degree program (track code 027394-1-000) requires 223.5 total credits, broken down as: 210 mandatory credits, 8.5 engineering electives, 3.0 English, and 2.0 physical education credits.",
+        "key_facts": [
+          "Track code: 027394-1-000",
+          "Total credits: 223.5",
+          "Mandatory credits: 210",
+          "Engineering electives: 8.5",
+          "English requirement: 3.0",
+          "Physical Education: 2.0",
+          "Degrees awarded: B.Sc. in Computer Science + B.Sc. in Medical Sciences",
+          "Duration for both BSc degrees: 5 years",
+          "After BSc completion, additional 3 clinical years + internship for M.D. degree",
+          "Program is jointly managed by Faculty of Computer Science and Rappaport Faculty of Medicine"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/tracks/track-cs-medicine-dual.md"
+        ]
+      },
+      "evaluation_notes": "The 223.5 total must be stated precisely. This is substantially higher than standard 4-year tracks (155–165 credits). The agent should clarify that this covers only the BSc phase — the subsequent MD clinical years add further requirements. A common error is stating 210 (mandatory only) without the electives."
+    },
+    {
+      "id": "case_016",
+      "query_type": "program_structure_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "Tell me about the DDS Excellence Program — what is it, which tracks offer it, and how is the program structured?",
+      "correct_answer": {
+        "summary": "The DDS Excellence Program (תוכנית מצוינות) is a 5-year combined BSc+MSc program available to students in all three DDS tracks: DNE (Data & Information Engineering), IEM (Industrial Engineering & Management), and ISE (Information Systems Engineering). Years 1–3 are devoted to the BSc, and years 4–5 to the MSc. The program is designed for outstanding students and is managed within the DDS faculty.",
+        "key_facts": [
+          "Program type: combined BSc + MSc (תוכנית מצוינות)",
+          "Duration: 5 years total",
+          "Years 1–3: BSc phase",
+          "Years 4–5: MSc phase",
+          "Available in all 3 DDS tracks: DNE, IEM, ISE",
+          "Track 1: track-data-information-engineering (DNE)",
+          "Track 2: track-industrial-engineering-management (IEM)",
+          "Track 3: track-information-systems-engineering (ISE)",
+          "Faculty: faculty-dds",
+          "Specific admission criteria are not listed in the catalog page"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/programs/program-excellence.md"
+        ]
+      },
+      "evaluation_notes": "All three DDS tracks must be listed. The 5-year structure (3 BSc + 2 MSc) is the key structural fact. A common error is suggesting the program is available outside DDS, or that admission criteria are documented when they are not in the wiki."
+    },
+    {
+      "id": "case_017",
+      "query_type": "regulation_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What GPA do I need to graduate with honors (cum laude or summa cum laude) from a Technion BSc program?",
+      "correct_answer": {
+        "summary": "Technion offers two graduation honor levels. Cum laude (הצטיינות) requires a degree-list average of at least 84. Summa cum laude (הצטיינות ראויה לשבח) requires a degree-list average of at least 91. Both levels also require the student to be above the channel threshold — up to ~15% of a channel may receive cum laude (including summa), and up to ~3% may receive summa cum laude.",
+        "key_facts": [
+          "Cum laude (הצטיינות): degree-list average ≥ 84",
+          "Summa cum laude (הצטיינות ראויה לשבח): degree-list average ≥ 91",
+          "Both require being above a channel threshold (not purely GPA-based)",
+          "Up to ~15% per channel receive cum laude (including summa)",
+          "Up to ~3% per channel receive summa cum laude",
+          "These thresholds apply to the degree-list average (not the cumulative semester-by-semester average)",
+          "Regulation reference: Section 7 / תקנה 3.2.4"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "Both thresholds (84 and 91) must be stated with their correct honor level names. A common error is swapping the two levels or omitting the channel-threshold requirement (which means a high GPA alone is not sufficient)."
+    },
+    {
+      "id": "case_018",
+      "query_type": "regulation_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "What are the requirements to receive Dean's Excellence recognition for a specific semester at Technion?",
+      "correct_answer": {
+        "summary": "To receive Dean's Excellence (הצטיינות דיקן) for a semester, a student must satisfy all of the following in that semester: register for and complete at least 18 credits, achieve a semester average of at least 84, and be above the channel threshold. Up to approximately 15% of students per channel (including those receiving President's Excellence) qualify.",
+        "key_facts": [
+          "Minimum credits registered in semester: 18",
+          "Minimum semester average: 84",
+          "Must also be above the channel threshold",
+          "Quota: up to ~15% per channel (includes those also receiving President's Excellence)",
+          "Separate from graduation honors — this is a per-semester award",
+          "President's Excellence (הצטיינות נשיא): same 18-credit requirement but ≥ 91 semester average, up to ~3% per channel",
+          "Regulation reference: Section 7 / תקנה 3.1.4"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "Both conditions (≥18 credits AND ≥84 average) must be stated. A common error is omitting the 18-credit minimum or confusing the per-semester award with graduation honors. The agent should distinguish Dean's Excellence (during studies) from cum laude (at graduation)."
+    },
+    {
+      "id": "case_019",
+      "query_type": "regulation_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "What is the minimum GPA required for a Technion BSc graduate to be admitted directly to a Technion MSc program?",
+      "correct_answer": {
+        "summary": "A Technion BSc graduate must have a cumulative GPA of at least 75 to be admitted to a Technion MSc program. Graduates of other recognized institutions may also apply, but the threshold may be evaluated differently. Students from a 3-year BSc program enter as סטודנט משלים (supplementary student) and must complete additional coursework.",
+        "key_facts": [
+          "Minimum GPA for MSc admission (Technion BSc): 75",
+          "This is a cumulative (weighted) GPA threshold",
+          "Graduates from other institutions may also apply — threshold evaluated case-by-case",
+          "3-year BSc holders enter MSc as סטודנט משלים (supplementary) — must complete extra courses",
+          "PhD minimum GPA requirement: 80 (higher than MSc)",
+          "Registration fee for 2025–26: ₪484 per semester"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-graduate.md"
+        ]
+      },
+      "evaluation_notes": "The GPA threshold of 75 must be stated precisely. A common error is confusing the MSc threshold (75) with the PhD threshold (80) or the scholarship minimum (80). The agent should not conflate admission eligibility with scholarship eligibility."
+    },
+    {
+      "id": "case_020",
+      "query_type": "regulation_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "What is the minimum GPA required to be admitted to a Technion PhD program, and how does it differ from MSc admission?",
+      "correct_answer": {
+        "summary": "The minimum GPA for PhD admission at Technion is 80, which is higher than the MSc admission threshold of 75. Additionally, PhD applicants must have a confirmed research advisor before registration can be completed — a requirement that does not apply in the same way to MSc admission.",
+        "key_facts": [
+          "PhD minimum GPA: 80",
+          "MSc minimum GPA: 75",
+          "PhD requires a confirmed advisor before registration",
+          "Difference: PhD threshold is 5 GPA points higher than MSc",
+          "Both thresholds apply specifically to Technion BSc graduates",
+          "PhD students on scholarship: up to 42 standard scholarship months (regular track)",
+          "Registration fee (both): ₪484 per semester for 2025–26"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-graduate.md"
+        ]
+      },
+      "evaluation_notes": "Both thresholds (75 MSc, 80 PhD) must appear with the correct degree level. The confirmed-advisor requirement for PhD is a key differentiator. A common error is omitting the advisor requirement or stating both thresholds as 75."
+    },
+    {
+      "id": "case_021",
+      "query_type": "regulation_lookup",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "What is the standard scholarship duration for an MSc student at Technion, and what extensions are possible?",
+      "correct_answer": {
+        "summary": "The standard scholarship duration for an MSc student is up to 24 scholarship months. Two extensions are possible: a first extension of up to 6 additional months (A-6) and, in extreme cases, a further 6 months (B-6). The minimum GPA to receive a scholarship is 80 (cumulative), and this threshold must be maintained throughout the entire scholarship period.",
+        "key_facts": [
+          "Standard MSc scholarship duration: up to 24 months",
+          "First extension: +6 months (A-6)",
+          "Extreme-case second extension: +6 more months (B-6)",
+          "Maximum possible scholarship months for MSc: 24 + 6 + 6 = 36 months",
+          "Minimum GPA to receive scholarship: 80 (maintained throughout)",
+          "Scholarships awarded on academic merit only",
+          "Supplementary (משלים) student maximum: 12 scholarship months, no extension",
+          "Non-thesis track: no scholarship (except for active soldiers or national-service students for tuition waiver only)"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-graduate.md"
+        ]
+      },
+      "evaluation_notes": "The 24-month standard and the two-extension structure (A-6, B-6) must be present. The 80 GPA scholarship minimum must not be confused with the 75 MSc admission GPA. A common error is omitting that the GPA must be maintained continuously, not just at entry."
+    },
+    {
+      "id": "case_022",
+      "query_type": "regulation_reasoning",
+      "difficulty": "medium",
+      "language": "en",
+      "user_request": "I failed a required course and received a grade of 48. Can I retake it, and is there a time limit?",
+      "correct_answer": {
+        "summary": "Yes, the student can retake the course. A mandatory (חובה) course in which the last grade is failing (below 55) may be re-registered with no time limit — the 2-semester window that applies to grade improvement for passed courses does not apply here. The student should re-register when ready.",
+        "key_facts": [
+          "Grade 48 is a failing grade (passing threshold is 55)",
+          "Mandatory courses with a failing last grade: may be retaken with no time limit",
+          "This is different from grade improvement for passed courses (which has a 2-semester window)",
+          "The student should re-register in the failed mandatory course",
+          "The last grade remains the determining grade — the 48 is currently the official grade",
+          "Regulation reference: Section 5.3(d) of undergraduate regulations"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "The agent must distinguish between retaking a failed mandatory course (no time limit) and retaking a passed course for grade improvement (2-semester window). A common failure is applying the 2-semester rule to a failing case, or failing to clarify that grade 48 < 55 = failing."
+    },
+    {
+      "id": "case_023",
+      "query_type": "regulation_lookup",
+      "difficulty": "easy",
+      "language": "en",
+      "user_request": "I believe I was graded unfairly in my exam. How many days do I have to submit a grade appeal at Technion, and what can happen to my grade after the appeal?",
+      "correct_answer": {
+        "summary": "A student has 4 days from the date the exam copy becomes available to submit a grade appeal. After the appeal, the lecturer may raise, lower, or leave the grade unchanged — the entire exam may be re-graded, not just the disputed question. The lecturer must respond to a Moed A appeal within 1 week, and no later than 1 week before Moed B.",
+        "key_facts": [
+          "Appeal deadline: 4 days from when the exam copy is available",
+          "Grades published: within 8 working days of the exam date",
+          "After appeal, grade may be raised, lowered, or remain unchanged",
+          "The entire exam may be re-graded (not just the appealed question)",
+          "Lecturer response deadline (Moed A appeal): within 1 week, no later than 1 week before Moed B",
+          "Reserve duty during appeal period: deadline extended by number of days served",
+          "Regulation reference: Section 5.4 / תקנה 2.3.3"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "The 4-day window is the critical fact. The agent must warn that the grade can go down (not only up) after an appeal — this is a common surprise for students. Missing the bidirectional nature of the appeal outcome is a partial failure."
+    },
+    {
+      "id": "case_024",
+      "query_type": "regulation_lookup",
+      "difficulty": "easy",
+      "language": "he",
+      "user_request": "כמה נקודות זכות מותר לי לקחת בסמסטר אחד בטכניון, ומה קורה אם אני רוצה לחרוג ממגבלה זו?",
+      "correct_answer": {
+        "summary": "מגבלת העומס המקסימלי ללא אישור מיוחד היא 29 נקודות זכות לסמסטר. לחריגה מהמגבלה נדרשים שני תנאים: המלצה של ראש הפקולטה ואישור של דקן לימודי ההסמכה.",
+        "key_facts": [
+          "עומס מקסימלי ללא אישור מיוחד: 29 נקודות זכות לסמסטר",
+          "לחריגה: נדרשת המלצת ראש הפקולטה בנוסף לאישור דקן לימודי ההסמכה",
+          "שני תנאים מצטברים: המלצה + אישור דקן",
+          "מקור: סעיף 5.1 בתקנות לימודי ההסמכה",
+          "אין הגבלה של מינימום נקודות זכות לסמסטר בתקנות (אך לסטודנט חדש שלא נרשם בסמסטר הראשון — מאבד את מקומו)"
+        ],
+        "source_wiki_pages": [
+          "wiki/concepts/regulations-undergraduate.md"
+        ]
+      },
+      "evaluation_notes": "This is a Hebrew-language query. The agent must respond in Hebrew and state the 29-credit limit clearly. The two-step approval process (faculty head recommendation + Dean approval) must both be mentioned. This tests Hebrew query understanding and bilingual retrieval."
+    },
+    {
+      "id": "case_025",
+      "query_type": "multi_hop_reasoning",
+      "difficulty": "hard",
+      "language": "he",
+      "user_request": "אני סטודנט במגמת DNE (הנדסת נתונים ומידע) בפקולטת DDS. אני מעוניין במינור ברובוטיקה. האם אני עומד בדרישות הקדם? מה ממוצע מצטבר מינימלי נדרש ממני, ואיזה תנאי נוסף עלי לעמוד בו?",
+      "correct_answer": {
+        "summary": "סטודנט במגמת DNE רשאי להגיש בקשה למינור ברובוטיקה — המגמה מוזכרת במפורש כמגמה המוגדרת לתוכנית. הדרישות הן: ממוצע מצטבר 87.0 ומעלה, וצבירה של לפחות 60 נקודות זכות במגמה הבסיסית. רישום רשמי מחייב הגשת טופס בקשה למזכירות הפקולטה, אך ניתן להתחיל לקחת קורסי מינור לפני הרישום הרשמי.",
+        "key_facts": [
+          "מגמת DNE (track-data-information-engineering) כשירה למינור הרובוטיקה",
+          "ממוצע מצטבר מינימלי: 87.0",
+          "נקודות זכות מינימליות שנצברו במגמה: 60",
+          "רישום רשמי: הגשת טופס בקשת סטודנט למזכירות הפקולטה",
+          "ניתן להתחיל קורסי מינור לפני הרישום הרשמי",
+          "סה\"כ נקודות זכות למינור: 27 נ\"ז (מעבר לדרישות המגמה הבסיסית)",
+          "בסיום: תעודה טכניונית (Technion Certificate) בנוסף לתואר הפקולטי"
+        ],
+        "source_wiki_pages": [
+          "wiki/entities/programs/minor-robotics.md",
+          "wiki/entities/tracks/track-data-information-engineering.md"
+        ]
+      },
+      "evaluation_notes": "This is a Hebrew multi-hop query requiring the agent to (1) identify the student's track, (2) verify DNE eligibility for the robotics minor, and (3) retrieve the two admission gates (GPA ≥87, ≥60 credits). The agent must respond in Hebrew. A common failure is stating the admission GPA as 80 (scholarship threshold) instead of 87, or omitting the 60-credit requirement."
+    }
+  ]
+}

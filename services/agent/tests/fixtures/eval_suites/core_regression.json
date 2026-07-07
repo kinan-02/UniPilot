@@ -1,0 +1,19 @@
+{
+  "id": "core_regression",
+  "name": "Core regression",
+  "purpose": "core_regression",
+  "description": "Baseline read-only autonomous behavior regression cases.",
+  "case_ids": [
+    "graduation_progress_oracle_valid",
+    "course_question_read_only_dynamic_spec_valid",
+    "requirement_explanation_synthesis_candidate_ready",
+    "unsupported_request_no_hallucinated_capability",
+    "plan_repair_assumption_violation_repair"
+  ],
+  "minimum_case_count": 3,
+  "required_for_candidates": [
+    "workflow_promotion.graduation_progress_workflow",
+    "specialist_text_promotion.graduation_progress_agent",
+    "plan_repair.dry_run"
+  ]
+}

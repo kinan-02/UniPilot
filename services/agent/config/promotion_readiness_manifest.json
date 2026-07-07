@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "1",
+  "generatedAt": "2026-07-07T00:00:00Z",
+  "reviewedAt": "2026-07-07T00:00:00Z",
+  "reviewedBy": "tymor.ibra@gmail.com",
+  "sourceReport": "internal-real-world-use-case-evaluation-phase",
+  "suiteRunId": "post-phase-9-full-regression-1956-passed",
+  "candidates": [
+    {
+      "candidateId": "workflow_promotion.graduation_progress_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["graduation_progress_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit. Already promotable pre-Phase-9; carried forward once the readiness gate was turned on so enabling it doesn't regress existing behavior."
+    },
+    {
+      "candidateId": "workflow_promotion.course_question_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["course_question_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit."
+    },
+    {
+      "candidateId": "workflow_promotion.requirement_explanation_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["requirement_explanation_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit."
+    },
+    {
+      "candidateId": "synthesis_text_promotion.graduation_progress_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["graduation_progress_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation. Deterministic-only synthesis composer, no generative text."
+    },
+    {
+      "candidateId": "synthesis_text_promotion.course_question_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["course_question_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation. Deterministic-only synthesis composer, no generative text."
+    },
+    {
+      "candidateId": "synthesis_text_promotion.requirement_explanation_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["requirement_explanation_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation. Deterministic-only synthesis composer, no generative text."
+    },
+    {
+      "candidateId": "planner_first_live.graduation_progress_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["graduation_progress_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit. Planner's own plan runs for real via app/agent/planner_first_live.py; 1956/1956 full regression passing as of the post-Phase-9 change set."
+    },
+    {
+      "candidateId": "planner_first_live.course_question_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["course_question_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit."
+    },
+    {
+      "candidateId": "planner_first_live.requirement_explanation_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["requirement_explanation_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit."
+    },
+    {
+      "candidateId": "planner_first_live_proposal.transcript_import_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["transcript_import_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit. Proposal-capable only -- reviewed to confirm this workflow only ever calls create_agent_action_proposal, never a direct mutation; the api service's confirm/reject flow is untouched."
+    },
+    {
+      "candidateId": "planner_first_live_proposal.semester_planning_workflow",
+      "level": "ready_for_broader_promotion",
+      "approved": true,
+      "scope": ["semester_planning_workflow"],
+      "expiresAt": "2026-09-05T00:00:00Z",
+      "notes": "Self-reviewed for internal real-world-use-case evaluation, not an external production audit. Proposal-capable only -- reviewed to confirm this workflow only ever calls create_agent_action_proposal, never a direct mutation; the api service's confirm/reject flow is untouched."
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "plan_repair_goal_drift_regenerate",
+  "name": "Goal drift triggers plan regenerate",
+  "kind": "plan_repair",
+  "description": "Detected goal drift should regenerate the plan.",
+  "user_message": "Actually, forget graduation — just list fun electives.",
+  "compact_context": {
+    "workflow": "course_question_workflow",
+    "intent": "course_question"
+  },
+  "retrieval_metadata": {
+    "taskUnderstanding": {"intent": "course_question"},
+    "planRepairDiagnostics": {
+      "modeUsed": "regenerate",
+      "mode": "regenerate",
+      "reason": "goal_drift"
+    },
+    "monitorDiagnostics": {
+      "signals": [{"kind": "goal_drift"}]
+    }
+  },
+  "live_response_summary": {
+    "textPreview": "Switching to elective suggestions based on your updated goal.",
+    "proposedActionCount": 0,
+    "blockCount": 0
+  },
+  "expected": {
+    "expected_plan_repair_mode": "regenerate",
+    "expected_monitor_signals": ["goal_drift"]
+  },
+  "tags": ["plan_repair", "monitor"]
+}

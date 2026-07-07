@@ -1,0 +1,21 @@
+{
+  "id": "synthesis_promotion",
+  "name": "Synthesis promotion",
+  "purpose": "synthesis_promotion",
+  "description": "Synthesis text promotion gate outcomes.",
+  "case_ids": [
+    "synthesis_promotion_valid_text_only",
+    "synthesis_promotion_blocked_by_live_actions",
+    "monitor_unsafe_output_blocks_promotion",
+    "synthesis_promotion_blocked_by_low_confidence",
+    "synthesis_promotion_blocked_by_uncertainty",
+    "synthesis_promotion_blocked_by_monitor_abort",
+    "synthesis_promotion_blocked_by_plan_regenerate"
+  ],
+  "minimum_case_count": 4,
+  "required_for_candidates": [
+    "synthesis_text_promotion.graduation_progress_workflow",
+    "synthesis_text_promotion.course_question_workflow",
+    "synthesis_text_promotion.requirement_explanation_workflow"
+  ]
+}
