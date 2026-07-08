@@ -90,6 +90,29 @@ monitor-safety check, no-proposed-actions check, and so on) applies exactly
 as-is, deterministic-only (no generative composition), matching what the
 approved plan calls for.
 
+Layer 3 addition — specialist agents as first-class candidates: a wholly
+separate, independent eligibility axis from the workflow ones above,
+`is_specialist_planner_first_live_eligible`, gating whether a
+`specialist_agent`-type capability's real output (already computed today,
+already shadow-only) may also be captured into `run_planner_first_live_turn`'s
+`candidate_sink`. Own master flag
+(`AGENT_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS_ENABLED`), own hard-allowed set
+(`_HARD_ALLOWED_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS`, deliberately just
+`graduation_progress_agent` -- the only specialist whose prompt contract is
+reviewed to ever populate `result["answer_text"]`), own candidate-id
+namespace (`planner_first_live_specialist.<agent_name>`, parallel to, never
+reused with, `planner_first_live.<workflow_name>` or Phase 14's specialist-
+text-promotion namespace). Only ever meaningful when
+`AGENT_PLANNER_FIRST_LIVE_MULTI_CAPABILITY_ENABLED` is also on -- there is
+no legacy notion of a specialist being "the" primary capability the way a
+workflow is, so a specialist-only-eligible plan dispatches nothing extra
+when multi-capability mode is off. The actual `SpecialistAgentOutput` ->
+`AgentResponse` mapping (text-only, deliberately narrower than even Phase
+14's own gate) lives in `specialists.candidate_response`, called from
+`specialists.supervisor_handler.SpecialistAgentHandler`'s own optional
+`candidate_sink` param -- this module only decides *whether* a specialist
+name is allowed to have its handler registered with that sink at all.
+
 Phase 6 addition — `attempt_live_clarification`: lets a Planner-first-live
 turn genuinely pause on a real user-facing clarification question, not just
 receive one as a post-hoc afterthought. Same story as Phases 4/5: the
@@ -114,7 +137,11 @@ from collections.abc import Callable
 from typing import Any
 
 from app.agent.planner.repair_schemas import PlanRepairOutput
+from app.agent.response_composer import compose_response
 from app.agent.schemas import AgentResponse
+from app.agent.specialists.registry import SpecialistAgentRegistry
+from app.agent.specialists.safety import is_specialist_agent_safe
+from app.agent.specialists.supervisor_handler import SpecialistAgentHandler
 from app.agent.supervisor.handler_registry import build_default_handler_registry
 from app.agent.supervisor.runtime import run_supervisor_shadow
 from app.agent.supervisor.schemas import (
@@ -155,6 +182,19 @@ _HARD_ALLOWED_PLANNER_FIRST_LIVE_PROPOSAL_WORKFLOWS: frozenset[str] = frozenset(
     }
 )
 
+# Layer 3 — deliberately just the one specialist whose prompt contract Phase
+# 14 already reviewed for populating `result["answer_text"]`. The other two
+# specialists never populate it today, so this is the only agent that could
+# ever pass `specialists.candidate_response.build_specialist_candidate_response`'s
+# gate regardless of allowlist width -- kept explicit and narrow anyway,
+# matching the "configured set may only narrow the hard ceiling, never widen
+# it" pattern used for workflows above.
+_HARD_ALLOWED_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS: frozenset[str] = frozenset(
+    {
+        "graduation_progress_agent",
+    }
+)
+
 
 def planner_first_live_candidate_id(workflow_name: str) -> str:
     return f"planner_first_live.{workflow_name}"
@@ -162,6 +202,10 @@ def planner_first_live_candidate_id(workflow_name: str) -> str:
 
 def planner_first_live_proposal_candidate_id(workflow_name: str) -> str:
     return f"planner_first_live_proposal.{workflow_name}"
+
+
+def planner_first_live_specialist_candidate_id(agent_name: str) -> str:
+    return f"planner_first_live_specialist.{agent_name}"
 
 
 def eligible_planner_first_live_workflows(settings: Settings) -> frozenset[str]:
@@ -271,6 +315,202 @@ def is_capability_planner_first_live_proposal_eligible(workflow_name: str, *, se
         return False
 
 
+def eligible_planner_first_live_specialist_agents(settings: Settings) -> frozenset[str]:
+    """The actual, effective Planner-first-live-eligible specialist-agent set.
+
+    Always a subset of `_HARD_ALLOWED_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS` --
+    `AGENT_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS` may only narrow it further.
+    """
+    return (
+        _HARD_ALLOWED_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS
+        & settings.agent_planner_first_live_configured_specialist_agents()
+    )
+
+
+def is_specialist_planner_first_live_eligible(agent_name: str, *, settings: Settings) -> bool:
+    """`True` only when every gate for specialist-agent Planner-first-live
+    dispatch holds. Independent of both workflow eligibility functions above
+    -- enabling one never implies the others.
+
+    Checks `specialists.safety.is_specialist_agent_safe` (descriptor-level)
+    rather than `supervisor.safety.can_shadow_execute_capability`, since a
+    specialist agent is never a `workflow`-type capability. Never raises --
+    any unexpected error while evaluating readiness degrades to `False`
+    (falls back to the existing shadow-only behavior), never to an exception
+    escaping this function.
+    """
+    try:
+        if not settings.is_agent_planner_first_live_specialist_agents_enabled():
+            return False
+        if not settings.is_agent_supervisor_real_handlers_enabled():
+            return False
+        if agent_name not in eligible_planner_first_live_specialist_agents(settings):
+            return False
+
+        from app.agent.capabilities.default_registry import build_default_capability_registry
+
+        capability = build_default_capability_registry().get(agent_name)
+        if capability is None or not is_specialist_agent_safe(capability):
+            return False
+
+        return _passes_top_rung_readiness_gate(
+            candidate_id=planner_first_live_specialist_candidate_id(agent_name),
+            workflow_name=agent_name,
+            settings=settings,
+        )
+    except Exception:  # noqa: BLE001 -- eligibility check must never break a live turn
+        logger.exception("planner_first_live_specialist_eligibility_check_failed", extra={"agentName": agent_name})
+        return False
+
+
+def _distinct_capability_names(planner_output: dict[str, Any]) -> frozenset[str]:
+    names = {
+        str(subtask.get("capability_name") or "")
+        for subtask in (planner_output.get("subtasks") or [])
+        if isinstance(subtask, dict)
+    }
+    names.discard("")
+    return frozenset(names)
+
+
+def any_subtask_planner_first_live_eligible(planner_output: dict[str, Any], *, settings: Settings) -> bool:
+    """`True` if any subtask's `capability_name` passes read-only or
+    proposal-capable Planner-first-live eligibility.
+
+    Layer 2 (multi-capability dispatch) replacement for checking a single
+    `task_plan.workflow` -- evaluated against the Planner's own subtask
+    graph instead. A cheap, side-effect-free pre-check gating whether
+    `run_planner_first_live_turn` is even worth calling. Never raises.
+    """
+    try:
+        names = _distinct_capability_names(planner_output)
+        return any(
+            is_capability_planner_first_live_eligible(name, settings=settings)
+            or is_capability_planner_first_live_proposal_eligible(name, settings=settings)
+            for name in names
+        )
+    except Exception:  # noqa: BLE001 -- eligibility check must never break a live turn
+        logger.exception("planner_first_live_any_subtask_eligibility_check_failed")
+        return False
+
+
+def _eligible_capability_names_for_plan(
+    planner_output: dict[str, Any],
+    *,
+    settings: Settings,
+    allow_proposal_eligible: bool,
+    primary_workflow_name: str,
+) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    """Returns `(read_only_eligible_names, proposal_eligible_names,
+    specialist_eligible_names)` for `planner_output`'s own subtask
+    capability names.
+
+    When `settings.is_agent_planner_first_live_multi_capability_enabled()` is
+    `False` (the default), all three sets are collapsed to at most
+    `{primary_workflow_name}` -- byte-for-byte today's single-capability
+    substitution behavior. There is no legacy notion of a specialist being
+    "the" primary capability the way a workflow is, so
+    `specialist_eligible_names` is always empty when multi-capability mode
+    is off. `allow_proposal_eligible=False` (the caller's own explicit
+    opt-in, mirroring the pre-existing `allow_single_proposed_action`
+    contract) forces `proposal_eligible_names` empty regardless of what
+    individual subtasks would otherwise qualify for.
+    """
+    names = _distinct_capability_names(planner_output)
+    read_only_names = frozenset(
+        name for name in names if is_capability_planner_first_live_eligible(name, settings=settings)
+    )
+    proposal_names = (
+        frozenset(
+            name for name in names if is_capability_planner_first_live_proposal_eligible(name, settings=settings)
+        )
+        if allow_proposal_eligible
+        else frozenset()
+    )
+    specialist_names = frozenset(
+        name for name in names if is_specialist_planner_first_live_eligible(name, settings=settings)
+    )
+
+    if not settings.is_agent_planner_first_live_multi_capability_enabled():
+        read_only_names = frozenset({primary_workflow_name}) & read_only_names
+        proposal_names = frozenset({primary_workflow_name}) & proposal_names
+        specialist_names = frozenset()
+
+    return read_only_names, proposal_names, specialist_names
+
+
+def _combine_planner_first_live_candidates(
+    candidate_sink: dict[str, AgentResponse], *, planner_output: dict[str, Any]
+) -> AgentResponse:
+    """Deliberately naive concatenation of 2+ real subtask responses into one.
+
+    This is not Synthesis/Composition (an explicitly later, out-of-scope
+    layer) -- it exists only so a genuinely multi-capability Planner-first-
+    live turn has *some* coherent single response today. Every entry in
+    `candidate_sink` is always a full, real `AgentResponse` -- either from a
+    complete `workflow.run()` call (`ReadOnlyWorkflowAdapterHandler`) or a
+    text-only candidate built from a real specialist-agent call (Layer 3,
+    `SpecialistAgentHandler`'s `candidate_sink` ->
+    `specialists.candidate_response.build_specialist_candidate_response`) --
+    so there is no partial-context-fragment shape to reconcile. Do not
+    invest further in making this smarter; the eventual Synthesis/
+    Composition layer will very likely replace it outright.
+    """
+    subtasks = [s for s in (planner_output.get("subtasks") or []) if isinstance(s, dict)]
+    order: list[str] = []
+    titles: dict[str, str] = {}
+    for subtask in subtasks:
+        name = str(subtask.get("capability_name") or "")
+        if name in candidate_sink and name not in order:
+            order.append(name)
+            titles[name] = str(subtask.get("title") or name)
+    # Defensive: include any candidate_sink entry not found in subtasks
+    # (should not happen, but never silently drop a real result).
+    for name in candidate_sink:
+        if name not in order:
+            order.append(name)
+            titles[name] = name
+
+    text_sections: list[str] = []
+    blocks: list[Any] = []
+    warnings: list[str] = []
+    suggested_prompts: list[str] = []
+    assumptions: list[str] = []
+    used_sources: list[str] = []
+    proposed_actions: list[Any] = []
+    for name in order:
+        response = candidate_sink[name]
+        text_sections.append(f"### {titles[name]}\n\n{response.text}")
+        blocks.extend(response.blocks)
+        for warning in response.warnings:
+            if warning not in warnings:
+                warnings.append(warning)
+        for prompt in response.suggested_prompts:
+            if prompt not in suggested_prompts:
+                suggested_prompts.append(prompt)
+        for assumption in response.assumptions:
+            if assumption not in assumptions:
+                assumptions.append(assumption)
+        for source in response.used_sources:
+            if source not in used_sources:
+                used_sources.append(source)
+        proposed_actions.extend(response.proposed_actions)
+
+    first = candidate_sink[order[0]]
+    return compose_response(
+        conversation_id=first.conversation_id,
+        message_id="",
+        run_id=first.run_id,
+        text="\n\n".join(text_sections),
+        blocks=blocks,
+        warnings=warnings,
+        suggested_prompts=suggested_prompts,
+        assumptions=assumptions,
+        used_sources=used_sources,
+        proposed_actions=proposed_actions,
+    )
+
+
 async def run_planner_first_live_turn(
     *,
     database: Any,
@@ -284,14 +524,34 @@ async def run_planner_first_live_turn(
     settings: Settings,
     workflow_lookup: Callable[[str], Any] | None = None,
     allow_single_proposed_action: bool = False,
+    specialist_registry: SpecialistAgentRegistry | None = None,
 ) -> tuple[AgentResponse | None, SupervisorRunOutput | None]:
     """Execute `planner_output`'s subtask graph for real via the Supervisor.
 
-    Returns `(candidate_response, run_output)` only when the run completed
-    cleanly and produced exactly one safe candidate for `workflow_name`.
+    `specialist_registry` (Layer 3, default `None`) mirrors `workflow_lookup`'s
+    own test-injection role: `None` uses the real
+    `specialists.registry.build_default_specialist_agent_registry()` (via
+    `SpecialistAgentHandler`'s own default), so a test can inject a fake
+    registry with no real `ReasoningBlock`/LLM call, exactly like
+    `workflow_lookup` avoids a real Mongo/workflow dependency.
+
+    Layer 2 (multi-capability dispatch): every subtask whose `capability_name`
+    independently passes read-only or proposal-capable Planner-first-live
+    eligibility dispatches for real; anything else in the same plan degrades
+    gracefully to the existing dry-run stand-in (never a failure/skip on its
+    own). Returns `(candidate_response, run_output)` only when the run
+    completed cleanly, at least one real candidate was captured, and at most
+    one proposed action exists across all captured candidates combined.
     Returns `(None, run_output)` (or `(None, None)` on an unexpected error)
     on any doubt at all -- the caller must treat `None` as "fall back to the
     existing deterministic `workflow.run()` path", never as a turn failure.
+    `workflow_name` is retained purely as a backward-compatible diagnostic
+    label (logging/metadata) -- actual eligibility is computed per-subtask
+    from `planner_output` itself, not from this single name.
+
+    When `settings.is_agent_planner_first_live_multi_capability_enabled()` is
+    `False` (the default), eligibility collapses to at most `workflow_name`
+    alone -- byte-for-byte identical to pre-Layer-2 behavior.
 
     `workflow_lookup` defaults to the real workflow registry (via
     `ReadOnlyWorkflowAdapterHandler`'s own default) -- tests inject a fake
@@ -299,28 +559,54 @@ async def run_planner_first_live_turn(
 
     `allow_single_proposed_action` (post-Phase-9, default `False`) must only
     ever be passed `True` by a caller that has already independently
-    confirmed `is_capability_planner_first_live_proposal_eligible` for
-    `workflow_name` -- it both lets `run_supervisor_shadow`'s dispatch reach
-    a proposal-creating capability at all
-    (`allow_proposal_capable_execution=True`, see `supervisor.runtime`) and
-    lets the registered handler tolerate up to one proposed action (never
-    more) in its result. `candidate.proposed_actions` is no longer an
-    automatic rejection when this is `True` -- it is expected and passed
-    through unchanged for the orchestrator to surface exactly as the
-    deterministic path already does today (an `action.proposed` SSE event,
-    never an executed write).
+    confirmed at least one subtask's capability passes
+    `is_capability_planner_first_live_proposal_eligible` -- it both lets
+    `run_supervisor_shadow`'s dispatch reach a proposal-creating capability at
+    all (`allow_proposal_capable_execution=True`, see `supervisor.runtime`)
+    and lets the registered handler tolerate up to one proposed action (never
+    more, and only from a genuinely proposal-eligible capability) in its
+    result. A proposed action from a capability that is only read-only-
+    eligible is still always treated as an anomaly and fails that subtask,
+    regardless of this flag.
     """
     try:
+        read_only_names, proposal_names, specialist_names = _eligible_capability_names_for_plan(
+            planner_output,
+            settings=settings,
+            allow_proposal_eligible=allow_single_proposed_action,
+            primary_workflow_name=workflow_name,
+        )
+        real_execution_allowed_capability_names = read_only_names | proposal_names | specialist_names
+        if not real_execution_allowed_capability_names:
+            return None, None
+
         candidate_sink: dict[str, AgentResponse] = {}
         handler_registry = build_default_handler_registry(enable_real_read_only_handlers=True, settings=settings)
-        handler_registry.register_for_capability_name(
-            workflow_name,
-            ReadOnlyWorkflowAdapterHandler(
+        if read_only_names:
+            read_only_handler = ReadOnlyWorkflowAdapterHandler(
                 workflow_lookup=workflow_lookup,
                 candidate_sink=candidate_sink,
-                allow_single_proposed_action=allow_single_proposed_action,
-            ),
-        )
+                allow_single_proposed_action=False,
+            )
+            for name in read_only_names:
+                handler_registry.register_for_capability_name(name, read_only_handler)
+        if proposal_names:
+            proposal_handler = ReadOnlyWorkflowAdapterHandler(
+                workflow_lookup=workflow_lookup,
+                candidate_sink=candidate_sink,
+                allow_single_proposed_action=True,
+            )
+            for name in proposal_names:
+                handler_registry.register_for_capability_name(name, proposal_handler)
+        if specialist_names:
+            specialist_handler = SpecialistAgentHandler(
+                specialist_registry=specialist_registry,
+                candidate_sink=candidate_sink,
+                settings=settings,
+            )
+            for name in specialist_names:
+                handler_registry.register_for_capability_name(name, specialist_handler)
+
         runtime_context = SupervisorRuntimeContext(
             database=database,
             agent_context_pack=agent_context_pack,
@@ -343,36 +629,51 @@ async def run_planner_first_live_turn(
             handler_registry=handler_registry,
             runtime_context=runtime_context,
             settings=settings,
-            allow_proposal_capable_execution=allow_single_proposed_action,
+            allow_proposal_capable_execution=bool(proposal_names),
+            real_execution_allowed_capability_names=real_execution_allowed_capability_names,
         )
 
         if run_output.status not in {"completed", "completed_with_warnings"}:
             return None, run_output
         if run_output.failed_subtasks or run_output.skipped_subtasks:
+            # Conservative choice (see module docstring): a genuine failure
+            # or skip anywhere in the plan aborts the whole turn rather than
+            # composing a response from whichever subtasks did succeed --
+            # an honestly-partial answer is Synthesis/Composition-layer work,
+            # not this bridge's job.
+            return None, run_output
+        if not candidate_sink:
             return None, run_output
 
-        candidate = candidate_sink.get(workflow_name)
-        if candidate is None:
-            return None, run_output
-        if candidate.proposed_actions:
-            if not allow_single_proposed_action or len(candidate.proposed_actions) > 1:
-                return None, run_output
-        if len(candidate_sink) != 1:
-            # Defense in depth: a Planner-first-live turn expects exactly one
-            # capability's real candidate -- more than one is an ambiguous
-            # shape this module does not (yet) know how to select from.
+        total_proposed_actions = sum(len(response.proposed_actions) for response in candidate_sink.values())
+        if total_proposed_actions > 1:
             return None, run_output
 
-        return candidate, run_output
+        run_output.diagnostics["realCapabilityNames"] = sorted(candidate_sink)
+
+        if len(candidate_sink) == 1:
+            return next(iter(candidate_sink.values())), run_output
+
+        combined = _combine_planner_first_live_candidates(candidate_sink, planner_output=planner_output)
+        return combined, run_output
     except Exception:  # noqa: BLE001 -- must never raise into a live turn
         logger.exception("planner_first_live_run_failed", extra={"workflowName": workflow_name})
         return None, None
 
 
-def _is_repaired_plan_safe_to_redispatch(output: PlanRepairOutput, *, workflow_name: str) -> bool:
+def _is_repaired_plan_safe_to_redispatch(
+    output: PlanRepairOutput, *, eligible_capability_names: frozenset[str]
+) -> bool:
     """Phase 4's own, narrow condition for re-executing a repaired plan --
     see the module docstring for why this is independent of the permanently
     `False` `PlanRepairOutput.safe_to_use`.
+
+    Layer 2 (multi-capability dispatch): every remaining subtask's
+    `capability_name` must be a member of `eligible_capability_names` (the
+    set already vetted eligible for this turn, per `planner_output` before
+    repair) -- not necessarily all the same single name. Repair only ever
+    revises subtasks already present in the prior plan, so this can never
+    smuggle in a new, unvetted capability.
     """
     if output.mode_used != "repair":
         return False
@@ -387,7 +688,7 @@ def _is_repaired_plan_safe_to_redispatch(output: PlanRepairOutput, *, workflow_n
     for subtask in subtasks:
         if not isinstance(subtask, dict):
             return False
-        if str(subtask.get("capability_name") or "") != workflow_name:
+        if str(subtask.get("capability_name") or "") not in eligible_capability_names:
             return False
     return True
 
@@ -461,7 +762,16 @@ async def attempt_live_plan_repair(
         if output is None:
             return None, metadata
 
-        if not _is_repaired_plan_safe_to_redispatch(output, workflow_name=workflow_name):
+        read_only_names, proposal_names, specialist_names = _eligible_capability_names_for_plan(
+            planner_output,
+            settings=settings,
+            allow_proposal_eligible=allow_single_proposed_action,
+            primary_workflow_name=workflow_name,
+        )
+        eligible_capability_names = read_only_names | proposal_names | specialist_names
+        if not _is_repaired_plan_safe_to_redispatch(
+            output, eligible_capability_names=eligible_capability_names
+        ):
             return None, metadata
 
         redispatch_planner_output = _repaired_planner_output_for_redispatch(

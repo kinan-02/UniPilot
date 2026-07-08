@@ -7,7 +7,7 @@ from typing import Any, Literal
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 
-from app.agent.schemas import AgentContextPack
+from app.schemas.agent_context_snapshot import AgentContextSnapshot
 from app.services.graduation_progress_service import get_graduation_progress_for_user
 
 AuditStatus = Literal[
@@ -87,7 +87,7 @@ async def run_graduation_audit(
     database: AsyncIOMotorDatabase,
     *,
     user_id: str,
-    context: AgentContextPack | None = None,
+    context: AgentContextSnapshot | None = None,
 ) -> GraduationAuditResult:
     """Run deterministic graduation audit; optionally cross-check retrieved context."""
     raw = await get_graduation_progress_for_user(database, user_id)

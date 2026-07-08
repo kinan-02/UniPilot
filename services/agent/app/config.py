@@ -102,6 +102,25 @@ class Settings(BaseSettings):
         default=True,
         validation_alias="AGENT_LLM_INTENT_FALLBACK_ENABLED",
     )
+    # Provider-specific "thinking"/chain-of-thought control (currently only
+    # meaningful for DeepSeek's `thinking` extra_body field -- see
+    # `llm_client.py::build_chat_llm`). Default matches the provider's own
+    # default (thinking enabled) so behavior is unchanged unless an operator
+    # opts out. When disabled, `temperature`/`top_p` etc. also start having
+    # an effect again -- DeepSeek's own docs note these are silently ignored
+    # while thinking mode is on.
+    agent_llm_thinking_enabled: bool = Field(
+        default=True,
+        validation_alias="AGENT_LLM_THINKING_ENABLED",
+    )
+    # Only meaningful when thinking is enabled; DeepSeek V4 only accepts
+    # "high"/"max" today ("low"/"medium" are mapped to "high" server-side,
+    # per DeepSeek's own docs) -- exposed as a passthrough string rather than
+    # a validated enum so a future provider's own values aren't hard-coded here.
+    agent_llm_reasoning_effort: str | None = Field(
+        default=None,
+        validation_alias="AGENT_LLM_REASONING_EFFORT",
+    )
     agent_llm_preference_extraction_enabled: bool = Field(
         default=True,
         validation_alias="AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED",
@@ -201,6 +220,36 @@ class Settings(BaseSettings):
     agent_planner_first_live_repair_enabled: bool = Field(
         default=False,
         validation_alias="AGENT_PLANNER_FIRST_LIVE_REPAIR_ENABLED",
+    )
+    # Layer 2 (Planner: genuine multi-subtask live dispatch) — lets
+    # Planner-first-live dispatch more than one capability for real in a
+    # single turn (previously: exactly one, matching task_planner.py's
+    # legacy single-workflow pick). Independent of, and layered on top of,
+    # agent_planner_first_live_enabled/_proposal_enabled above -- turning
+    # this on only changes behavior for a turn where the Planner's own
+    # subtask graph names 2+ *already independently eligible* capabilities;
+    # a single-capability plan behaves identically whether this is on or off.
+    # See `app/agent/planner_first_live.py::run_planner_first_live_turn`.
+    agent_planner_first_live_multi_capability_enabled: bool = Field(
+        default=False,
+        validation_alias="AGENT_PLANNER_FIRST_LIVE_MULTI_CAPABILITY_ENABLED",
+    )
+    # Layer 3 — lets Planner-first-live dispatch also admit `specialist_agent`
+    # -type capabilities (not just `workflow`-type) as first-class candidates.
+    # A wholly separate, independent master switch/allowlist from
+    # `agent_planner_first_live_*` above -- enabling workflow dispatch never
+    # implies specialist-agent dispatch. Only ever meaningful when
+    # `agent_planner_first_live_multi_capability_enabled` is also on -- there
+    # is no legacy notion of a specialist being "the" primary capability the
+    # way a workflow is. See
+    # `app/agent/planner_first_live.py::is_specialist_planner_first_live_eligible`.
+    agent_planner_first_live_specialist_agents_enabled: bool = Field(
+        default=False,
+        validation_alias="AGENT_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS_ENABLED",
+    )
+    agent_planner_first_live_specialist_agents: str = Field(
+        default="graduation_progress_agent",
+        validation_alias="AGENT_PLANNER_FIRST_LIVE_SPECIALIST_AGENTS",
     )
     agent_specialist_agents_enabled: bool = Field(
         default=False,
@@ -498,6 +547,13 @@ class Settings(BaseSettings):
     def is_agent_llm_validation_enabled(self) -> bool:
         return bool(self.agent_llm_validation_enabled)
 
+    def is_agent_llm_thinking_enabled(self) -> bool:
+        return bool(self.agent_llm_thinking_enabled)
+
+    def resolved_agent_llm_reasoning_effort(self) -> str | None:
+        value = (self.agent_llm_reasoning_effort or "").strip()
+        return value or None
+
     def is_agent_reasoning_structured_output_enabled(self) -> bool:
         return bool(self.agent_reasoning_structured_output_enabled)
 
@@ -617,6 +673,24 @@ class Settings(BaseSettings):
         # requires `is_agent_plan_repair_enabled()` (checked internally by
         # `run_plan_repair_diagnostics`) to be on.
         return bool(self.agent_planner_first_live_repair_enabled)
+
+    def is_agent_planner_first_live_multi_capability_enabled(self) -> bool:
+        # Layer 2: off by default -- when off, `run_planner_first_live_turn`
+        # collapses eligibility to at most the single primary workflow name,
+        # byte-for-byte pre-Layer-2 behavior.
+        return bool(self.agent_planner_first_live_multi_capability_enabled)
+
+    def is_agent_planner_first_live_specialist_agents_enabled(self) -> bool:
+        # Layer 3: off by default -- master switch for treating a
+        # `specialist_agent`-type capability as a Planner-first-live
+        # candidate at all.
+        return bool(self.agent_planner_first_live_specialist_agents_enabled)
+
+    def agent_planner_first_live_configured_specialist_agents(self) -> frozenset[str]:
+        raw = (self.agent_planner_first_live_specialist_agents or "").strip()
+        if not raw:
+            return frozenset()
+        return frozenset(name.strip() for name in raw.split(",") if name.strip())
 
     def is_agent_specialist_agents_enabled(self) -> bool:
         # Phase 10: master on/off switch for `specialists.supervisor_handler.SpecialistAgentHandler`.
@@ -937,9 +1011,21 @@ class Settings(BaseSettings):
     def resolved_academic_wiki_path(self) -> str:
         configured = (self.catalog_vault_wiki_path or "").strip()
         local = _APP_ROOT / "data" / "academic" / "wiki"
+        docker_mount = Path("/app/data/academic/wiki")
         if configured:
             if configured.startswith("/app/") and self.environment != "production" and local.is_dir():
                 return str(local)
+            if not Path(configured).is_dir() and docker_mount.is_dir():
+                # `configured` is typically a path relative to the repo root,
+                # meant for local dev where CWD is services/agent (e.g.
+                # "../data-engineering/data/catalog_valut/catalog_valut/wiki").
+                # That relative path never resolves inside Docker (WORKDIR=/app),
+                # even though the real wiki content is right there via the
+                # docker-compose volume mount at this fixed path -- prefer it
+                # over a `configured` value that doesn't actually exist,
+                # rather than silently returning a dead path (see
+                # docker-compose.yml's `agent`/`api` volume mounts).
+                return str(docker_mount)
             return configured
         if self.environment == "production":
             return "/app/data/academic/wiki"

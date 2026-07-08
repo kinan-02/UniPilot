@@ -1,4 +1,4 @@
-"""Internal-only routes for trusted backend services (MAS, workers)."""
+"""Internal-only routes for trusted backend services and workers."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from app.services.graduation_progress_service import (
     get_graduation_progress_for_user,
     preview_graduation_progress_for_user,
 )
-from app.services.session_bootstrap_service import build_session_bootstrap_for_user
 from app.services.semester_plan_suggestion_service import suggest_semester_courses
 from app.services.student_user_context_service import build_student_user_context
 
@@ -48,23 +47,16 @@ class InternalSemesterSuggestionRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-@router.get("/session-bootstrap/users/{user_id}")
-async def internal_session_bootstrap_for_user(user_id: str) -> dict[str, Any]:
-    """Return user context + graduation progress for MAS session start (single round trip)."""
-    database = await get_database()
-    return success_response(await build_session_bootstrap_for_user(database, user_id))
-
-
 @router.get("/user-context/users/{user_id}")
 async def internal_user_context_for_user(user_id: str) -> dict[str, Any]:
-    """Return canonical student profile + transcript context (MAS session bootstrap)."""
+    """Return canonical student profile + transcript context."""
     database = await get_database()
     return success_response({"userContext": await build_student_user_context(database, user_id)})
 
 
 @router.get("/graduation-progress/users/{user_id}")
 async def internal_graduation_progress_for_user(user_id: str) -> dict[str, Any]:
-    """Return graduation progress for a user (MAS Progress Scout integration)."""
+    """Return graduation progress for a user."""
     database = await get_database()
     result = await get_graduation_progress_for_user(database, user_id)
 
@@ -83,7 +75,7 @@ async def internal_graduation_progress_preview_for_user(
     user_id: str,
     payload: InternalGraduationProgressPreviewRequest,
 ) -> dict[str, Any]:
-    """Recompute graduation progress for hypothetical completions (MAS variant preview)."""
+    """Recompute graduation progress for hypothetical completions."""
     database = await get_database()
     result = await preview_graduation_progress_for_user(
         database,
@@ -107,7 +99,7 @@ async def internal_academic_risk_preview_for_user(
     user_id: str,
     payload: InternalAcademicRiskPreviewRequest,
 ) -> dict[str, Any]:
-    """Preview academic risks for proposed course numbers (MAS Risk Sentinel)."""
+    """Preview academic risks for proposed course numbers."""
     database = await get_database()
     result = await preview_academic_risks_for_user(
         database,

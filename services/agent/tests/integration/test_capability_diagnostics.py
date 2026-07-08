@@ -3,11 +3,20 @@
 Verifies the `AGENT_TASK_UNDERSTANDING_ENABLED` flag controls whether
 `retrievalMetadata.capabilityDiagnostics` is attached, and — critically —
 that toggling it never changes the SSE event sequence, message text, blocks,
-warnings, or proposed actions a student actually sees.
+warnings, or proposed actions a student actually sees, **as long as
+`AGENT_TASK_UNDERSTANDING_DRY_RUN` stays at its default (`True`)** — under
+the Layer 1 (request-understanding) redesign, routing follows Task
+Understanding once `dry_run=False`; that behavior is covered separately in
+`tests/agent/test_orchestrator_task_understanding_routing.py`.
 
-`run_task_understanding_dry_run` itself (Phase 3) is mocked here rather than
-re-exercised — it already has its own dedicated unit tests. This test suite
-is only about the new Phase 4 wiring in `orchestrator.py`.
+`run_task_understanding` itself is mocked here rather than re-exercised — it
+already has its own dedicated unit tests. This test suite is only about the
+Phase 4 capability-diagnostics wiring in `orchestrator.py`.
+
+Since `run_task_understanding` now always returns a real
+`TaskUnderstandingOutput` (never `None`), `retrievalMetadata.taskUnderstanding`
+is now always populated regardless of the flag — only
+`capabilityDiagnostics` remains flag-gated.
 """
 
 from __future__ import annotations
@@ -18,6 +27,7 @@ import pytest
 from bson import ObjectId
 
 from app.agent.orchestrator import run_agent_turn
+from app.agent.task_understanding.schemas import TaskUnderstandingOutput
 from app.config import Settings
 from app.repositories.agent_conversation_repository import create_agent_conversation
 from app.repositories.student_profile_repository import create_student_profile
@@ -50,6 +60,30 @@ _FAKE_TASK_UNDERSTANDING_SUMMARY = {
     "source": "llm_reasoning_block",
 }
 
+_FAKE_TASK_UNDERSTANDING_OUTPUT = TaskUnderstandingOutput(
+    status="completed",
+    user_goal="test fixture goal",
+    normalized_request="test fixture goal",
+    primary_intent="course_question",
+    secondary_intents=[],
+    task_category="simple_question",
+    task_complexity="low",
+    recommended_autonomy_level=2,
+    suggested_next_layer="deterministic_workflow",
+    required_context=[],
+    missing_context=[],
+    extracted_entities={},
+    assumptions=[],
+    requires_user_confirmation=False,
+    write_risk="none",
+    clarifying_questions=[],
+    intent_confidence=0.9,
+    overall_confidence=0.85,
+    decision_summary="test fixture summary",
+    warnings=[],
+    source="llm_reasoning_block",
+)
+
 
 @pytest.fixture(autouse=True)
 def _mock_student_user_context(monkeypatch):
@@ -64,17 +98,18 @@ def _mock_student_user_context(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _mock_task_understanding_dry_run(monkeypatch):
-    """Stand in for the real Phase 3 dry-run — flag-aware, like the real function."""
+def _mock_task_understanding(monkeypatch):
+    """Stand in for the real Task Understanding call — always returns a valid
+    result (matching its actual never-`None` contract) regardless of the
+    flag; `orchestrator.py`'s own flag check independently gates
+    `capabilityDiagnostics`.
+    """
     from app.agent import orchestrator
 
-    async def _fake_dry_run(*, settings=None, **_kwargs):
-        cfg = settings
-        if cfg is None or not cfg.is_agent_task_understanding_enabled():
-            return None
-        return dict(_FAKE_TASK_UNDERSTANDING_SUMMARY)
+    async def _fake_run_task_understanding(*, settings=None, **_kwargs):
+        return _FAKE_TASK_UNDERSTANDING_OUTPUT
 
-    monkeypatch.setattr(orchestrator, "run_task_understanding_dry_run", _fake_dry_run)
+    monkeypatch.setattr(orchestrator, "run_task_understanding", _fake_run_task_understanding)
 
 
 async def _seed_user_and_conversation(mongo_database) -> tuple[str, str]:
@@ -115,7 +150,9 @@ async def _run_turn(mongo_database, *, user_id: str, conversation_id: str, setti
     return events, run_doc
 
 
-async def test_flag_off_keeps_behavior_unchanged_and_omits_diagnostics(mongo_database):
+async def test_flag_off_omits_capability_diagnostics_but_still_records_task_understanding(
+    mongo_database,
+):
     user_id, conversation_id = await _seed_user_and_conversation(mongo_database)
 
     events, run_doc = await _run_turn(
@@ -125,7 +162,11 @@ async def test_flag_off_keeps_behavior_unchanged_and_omits_diagnostics(mongo_dat
     assert not any(e.type == "run.failed" for e in events)
     metadata = run_doc.get("retrievalMetadata") or {}
     assert "capabilityDiagnostics" not in metadata
-    assert "taskUnderstanding" not in metadata
+    # `run_task_understanding` never returns `None` (even flag-off, it falls
+    # back internally) — so `taskUnderstanding` is always attached now,
+    # unlike the old dry-run wrapper that short-circuited before ever
+    # producing a summary.
+    assert metadata.get("taskUnderstanding") == _FAKE_TASK_UNDERSTANDING_SUMMARY
 
 
 async def test_flag_on_attaches_compact_capability_diagnostics(mongo_database):
@@ -155,6 +196,11 @@ async def test_flag_on_attaches_compact_capability_diagnostics(mongo_database):
 
 
 async def test_flag_does_not_change_user_visible_response_or_sse_sequence(mongo_database):
+    """With `AGENT_TASK_UNDERSTANDING_DRY_RUN=True` (both settings above),
+    routing still follows the legacy rules-first/LLM-fallback classifier —
+    Task Understanding's (mocked) disagreement with it must not leak into
+    the response, since it's diagnostic-only for this dry-run mode.
+    """
     user_id_off, conversation_id_off = await _seed_user_and_conversation(mongo_database)
     events_off, _ = await _run_turn(
         mongo_database, user_id=user_id_off, conversation_id=conversation_id_off, settings=_NO_LLM_OFF_SETTINGS

@@ -7,7 +7,7 @@ from typing import Any, Literal
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 
-from app.agent.schemas import AgentContextPack
+from app.schemas.agent_context_snapshot import AgentContextSnapshot
 from app.services.graduation_progress_calculator import round_credits
 from app.services.semester_plan_suggestion_service import (
     suggest_semester_courses,
@@ -58,7 +58,7 @@ async def generate_semester_plan_options(
     database: AsyncIOMotorDatabase,
     *,
     user_id: str,
-    context: AgentContextPack,
+    context: AgentContextSnapshot,
 ) -> SemesterPlanningResult:
     if context.intent == "semester_plan_modification":
         modified = await _generate_modified_plan_options(database, user_id=user_id, context=context)
@@ -347,7 +347,7 @@ def _filter_schedule_by_avoid_days(
     return kept, conflicts
 
 
-def _select_base_plan(context: AgentContextPack) -> dict[str, Any] | None:
+def _select_base_plan(context: AgentContextSnapshot) -> dict[str, Any] | None:
     plans = context.user_context.get("semesterPlans") or []
     if not plans:
         return None
@@ -378,7 +378,7 @@ async def _generate_modified_plan_options(
     database: AsyncIOMotorDatabase,
     *,
     user_id: str,
-    context: AgentContextPack,
+    context: AgentContextSnapshot,
 ) -> SemesterPlanningResult | None:
     base_plan = _select_base_plan(context)
     if not base_plan:

@@ -33,6 +33,16 @@ included in the `SubtaskResult` this handler returns, never persisted, and
 safe to ignore entirely (default `None`, zero behavior change) for every
 other caller. Mirrors `workflow_adapters.ReadOnlyWorkflowAdapterHandler`'s
 own Phase 9 `candidate_sink` pattern exactly.
+
+Layer 3 addition: an optional `candidate_sink` dict lets a caller (only
+`planner_first_live.run_planner_first_live_turn`, only when a specialist
+agent is Planner-first-live eligible) capture a text-only `AgentResponse`
+candidate built from this call's output via
+`candidate_response.build_specialist_candidate_response` — `None` (nothing
+captured) unless every one of that function's own gates passes. Requires a
+`runtime_context` with a populated `conversation_id`/`run_id`; without one,
+nothing is captured (never guessed/reconstructed). Never included in the
+`SubtaskResult` this handler returns, never persisted.
 """
 
 from __future__ import annotations
@@ -44,6 +54,8 @@ from app.agent.capabilities.default_registry import build_default_capability_reg
 from app.agent.capabilities.registry import CapabilityRegistry
 from app.agent.context_compiler.schemas import CompiledContext
 from app.agent.planner.schemas import PlannerSubtask
+from app.agent.schemas import AgentResponse
+from app.agent.specialists.candidate_response import build_specialist_candidate_response
 from app.agent.specialists.context import build_agent_context_pack_summary
 from app.agent.specialists.output_summarizer import summarize_specialist_output
 from app.agent.specialists.registry import SpecialistAgentRegistry, build_default_specialist_agent_registry
@@ -95,11 +107,13 @@ class SpecialistAgentHandler:
         capability_registry: CapabilityRegistry | None = None,
         settings: Settings | None = None,
         specialist_output_sink: dict[str, SpecialistAgentOutput] | None = None,
+        candidate_sink: dict[str, AgentResponse] | None = None,
     ) -> None:
         self._specialist_registry = specialist_registry or build_default_specialist_agent_registry()
         self._capability_registry = capability_registry or build_default_capability_registry()
         self._settings = settings
         self._specialist_output_sink = specialist_output_sink
+        self._candidate_sink = candidate_sink
 
     def _build_observation_bundle(
         self,
@@ -243,6 +257,24 @@ class SpecialistAgentHandler:
             # In-memory-only capture (Phase 14) -- never included in the
             # `SubtaskResult` returned below, never persisted.
             self._specialist_output_sink[agent_name] = output
+
+        if (
+            self._candidate_sink is not None
+            and runtime_context is not None
+            and runtime_context.conversation_id is not None
+            and runtime_context.run_id is not None
+        ):
+            # Layer 3: in-memory-only capture -- never included in the
+            # `SubtaskResult` returned below, never persisted. `None` unless
+            # every gate in `build_specialist_candidate_response` passes.
+            candidate = build_specialist_candidate_response(
+                output,
+                conversation_id=runtime_context.conversation_id,
+                run_id=runtime_context.run_id,
+                settings=cfg,
+            )
+            if candidate is not None:
+                self._candidate_sink[agent_name] = candidate
 
         summary = summarize_specialist_output(output)
         if observation_bundle is not None:

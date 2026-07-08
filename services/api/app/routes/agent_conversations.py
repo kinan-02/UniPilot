@@ -8,8 +8,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.agent.semester_planning_response_builder import build_plan_saved_text
-from app.agent.transcript_import_response_builder import build_import_success_text
 from app.dependencies.auth import AuthContext, require_auth
 from app.db.mongo import get_database
 from app.middleware.auth_rate_limiter import enforce_ai_rate_limit, enforce_transcript_import_rate_limit
@@ -18,7 +16,13 @@ from app.schemas.agent_conversation import (
     CreateAgentConversationRequest,
     SendAgentMessageRequest,
 )
-from app.services.agent_action_service import AgentActionError, confirm_agent_action, reject_agent_action
+from app.services.agent_action_service import (
+    AgentActionError,
+    build_import_success_text,
+    build_plan_saved_text,
+    confirm_agent_action,
+    reject_agent_action,
+)
 from app.services.agent_attachment_service import build_transcript_attachment, is_pdf_upload
 from app.services.agent_conversation_service import (
     cancel_conversation_run,

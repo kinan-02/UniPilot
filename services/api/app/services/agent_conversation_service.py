@@ -5,9 +5,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.agent.orchestrator import run_agent_turn
-from app.agent.schemas import StreamEvent
-from app.agent.streaming import format_sse_event
+from app.clients.agent_service_client import format_sse_error, stream_agent_turn
 from app.repositories.agent_conversation_repository import (
     create_agent_conversation,
     find_conversation_by_id_and_user,
@@ -74,7 +72,7 @@ async def stream_message_turn(
 ) -> AsyncIterator[str]:
     conversation = await find_conversation_by_id_and_user(database, conversation_id, user_id)
     if conversation is None:
-        yield format_sse_event(StreamEvent(type="run.failed", error="Conversation not found"))
+        yield format_sse_error("Conversation not found")
         return
 
     user_message = await create_agent_message(
@@ -92,15 +90,14 @@ async def stream_message_turn(
         preview=content.strip(),
     )
 
-    async for event in run_agent_turn(
-        database,
+    async for sse_chunk in stream_agent_turn(
         user_id=user_id,
         conversation_id=conversation_id,
         user_message=content.strip(),
         trigger_message_id=str(user_message["id"]),
         message_attachments=list(attachments or []),
     ):
-        yield format_sse_event(event)
+        yield sse_chunk
 
 
 async def cancel_conversation_run(

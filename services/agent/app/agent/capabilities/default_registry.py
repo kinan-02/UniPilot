@@ -229,6 +229,9 @@ def _workflow_capabilities() -> list[CapabilityDescriptor]:
             supported_intents=[
                 "catalog_search",
                 "profile_update",
+                "program_minor_lookup",
+                "track_structure_lookup",
+                "regulation_lookup",
                 "general_academic_question",
                 "unknown_or_unsupported",
             ],

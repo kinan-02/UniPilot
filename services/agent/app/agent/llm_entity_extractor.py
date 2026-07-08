@@ -5,6 +5,13 @@ Mirrors `llm_intent_classifier.py`'s rules-first/LLM-fallback pattern:
 wins — this only recovers a core entity regex missed entirely, and never
 overrides an already-resolved value. Off by default
 (`AGENT_LLM_ENTITY_EXTRACTION_FALLBACK_ENABLED`).
+
+No longer called from the live orchestrator as of the Layer 1
+(request-understanding) redesign — superseded by
+`app.agent.task_understanding.agent.understand_user_task`, which extracts
+entities as part of a broader understanding pass (regex-found core entities
+still always win via the merge in `orchestrator.py`). Kept for unit test
+coverage and as a rules-first-pattern reference.
 """
 
 from __future__ import annotations

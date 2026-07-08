@@ -9,7 +9,7 @@
     "workflow": "semester_planning_workflow"
   },
   "retrieval_metadata": {
-    "clarificationDiagnostics": {"questions": [{"ambiguityType": "preference", "consequence": "medium"}]},
+    "clarificationDiagnostics": {"status": "question_ready", "questions": [{"ambiguityType": "preference", "consequence": "medium"}]},
     "clarificationState": {"status": "pending"}
   },
   "live_response_summary": {"textPreview": "I can suggest options once preferences are clearer.", "blockCount": 0},

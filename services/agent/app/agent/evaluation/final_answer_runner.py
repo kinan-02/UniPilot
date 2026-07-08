@@ -86,7 +86,11 @@ def build_final_answer_eval_settings(
         # unknown_or_unsupported and routes to the generic fallback answer.
         "AGENT_LLM_INTENT_FALLBACK_ENABLED": False,
         "AGENT_LLM_EXPLANATION_ENABLED": True,
-        # Diagnostic layers for eval traces only (dry-run; no routing authority).
+        # Task Understanding runs for eval traces, but `AGENT_TASK_UNDERSTANDING_DRY_RUN`
+        # is left at its default (True) here, so it stays diagnostic-only for this
+        # config (routing still follows AGENT_LLM_INTENT_FALLBACK_ENABLED above) —
+        # set AGENT_TASK_UNDERSTANDING_DRY_RUN=False explicitly to exercise the
+        # authoritative path (see app/agent/task_understanding/integration.py).
         "AGENT_TASK_UNDERSTANDING_ENABLED": True,
         "AGENT_PLANNER_ENABLED": True,
         "AGENT_PLANNER_DRY_RUN": True,

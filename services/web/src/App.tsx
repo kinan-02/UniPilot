@@ -16,7 +16,6 @@ import { PlanDetailPage } from './pages/PlanDetailPage'
 import { PlanBuilderPage } from './pages/PlanBuilderPage'
 import { RisksPage } from './pages/RisksPage'
 import { AdvisorPage } from './pages/AdvisorPage'
-import { AgentSessionsPage } from './pages/AgentSessionsPage'
 import { AgentPage } from './pages/AgentPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { IntegrationsPage } from './pages/IntegrationsPage'
@@ -65,7 +64,6 @@ export default function App() {
                     <Route path="risks" element={<RisksPage />} />
                     <Route path="advisor" element={<AdvisorPage />} />
                     <Route path="agents" element={<Navigate to="/agent" replace />} />
-                    <Route path="agents/legacy" element={<AgentSessionsPage />} />
                     <Route path="profile" element={<ProfilePage />} />
                     <Route path="settings/integrations" element={<IntegrationsPage />} />
                   </Route>

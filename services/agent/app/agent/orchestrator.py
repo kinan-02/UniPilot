@@ -12,16 +12,17 @@ from app.agent.capabilities.diagnostics import build_capability_diagnostics
 from app.agent.context_builder import build_agent_context_pack
 from app.agent.conversation_memory import load_conversation_memory
 from app.agent.entity_resolver import resolve_entities
+from app.agent.intent_router import classify_intent
 from app.agent.llm_entity_extractor import resolve_entities_with_llm_fallback
 from app.agent.llm_intent_classifier import classify_intent_with_llm_fallback
 from app.agent.llm_response_composer import enhance_response_with_llm
 from app.agent.planner.diagnostics import build_plan_with_diagnostics
 from app.agent.planner.legacy_mapping import build_legacy_workflow_plan_summary
 from app.agent.planner_first_live import (
+    any_subtask_planner_first_live_eligible,
     attempt_live_clarification,
     attempt_live_plan_repair,
     attempt_live_synthesis_promotion,
-    is_capability_planner_first_live_eligible,
     is_capability_planner_first_live_proposal_eligible,
     run_planner_first_live_turn,
 )
@@ -30,7 +31,11 @@ from app.agent.schemas import AgentContextPack, AgentResponse, StreamEvent, Stru
 from app.agent.supervisor.diagnostics import run_supervisor_dry_run
 from app.agent.supervisor.post_context_runner import run_post_context_shadow_compare
 from app.agent.task_planner import build_task_plan
-from app.agent.task_understanding.integration import run_task_understanding_dry_run
+from app.agent.task_understanding.integration import (
+    build_task_understanding_diagnostic_summary,
+    run_task_understanding,
+    to_intent_classification,
+)
 from app.agent.workflows.registry import get_workflow
 from app.config import Settings, get_settings
 from app.repositories.agent_conversation_repository import (
@@ -52,6 +57,36 @@ from app.repositories.agent_tool_call_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _persist_and_merge_conversation_assumptions(
+    database: AsyncIOMotorDatabase,
+    *,
+    conversation_id: str,
+    user_id: str,
+    memory: dict[str, Any],
+    clarification_resume_assumptions: list[str],
+    settings: Settings,
+) -> list[str]:
+    conversation_assumptions = list(memory.get("assumptions") or [])
+    if clarification_resume_assumptions:
+        await append_conversation_assumptions(
+            database,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            assumptions=clarification_resume_assumptions,
+            settings=settings,
+        )
+        conversation_assumptions = [*conversation_assumptions, *clarification_resume_assumptions]
+    elif memory.get("assumptions"):
+        await append_conversation_assumptions(
+            database,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            assumptions=list(memory["assumptions"]),
+            settings=settings,
+        )
+    return conversation_assumptions
 
 
 async def run_agent_turn(
@@ -167,87 +202,150 @@ async def run_agent_turn(
                 yield StreamEvent(type="run.completed", run_id=run_id, message_id=message_id)
                 return
 
-        classification = await classify_intent_with_llm_fallback(effective_user_message, settings=cfg)
-        await complete_agent_run(
-            database,
-            run_id=run_id,
-            user_id=user_id,
-            status="running",
-            intent=classification.intent,
-            settings=cfg,
-        )
+        # Layer 1 (request understanding) rollout gate. `dry_run=True` (current
+        # default) preserves the exact pre-redesign sequence: the narrower
+        # LLM-fallback intent classifier + entity extractor drive routing,
+        # and Task Understanding is computed but discarded. `dry_run=False`
+        # makes Task Understanding the single, authoritative pass instead —
+        # see docs/plans and `task_understanding/integration.py`.
+        if cfg.is_agent_task_understanding_dry_run():
+            classification = await classify_intent_with_llm_fallback(effective_user_message, settings=cfg)
+            await complete_agent_run(
+                database,
+                run_id=run_id,
+                user_id=user_id,
+                status="running",
+                intent=classification.intent,
+                settings=cfg,
+            )
 
-        entities = resolve_entities(
-            effective_user_message,
-            conversation_entities=conversation.get("entities") or {},
-        )
-        entities = await resolve_entities_with_llm_fallback(
-            effective_user_message,
-            resolved_entities=entities,
-            settings=cfg,
-        )
-        if entities:
-            await append_conversation_entities(
+            entities = resolve_entities(
+                effective_user_message,
+                conversation_entities=conversation.get("entities") or {},
+            )
+            entities = await resolve_entities_with_llm_fallback(
+                effective_user_message,
+                resolved_entities=entities,
+                settings=cfg,
+            )
+            if entities:
+                await append_conversation_entities(
+                    database,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    entities=entities,
+                    settings=cfg,
+                )
+
+            memory = await load_conversation_memory(
                 database,
                 conversation_id=conversation_id,
                 user_id=user_id,
+                stored_assumptions=conversation.get("assumptions") or [],
                 entities=entities,
-                settings=cfg,
             )
-
-        memory = await load_conversation_memory(
-            database,
-            conversation_id=conversation_id,
-            user_id=user_id,
-            stored_assumptions=conversation.get("assumptions") or [],
-            entities=entities,
-        )
-        conversation_assumptions = list(memory.get("assumptions") or [])
-        if clarification_resume_assumptions:
-            await append_conversation_assumptions(
+            conversation_assumptions = await _persist_and_merge_conversation_assumptions(
                 database,
                 conversation_id=conversation_id,
                 user_id=user_id,
-                assumptions=clarification_resume_assumptions,
-                settings=cfg,
-            )
-            conversation_assumptions = [*conversation_assumptions, *clarification_resume_assumptions]
-        elif memory.get("assumptions"):
-            await append_conversation_assumptions(
-                database,
-                conversation_id=conversation_id,
-                user_id=user_id,
-                assumptions=list(memory["assumptions"]),
+                memory=memory,
+                clarification_resume_assumptions=clarification_resume_assumptions,
                 settings=cfg,
             )
 
-        # Phase 3 — Task Understanding Agent, diagnostic dry-run only.
-        # Guarded by AGENT_TASK_UNDERSTANDING_ENABLED (default off). The
-        # summary is never used below to pick a workflow or shape the
-        # response — only logged and attached to `retrievalMetadata`, an
-        # existing free-form field, so no schema/migration is needed.
-        task_understanding_summary = await run_task_understanding_dry_run(
-            user_message=effective_user_message,
-            deterministic_intent=classification.intent,
-            deterministic_intent_confidence=classification.confidence,
-            deterministic_entities=entities,
-            existing_assumptions=conversation_assumptions,
-            attachment_metadata=message_attachments,
-            settings=cfg,
-        )
-
-        # Phase 4 — Capability Registry + Context Compiler, diagnostic only.
-        # Piggybacks on the same feature flag as the Phase 3 dry-run above
-        # (only runs when it produced a summary) and, like it, only ever
-        # feeds `retrievalMetadata` — never routing or the response.
-        capability_diagnostics: dict[str, Any] | None = None
-        if task_understanding_summary is not None:
-            capability_diagnostics = build_capability_diagnostics(
-                task_understanding_summary=task_understanding_summary,
+            task_understanding = await run_task_understanding(
                 user_message=effective_user_message,
                 deterministic_intent=classification.intent,
+                deterministic_intent_confidence=classification.confidence,
                 deterministic_entities=entities,
+                existing_assumptions=conversation_assumptions,
+                attachment_metadata=message_attachments,
+                settings=cfg,
             )
+            task_understanding_summary = build_task_understanding_diagnostic_summary(task_understanding)
+
+            capability_diagnostics: dict[str, Any] | None = None
+            if cfg.is_agent_task_understanding_enabled():
+                capability_diagnostics = build_capability_diagnostics(
+                    task_understanding_summary=task_understanding_summary,
+                    user_message=effective_user_message,
+                    deterministic_intent=classification.intent,
+                    deterministic_entities=entities,
+                )
+        else:
+            deterministic_classification = classify_intent(effective_user_message)
+            await complete_agent_run(
+                database,
+                run_id=run_id,
+                user_id=user_id,
+                status="running",
+                intent=deterministic_classification.intent,
+                settings=cfg,
+            )
+
+            deterministic_entities = resolve_entities(
+                effective_user_message,
+                conversation_entities=conversation.get("entities") or {},
+            )
+
+            memory = await load_conversation_memory(
+                database,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                stored_assumptions=conversation.get("assumptions") or [],
+                entities=deterministic_entities,
+            )
+            conversation_assumptions = await _persist_and_merge_conversation_assumptions(
+                database,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                memory=memory,
+                clarification_resume_assumptions=clarification_resume_assumptions,
+                settings=cfg,
+            )
+
+            task_understanding = await run_task_understanding(
+                user_message=effective_user_message,
+                deterministic_intent=deterministic_classification.intent,
+                deterministic_intent_confidence=deterministic_classification.confidence,
+                deterministic_entities=deterministic_entities,
+                existing_entities=conversation.get("entities") or {},
+                existing_assumptions=conversation_assumptions,
+                recent_messages=memory.get("recentTurns") or [],
+                attachment_metadata=message_attachments,
+                settings=cfg,
+            )
+            task_understanding_summary = build_task_understanding_diagnostic_summary(task_understanding)
+
+            # Regex-found core entities always win — preserves the guarantee
+            # `resolve_entities_with_llm_fallback` gave today (never
+            # overwritten by an LLM guess); task understanding may still
+            # contribute anything beyond those.
+            entities = {
+                **task_understanding.extracted_entities,
+                **{k: v for k, v in deterministic_entities.items() if v},
+            }
+            if entities:
+                await append_conversation_entities(
+                    database,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    entities=entities,
+                    settings=cfg,
+                )
+
+            classification = to_intent_classification(
+                task_understanding, requires_file=deterministic_classification.requires_file
+            )
+
+            capability_diagnostics: dict[str, Any] | None = None
+            if cfg.is_agent_task_understanding_enabled():
+                capability_diagnostics = build_capability_diagnostics(
+                    task_understanding_summary=task_understanding_summary,
+                    user_message=effective_user_message,
+                    deterministic_intent=deterministic_classification.intent,
+                    deterministic_entities=deterministic_entities,
+                )
 
         task_plan = build_task_plan(classification)
 
@@ -450,15 +548,13 @@ async def run_agent_turn(
         # gated by AGENT_PLANNER_FIRST_LIVE_ENABLED (default off) plus a
         # per-workflow allowlist (default empty) plus an explicitly-required
         # runtime readiness gate approval at the top rung
-        # (`ready_for_broader_promotion`) -- see
-        # `app.agent.planner_first_live.is_capability_planner_first_live_eligible`
-        # for why this never bypasses the gate the way Phase 9 promotion does.
-        # When eligible, the Planner's own plan is executed for real through
-        # the Supervisor and its result stands in for `workflow.run()`
-        # entirely for this turn; on any doubt at all (failed/skipped
-        # subtask, missing/unsafe candidate) `run_planner_first_live_turn`
-        # returns `None` and this turn falls through to the exact same
-        # deterministic `workflow.run()` path as before this existed.
+        # (`ready_for_broader_promotion`). When eligible, the Planner's own
+        # plan is executed for real through the Supervisor and its result
+        # stands in for `workflow.run()` entirely for this turn; on any doubt
+        # at all (failed/skipped subtask, missing/unsafe candidate)
+        # `run_planner_first_live_turn` returns `None` and this turn falls
+        # through to the exact same deterministic `workflow.run()` path as
+        # before this existed.
         #
         # Phase 3 (post-Phase-9) — the same mechanism additionally covers
         # the two proposal-creating workflows, gated by its own, independent
@@ -468,20 +564,35 @@ async def run_agent_turn(
         # `allow_single_proposed_action=True` lets the real candidate's own
         # `proposed_actions` pass through unchanged (never more than one,
         # never a direct write) instead of being treated as a failure.
+        #
+        # Layer 2 (Planner: genuine multi-subtask live dispatch) --
+        # eligibility is evaluated against every subtask in the Planner's own
+        # plan (`any_subtask_planner_first_live_eligible`), not just
+        # `task_plan.workflow` alone -- `run_planner_first_live_turn` computes
+        # the actual per-subtask eligible set internally and dispatches every
+        # already-approved capability in the plan for real (still just one,
+        # byte-for-byte as before, unless AGENT_PLANNER_FIRST_LIVE_MULTI_
+        # CAPABILITY_ENABLED is also on).
         planner_first_live_used = False
         planner_first_live_run_output = None
         allow_single_proposed_action = False
         if planner_output is not None:
-            planner_first_live_eligible = is_capability_planner_first_live_eligible(
-                task_plan.workflow, settings=cfg
+            planner_output_dict = planner_output.model_dump()
+            planner_first_live_eligible = any_subtask_planner_first_live_eligible(
+                planner_output_dict, settings=cfg
             )
-            if not planner_first_live_eligible and is_capability_planner_first_live_proposal_eligible(
-                task_plan.workflow, settings=cfg
-            ):
-                planner_first_live_eligible = True
-                allow_single_proposed_action = True
 
             if planner_first_live_eligible:
+                subtask_capability_names = {
+                    str(subtask.get("capability_name") or "")
+                    for subtask in (planner_output_dict.get("subtasks") or [])
+                    if isinstance(subtask, dict)
+                }
+                subtask_capability_names.discard("")
+                allow_single_proposed_action = any(
+                    is_capability_planner_first_live_proposal_eligible(name, settings=cfg)
+                    for name in subtask_capability_names
+                )
                 live_candidate, planner_first_live_run_output = await run_planner_first_live_turn(
                     database=database,
                     agent_context_pack=context,
@@ -490,7 +601,7 @@ async def run_agent_turn(
                     conversation_id=conversation_id,
                     run_id=run_id,
                     workflow_name=task_plan.workflow,
-                    planner_output=planner_output.model_dump(),
+                    planner_output=planner_output_dict,
                     settings=cfg,
                     allow_single_proposed_action=allow_single_proposed_action,
                 )
@@ -652,9 +763,24 @@ async def run_agent_turn(
         # existing AGENT_SYNTHESIS_ENABLED/AGENT_SYNTHESIS_TEXT_PROMOTION_*
         # settings (both off by default); on any doubt this returns `None`
         # and `final_response` is left exactly as-is.
+        # Layer 2 -- Synthesis promotion's `promotion_policy`/comparison logic
+        # is written for a single workflow's shape; skip it entirely when
+        # this turn's plan actually dispatched more than one capability for
+        # real (generalizing it is Synthesis/Composition-layer work, out of
+        # scope here). The still-common single-capability case is unaffected.
+        planner_first_live_real_capability_names = (
+            (planner_first_live_run_output.diagnostics or {}).get("realCapabilityNames")
+            if planner_first_live_run_output is not None
+            else None
+        )
+        planner_first_live_single_capability = (
+            not isinstance(planner_first_live_real_capability_names, list)
+            or len(planner_first_live_real_capability_names) <= 1
+        )
+
         planner_first_live_synthesis_metadata: dict[str, Any] | None = None
         planner_first_live_synthesis_promotion_metadata: dict[str, Any] | None = None
-        if planner_first_live_used and final_response is not None:
+        if planner_first_live_used and final_response is not None and planner_first_live_single_capability:
             (
                 promoted_by_synthesis,
                 planner_first_live_synthesis_metadata,
@@ -943,10 +1069,12 @@ def _planner_first_live_metadata(
     """Compact `plannerFirstLive` diagnostic — `None` when never attempted this turn."""
     if run_output is None and not used:
         return None
+    diagnostics = getattr(run_output, "diagnostics", None) or {}
     return {
         "attempted": True,
         "used": used,
         "workflowName": workflow_name,
+        "realCapabilityNames": list(diagnostics.get("realCapabilityNames") or []),
         "runStatus": getattr(run_output, "status", None),
         "failedSubtasks": list(getattr(run_output, "failed_subtasks", None) or []),
         "skippedSubtasks": list(getattr(run_output, "skipped_subtasks", None) or []),

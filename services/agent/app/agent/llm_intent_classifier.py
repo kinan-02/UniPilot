@@ -3,12 +3,19 @@
 Phase 2: the LLM fallback now runs through the shared `ReasoningBlock`
 runtime (`app.agent.reasoning`) instead of calling the chat model directly.
 Public function names, flags, and fallback behavior are unchanged.
+
+No longer called from the live orchestrator as of the Layer 1
+(request-understanding) redesign — superseded by
+`app.agent.task_understanding.agent.understand_user_task`, which performs
+intent classification as part of a broader understanding pass. Kept for unit
+test coverage and as a rules-first-pattern reference.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
+from typing import get_args
 
 from app.agent.intent_router import classify_intent
 from app.agent.llm_prompts import intent_catalog_entries
@@ -17,29 +24,14 @@ from app.agent.reasoning.prompt_registry import INTENT_CLASSIFIER_V1
 from app.agent.reasoning.reasoning_block import ReasoningBlock
 from app.agent.reasoning.schemas import ReasoningBlockInput
 from app.agent.reasoning.task_schemas import INTENT_CLASSIFIER_OUTPUT_SCHEMA
-from app.agent.schemas import IntentClassification
+from app.agent.schemas import AgentIntent, IntentClassification
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 _LLM_FALLBACK_THRESHOLD = 0.78
 
-_VALID_INTENTS: frozenset[str] = frozenset(
-    {
-        "graduation_progress_check",
-        "transcript_import",
-        "semester_plan_generation",
-        "semester_plan_modification",
-        "course_question",
-        "requirement_explanation",
-        "prerequisite_check",
-        "catalog_search",
-        "completed_courses_update",
-        "profile_update",
-        "general_academic_question",
-        "unknown_or_unsupported",
-    }
-)
+_VALID_INTENTS: frozenset[str] = frozenset(get_args(AgentIntent))
 
 
 def classify_intent_rules(message: str) -> IntentClassification:

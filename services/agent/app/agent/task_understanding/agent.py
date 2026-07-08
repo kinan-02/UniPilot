@@ -1,4 +1,4 @@
-"""Task Understanding Agent (Phase 3).
+"""Task Understanding Agent.
 
 Produces a richer, structured understanding of a student's request than the
 rules-first intent classifier, via the shared `ReasoningBlock` runtime.
@@ -11,8 +11,10 @@ Hard constraints (enforced by construction, not just by convention):
 - Never runs workflows.
 - Never decides the final answer shown to the student.
 
-In Phase 3 this output is diagnostic/future-planning data only. Nothing in
-the live orchestrator uses it to choose a workflow or alter a response.
+As of the Layer 1 (request-understanding) redesign, this is the live,
+authoritative understanding pass for every turn — its `primary_intent` and
+`extracted_entities` drive workflow dispatch via
+`app.agent.task_understanding.integration.run_task_understanding`.
 """
 
 from __future__ import annotations
@@ -107,7 +109,7 @@ def _attachment_metadata_only(attachments: list[dict[str, Any]] | None) -> list[
     return metadata
 
 
-def _deterministic_fallback(
+def build_deterministic_task_understanding_fallback(
     *,
     user_message: str,
     deterministic_intent: str | None,
@@ -224,13 +226,14 @@ async def understand_user_task(
 ) -> TaskUnderstandingOutput:
     """Produce a structured understanding of the user's task via `ReasoningBlock`.
 
-    Diagnostic only in Phase 3 — the result is not used to select a workflow
-    or alter the final response. Falls back to a deterministic result when
-    the feature flag is off, the LLM is unavailable, or reasoning fails.
+    Live and authoritative: `run_task_understanding` (integration.py) feeds
+    this output's `primary_intent`/`extracted_entities` into workflow
+    dispatch. Falls back to a deterministic result when the feature flag is
+    off, the LLM is unavailable, or reasoning fails — never raises.
     """
     cfg = settings or get_settings()
     if not cfg.is_agent_task_understanding_enabled():
-        return _deterministic_fallback(
+        return build_deterministic_task_understanding_fallback(
             user_message=user_message,
             deterministic_intent=deterministic_intent,
             deterministic_intent_confidence=deterministic_intent_confidence,
@@ -279,7 +282,7 @@ async def understand_user_task(
     if output.status != "completed" or not output.schema_valid or output.result is None:
         if output.warnings:
             logger.warning("task_understanding_incomplete", extra={"warnings": output.warnings})
-        return _deterministic_fallback(
+        return build_deterministic_task_understanding_fallback(
             user_message=user_message,
             deterministic_intent=deterministic_intent,
             deterministic_intent_confidence=deterministic_intent_confidence,
@@ -291,7 +294,7 @@ async def understand_user_task(
         candidate = _candidate_from_result(output.result)
     except ValidationError:
         logger.warning("task_understanding_result_shape_invalid")
-        return _deterministic_fallback(
+        return build_deterministic_task_understanding_fallback(
             user_message=user_message,
             deterministic_intent=deterministic_intent,
             deterministic_intent_confidence=deterministic_intent_confidence,

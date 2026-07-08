@@ -355,3 +355,102 @@ async def test_handler_maps_specialist_skipped_to_subtask_skipped() -> None:
     )
 
     assert result.status == "skipped"
+
+
+# ---------------------------------------------------------------------------
+# Layer 3 -- `candidate_sink` capture.
+# ---------------------------------------------------------------------------
+
+
+def _runtime_context(**overrides) -> SupervisorRuntimeContext:
+    defaults = dict(conversation_id="c1", run_id="r1")
+    defaults.update(overrides)
+    return SupervisorRuntimeContext(**defaults)
+
+
+async def test_handler_captures_candidate_when_gates_pass() -> None:
+    output = _output(result={"answer_text": "You still need 40 credits."})
+    specialist_registry = FakeSpecialistRegistry(_fake_specialist_fn(output))
+    candidate_sink: dict[str, Any] = {}
+    handler = SpecialistAgentHandler(
+        specialist_registry=specialist_registry,
+        capability_registry=build_default_capability_registry(),
+        settings=_ENABLED_SETTINGS,
+        candidate_sink=candidate_sink,
+    )
+
+    await handler.run(
+        subtask=_subtask(),
+        compiled_context=_compiled_context(),
+        blackboard=_blackboard(),
+        dry_run=True,
+        runtime_context=_runtime_context(),
+    )
+
+    assert "graduation_progress_agent" in candidate_sink
+    candidate = candidate_sink["graduation_progress_agent"]
+    assert candidate.text == "You still need 40 credits."
+    assert candidate.conversation_id == "c1"
+    assert candidate.run_id == "r1"
+
+
+async def test_handler_candidate_sink_empty_when_mapper_gates_fail() -> None:
+    # No `answer_text` in `result` -- the mapper's own gate fails.
+    output = _output(result={})
+    specialist_registry = FakeSpecialistRegistry(_fake_specialist_fn(output))
+    candidate_sink: dict[str, Any] = {}
+    handler = SpecialistAgentHandler(
+        specialist_registry=specialist_registry,
+        capability_registry=build_default_capability_registry(),
+        settings=_ENABLED_SETTINGS,
+        candidate_sink=candidate_sink,
+    )
+
+    await handler.run(
+        subtask=_subtask(),
+        compiled_context=_compiled_context(),
+        blackboard=_blackboard(),
+        dry_run=True,
+        runtime_context=_runtime_context(),
+    )
+
+    assert candidate_sink == {}
+
+
+async def test_handler_candidate_sink_empty_without_runtime_context() -> None:
+    output = _output(result={"answer_text": "You still need 40 credits."})
+    specialist_registry = FakeSpecialistRegistry(_fake_specialist_fn(output))
+    candidate_sink: dict[str, Any] = {}
+    handler = SpecialistAgentHandler(
+        specialist_registry=specialist_registry,
+        capability_registry=build_default_capability_registry(),
+        settings=_ENABLED_SETTINGS,
+        candidate_sink=candidate_sink,
+    )
+
+    await handler.run(
+        subtask=_subtask(), compiled_context=_compiled_context(), blackboard=_blackboard(), dry_run=True
+    )
+
+    assert candidate_sink == {}
+
+
+async def test_handler_candidate_sink_none_by_default_is_zero_behavior_change() -> None:
+    output = _output(result={"answer_text": "You still need 40 credits."})
+    specialist_registry = FakeSpecialistRegistry(_fake_specialist_fn(output))
+    handler = SpecialistAgentHandler(
+        specialist_registry=specialist_registry,
+        capability_registry=build_default_capability_registry(),
+        settings=_ENABLED_SETTINGS,
+    )
+
+    result = await handler.run(
+        subtask=_subtask(),
+        compiled_context=_compiled_context(),
+        blackboard=_blackboard(),
+        dry_run=True,
+        runtime_context=_runtime_context(),
+    )
+
+    assert isinstance(result, SubtaskResult)
+    assert result.status == "completed"

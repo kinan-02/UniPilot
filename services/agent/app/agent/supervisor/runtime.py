@@ -123,6 +123,7 @@ def _select_handler(
     real_handlers_enabled: bool,
     runtime_context: SupervisorRuntimeContext | None,
     allow_proposal_capable_execution: bool = False,
+    real_execution_allowed_capability_names: frozenset[str] | None = None,
 ) -> tuple[SubtaskHandler | None, str | None]:
     """Resolve the handler to actually call for `capability`.
 
@@ -133,6 +134,15 @@ def _select_handler(
     When `real_handlers_enabled` is `True` and `capability.type == "workflow"`,
     *every* workflow capability is safety-checked — not just the ones a
     caller happened to pre-register a real adapter for:
+    - `real_execution_allowed_capability_names` not `None` and
+      `capability.name` not in it -> the safe dry-run fallback handler
+      (Layer 2 / Planner-first-live multi-capability dispatch: this is a
+      *governance* allowlist, distinct from the safety checks below — a
+      capability can be perfectly safe per its own descriptor metadata yet
+      still not be one the readiness manifest has specifically approved for
+      real dispatch this turn). `None` (the default, used by every caller
+      except `run_planner_first_live_turn`) skips this check entirely,
+      preserving Phase 6/7 behavior exactly.
     - unsafe for both real-execution modes (`safety.can_shadow_execute_capability`
       is `False`, *and* either `allow_proposal_capable_execution` is `False`
       or `safety.can_execute_capability_for_real_with_proposals` is `False`)
@@ -161,8 +171,32 @@ def _select_handler(
       only an explicitly pre-registered, purpose-configured instance ever
       can, since that flag alone only controls whether dispatch is even
       reached, never what a handler instance itself tolerates).
+
+    Layer 3: `capability.type == "specialist_agent"` also gets the
+    `real_execution_allowed_capability_names` allowlist re-check above (a
+    defense-in-depth backstop for `run_planner_first_live_turn`'s own
+    specialist-agent dispatch, mirroring the workflow path's independent
+    re-validation) -- but none of the workflow-specific safety checks below
+    (`can_shadow_execute_capability`, `operationally_expensive_for_shadow_execution`,
+    `ReadOnlyWorkflowAdapterHandler` resolution), since those don't apply to
+    a specialist agent. Specialist-specific safety
+    (`specialists.safety.is_specialist_agent_safe`) is independently
+    re-checked inside `SpecialistAgentHandler.run()` itself, every call,
+    regardless of this allowlist.
     """
-    if not real_handlers_enabled or capability.type != "workflow":
+    if not real_handlers_enabled or capability.type not in {"workflow", "specialist_agent"}:
+        return handlers.resolve(capability_name=capability.name, capability_type=capability.type), None
+
+    if (
+        real_execution_allowed_capability_names is not None
+        and capability.name not in real_execution_allowed_capability_names
+    ):
+        return (
+            _DRY_RUN_FALLBACK_HANDLER,
+            f"real_shadow_execution_skipped_not_allowlisted: {capability.name}",
+        )
+
+    if capability.type != "workflow":
         return handlers.resolve(capability_name=capability.name, capability_type=capability.type), None
 
     read_only_safe = can_shadow_execute_capability(capability)
@@ -203,6 +237,7 @@ async def _run_subtask(
     real_handlers_enabled: bool = False,
     runtime_context: SupervisorRuntimeContext | None = None,
     allow_proposal_capable_execution: bool = False,
+    real_execution_allowed_capability_names: frozenset[str] | None = None,
 ) -> tuple[SubtaskResult, SubtaskExecutionRecord, bool]:
     """Run one subtask (with retries), returning `(result, record, hit_global_retry_limit)`.
 
@@ -238,6 +273,7 @@ async def _run_subtask(
         real_handlers_enabled=real_handlers_enabled,
         runtime_context=runtime_context,
         allow_proposal_capable_execution=allow_proposal_capable_execution,
+        real_execution_allowed_capability_names=real_execution_allowed_capability_names,
     )
     if handler is None:
         # Explicitly unsafe for real execution -- never dry-run fallback,
@@ -381,6 +417,7 @@ async def run_supervisor_shadow(
     runtime_context: SupervisorRuntimeContext | None = None,
     settings: Settings | None = None,
     allow_proposal_capable_execution: bool = False,
+    real_execution_allowed_capability_names: frozenset[str] | None = None,
 ) -> SupervisorRunOutput:
     """Run a normalized `PlannerOutput`'s subtask graph mechanics — shadow-only
     by default.
@@ -415,6 +452,15 @@ async def run_supervisor_shadow(
     gate has already passed. Every other caller (diagnostics, promotion,
     shadow-compare) leaves this at the default `False`, so this call can
     never create a proposal for them.
+
+    `real_execution_allowed_capability_names` (default `None`) is a second,
+    independent governance allowlist threaded straight to `_select_handler`
+    — when supplied, a workflow capability that is otherwise safety-eligible
+    for real execution still degrades to the dry-run fallback unless its
+    name is in this set. Only `run_planner_first_live_turn` ever supplies
+    this (derived from which capabilities in its plan actually passed the
+    readiness-manifest eligibility check); every other caller leaves it
+    `None`, which skips the check entirely and preserves prior behavior.
     """
     cfg = settings or get_settings()
     real_handlers_enabled = cfg.is_agent_supervisor_real_handlers_enabled()
@@ -547,6 +593,7 @@ async def run_supervisor_shadow(
                     real_handlers_enabled=real_handlers_enabled,
                     runtime_context=runtime_context,
                     allow_proposal_capable_execution=allow_proposal_capable_execution,
+                    real_execution_allowed_capability_names=real_execution_allowed_capability_names,
                 )
                 for subtask_id in wave
             )

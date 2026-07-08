@@ -76,38 +76,14 @@ class Settings(BaseSettings):
     transcript_import_rate_limit_max: int = 10
     ai_service_url: str | None = None
     ai_advisor_timeout_seconds: int = 120
-    mas_queue_name: str = "mas_agent_jobs"
-    agent_sessions_collection: str = "agent_sessions"
+    agent_service_url: str | None = None
+    agent_turn_timeout_seconds: int = 180
     agent_conversations_collection: str = "agent_conversations"
     agent_messages_collection: str = "agent_messages"
     agent_runs_collection: str = "agent_runs"
     agent_steps_collection: str = "agent_steps"
     agent_tool_calls_collection: str = "agent_tool_calls"
     agent_action_proposals_collection: str = "agent_action_proposals"
-    agent_max_retrieval_attempts: int = 3
-    agent_max_tool_calls_per_run: int = 12
-    agent_max_workflow_steps: int = 20
-    agent_agentic_retrieval_enabled: bool = Field(
-        default=True,
-        validation_alias="AGENT_AGENTIC_RETRIEVAL_ENABLED",
-    )
-    agent_llm_validation_enabled: bool = Field(
-        default=False,
-        validation_alias="AGENT_LLM_VALIDATION_ENABLED",
-    )
-    agent_llm_explanation_enabled: bool = Field(
-        default=True,
-        validation_alias="AGENT_LLM_EXPLANATION_ENABLED",
-    )
-    agent_llm_intent_fallback_enabled: bool = Field(
-        default=True,
-        validation_alias="AGENT_LLM_INTENT_FALLBACK_ENABLED",
-    )
-    agent_llm_preference_extraction_enabled: bool = Field(
-        default=True,
-        validation_alias="AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED",
-    )
-    agent_assumptions_collection: str = "agent_assumptions"
     transcript_parser_url: str | None = None
     transcript_parser_timeout_seconds: int = 60
     transcript_import_max_upload_bytes: int = 5 * 1024 * 1024
@@ -141,25 +117,6 @@ class Settings(BaseSettings):
     refresh_token_session_ttl_seconds: int = 24 * 60 * 60
     refresh_token_remember_ttl_seconds: int = 30 * 24 * 60 * 60
     technion_raw_dir: str | None = None
-    catalog_vault_wiki_path: str | None = None
-    agent_wiki_retrieval_limit: int = 5
-    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
-    openai_base_url: str | None = Field(default=None, validation_alias="OPENAI_BASE_URL")
-    openai_chat_model: str | None = Field(default=None, validation_alias="OPENAI_CHAT_MODEL")
-    embedding_api_key: str | None = Field(default=None, validation_alias="EMBEDDING_API_KEY")
-    embedding_base_url: str | None = Field(default=None, validation_alias="EMBEDDING_BASE_URL")
-    embedding_model: str | None = Field(default=None, validation_alias="EMBEDDING_MODEL")
-    embedding_enabled: bool = Field(default=True, validation_alias="EMBEDDING_ENABLED")
-    embedding_index_enabled: bool = Field(default=True, validation_alias="EMBEDDING_INDEX_ENABLED")
-    embedding_index_cache_path: str | None = Field(
-        default=None,
-        validation_alias="EMBEDDING_INDEX_CACHE_PATH",
-    )
-    embedding_index_batch_size: int = Field(default=64, validation_alias="EMBEDDING_INDEX_BATCH_SIZE")
-    embedding_index_cache_backup_count: int = Field(
-        default=3,
-        validation_alias="EMBEDDING_INDEX_CACHE_BACKUP_COUNT",
-    )
 
     model_config = SettingsConfigDict(
         env_file=_settings_env_files(),
@@ -213,61 +170,11 @@ class Settings(BaseSettings):
             return configured.rstrip("/")
         return "http://ai:3001"
 
-    def resolved_embedding_api_key(self) -> str:
-        return (self.embedding_api_key or "").strip()
-
-    def resolved_embedding_base_url(self) -> str:
-        configured = (self.embedding_base_url or "").strip()
+    def resolved_agent_service_url(self) -> str:
+        configured = (self.agent_service_url or "").strip()
         if configured:
             return configured.rstrip("/")
-        return "https://api.llmod.ai/v1"
-
-    def resolved_embedding_model(self) -> str:
-        configured = (self.embedding_model or "").strip()
-        if configured:
-            return configured
-        return "MB5R2CF-azure/text-embedding-3-small"
-
-    def embeddings_available(self) -> bool:
-        return bool(self.embedding_enabled and self.resolved_embedding_api_key())
-
-    def resolved_embedding_index_cache_path(self) -> str:
-        configured = (self.embedding_index_cache_path or "").strip()
-        local_default = str(_API_ROOT / "data" / "cache" / "wiki_embedding_index.json")
-        if configured:
-            if configured.startswith("/app/") and self.environment != "production":
-                return local_default
-            return configured
-        if self.environment == "production":
-            return "/app/data/cache/wiki_embedding_index.json"
-        return local_default
-
-    def wiki_vector_index_enabled(self) -> bool:
-        return bool(self.embedding_index_enabled and self.embeddings_available())
-
-    def resolved_embedding_index_cache_backup_count(self) -> int:
-        return max(0, int(self.embedding_index_cache_backup_count or 3))
-
-    def is_agentic_retrieval_enabled(self) -> bool:
-        return bool(self.agent_agentic_retrieval_enabled)
-
-    def is_agent_llm_validation_enabled(self) -> bool:
-        return bool(self.agent_llm_validation_enabled)
-
-    def is_agent_llm_explanation_enabled(self) -> bool:
-        if not (self.openai_api_key or "").strip():
-            return False
-        return bool(self.agent_llm_explanation_enabled)
-
-    def is_agent_llm_intent_fallback_enabled(self) -> bool:
-        if not (self.openai_api_key or "").strip():
-            return False
-        return bool(self.agent_llm_intent_fallback_enabled)
-
-    def is_agent_llm_preference_extraction_enabled(self) -> bool:
-        if not (self.openai_api_key or "").strip():
-            return False
-        return bool(self.agent_llm_preference_extraction_enabled)
+        return "http://agent:3003"
 
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()

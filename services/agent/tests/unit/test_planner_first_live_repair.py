@@ -84,6 +84,8 @@ class _FakeWorkflow:
 # _is_repaired_plan_safe_to_redispatch
 # ---------------------------------------------------------------------------
 
+_ELIGIBLE_NAMES = frozenset({"graduation_progress_workflow"})
+
 
 def _repair_output(**overrides) -> PlanRepairOutput:
     defaults = dict(
@@ -107,32 +109,32 @@ def _repair_output(**overrides) -> PlanRepairOutput:
 
 def test_repair_mode_with_matching_capability_is_safe() -> None:
     output = _repair_output()
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is True
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is True
 
 
 def test_regenerate_mode_is_never_safe() -> None:
     output = _repair_output(mode_used="regenerate", repaired_plan={"plan_id": "x", "subtasks": []})
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_continue_mode_is_never_safe() -> None:
     output = _repair_output(mode_used="continue", repaired_plan=None)
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_empty_subtasks_is_never_safe() -> None:
     output = _repair_output(repaired_plan={"plan_id": "x", "subtasks": []})
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_added_subtask_ids_blocks_redispatch() -> None:
     output = _repair_output(added_subtask_ids=["new_one"])
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_removed_subtask_ids_blocks_redispatch() -> None:
     output = _repair_output(removed_subtask_ids=["run_it"])
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_mismatched_capability_name_blocks_redispatch() -> None:
@@ -145,12 +147,12 @@ def test_mismatched_capability_name_blocks_redispatch() -> None:
             "subtasks": [{"id": "run_it", "capability_name": "semester_planning_workflow", "status": "revised"}],
         }
     )
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_missing_repaired_plan_blocks_redispatch() -> None:
     output = _repair_output(repaired_plan=None)
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is False
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is False
 
 
 def test_safe_to_use_field_is_irrelevant() -> None:
@@ -158,7 +160,7 @@ def test_safe_to_use_field_is_irrelevant() -> None:
     the function must return `True` here despite `safe_to_use=False`."""
     output = _repair_output(safe_to_use=False)
     assert output.safe_to_use is False
-    assert _is_repaired_plan_safe_to_redispatch(output, workflow_name="graduation_progress_workflow") is True
+    assert _is_repaired_plan_safe_to_redispatch(output, eligible_capability_names=_ELIGIBLE_NAMES) is True
 
 
 # ---------------------------------------------------------------------------

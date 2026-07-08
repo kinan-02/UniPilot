@@ -1,0 +1,774 @@
+{
+  "evalType": "conversation_agent_http",
+  "baseUrl": "http://localhost:8000",
+  "elapsedSec": 302.94,
+  "delayMs": 5000,
+  "summary": {
+    "total": 29,
+    "passed": 29,
+    "failed": 0,
+    "skipped": 0,
+    "executed": 29,
+    "passRate": 1.0,
+    "latencyMs": {
+      "p50": 3581.9,
+      "p95": 5929.4,
+      "max": 19511.9
+    },
+    "byCategory": {
+      "clarification": {
+        "pass": 5,
+        "fail": 0,
+        "skip": 0
+      },
+      "course_question": {
+        "pass": 6,
+        "fail": 0,
+        "skip": 0
+      },
+      "from_rag_course_question": {
+        "pass": 5,
+        "fail": 0,
+        "skip": 0
+      },
+      "general_academic": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0
+      },
+      "graduation_progress": {
+        "pass": 4,
+        "fail": 0,
+        "skip": 0
+      },
+      "prerequisite_check": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0
+      },
+      "requirement_explanation": {
+        "pass": 3,
+        "fail": 0,
+        "skip": 0
+      },
+      "semester_planning": {
+        "pass": 3,
+        "fail": 0,
+        "skip": 0
+      },
+      "unsupported": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "agent_clarify_grad_no_profile",
+      "category": "clarification",
+      "status": "pass",
+      "message": "What am I missing to graduate?",
+      "textPreview": "I need your student profile before I can answer this accurately. Please complete your degree program, track, and catalog year on your profile.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "graduation_progress_check",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 142,
+        "latencyMs": 2268.4,
+        "eventCount": 10
+      },
+      "latencyMs": 2268.4,
+      "transport": "http",
+      "conversationId": "6a47fbd3783e4338e48f275a"
+    },
+    {
+      "id": "agent_clarify_course_no_number",
+      "category": "clarification",
+      "status": "pass",
+      "message": "Can I take this course next semester?",
+      "textPreview": "Which course number are you asking about? Please provide the Technion course number.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 84,
+        "latencyMs": 2420.4,
+        "eventCount": 10
+      },
+      "latencyMs": 2420.4,
+      "transport": "http",
+      "conversationId": "6a47fbdc783e4338e48f2763"
+    },
+    {
+      "id": "agent_clarify_plan_no_semester",
+      "category": "clarification",
+      "status": "pass",
+      "message": "Build me a semester plan",
+      "textPreview": "Which semester should I plan for? Say 'next semester' or provide a semester code like 2025-2.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "semester_plan_generation",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 93,
+        "latencyMs": 2303.3,
+        "eventCount": 10
+      },
+      "latencyMs": 2303.3,
+      "transport": "http",
+      "conversationId": "6a47fbe4783e4338e48f276c"
+    },
+    {
+      "id": "agent_clarify_transcript_no_file",
+      "category": "clarification",
+      "status": "pass",
+      "message": "Import my transcript",
+      "textPreview": "Please upload your official transcript PDF with your message. I will parse it and show a review table before saving any courses.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "transcript_import",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 128,
+        "latencyMs": 1967.2,
+        "eventCount": 10
+      },
+      "latencyMs": 1967.2,
+      "transport": "http",
+      "conversationId": "6a47fbed783e4338e48f2775"
+    },
+    {
+      "id": "agent_grad_en_with_profile",
+      "category": "graduation_progress",
+      "status": "pass",
+      "message": "What am I missing to graduate?",
+      "textPreview": "Here is your graduation progress for הנדסת נתונים ומידע. Status: Not ready yet. You have completed 6.0 of 155.0 credits. About 149.0 credits remain toward the degree total. Overall completion is approximately 3.87%. 0 of 6 requirement bucke",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "graduation_progress_check",
+        "blockTypes": [
+          "RequirementBucketBlock",
+          "RequirementSummaryBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 366,
+        "latencyMs": 4724.0,
+        "eventCount": 21
+      },
+      "latencyMs": 4724.0,
+      "transport": "http",
+      "conversationId": "6a47fbf7783e4338e48f2780"
+    },
+    {
+      "id": "agent_grad_he_with_profile",
+      "category": "graduation_progress",
+      "status": "pass",
+      "message": "מה חסר לי כדי לסיים את התואר?",
+      "textPreview": "Here is your graduation progress for הנדסת נתונים ומידע. Status: Not ready yet. You have completed 3.0 of 155.0 credits. About 152.0 credits remain toward the degree total. Overall completion is approximately 1.94%. 0 of 6 requirement bucke",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "graduation_progress_check",
+        "blockTypes": [
+          "RequirementBucketBlock",
+          "RequirementSummaryBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 366,
+        "latencyMs": 5929.4,
+        "eventCount": 21
+      },
+      "latencyMs": 5929.4,
+      "transport": "http",
+      "conversationId": "6a47fc03783e4338e48f278a"
+    },
+    {
+      "id": "agent_grad_credits_remaining",
+      "category": "graduation_progress",
+      "status": "pass",
+      "message": "How many credits do I have left?",
+      "textPreview": "Here is your graduation progress for הנדסת נתונים ומידע. Status: Not ready yet. You have completed 6.0 of 155.0 credits. About 149.0 credits remain toward the degree total. Overall completion is approximately 3.87%. 0 of 6 requirement bucke",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "graduation_progress_check",
+        "blockTypes": [
+          "RequirementBucketBlock",
+          "RequirementSummaryBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 366,
+        "latencyMs": 4931.4,
+        "eventCount": 21
+      },
+      "latencyMs": 4931.4,
+      "transport": "http",
+      "conversationId": "6a47fc10783e4338e48f2795"
+    },
+    {
+      "id": "agent_course_prereq_en",
+      "category": "course_question",
+      "status": "pass",
+      "message": "What are the prerequisites for 00940219?",
+      "textPreview": "Yes — you appear eligible to take course 00940219. Course 00940219 is part of the mandatory curriculum matrix. Confirm the exact group schedule before final registration.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 170,
+        "latencyMs": 3809.8,
+        "eventCount": 14
+      },
+      "latencyMs": 3809.8,
+      "transport": "http",
+      "conversationId": "6a47fc1c783e4338e48f279f"
+    },
+    {
+      "id": "agent_course_offered_en",
+      "category": "course_question",
+      "status": "pass",
+      "message": "Is 00940224 offered next semester?",
+      "textPreview": "Yes — course 00940224 is offered in 2025-2. You can review lecture and tutorial groups before adding this course to a plan.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 123,
+        "latencyMs": 3374.2,
+        "eventCount": 15
+      },
+      "latencyMs": 3374.2,
+      "transport": "http",
+      "conversationId": "6a47fc26783e4338e48f27a8"
+    },
+    {
+      "id": "agent_course_can_take_he",
+      "category": "course_question",
+      "status": "pass",
+      "message": "האם אפשר לקחת 00940345?",
+      "textPreview": "Yes — you appear eligible to take course 00940345. Course 00940345 is part of the mandatory curriculum matrix. Confirm the exact group schedule before final registration.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 170,
+        "latencyMs": 3581.9,
+        "eventCount": 14
+      },
+      "latencyMs": 3581.9,
+      "transport": "http",
+      "conversationId": "6a47fc30783e4338e48f27b2"
+    },
+    {
+      "id": "agent_course_count_toward",
+      "category": "course_question",
+      "status": "pass",
+      "message": "Does 00940411 count toward my degree requirements?",
+      "textPreview": "Course 00940411 can count toward: Faculty elective pool. This is based on catalog requirement pools for your selected program.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 126,
+        "latencyMs": 4859.5,
+        "eventCount": 14
+      },
+      "latencyMs": 4859.5,
+      "transport": "http",
+      "conversationId": "6a47fc3b783e4338e48f27bc"
+    },
+    {
+      "id": "agent_requirement_elective_en",
+      "category": "requirement_explanation",
+      "status": "pass",
+      "message": "Explain the data science elective requirements",
+      "textPreview": "I understood your request as 'requirement explanation'. This workflow is not fully available yet in the new UniPilot Agent. Try asking about graduation progress, e.g. \"What am I missing to graduate?\"",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "requirement_explanation",
+        "blockTypes": [
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 199,
+        "latencyMs": 3040.0,
+        "eventCount": 11
+      },
+      "latencyMs": 3040.0,
+      "transport": "http",
+      "conversationId": "6a47fc46783e4338e48f27c5"
+    },
+    {
+      "id": "agent_requirement_track_en",
+      "category": "requirement_explanation",
+      "status": "pass",
+      "message": "Explain the graduation requirement buckets for the DNE track",
+      "textPreview": "I understood your request as 'requirement explanation'. This workflow is not fully available yet in the new UniPilot Agent. Try asking about graduation progress, e.g. \"What am I missing to graduate?\"",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "requirement_explanation",
+        "blockTypes": [
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 199,
+        "latencyMs": 2006.4,
+        "eventCount": 11
+      },
+      "latencyMs": 2006.4,
+      "transport": "http",
+      "conversationId": "6a47fc50783e4338e48f27ce"
+    },
+    {
+      "id": "agent_requirement_he",
+      "category": "requirement_explanation",
+      "status": "pass",
+      "message": "הסבר את דרישות הבחירה במדעי הנתונים",
+      "textPreview": "I understood your request as 'requirement explanation'. This workflow is not fully available yet in the new UniPilot Agent. Try asking about graduation progress, e.g. \"What am I missing to graduate?\"",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "requirement_explanation",
+        "blockTypes": [
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 199,
+        "latencyMs": 2114.9,
+        "eventCount": 11
+      },
+      "latencyMs": 2114.9,
+      "transport": "http",
+      "conversationId": "6a47fc59783e4338e48f27d7"
+    },
+    {
+      "id": "agent_plan_next_semester",
+      "category": "semester_planning",
+      "status": "pass",
+      "message": "Build me a plan for next semester with no more than 18 credits",
+      "textPreview": "I generated 3 semester plan option(s) for 2025-2. Each option respects your profile, completed courses, offerings, and credit limits. Choose an option and confirm to save it as a draft plan.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "semester_plan_generation",
+        "blockTypes": [
+          "ConfirmationBlock",
+          "SchedulePreviewBlock",
+          "SemesterPlanOptionsBlock",
+          "SourceSummaryBlock"
+        ],
+        "actionTypes": [
+          "save_semester_plan"
+        ],
+        "textLength": 190,
+        "latencyMs": 19511.9,
+        "eventCount": 19
+      },
+      "latencyMs": 19511.9,
+      "transport": "http",
+      "conversationId": "6a47fc62783e4338e48f27e2"
+    },
+    {
+      "id": "agent_plan_no_friday",
+      "category": "semester_planning",
+      "status": "pass",
+      "message": "Suggest a semester schedule with no Friday classes",
+      "textPreview": "Which semester should I plan for? Say 'next semester' or provide a semester code like 2025-2.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "semester_plan_generation",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 93,
+        "latencyMs": 3154.3,
+        "eventCount": 10
+      },
+      "latencyMs": 3154.3,
+      "transport": "http",
+      "conversationId": "6a47fc7d783e4338e48f27f1"
+    },
+    {
+      "id": "agent_prereq_check",
+      "category": "prerequisite_check",
+      "status": "pass",
+      "message": "Do I meet the prerequisites for 00940219?",
+      "textPreview": "Yes — you appear eligible to take course 00940219. Course 00940219 is part of the mandatory curriculum matrix. Confirm the exact group schedule before final registration.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 170,
+        "latencyMs": 3743.9,
+        "eventCount": 14
+      },
+      "latencyMs": 3743.9,
+      "transport": "http",
+      "conversationId": "6a47fc88783e4338e48f27fc"
+    },
+    {
+      "id": "agent_general_catalog",
+      "category": "general_academic",
+      "status": "pass",
+      "message": "Search the catalog for machine learning courses",
+      "textPreview": "I understood your request as 'catalog search'. This workflow is not fully available yet in the new UniPilot Agent. Try asking about graduation progress, e.g. \"What am I missing to graduate?\"",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "catalog_search",
+        "blockTypes": [
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 190,
+        "latencyMs": 1704.9,
+        "eventCount": 11
+      },
+      "latencyMs": 1704.9,
+      "transport": "http",
+      "conversationId": "6a47fc92783e4338e48f2805"
+    },
+    {
+      "id": "agent_unsupported_gibberish",
+      "category": "unsupported",
+      "status": "pass",
+      "message": "asdf qwerty zxcv",
+      "textPreview": "I understood your request as 'general academic question'. This workflow is not fully available yet in the new UniPilot Agent. Try asking about graduation progress, e.g. \"What am I missing to graduate?\"",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "general_academic_question",
+        "blockTypes": [
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 201,
+        "latencyMs": 1682.1,
+        "eventCount": 11
+      },
+      "latencyMs": 1682.1,
+      "transport": "http",
+      "conversationId": "6a47fc99783e4338e48f280d"
+    },
+    {
+      "id": "agent_course_details_en",
+      "category": "course_question",
+      "status": "pass",
+      "message": "Tell me about course 00940345",
+      "textPreview": "Yes — you appear eligible to take course 00940345. Course 00940345 is part of the mandatory curriculum matrix. Confirm the exact group schedule before final registration.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 170,
+        "latencyMs": 3646.2,
+        "eventCount": 15
+      },
+      "latencyMs": 3646.2,
+      "transport": "http",
+      "conversationId": "6a47fca2783e4338e48f2816"
+    },
+    {
+      "id": "agent_graduation_can_i",
+      "category": "graduation_progress",
+      "status": "pass",
+      "message": "Can I graduate this year?",
+      "textPreview": "Here is your graduation progress for הנדסת נתונים ומידע. Status: Not ready yet. You have completed 12.0 of 155.0 credits. About 143.0 credits remain toward the degree total. Overall completion is approximately 7.74%. 0 of 6 requirement buck",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "graduation_progress_check",
+        "blockTypes": [
+          "RequirementBucketBlock",
+          "RequirementSummaryBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 367,
+        "latencyMs": 4323.0,
+        "eventCount": 21
+      },
+      "latencyMs": 4323.0,
+      "transport": "http",
+      "conversationId": "6a47fcad783e4338e48f2823"
+    },
+    {
+      "id": "agent_course_he_prereq",
+      "category": "course_question",
+      "status": "pass",
+      "message": "מה הקדם לקורס 00940224?",
+      "textPreview": "Your prerequisites for course 00940224 are satisfied.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 53,
+        "latencyMs": 4389.0,
+        "eventCount": 15
+      },
+      "latencyMs": 4389.0,
+      "transport": "http",
+      "conversationId": "6a47fcb8783e4338e48f282c"
+    },
+    {
+      "id": "agent_plan_he",
+      "category": "semester_planning",
+      "status": "pass",
+      "message": "תכנן לי סמסטר הבא עד 16 נקודות",
+      "textPreview": "Which semester should I plan for? Say 'next semester' or provide a semester code like 2025-2.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "semester_plan_generation",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 93,
+        "latencyMs": 3667.9,
+        "eventCount": 10
+      },
+      "latencyMs": 3667.9,
+      "transport": "http",
+      "conversationId": "6a47fcc4783e4338e48f2837"
+    },
+    {
+      "id": "agent_transcript_he",
+      "category": "clarification",
+      "status": "pass",
+      "message": "ייבא את הגיליון שלי",
+      "textPreview": "Please upload your official transcript PDF with your message. I will parse it and show a review table before saving any courses.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "transcript_import",
+        "blockTypes": [
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 128,
+        "latencyMs": 2098.3,
+        "eventCount": 10
+      },
+      "latencyMs": 2098.3,
+      "transport": "http",
+      "conversationId": "6a47fcce783e4338e48f2840"
+    },
+    {
+      "id": "agent_rag_dds_course_exact_en_00906292",
+      "category": "from_rag_course_question",
+      "status": "pass",
+      "message": "What are the prerequisites for 00906292?",
+      "textPreview": "Course 00906292 was not found in the catalog. Verify the course number or search the catalog for the correct code.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 114,
+        "latencyMs": 2809.6,
+        "eventCount": 17
+      },
+      "latencyMs": 2809.6,
+      "transport": "http",
+      "conversationId": "6a47fcd6783e4338e48f2849"
+    },
+    {
+      "id": "agent_rag_dds_course_exact_he_00906292",
+      "category": "from_rag_course_question",
+      "status": "pass",
+      "message": "מה הקדם לקורס 00906292?",
+      "textPreview": "Course 00906292 was not found in the catalog. Verify the course number or search the catalog for the correct code.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 114,
+        "latencyMs": 3634.0,
+        "eventCount": 17
+      },
+      "latencyMs": 3634.0,
+      "transport": "http",
+      "conversationId": "6a47fcdf783e4338e48f2852"
+    },
+    {
+      "id": "agent_rag_dds_course_exact_en_00907280",
+      "category": "from_rag_course_question",
+      "status": "pass",
+      "message": "Tell me about course 00907280",
+      "textPreview": "Course 00907280 was not found in the catalog. Verify the course number or search the catalog for the correct code.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 114,
+        "latencyMs": 2715.1,
+        "eventCount": 17
+      },
+      "latencyMs": 2715.1,
+      "transport": "http",
+      "conversationId": "6a47fcea783e4338e48f285b"
+    },
+    {
+      "id": "agent_rag_dds_course_exact_en_00940101",
+      "category": "from_rag_course_question",
+      "status": "pass",
+      "message": "Can I take 00940101 next semester?",
+      "textPreview": "Yes — you appear eligible to take course 00940101. Course 00940101 can count toward: Faculty elective pool. Confirm the exact group schedule before final registration.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 167,
+        "latencyMs": 3610.3,
+        "eventCount": 15
+      },
+      "latencyMs": 3610.3,
+      "transport": "http",
+      "conversationId": "6a47fcf3783e4338e48f2864"
+    },
+    {
+      "id": "agent_rag_dds_course_exact_en_00940139",
+      "category": "from_rag_course_question",
+      "status": "pass",
+      "message": "Course 00940139 requirements",
+      "textPreview": "Course 00940139 does not appear to be offered in 2025-1.",
+      "failures": [],
+      "warnings": [],
+      "observed": {
+        "intent": "course_question",
+        "blockTypes": [
+          "CourseRecommendationBlock",
+          "OfferingStatusBlock",
+          "PrerequisiteStatusBlock",
+          "SourceSummaryBlock",
+          "WarningBlock"
+        ],
+        "actionTypes": [],
+        "textLength": 56,
+        "latencyMs": 3689.4,
+        "eventCount": 15
+      },
+      "latencyMs": 3689.4,
+      "transport": "http",
+      "conversationId": "6a47fcfd783e4338e48f286d"
+    }
+  ]
+}

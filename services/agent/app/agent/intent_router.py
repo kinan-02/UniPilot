@@ -100,10 +100,10 @@ _PROFILE_UPDATE_PATTERNS = (
 )
 
 _COURSE_QUESTION_PATTERNS = (
-    re.compile(r"\b(can i take|am i allowed to take|is .+ offered|prerequisite|does .+ count)\b", re.I),
+    re.compile(r"\b(can i take|am i allowed to take|is .+ offered|prerequisites?|does .+ count)\b", re.I),
     re.compile(r"\btake (this|the) course\b", re.I),
     re.compile(r"\b(offered next semester|next semester)\b.*\bcourse\b", re.I),
-    re.compile(r"\bcourse\b.*\b(offered|prerequisite|count)\b", re.I),
+    re.compile(r"\bcourse\b.*\b(offered|prerequisites?|count)\b", re.I),
     re.compile(r"(אפשר לקחת|מוצע|דרישות קדם|סופר ל)", re.I),
 )
 

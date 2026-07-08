@@ -286,6 +286,15 @@ def plan_graph_retrieval_actions(
             _append_wiki_page(actions, slug)
             _append_wiki_section(actions, slug, "Admission Requirements")
             _append_wiki_section(actions, slug, "Course Requirements")
+        # Unlike `regulation_lookup` and the generic slug-first path below,
+        # this branch previously had no fallback at all: if
+        # `_program_minor_slugs` guessed the wrong (or no) slug -- e.g. a
+        # question misclassified into this intent that isn't really about a
+        # specific minor page -- retrieval returned nothing, with no way to
+        # recover via free-text search over the rest of the wiki corpus.
+        residual = residual_search_query(query, resolved_slugs, getattr(engine, "alias_index", {}))
+        if residual:
+            actions.append({"intent": "wiki_search", "search_query": residual})
         return _dedupe_actions(actions)
 
     if intent == "track_structure_lookup":
@@ -294,6 +303,15 @@ def plan_graph_retrieval_actions(
             _append_wiki_page(actions, slug)
             for section in _track_structure_sections(query):
                 _append_wiki_section(actions, slug, section)
+        # Same missing-fallback gap as `program_minor_lookup` above --
+        # confirmed in practice: a regulation question about physical
+        # education credits was misclassified into this intent, resolved to
+        # an unrelated course-page slug, and returned nothing, with no
+        # free-text fallback to find the real answer (in a regulations
+        # page, not a track page).
+        residual = residual_search_query(query, resolved_slugs, getattr(engine, "alias_index", {}))
+        if residual:
+            actions.append({"intent": "wiki_search", "search_query": residual})
         return _dedupe_actions(actions)
 
     if intent == "regulation_lookup" or (

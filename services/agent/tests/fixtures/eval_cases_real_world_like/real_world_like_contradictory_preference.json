@@ -9,7 +9,7 @@
     "workflow": "semester_planning_workflow"
   },
   "retrieval_metadata": {
-    "clarificationDiagnostics": {"questions": [{"ambiguityType": "preference", "consequence": "high"}]},
+    "clarificationDiagnostics": {"status": "question_ready", "questions": [{"ambiguityType": "preference", "consequence": "high"}]},
     "clarificationState": {"status": "pending"}
   },
   "live_response_summary": {"textPreview": "Your preferences conflict; clarification is needed.", "blockCount": 0},

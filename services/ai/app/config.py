@@ -5,6 +5,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_APP_ROOT = Path(__file__).resolve().parents[1]
+
 
 class Settings(BaseSettings):
     service_name: str = "ai"
@@ -21,6 +23,34 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     openai_chat_model: str = "gpt-5-mini"
     advisor_max_retrieval_iterations: int = 5
+
+    # -- Retrieval port (services/agent/app/retrieval) additions below --
+
+    mongo_uri: str | None = None
+    completed_courses_collection: str = "completed_courses"
+    semester_plans_collection: str = "semester_plans"
+
+    api_service_url: str | None = None
+    internal_api_timeout_seconds: int = 60
+
+    agent_wiki_retrieval_limit: int = 5
+
+    embedding_api_key: str | None = None
+    embedding_base_url: str | None = None
+    embedding_model: str | None = None
+    embedding_enabled: bool = True
+    embedding_index_enabled: bool = True
+    embedding_index_cache_path: str | None = None
+    embedding_index_batch_size: int = 64
+    embedding_index_cache_backup_count: int = 3
+
+    # -- agent_core reasoning port (services/agent/app/agent/reasoning) additions below --
+
+    agent_reasoning_structured_output_enabled: bool = False
+    agent_reasoning_adaptive_iterations_enabled: bool = False
+    agent_reasoning_adaptive_confidence_threshold: float = 0.75
+    agent_llm_thinking_enabled: bool = True
+    agent_llm_reasoning_effort: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -53,6 +83,64 @@ class Settings(BaseSettings):
         wiki = (self.academic_wiki_path or "").strip()
         raw = self.resolved_technion_raw_dir()
         return bool(wiki and raw)
+
+    def resolved_api_service_url(self) -> str:
+        configured = (self.api_service_url or "").strip()
+        if configured:
+            return configured.rstrip("/")
+        return "http://api:8000"
+
+    def resolved_embedding_api_key(self) -> str:
+        return (self.embedding_api_key or "").strip()
+
+    def resolved_embedding_base_url(self) -> str:
+        configured = (self.embedding_base_url or "").strip()
+        if configured:
+            return configured.rstrip("/")
+        return "https://api.llmod.ai/v1"
+
+    def resolved_embedding_model(self) -> str:
+        configured = (self.embedding_model or "").strip()
+        if configured:
+            return configured
+        return "MB5R2CF-azure/text-embedding-3-small"
+
+    def embeddings_available(self) -> bool:
+        return bool(self.embedding_enabled and self.resolved_embedding_api_key())
+
+    def resolved_embedding_index_cache_path(self) -> str:
+        configured = (self.embedding_index_cache_path or "").strip()
+        local_default = str(_APP_ROOT / "data" / "cache" / "wiki_embedding_index.json")
+        if configured:
+            if configured.startswith("/app/") and self.environment != "production":
+                return local_default
+            return configured
+        if self.environment == "production":
+            return "/app/data/cache/wiki_embedding_index.json"
+        return local_default
+
+    def wiki_vector_index_enabled(self) -> bool:
+        return bool(self.embedding_index_enabled and self.embeddings_available())
+
+    def resolved_embedding_index_cache_backup_count(self) -> int:
+        return max(0, int(self.embedding_index_cache_backup_count or 3))
+
+    def is_agent_reasoning_structured_output_enabled(self) -> bool:
+        return bool(self.agent_reasoning_structured_output_enabled)
+
+    def is_agent_reasoning_adaptive_iterations_enabled(self) -> bool:
+        return bool(self.agent_reasoning_adaptive_iterations_enabled)
+
+    def resolved_agent_reasoning_adaptive_confidence_threshold(self) -> float:
+        value = float(self.agent_reasoning_adaptive_confidence_threshold)
+        return max(0.0, min(1.0, value))
+
+    def is_agent_llm_thinking_enabled(self) -> bool:
+        return bool(self.agent_llm_thinking_enabled)
+
+    def resolved_agent_llm_reasoning_effort(self) -> str | None:
+        value = (self.agent_llm_reasoning_effort or "").strip()
+        return value or None
 
 
 @lru_cache

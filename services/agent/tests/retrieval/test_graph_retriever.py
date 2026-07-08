@@ -98,6 +98,48 @@ def test_plan_graph_retrieval_actions(
     assert {action["intent"] for action in actions} >= expected_intents
 
 
+@pytest.mark.parametrize(
+    ("intent", "query"),
+    [
+        (
+            "track_structure_lookup",
+            "How many physical education credits do I need to graduate from a "
+            "Technion B.Sc., and is there a maximum I can take per semester?",
+        ),
+        (
+            "program_minor_lookup",
+            "What GPA do I need to graduate cum laude or summa cum laude from a "
+            "Technion B.Sc. program?",
+        ),
+    ],
+)
+def test_program_minor_and_track_structure_fall_back_to_wiki_search(
+    intent: AgentIntent, query: str
+) -> None:
+    """Regression test: `program_minor_lookup`/`track_structure_lookup` used
+    to return early with only slug-guessed `wiki_page`/`wiki_section`
+    actions and no way to recover when the guessed slug was wrong (or a
+    misclassified question landed in this intent at all) -- confirmed in
+    practice for both queries above, which are genuinely about undergraduate
+    regulations, not a specific minor/track page. A `wiki_search` fallback
+    action must now always be planned so free-text search over the whole
+    corpus gets a chance."""
+    from app.config import Settings
+    from app.retrieval.graph_engine.graph_registry import graph_registry
+
+    settings = Settings(
+        catalog_vault_wiki_path="/Users/tymoribrahim/Desktop/UniPilot/services/data-engineering/data/catalog_valut/catalog_valut/wiki",
+        technion_raw_dir="/Users/tymoribrahim/Desktop/UniPilot/services/data-engineering/data/raw/technion",
+        academic_default_semester_file="courses_2025_201.json",
+        agent_graph_retrieval_enabled=True,
+    )
+    if not settings.is_graph_retrieval_configured():
+        pytest.skip("graph paths not available")
+    engine = graph_registry.get_engine(settings)
+    actions = plan_graph_retrieval_actions(intent=intent, entities={}, query=query, engine=engine)
+    assert any(action["intent"] == "wiki_search" for action in actions)
+
+
 @pytest.mark.asyncio
 async def test_structural_blocks_get_fixed_confidence_and_search_blocks_get_real_score() -> None:
     """Regression test: `retrieve_graph_context_with_profile` used to score

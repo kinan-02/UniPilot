@@ -6,7 +6,7 @@ Last updated: 2026-07-03
 
 | Purpose | Env vars | Provider |
 |---------|----------|----------|
-| Chat / advisor / MAS LLM | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_CHAT_MODEL` | DeepSeek (`deepseek-v4-pro`) |
+| Chat / advisor / agent LLM | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_CHAT_MODEL` | DeepSeek (`deepseek-v4-pro`) |
 | Wiki semantic retrieval | `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` | LLMod (`text-embedding-3-small`) |
 
 Retrieval eval and vector-index builds **do not** call the DeepSeek chat API.

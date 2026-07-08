@@ -106,6 +106,19 @@ _INTENT_CATALOG: dict[str, str] = {
     "profile_update": (
         "Student wants to change degree, track, catalog year, or profile fields."
     ),
+    "program_minor_lookup": (
+        "Student asks about a minor, specialization program, or excellence track: its "
+        "admission requirements, course requirements, or whether they qualify (not a main degree)."
+    ),
+    "track_structure_lookup": (
+        "Student asks about a specific degree track's structure: total/category credit "
+        "breakdown, which courses or semesters it includes, or track codes."
+    ),
+    "regulation_lookup": (
+        "Student asks about a Technion academic regulation or policy: max credit load, "
+        "retaking a course, grade appeals, academic honors/cum laude, reserve-duty "
+        "accommodations, or graduate-admission thresholds — not their own personal progress."
+    ),
     "general_academic_question": (
         "General academic question that does not fit a specialized workflow."
     ),
@@ -121,6 +134,10 @@ Q: "Can I take 234218 next semester?" → course_question
 Q: "Make this plan lighter" → semester_plan_modification
 Q: "Explain my missing electives" → requirement_explanation
 Q: "Import my transcript" → transcript_import (requiresFile: true)
+Q: "Tell me about the robotics minor" → program_minor_lookup
+Q: "How many total credits does the cyber track need, broken down by category?" → track_structure_lookup
+Q: "If I want to appeal an exam grade, how long do I have?" → regulation_lookup
+Q: "What GPA do I need to apply for the MSc program?" → regulation_lookup
 Q: "What's the weather?" → unknown_or_unsupported
 """.strip()
 

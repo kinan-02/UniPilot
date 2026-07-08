@@ -20,11 +20,6 @@ from app.routes.student_profile import reset_student_profile_indexes_state
 def reset_runtime_state(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
     monkeypatch.setenv("JWT_EXPIRES_IN", "1h")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("AGENT_LLM_EXPLANATION_ENABLED", "false")
-    monkeypatch.setenv("AGENT_LLM_INTENT_FALLBACK_ENABLED", "false")
-    monkeypatch.setenv("AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED", "false")
-    monkeypatch.setenv("AGENT_LLM_VALIDATION_ENABLED", "false")
     get_settings.cache_clear()
     set_test_database(None)
     close_mongo_client()

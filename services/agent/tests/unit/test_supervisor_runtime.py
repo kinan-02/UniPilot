@@ -579,3 +579,98 @@ async def test_independent_subtasks_run_concurrently_but_dependent_waits() -> No
     # "a"/"b" overlap (same wave); "c" only becomes ready in the next wave,
     # after both its dependencies have completed -- never overlapping them.
     assert handler.max_observed_in_flight == 2
+
+
+# ---------------------------------------------------------------------------
+# Layer 2 -- `real_execution_allowed_capability_names` governance allowlist.
+# ---------------------------------------------------------------------------
+
+
+async def test_real_execution_allowlist_forces_dry_run_for_excluded_capability() -> None:
+    """A capability that is otherwise safety-eligible for real execution
+    (`can_shadow_execute_capability` would pass) still degrades to the dry-run
+    stand-in when `real_execution_allowed_capability_names` is supplied and
+    excludes it -- this is a governance check, independent of and additional
+    to the existing safety-metadata checks.
+    """
+    plan = _plan(subtasks=[_subtask(id="s1", capability_name="course_question_workflow")])
+    settings = Settings(AGENT_SUPERVISOR_REAL_HANDLERS_ENABLED=True)
+
+    output = await run_supervisor_shadow(
+        input=_run_input(planner_output=plan),
+        settings=settings,
+        real_execution_allowed_capability_names=frozenset(),
+    )
+
+    assert output.status in {"completed", "completed_with_warnings"}
+    assert "s1" in output.completed_subtasks
+    record = next(r for r in output.subtask_records if r.subtask_id == "s1")
+    assert "real_shadow_execution_skipped_not_allowlisted" in " ".join(record.warnings)
+
+
+async def test_real_execution_allowlist_none_preserves_existing_behavior() -> None:
+    """`real_execution_allowed_capability_names=None` (the default, used by
+    every caller except `run_planner_first_live_turn`) skips the allowlist
+    check entirely -- confirms no behavior change for existing callers.
+    """
+    plan = _plan(subtasks=[_subtask(id="s1", capability_name="course_question_workflow")])
+    settings = Settings(AGENT_SUPERVISOR_REAL_HANDLERS_ENABLED=True)
+
+    output = await run_supervisor_shadow(
+        input=_run_input(planner_output=plan),
+        settings=settings,
+        real_execution_allowed_capability_names=None,
+    )
+
+    assert output.status in {"completed", "completed_with_warnings"}
+    assert "s1" in output.completed_subtasks
+    record = next(r for r in output.subtask_records if r.subtask_id == "s1")
+    assert "real_shadow_execution_skipped_not_allowlisted" not in " ".join(record.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Layer 3 -- the same allowlist governance also covers `specialist_agent`
+# -type capabilities, not just `workflow`-type ones.
+# ---------------------------------------------------------------------------
+
+
+async def test_real_execution_allowlist_forces_dry_run_for_excluded_specialist_agent() -> None:
+    """Mirrors `test_real_execution_allowlist_forces_dry_run_for_excluded_capability`
+    above, for a `specialist_agent`-type capability -- defense-in-depth
+    parity between the two capability types this allowlist now covers."""
+    plan = _plan(subtasks=[_subtask(id="s1", capability_name="graduation_progress_agent")])
+    settings = Settings(AGENT_SUPERVISOR_REAL_HANDLERS_ENABLED=True)
+
+    output = await run_supervisor_shadow(
+        input=_run_input(planner_output=plan),
+        settings=settings,
+        real_execution_allowed_capability_names=frozenset(),
+    )
+
+    assert output.status in {"completed", "completed_with_warnings"}
+    assert "s1" in output.completed_subtasks
+    record = next(r for r in output.subtask_records if r.subtask_id == "s1")
+    assert "real_shadow_execution_skipped_not_allowlisted" in " ".join(record.warnings)
+
+
+async def test_real_execution_allowlist_none_preserves_existing_behavior_for_specialist_agent() -> None:
+    """`None` (the default) skips the allowlist check entirely for
+    `specialist_agent`-type capabilities too, reaching the real
+    `SpecialistAgentHandler` exactly as it did before Layer 3 -- which,
+    with `AGENT_SPECIALIST_AGENTS_ENABLED` left at its own default `False`,
+    degrades to its own pre-existing "skipped" fallback (Phase 10 behavior,
+    unrelated to this allowlist). The point of this test is only that the
+    Layer 3 allowlist warning is never attached when the allowlist is `None`.
+    """
+    plan = _plan(subtasks=[_subtask(id="s1", capability_name="graduation_progress_agent")])
+    settings = Settings(AGENT_SUPERVISOR_REAL_HANDLERS_ENABLED=True)
+
+    output = await run_supervisor_shadow(
+        input=_run_input(planner_output=plan),
+        settings=settings,
+        real_execution_allowed_capability_names=None,
+    )
+
+    assert "s1" in output.skipped_subtasks
+    record = next(r for r in output.subtask_records if r.subtask_id == "s1")
+    assert "real_shadow_execution_skipped_not_allowlisted" not in " ".join(record.warnings)

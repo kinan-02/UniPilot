@@ -525,3 +525,27 @@ async def test_recent_messages_are_capped_to_last_six():
     sent = fake.calls[0].task_context["recent_messages"]
     assert len(sent) == 6
     assert sent[-1]["content"] == "message 19"
+
+
+async def test_existing_entities_and_assumptions_reach_the_reasoning_context():
+    """Conversation-continuity inputs must actually reach the LLM's task_context —
+    this was a known gap (the live call site never forwarded them) fixed as part
+    of the Layer 1 (request-understanding) redesign.
+    """
+    fake = FakeReasoningBlock(_completed_output(_result()))
+    settings = _settings_enabled()
+
+    await understand_user_task(
+        user_message="What am I missing to graduate?",
+        existing_entities={"courseNumber": "234218", "trackSlug": "track-computer-science"},
+        existing_assumptions=["Student is in the 2025 catalog year."],
+        settings=settings,
+        reasoning_block=fake,
+    )
+
+    task_context = fake.calls[0].task_context
+    assert task_context["existing_entities"] == {
+        "courseNumber": "234218",
+        "trackSlug": "track-computer-science",
+    }
+    assert task_context["existing_assumptions"] == ["Student is in the 2025 catalog year."]

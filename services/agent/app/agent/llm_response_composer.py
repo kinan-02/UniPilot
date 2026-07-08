@@ -27,6 +27,7 @@ from app.agent.llm_prompts import explanation_style_guide, language_instruction,
 from app.agent.reasoning.llm_adapter import ChatLLMAdapter
 from app.agent.reasoning.prompt_registry import RESPONSE_COMPOSER_V1
 from app.agent.reasoning.reasoning_block import ReasoningBlock
+from app.agent.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
 from app.agent.reasoning.schemas import ReasoningBlockInput
 from app.agent.reasoning.task_schemas import RESPONSE_COMPOSER_OUTPUT_SCHEMA
 from app.agent.schemas import AgentContextPack, AgentResponse, StructuredBlock
@@ -35,6 +36,15 @@ from app.config import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 DeltaCallback = Callable[[str], Awaitable[None] | None]
+
+# Marker a workflow can add to `AgentResponse.used_sources` to signal "I
+# already composed this text via a real LLM reasoning pass myself -- don't
+# re-run `enhance_response_with_llm` on top of it." Today only
+# `general_academic_workflow.py`'s LLM-composing branches
+# (`_general_academic_response`/`_catalog_search_response`) set this; every
+# other workflow uses the plain deterministic `response_composer.compose_response`
+# and still relies on this module's own pass for any LLM-composed text.
+ALREADY_LLM_COMPOSED_SOURCE = "already-llm-composed:general_academic_workflow"
 
 
 def _composer_task_context(
@@ -92,6 +102,13 @@ async def _run_composer_reasoning(
         return None
 
     enhanced = str(output.result.get("text") or "").strip()
+    if enhanced == GENERIC_BLANK_FIELD_PLACEHOLDER:
+        # The model returned this required field blank; the reasoning block's
+        # own schema-repair filled it with this structural placeholder to
+        # pass validation -- never real content. Keep the live response's
+        # own text exactly like every other "couldn't enhance" case below.
+        logger.warning("agent_llm_explanation_placeholder_text", extra={"warnings": output.warnings})
+        return None
     return enhanced or None
 
 
@@ -117,6 +134,8 @@ async def enhance_response_with_llm(
     if any("Loaded catalog wiki page" in item for item in response.used_sources):
         return response
     if any(ELIGIBILITY_VALIDATION_SOURCE in item for item in response.used_sources):
+        return response
+    if ALREADY_LLM_COMPOSED_SOURCE in response.used_sources:
         return response
     if not (response.text or "").strip() and not response.blocks:
         return response

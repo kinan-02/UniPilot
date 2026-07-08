@@ -161,6 +161,20 @@ async def _execute_save_semester_plan(
     return result
 
 
+def build_plan_saved_text(*, plan_name: str | None, semester_code: str | None) -> str:
+    label = plan_name or "Semester plan"
+    semester = semester_code or "your semester"
+    return f'Saved "{label}" as a draft plan for {semester}. You can refine groups and schedule in the planner.'
+
+
+def build_import_success_text(*, created_count: int, skipped_count: int) -> str:
+    parts = [f"Imported {created_count} completed course(s)."]
+    if skipped_count:
+        parts.append(f"Skipped {skipped_count} duplicate(s).")
+    parts.append("You can ask me to recalculate your graduation progress.")
+    return " ".join(parts)
+
+
 def proposal_to_agent_action(proposal: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": proposal.get("id"),

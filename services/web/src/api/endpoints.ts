@@ -2,7 +2,6 @@ import { apiRequest, apiUpload, getApiBaseUrl } from '../lib/api'
 import type {
   AcademicRiskAnalysis,
   AdvisorReply,
-  AgentSession,
   AuthPayload,
   CatalogFaculty,
   CatalogPathOption,
@@ -294,64 +293,6 @@ export const advisorApi = {
     apiRequest<{ advisor: AdvisorReply }>('/advisor/ask', {
       method: 'POST',
       body: { question },
-    }),
-}
-
-export const agentSessionsApi = {
-  create: (body: { goal: string; constraints?: Record<string, unknown> }) =>
-    apiRequest<{ session: AgentSession }>('/agent/sessions', {
-      method: 'POST',
-      body,
-    }),
-  get: (id: string) => apiRequest<{ session: AgentSession }>(`/agent/sessions/${id}`),
-  list: () => apiRequest<{ sessions: AgentSession[] }>('/agent/sessions'),
-  approve: (id: string) =>
-    apiRequest<{ session: AgentSession }>(`/agent/sessions/${id}/approve`, {
-      method: 'POST',
-      body: {},
-    }),
-  override: (id: string, courseIds: string[]) =>
-    apiRequest<{ session: AgentSession }>(`/agent/sessions/${id}/override`, {
-      method: 'POST',
-      body: { course_ids: courseIds },
-    }),
-  clarify: (id: string, clarification: string) =>
-    apiRequest<{ session: AgentSession }>(`/agent/sessions/${id}/clarify`, {
-      method: 'POST',
-      body: { clarification },
-    }),
-  replay: (id: string) =>
-    apiRequest<{ events: Array<Record<string, unknown>>; replayAvailable: boolean }>(
-      `/agent/sessions/${id}/replay`,
-    ),
-  why: (id: string, question: string) =>
-    apiRequest<{
-      question: string
-      answer: string
-      citations: Array<Record<string, unknown>>
-      topics: string[]
-      source: string
-    }>(`/agent/sessions/${id}/why`, {
-      method: 'POST',
-      body: { question },
-    }),
-  secondOpinion: (id: string, utilityProfile: 'balanced' | 'risk_averse' | 'aggressive') =>
-    apiRequest<{
-      session: AgentSession
-      utilityProfile: string
-      sourceSessionId: string
-    }>(`/agent/sessions/${id}/second-opinion`, {
-      method: 'POST',
-      body: { utility_profile: utilityProfile },
-    }),
-  apply: (id: string, body?: { name?: string }) =>
-    apiRequest<{
-      session: AgentSession
-      semesterPlanId: string
-      skippedCourses: Array<Record<string, unknown>>
-    }>(`/agent/sessions/${id}/apply`, {
-      method: 'POST',
-      body: body ?? {},
     }),
 }
 

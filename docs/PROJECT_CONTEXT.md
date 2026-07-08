@@ -68,24 +68,19 @@ The **Node.js / Express** reference backend has been **removed**. **`services/ap
 
 **Do not** reintroduce a second API container or expose internal services to the host.
 
-### UniPilot Agent overhaul (in progress — 2026-07-03)
+### UniPilot Agent (current)
 
-The legacy MAS negotiation runtime (`services/mas`, `/agent/sessions`) is being **replaced** by a supervisor-orchestrator agent inside `services/api`, per [`Agent_spec.md`](../Agent_spec.md) and [`docs/planning/AGENT_OVERHAUL_PLAN.md`](planning/AGENT_OVERHAUL_PLAN.md).
+Conversation agent lives in `services/api/app/agent` and the web UI at `/agent`. Full status: [`docs/agent/CURRENT_STATE.md`](agent/CURRENT_STATE.md). Spec: [`Agent_spec.md`](../Agent_spec.md).
 
 | Item | Status |
 |---|---|
-| `POST/GET /agent/conversations` | Done (Phase 1) |
-| `POST /agent/conversations/{id}/messages` (JSON + SSE) | Done (Phase 1) |
-| Orchestrator, intent router, task planner, entity resolver | Done (Phase 1) |
-| Graduation progress workflow (deterministic) | Done (first workflow) |
-| Context builder, retrieval layer, wiki RAG | Done (Phase 2) |
-| Graduation progress workflow (deterministic audit → blocks) | Done (Phase 3) |
-| Course question workflow (eligibility, offering, contribution, prerequisites) | Done (Phase 4) |
-| Transcript import workflow (review table + confirmed import) | Done (Phase 5) |
-| Semester planning workflow (options + confirmed save) | Done (Phase 6) |
-| RAG profiles, hybrid retrieval, evaluation harness | Done (Phase 7 baseline) |
-| Agentic RAG: query decomposition, multi-step retrieval, refinement | Done (Phase 7 advanced) |
-| Legacy `/agent/sessions` + `services/mas` | Deprecated path — still running until UI migrates |
+| `POST/GET /agent/conversations` | Done |
+| `POST /agent/conversations/{id}/messages` (JSON + SSE) | Done |
+| Orchestrator, intent router, task planner, entity resolver | Done |
+| Context builder, retrieval layer, wiki RAG | Done |
+| Graduation / course / transcript / semester / requirement workflows | Done |
+| LLM explanation, intent fallback, preference extraction | Done (optional via env flags) |
+| Legacy MAS (`services/mas`, `/agent/sessions`) | **Removed** |
 
 ### Python Phase 2 status (implemented)
 

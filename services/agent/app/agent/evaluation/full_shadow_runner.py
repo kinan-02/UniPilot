@@ -113,17 +113,19 @@ async def _run_lab_pipeline(
 
     async with _reasoning_patch(case=case, allow_real_llm=allow_real_llm, settings=settings, max_calls=max_reasoning_calls) as traced:
         if settings.is_agent_task_understanding_enabled():
-            from app.agent.task_understanding.integration import run_task_understanding_dry_run
+            from app.agent.task_understanding.integration import (
+                build_task_understanding_diagnostic_summary,
+                run_task_understanding,
+            )
 
-            task_summary = await run_task_understanding_dry_run(
+            task_understanding = await run_task_understanding(
                 user_message=case.user_message,
                 deterministic_intent=str(case.compact_context.get("intent") or case.expected.expected_intent or ""),
                 deterministic_intent_confidence=0.8,
                 deterministic_entities=case.compact_context.get("entities") if isinstance(case.compact_context.get("entities"), dict) else {},
                 settings=settings,
             )
-            if task_summary:
-                replay_meta["taskUnderstanding"] = task_summary
+            replay_meta["taskUnderstanding"] = build_task_understanding_diagnostic_summary(task_understanding)
 
         if settings.is_agent_planner_enabled():
             from app.agent.planner.diagnostics import build_plan_with_diagnostics

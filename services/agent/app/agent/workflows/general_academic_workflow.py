@@ -9,10 +9,11 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.agent.explanation_enricher import build_wiki_explanation_context
 from app.agent.llm_prompts import explanation_style_guide, language_instruction
-from app.agent.llm_response_composer import build_general_academic_response
+from app.agent.llm_response_composer import ALREADY_LLM_COMPOSED_SOURCE, build_general_academic_response
 from app.agent.reasoning.llm_adapter import ChatLLMAdapter
 from app.agent.reasoning.prompt_registry import RESPONSE_COMPOSER_V1
 from app.agent.reasoning.reasoning_block import ReasoningBlock
+from app.agent.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
 from app.agent.reasoning.schemas import ReasoningBlockInput
 from app.agent.reasoning.task_schemas import RESPONSE_COMPOSER_OUTPUT_SCHEMA
 from app.agent.response_composer import compose_response
@@ -35,14 +36,17 @@ class GeneralAcademicWorkflow:
             run_id=context.run_id,
         )
 
+        llm_composed = False
         if context.intent == "profile_update":
             text, blocks = _profile_update_guidance(context)
         elif context.intent == "catalog_search":
             text, blocks = await _catalog_search_response(context, user_message)
+            llm_composed = True
         elif context.intent == "unknown_or_unsupported":
             text, blocks = _unsupported_guidance(context)
         else:
             text, blocks = await _general_academic_response(context, user_message)
+            llm_composed = True
 
         used_sources = list(context.provenance)
         for block in blocks:
@@ -51,6 +55,13 @@ class GeneralAcademicWorkflow:
             for item in block.data.get("provenance") or []:
                 if item not in used_sources:
                     used_sources.append(item)
+        if llm_composed and ALREADY_LLM_COMPOSED_SOURCE not in used_sources:
+            # This workflow already ran its own real LLM composition pass
+            # (`_general_academic_response`/`_catalog_search_response`) --
+            # this marker tells `enhance_response_with_llm` (orchestrator's
+            # separate, generic explanation pass) to skip re-composing the
+            # same text a second time. See `llm_response_composer.py`.
+            used_sources.append(ALREADY_LLM_COMPOSED_SOURCE)
 
         yield StreamEvent(
             type="agent.step.completed",
@@ -148,17 +159,29 @@ async def _general_academic_response(
 
     wiki_summary = build_wiki_explanation_context(context.retrieved_wiki_context)
     regulation_context = (context.academic_context or {}).get("regulationSynthesisContext")
-    baseline_parts = [
-        f"Intent: {context.intent.replace('_', ' ')}.",
-    ]
-    profile = context.user_context.get("profile") or {}
-    if profile.get("degreeProgram"):
-        baseline_parts.append(f"Student program: {profile.get('degreeProgram')}.")
-    if regulation_context:
-        baseline_parts.append(str(regulation_context))
-    if wiki_summary:
-        baseline_parts.append(f"Retrieved catalog notes:\n{wiki_summary[:1600]}")
-    baseline = "\n".join(baseline_parts)
+    if not regulation_context and not wiki_summary:
+        # Nothing retrieved to ground an answer on -- an internal label like
+        # "Intent: X." is fine as LLM grounding context below, but never
+        # acceptable as the fallback text shown directly to the student when
+        # the LLM call itself fails or is unavailable (see
+        # `_grounded_llm_answer`'s own fallback-to-`baseline` behavior).
+        baseline = (
+            "I don't have enough retrieved catalog or regulation context to answer "
+            "this precisely yet. Try asking about a specific course number, track, "
+            "or graduation requirement."
+        )
+    else:
+        baseline_parts = [
+            f"Intent: {context.intent.replace('_', ' ')}.",
+        ]
+        profile = context.user_context.get("profile") or {}
+        if profile.get("degreeProgram"):
+            baseline_parts.append(f"Student program: {profile.get('degreeProgram')}.")
+        if regulation_context:
+            baseline_parts.append(str(regulation_context))
+        if wiki_summary:
+            baseline_parts.append(f"Retrieved catalog notes:\n{wiki_summary[:1600]}")
+        baseline = "\n".join(baseline_parts)
     llm_text = await _grounded_llm_answer(context, user_message, baseline)
     return build_general_academic_response(context=context, user_message=user_message, llm_text=llm_text)
 
@@ -221,6 +244,12 @@ async def _grounded_llm_answer(
         return baseline[:2000]
 
     text = str(output.result.get("text") or "").strip()
+    if text == GENERIC_BLANK_FIELD_PLACEHOLDER:
+        # The model returned this required field blank; the reasoning block's
+        # own schema-repair filled it with this structural placeholder to
+        # pass validation -- never real content. Treat exactly like the
+        # failure case above rather than showing it to the student.
+        return baseline[:2000]
     return text or baseline[:2000]
 
 

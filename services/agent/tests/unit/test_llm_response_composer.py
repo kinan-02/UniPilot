@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agent.llm_response_composer import enhance_response_with_llm, stream_llm_explanation_deltas
+from app.agent.llm_response_composer import (
+    ALREADY_LLM_COMPOSED_SOURCE,
+    enhance_response_with_llm,
+    stream_llm_explanation_deltas,
+)
 from app.agent.reasoning.schemas import ReasoningBlockInput, ReasoningBlockOutput
 from app.agent.schemas import AgentContextPack, AgentResponse, ProposedAction, StructuredBlock
 from app.config import Settings
@@ -152,6 +156,23 @@ async def test_falls_back_to_deterministic_text_on_reasoning_block_failure():
     assert enhanced == response
 
 
+async def test_falls_back_to_deterministic_text_on_placeholder_result():
+    """`_normalize_generic_result` fills a blank required string field with
+    `GENERIC_BLANK_FIELD_PLACEHOLDER` ("unknown") to pass schema validation --
+    never real content. Confirms that placeholder is never trusted as a
+    genuine composed answer, even though `status="completed"`/`schema_valid=True`."""
+    fake = FakeReasoningBlock(_completed_output("unknown"))
+    response = _response(text="You still need 12 credits to graduate.")
+    settings = _settings_with_key()
+
+    enhanced = await enhance_response_with_llm(
+        response, context=_context(), user_message="How am I doing?", settings=settings, reasoning_block=fake
+    )
+
+    assert enhanced.text == response.text
+    assert enhanced.text != "unknown"
+
+
 async def test_does_not_call_reasoning_block_when_flag_disabled():
     fake = FakeReasoningBlock()
     response = _response()
@@ -228,6 +249,30 @@ async def test_skips_llm_rewrite_for_deterministic_eligibility_validation():
         response,
         context=_context(intent="course_question"),
         user_message="Can I take 02360343?",
+        settings=settings,
+        reasoning_block=fake,
+    )
+
+    assert fake.calls == []
+    assert enhanced.text == response.text
+
+
+async def test_skips_llm_rewrite_when_workflow_already_llm_composed():
+    """`general_academic_workflow.py`'s own LLM-composing branches mark
+    `used_sources` with `ALREADY_LLM_COMPOSED_SOURCE` -- confirms this
+    module's own separate composition pass genuinely skips in that case,
+    rather than redundantly re-composing already-LLM-authored text."""
+    fake = FakeReasoningBlock(_completed_output("A second, redundant rewrite."))
+    response = _response(
+        text="Grounded answer from general_academic_workflow's own LLM pass.",
+        used_sources=["technion", ALREADY_LLM_COMPOSED_SOURCE],
+    )
+    settings = _settings_with_key()
+
+    enhanced = await enhance_response_with_llm(
+        response,
+        context=_context(intent="general_academic_question"),
+        user_message="Tell me about the CS program.",
         settings=settings,
         reasoning_block=fake,
     )
