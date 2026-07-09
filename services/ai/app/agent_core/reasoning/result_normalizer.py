@@ -15,212 +15,12 @@ from typing import Any
 # same as "no usable answer," not as a genuine (if terse) response.
 GENERIC_BLANK_FIELD_PLACEHOLDER = "unknown"
 
-_TASK_CATEGORY_ALIASES = {
-    "simple question": "simple_question",
-    "academic analysis": "academic_analysis",
-    "planning": "planning",
-    "transcript processing": "transcript_processing",
-    "requirement explanation": "requirement_explanation",
-    "write or update request": "write_or_update_request",
-    "multi step task": "multi_step_task",
-    "unsupported": "unsupported",
-}
-
-_TASK_COMPLEXITY_ALIASES = {
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
-    "simple": "low",
-    "moderate": "medium",
-    "complex": "high",
-}
-
-_NEXT_LAYER_ALIASES = {
-    "deterministic workflow": "deterministic_workflow",
-    "planner": "planner",
-    "clarification": "clarification",
-    "unsupported": "unsupported",
-}
-
-_STATUS_ALIASES = {
-    "complete": "completed",
-    "completed": "completed",
-    "needs_more_context": "needs_more_context",
-    "failed": "failed",
-    "unsupported": "unsupported",
-}
-
-_WRITE_RISK_ALIASES = {
-    "none": "none",
-    "possible": "possible",
-    "explicit": "explicit",
-    "low": "none",
-    "high": "explicit",
-}
-
 
 def _strip_unknown_keys(value: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     if schema.get("additionalProperties") is not False:
         return value
     allowed = set((schema.get("properties") or {}).keys())
     return {key: item for key, item in value.items() if key in allowed}
-
-
-def _as_string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value if str(item).strip()]
-
-
-def _as_object(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _normalize_enum(value: Any, aliases: dict[str, str], default: str) -> str:
-    if value is None:
-        return default
-    raw = str(value).strip()
-    if not raw:
-        return default
-    lowered = raw.lower().replace("-", "_")
-    if lowered in aliases:
-        return aliases[lowered]
-    if raw in aliases.values():
-        return raw
-    return default
-
-
-def _normalize_task_understanding_result(result: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
-    normalized = copy.deepcopy(result)
-    normalized["status"] = _normalize_enum(normalized.get("status"), _STATUS_ALIASES, "completed")
-    normalized["task_category"] = _normalize_enum(
-        normalized.get("task_category"),
-        _TASK_CATEGORY_ALIASES,
-        "unsupported",
-    )
-    normalized["task_complexity"] = _normalize_enum(
-        normalized.get("task_complexity"),
-        _TASK_COMPLEXITY_ALIASES,
-        "medium",
-    )
-    normalized["suggested_next_layer"] = _normalize_enum(
-        normalized.get("suggested_next_layer"),
-        _NEXT_LAYER_ALIASES,
-        "deterministic_workflow",
-    )
-    normalized["write_risk"] = _normalize_enum(normalized.get("write_risk"), _WRITE_RISK_ALIASES, "none")
-
-    for key in (
-        "secondary_intents",
-        "required_context",
-        "missing_context",
-        "assumptions",
-        "clarifying_questions",
-        "warnings",
-    ):
-        normalized[key] = _as_string_list(normalized.get(key))
-
-    normalized["extracted_entities"] = _as_object(normalized.get("extracted_entities"))
-    normalized["requires_user_confirmation"] = bool(normalized.get("requires_user_confirmation", False))
-
-    for key in ("user_goal", "normalized_request", "primary_intent", "decision_summary"):
-        if not str(normalized.get(key) or "").strip():
-            normalized[key] = str(normalized.get("user_goal") or normalized.get("normalized_request") or "unknown")
-
-    for key in ("intent_confidence", "overall_confidence"):
-        try:
-            normalized[key] = float(normalized.get(key, 0.5))
-        except (TypeError, ValueError):
-            normalized[key] = 0.5
-        normalized[key] = max(0.0, min(1.0, float(normalized[key])))
-
-    try:
-        autonomy = int(normalized.get("recommended_autonomy_level", 2))
-    except (TypeError, ValueError):
-        autonomy = 2
-    normalized["recommended_autonomy_level"] = autonomy if autonomy in {0, 1, 2, 3, 4, 5} else 2
-
-    return _strip_unknown_keys(normalized, schema)
-
-
-def _normalize_planner_subtask(item: dict[str, Any]) -> dict[str, Any]:
-    normalized = copy.deepcopy(item)
-    for key in ("depends_on", "required_context_sections", "success_criteria", "validation_requirements"):
-        normalized[key] = _as_string_list(normalized.get(key))
-    normalized["requires_user_confirmation"] = bool(normalized.get("requires_user_confirmation", False))
-    risk = str(normalized.get("risk_level") or "medium").lower()
-    normalized["risk_level"] = risk if risk in {"low", "medium", "high"} else "medium"
-    kind = str(normalized.get("kind") or "analyze").lower()
-    allowed_kinds = {
-        "understand",
-        "retrieve_context",
-        "analyze",
-        "simulate",
-        "validate",
-        "compose",
-        "propose_action",
-        "clarify",
-    }
-    normalized["kind"] = kind if kind in allowed_kinds else "analyze"
-    return normalized
-
-
-def _normalize_planner_result(result: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
-    normalized = copy.deepcopy(result)
-    normalized["status"] = _normalize_enum(normalized.get("status"), _STATUS_ALIASES, "completed")
-    normalized["write_risk"] = _normalize_enum(normalized.get("write_risk"), _WRITE_RISK_ALIASES, "none")
-
-    execution_mode = str(normalized.get("execution_mode") or "deterministic_workflow").lower()
-    allowed_modes = {
-        "deterministic_workflow",
-        "single_capability",
-        "multi_capability_graph",
-        "clarification",
-        "unsupported",
-    }
-    normalized["execution_mode"] = execution_mode if execution_mode in allowed_modes else "deterministic_workflow"
-
-    for key in (
-        "required_context",
-        "missing_context",
-        "assumptions",
-        "clarification_questions",
-        "validation_strategy",
-        "warnings",
-    ):
-        normalized[key] = _as_string_list(normalized.get(key))
-
-    subtasks: list[dict[str, Any]] = []
-    for item in normalized.get("subtasks") or []:
-        if isinstance(item, dict):
-            subtasks.append(_normalize_planner_subtask(item))
-    normalized["subtasks"] = subtasks
-
-    if not str(normalized.get("plan_id") or "").strip():
-        normalized["plan_id"] = "plan-normalized"
-    if not str(normalized.get("user_goal") or "").strip():
-        normalized["user_goal"] = str(normalized.get("decision_summary") or "unknown")
-    if not str(normalized.get("primary_intent") or "").strip():
-        normalized["primary_intent"] = "unknown_or_unsupported"
-    if not str(normalized.get("decision_summary") or "").strip():
-        normalized["decision_summary"] = "Planner output normalized."
-
-    try:
-        autonomy = int(normalized.get("recommended_autonomy_level", 2))
-    except (TypeError, ValueError):
-        autonomy = 2
-    normalized["recommended_autonomy_level"] = autonomy if autonomy in {0, 1, 2, 3, 4, 5} else 2
-
-    try:
-        normalized["confidence"] = max(0.0, min(1.0, float(normalized.get("confidence", 0.5))))
-    except (TypeError, ValueError):
-        normalized["confidence"] = 0.5
-
-    normalized["requires_user_confirmation"] = bool(normalized.get("requires_user_confirmation", False))
-    fallback = normalized.get("fallback_workflow_name")
-    normalized["fallback_workflow_name"] = str(fallback) if fallback is not None else None
-
-    return _strip_unknown_keys(normalized, schema)
 
 
 def _coerce_type(value: Any, prop_schema: dict[str, Any]) -> Any:
@@ -320,7 +120,6 @@ def _normalize_generic_result(result: dict[str, Any], schema: dict[str, Any]) ->
 def normalize_structured_result(
     result: dict[str, Any] | None,
     *,
-    output_schema_name: str | None,
     output_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Best-effort structural cleanup without inventing academic facts."""
@@ -328,8 +127,4 @@ def normalize_structured_result(
         return result
 
     schema = output_schema if isinstance(output_schema, dict) else {"additionalProperties": True}
-    if output_schema_name == "task_understanding_output_v1":
-        return _normalize_task_understanding_result(result, schema)
-    if output_schema_name == "planner_output_v1":
-        return _normalize_planner_result(result, schema)
     return _normalize_generic_result(result, schema)

@@ -192,34 +192,6 @@ def _build_user_prompt(
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def _coerce_reasoning_pass_json(raw: dict[str, Any], *, output_schema_name: str | None) -> dict[str, Any]:
-    """Accept either ReasoningBlock pass JSON or a direct structured result object."""
-    if not isinstance(raw, dict):
-        return raw
-    if "result" in raw or ("summary" in raw and "status" in raw):
-        return raw
-    if output_schema_name not in {"task_understanding_output_v1", "planner_output_v1"}:
-        return raw
-
-    warnings = raw.get("warnings") if isinstance(raw.get("warnings"), list) else []
-    missing_context = raw.get("missing_context") if isinstance(raw.get("missing_context"), list) else []
-    confidence = raw.get("confidence")
-    if confidence is None:
-        confidence = raw.get("overall_confidence")
-
-    return {
-        "status": "ok",
-        "summary": str(raw.get("decision_summary") or "Structured output produced."),
-        "key_factors": [],
-        "missing_context": [str(item) for item in missing_context],
-        "validation_notes": [],
-        "warnings": [str(item) for item in warnings],
-        "tool_requests": [],
-        "confidence": confidence,
-        "result": raw,
-    }
-
-
 def _unwrap_repair_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     nested = candidate.get("result")
     if isinstance(nested, dict) and not any(key in candidate for key in ("plan_id", "primary_intent", "user_goal")):
@@ -489,7 +461,6 @@ class ReasoningBlock:
                 )
                 return output
 
-            raw = _coerce_reasoning_pass_json(raw, output_schema_name=input.output_schema_name)
             payload = _extract_pass_payload(raw)
 
             if payload.status in ("needs_tool", "needs_more_context"):
@@ -573,7 +544,6 @@ class ReasoningBlock:
         candidate = _candidate_output(payload, iterations_used=iterations_used)
         normalized_result = normalize_structured_result(
             candidate.result,
-            output_schema_name=input.output_schema_name,
             output_schema=input.output_schema,
         )
         candidate = candidate.model_copy(update={"result": normalized_result})
@@ -589,7 +559,6 @@ class ReasoningBlock:
             output_schema=input.output_schema,
             initial_errors=validation.errors,
             max_attempts=input.max_schema_repair_attempts,
-            output_schema_name=input.output_schema_name,
         )
         if repair_outcome.valid:
             return candidate.model_copy(

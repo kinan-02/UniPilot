@@ -39,6 +39,9 @@ class LLMAdapter(Protocol):
         system_prompt: str,
         user_prompt: str,
         temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -86,11 +89,20 @@ class ChatLLMAdapter:
         system_prompt: str,
         user_prompt: str,
         temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
     ) -> dict[str, Any]:
         cfg = self._settings or get_settings()
-        llm = build_chat_llm(settings=cfg, temperature=temperature if temperature is not None else 0.0)
+        llm = build_chat_llm(
+            settings=cfg,
+            temperature=temperature if temperature is not None else 0.0,
+            model=model,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+        )
         if llm is None:
             raise LLMAdapterError("llm_unavailable")
 

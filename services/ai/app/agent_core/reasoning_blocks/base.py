@@ -1,0 +1,372 @@
+"""BaseReasoningBlock (AGENT_VISION.md §6.2): the shared floor every
+component-specific reasoning-block shape extends.
+
+Nothing existing consumes this yet -- `ReasoningBlock` and its current
+callers (Planner, step-prep, subagents, Request Understanding) are
+untouched. This is the foundation for future per-component shapes (a single
+decisive call, a call-tool-call loop, a self-reflection loop, a
+multi-persona debate, ...), each of which owns its own `_run_internal`
+freely. Only `run()` -- the "never raises" safety net -- and the composable
+helpers below are shared; there is no fixed internal step order, because the
+shapes above have genuinely incompatible internal call graphs.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any
+
+from app.agent_core.reasoning.debug_observer import ReasoningBlockDebugObserver
+from app.agent_core.reasoning.llm_adapter import LLMAdapter, LLMAdapterError
+from app.agent_core.reasoning.prompt_registry import (
+    GENERIC_REASONING_BLOCK_V1,
+    SCHEMA_REPAIR_V1,
+    PromptContract,
+    PromptRegistry,
+)
+from app.agent_core.reasoning.result_normalizer import normalize_structured_result
+from app.agent_core.reasoning.schema_validator import validate_against_schema
+from app.agent_core.reasoning.schemas import SchemaRepairOutcome, SchemaValidationResult
+from app.agent_core.reasoning_blocks.schemas import (
+    BaseReasoningBlockInput,
+    BaseReasoningBlockOutput,
+    LLMCallParameters,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RunTelemetry:
+    """Per-`run()`-call mutable state.
+
+    Created fresh inside `run()` and threaded down as a parameter -- never
+    stored on `self` -- so it stays correct even if a single block instance
+    is reused across concurrent `run()` calls.
+    """
+
+    call_count: int = 0
+
+
+@dataclass
+class LlmCallResult:
+    """What `_invoke_llm` returns: parsed JSON and raw text together.
+
+    Replaces the mutate-a-list-in-place `raw_model_text_out` output
+    parameter the underlying `LLMAdapter.complete_json` protocol still uses
+    internally -- callers of this helper never see that pattern.
+    """
+
+    parsed: dict[str, Any]
+    raw_text: str
+
+
+def _build_repair_user_prompt(
+    *,
+    invalid_result: dict[str, Any] | None,
+    output_schema: dict[str, Any],
+    errors: list[str],
+) -> str:
+    payload = {
+        "instruction": (
+            "The previous output failed schema validation. Fix only the structure. "
+            "Do not add new facts. Do not change the meaning. Return only valid JSON "
+            "matching the schema."
+        ),
+        "output_schema": output_schema,
+        "previous_output": invalid_result,
+        "validation_errors": errors,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+class BaseReasoningBlock(ABC):
+    """Identity, LLM/prompt access, and composable helpers -- no fixed
+    internal step order. Each concrete shape implements `_run_internal`
+    freely, using the helpers below in whatever order/combination it needs;
+    `run()` is the one thing every shape gets for free.
+    """
+
+    def __init__(
+        self,
+        *,
+        llm_adapter: LLMAdapter,
+        prompt_registry: PromptRegistry,
+        debug_observer: ReasoningBlockDebugObserver | None = None,
+        debug_case_id: str | None = None,
+    ) -> None:
+        # Exactly one adapter, one registry -- the honest common minimum.
+        # A future shape that genuinely needs more than one (e.g. a
+        # multi-persona debate) accepts extras in its own constructor and
+        # calls `super().__init__(llm_adapter=<primary>, ...)`; the base
+        # doesn't pre-anticipate a shape nothing concrete needs yet.
+        self._llm_adapter = llm_adapter
+        self._prompt_registry = prompt_registry
+        self._debug_observer = debug_observer
+        self._debug_case_id = debug_case_id
+
+    # ------------------------------------------------------------------
+    # The one structural guarantee every shape gets for free: never raises.
+    # ------------------------------------------------------------------
+
+    async def run(self, block_input: BaseReasoningBlockInput) -> BaseReasoningBlockOutput:
+        """Run this block's own shape for one task.
+
+        Never raises: any exception from `_run_internal` (including one
+        propagated up from `_invoke_llm`) is caught here and turned into a
+        well-formed `status="failed"` output. Callers only ever need to
+        check `output.status` -- never wrap a call to `run()` in their own
+        try/except again.
+        """
+        telemetry = RunTelemetry()
+        started_at = time.monotonic()
+        try:
+            output = await self._run_internal(block_input, telemetry)
+        except Exception:
+            logger.exception(
+                "reasoning_block_run_internal_raised",
+                extra={"block_id": block_input.block_id, "agent_name": block_input.agent_name},
+            )
+            output = self._failed_output(block_input, reason="internal_error")
+        output = output.model_copy(update={"total_llm_calls_used": telemetry.call_count})
+        self._trace(block_input, output, started_at)
+        return output
+
+    @abstractmethod
+    async def _run_internal(
+        self, block_input: BaseReasoningBlockInput, telemetry: RunTelemetry
+    ) -> BaseReasoningBlockOutput:
+        """Each concrete shape's own control flow -- single-shot, tool loop,
+        self-reflection, multi-persona -- goes here, freely, using the
+        helpers below in whatever order it needs. No prescribed sequence.
+        """
+
+    def _failed_output(self, block_input: BaseReasoningBlockInput, *, reason: str) -> BaseReasoningBlockOutput:
+        """Base default for a hard failure. Subclasses whose own `Output`
+        subtype has extra required fields should override this.
+        """
+        return BaseReasoningBlockOutput(
+            status="failed",
+            schema_valid=False,
+            result=None,
+            confidence=0.0,
+            warnings=[f"reasoning_block_failed: {reason}"],
+        )
+
+    # ------------------------------------------------------------------
+    # Shared, composable helpers -- called in whatever order each shape needs.
+    # ------------------------------------------------------------------
+
+    def _resolve_prompt_contract(self, name: str | None) -> PromptContract:
+        """Registry lookup, falling back to the generic default contract
+        when no name is given -- so every subclass doesn't reimplement the
+        same `name or GENERIC_REASONING_BLOCK_V1` fallback."""
+        return self._prompt_registry.get(name or GENERIC_REASONING_BLOCK_V1)
+
+    def _resolve_llm_call_parameters(
+        self, requested: LLMCallParameters, contract: PromptContract
+    ) -> LLMCallParameters:
+        """Explicit override wins; `temperature` falls back to the
+        contract's own default when omitted (generalizing today's inlined
+        `temperature = input.temperature if not None else
+        contract.default_temperature`). `model`/`thinking_enabled`/
+        `reasoning_effort` have no contract-level default yet -- `None`
+        passes through to the adapter's own global-settings fallback
+        (already wired in `ChatLLMAdapter`/`build_chat_llm`). A future
+        per-role contract that wants its own default model can add that
+        field to `PromptContract` when a concrete need for it exists.
+        """
+        return LLMCallParameters(
+            model=requested.model,
+            temperature=(
+                requested.temperature if requested.temperature is not None else contract.default_temperature
+            ),
+            thinking_enabled=requested.thinking_enabled,
+            reasoning_effort=requested.reasoning_effort,
+        )
+
+    async def _invoke_llm(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        params: LLMCallParameters,
+        response_schema: dict[str, Any] | None,
+        phase: str,
+        block_input: BaseReasoningBlockInput,
+        telemetry: RunTelemetry,
+    ) -> LlmCallResult:
+        """Thin wrapper around `LLMAdapter.complete_json`.
+
+        Returns parsed JSON and raw text together. Catches `LLMAdapterError`
+        only long enough to log which `phase` failed, then re-raises --
+        it never swallows, because `run()`'s outer wrapper is the one place
+        that owns "never raises". Increments `telemetry.call_count`
+        regardless of outcome.
+        """
+        telemetry.call_count += 1
+        raw_text_holder: list[str] = []
+        try:
+            parsed = await self._llm_adapter.complete_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=params.temperature,
+                model=params.model,
+                thinking_enabled=params.thinking_enabled,
+                reasoning_effort=params.reasoning_effort,
+                response_schema=response_schema,
+                raw_model_text_out=raw_text_holder,
+            )
+        except LLMAdapterError:
+            logger.warning(
+                "reasoning_block_llm_call_failed",
+                extra={"block_id": block_input.block_id, "phase": phase},
+            )
+            raise
+        return LlmCallResult(parsed=parsed, raw_text=raw_text_holder[0] if raw_text_holder else "")
+
+    def _validate_schema(self, result: Any, schema: dict[str, Any]) -> SchemaValidationResult:
+        return validate_against_schema(result, schema)
+
+    def _normalize_result(
+        self, raw: dict[str, Any] | None, *, output_schema: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        return normalize_structured_result(raw, output_schema=output_schema)
+
+    async def _repair_schema(
+        self,
+        *,
+        initial_result: dict[str, Any] | None,
+        initial_errors: list[str],
+        output_schema: dict[str, Any],
+        max_attempts: int,
+        block_input: BaseReasoningBlockInput,
+        telemetry: RunTelemetry,
+    ) -> SchemaRepairOutcome:
+        """Composed from `_invoke_llm` + `_normalize_result` +
+        `_validate_schema` in its own bounded retry loop against the shared
+        `SCHEMA_REPAIR_V1` contract -- not a monolithic fourth helper.
+
+        If its own underlying LLM call fails, this degrades locally to
+        "repair did not succeed" rather than propagating: a repair-attempt
+        failure is a distinct, well-defined outcome from a hard `run()`
+        -level failure, not something that should blow away the whole
+        block.
+        """
+        contract = self._resolve_prompt_contract(SCHEMA_REPAIR_V1)
+        current_result = initial_result
+        errors = list(initial_errors)
+        attempts_used = 0
+
+        if max_attempts <= 0:
+            return SchemaRepairOutcome(result=current_result, valid=False, errors=errors, attempts_used=0)
+
+        for attempt in range(1, max_attempts + 1):
+            attempts_used = attempt
+            user_prompt = _build_repair_user_prompt(
+                invalid_result=current_result,
+                output_schema=output_schema,
+                errors=errors,
+            )
+            params = self._resolve_llm_call_parameters(LLMCallParameters(), contract)
+            try:
+                call_result = await self._invoke_llm(
+                    system_prompt=contract.role_prompt,
+                    user_prompt=user_prompt,
+                    params=params,
+                    response_schema=output_schema,
+                    phase=f"schema_repair_attempt{attempt}",
+                    block_input=block_input,
+                    telemetry=telemetry,
+                )
+            except LLMAdapterError as exc:
+                errors = [f"repair_call_failed: {exc}"]
+                break
+
+            current_result = self._normalize_result(call_result.parsed, output_schema=output_schema)
+            validation = self._validate_schema(current_result, output_schema)
+            errors = validation.errors
+            if validation.valid:
+                return SchemaRepairOutcome(
+                    result=current_result, valid=True, errors=[], attempts_used=attempts_used
+                )
+
+        return SchemaRepairOutcome(result=current_result, valid=False, errors=errors, attempts_used=attempts_used)
+
+    def _emit_debug_observer(
+        self,
+        *,
+        phase: str,
+        contract: PromptContract,
+        system_prompt: str,
+        user_prompt: str,
+        raw_model_output: str,
+        schema_valid: bool,
+        status: str,
+        warnings: list[str],
+        parsed_json_preview: dict[str, Any] | None = None,
+        repair_attempted: bool = False,
+        repair_succeeded: bool = False,
+        fallback_used: bool = False,
+        duration_ms: float | None = None,
+    ) -> None:
+        """Emit one optional debug/eval-tracker event for a single actual
+        LLM call. `phase` is an opaque label the calling subclass
+        constructs itself (e.g. `"pass1_of_1"`, `"round3_tool_call"`) --
+        unlike the old `ReasoningBlock`, there is no built-in notion of
+        "pass" here. No-op unless a debug observer and case id are both
+        configured. Drops the old, always-`ModuleNotFoundError` eval-tracker
+        import entanglement -- that module doesn't exist in this service.
+        """
+        if self._debug_observer is None or not self._debug_case_id:
+            return
+        self._debug_observer.on_llm_call(
+            case_id=self._debug_case_id,
+            phase=phase,
+            contract_name=contract.name,
+            contract_version=contract.version,
+            prompt_text=f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}",
+            raw_model_output=raw_model_output,
+            parsed_json_preview=parsed_json_preview,
+            schema_valid=schema_valid,
+            status=status,
+            repair_attempted=repair_attempted,
+            repair_succeeded=repair_succeeded,
+            fallback_used=fallback_used,
+            warnings=warnings[:20],
+            duration_ms=duration_ms,
+        )
+
+    def _trace(
+        self, block_input: BaseReasoningBlockInput, output: BaseReasoningBlockOutput, started_at: float
+    ) -> None:
+        """Structured, developer-facing trace for one completed `run()`
+        call. Only ever references base-level `Output` fields -- never a
+        shape-specific one (no `iterations_used`, no persona transcript,
+        ...), since this is called generically from `run()` regardless of
+        which concrete shape ran.
+        """
+        duration_ms = (time.monotonic() - started_at) * 1000.0
+        logger.info(
+            "reasoning_block_trace",
+            extra={
+                "reasoningBlockTrace": {
+                    "block_id": block_input.block_id,
+                    "agent_name": block_input.agent_name,
+                    "objective": block_input.objective,
+                    "status": output.status,
+                    "schema_valid": output.schema_valid,
+                    "confidence": output.confidence,
+                    "warnings": output.warnings,
+                    "total_llm_calls_used": output.total_llm_calls_used,
+                    "duration_ms": duration_ms,
+                }
+            },
+        )
+
+
+__all__ = ["BaseReasoningBlock", "RunTelemetry", "LlmCallResult"]

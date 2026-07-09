@@ -54,10 +54,20 @@ class StateEntrySummary(BaseModel):
 
 
 class PlannerInvocationInput(BaseModel):
-    """Everything one Planner invocation needs."""
+    """Everything one Planner invocation needs.
+
+    `sub_asks`/`constraints`/`open_questions`/`implies_action_request` come
+    from Request Understanding's own structured output (never lossily
+    flattened into `user_goal` alone) -- additive fields, default
+    empty/`False` for any caller that doesn't supply them.
+    """
 
     user_goal: str
     original_user_message: str
+    sub_asks: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    implies_action_request: bool = False
     state_index: list[StateEntrySummary] = Field(default_factory=list)
     monitor_flags: list[str] = Field(default_factory=list)
     replan_reason: str | None = None

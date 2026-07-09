@@ -1,0 +1,184 @@
+"""Tests for `BaseReasoningBlock` (AGENT_VISION.md §6.2).
+
+Exercised via `_EchoReasoningBlock`, a minimal single-shot concrete shape
+defined only in this test file -- `BaseReasoningBlock` is abstract and has
+no production subclass yet (Request Understanding's own concrete shape is
+separate, later work). This proves the base's own mechanics: the
+"never raises" guarantee, `_invoke_llm`'s parsed+raw-text return shape,
+`_repair_schema` composed from the other helpers, `total_llm_calls_used`
+counting, and `LLMCallParameters` override-vs-contract-default resolution.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from app.agent_core.reasoning.llm_adapter import LLMAdapterError
+from app.agent_core.reasoning.prompt_registry import build_default_prompt_registry
+from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
+from app.agent_core.reasoning_blocks.schemas import (
+    BaseReasoningBlockInput,
+    BaseReasoningBlockOutput,
+    LLMCallParameters,
+)
+
+_TEST_SCHEMA_NAME = "echo_test_output_v1"
+_TEST_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}},
+    "required": ["answer"],
+    "additionalProperties": False,
+}
+
+
+def _make_block_input(**overrides: Any) -> BaseReasoningBlockInput:
+    defaults: dict[str, Any] = dict(
+        block_id="test-block-1",
+        agent_name="echo_test",
+        objective="Say hello.",
+        output_schema_name=_TEST_SCHEMA_NAME,
+        output_schema=_TEST_OUTPUT_SCHEMA,
+    )
+    defaults.update(overrides)
+    return BaseReasoningBlockInput(**defaults)
+
+
+class _EchoReasoningBlock(BaseReasoningBlock):
+    """Test-only single-shot shape: one `_invoke_llm` call, normalize +
+    validate, repair once if invalid."""
+
+    def __init__(self, *, llm_adapter: Any, **kwargs: Any) -> None:
+        super().__init__(
+            llm_adapter=llm_adapter,
+            prompt_registry=kwargs.pop("prompt_registry", None) or build_default_prompt_registry(),
+            **kwargs,
+        )
+
+    async def _run_internal(
+        self, block_input: BaseReasoningBlockInput, telemetry: RunTelemetry
+    ) -> BaseReasoningBlockOutput:
+        contract = self._resolve_prompt_contract(block_input.prompt_contract_name)
+        params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, contract)
+        call_result = await self._invoke_llm(
+            system_prompt=contract.role_prompt,
+            user_prompt=block_input.objective,
+            params=params,
+            response_schema=block_input.output_schema,
+            phase="pass1_of_1",
+            block_input=block_input,
+            telemetry=telemetry,
+        )
+        normalized = self._normalize_result(call_result.parsed, output_schema=block_input.output_schema)
+        validation = self._validate_schema(normalized, block_input.output_schema)
+        if validation.valid:
+            return BaseReasoningBlockOutput(status="completed", schema_valid=True, result=normalized, confidence=0.9)
+
+        repair_outcome = await self._repair_schema(
+            initial_result=normalized,
+            initial_errors=validation.errors,
+            output_schema=block_input.output_schema,
+            max_attempts=2,
+            block_input=block_input,
+            telemetry=telemetry,
+        )
+        if repair_outcome.valid:
+            return BaseReasoningBlockOutput(
+                status="completed",
+                schema_valid=True,
+                result=repair_outcome.result,
+                confidence=0.7,
+                warnings=["repair_succeeded"],
+            )
+        return BaseReasoningBlockOutput(
+            status="failed",
+            schema_valid=False,
+            result=None,
+            confidence=0.0,
+            warnings=["schema_validation_failed", *repair_outcome.errors[:5]],
+        )
+
+
+class _RaisingRunInternalBlock(BaseReasoningBlock):
+    """Test-only shape whose `_run_internal` always raises a plain
+    exception -- proves `run()`'s outer safety net, independent of any
+    LLM-adapter-specific error path."""
+
+    async def _run_internal(self, block_input: BaseReasoningBlockInput, telemetry: RunTelemetry) -> Any:
+        raise ValueError("boom_from_run_internal")
+
+
+class _RaisingLLMAdapter:
+    async def complete_json(self, **_kwargs: Any) -> dict[str, Any]:
+        raise LLMAdapterError("llm_unavailable_test")
+
+
+async def test_run_never_raises_when_run_internal_raises(fake_llm_adapter_factory):
+    block = _RaisingRunInternalBlock(llm_adapter=fake_llm_adapter_factory([]), prompt_registry=build_default_prompt_registry())
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "failed"
+    assert output.schema_valid is False
+    assert output.result is None
+
+
+async def test_invoke_llm_error_propagates_and_run_returns_failed_status():
+    block = _EchoReasoningBlock(llm_adapter=_RaisingLLMAdapter())
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "failed"
+    assert output.total_llm_calls_used == 1
+
+
+async def test_repair_schema_recovers_initially_invalid_result_and_counts_calls(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory(
+        [
+            {},  # missing required "answer" -> schema-invalid
+            {"answer": "hello"},  # repair attempt succeeds
+        ]
+    )
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "completed"
+    assert output.schema_valid is True
+    assert output.result == {"answer": "hello"}
+    assert "repair_succeeded" in output.warnings
+    assert output.total_llm_calls_used == 2
+
+
+async def test_successful_single_pass_completes_without_repair(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory([{"answer": "hello"}])
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "completed"
+    assert output.result == {"answer": "hello"}
+    assert output.total_llm_calls_used == 1
+
+
+def test_resolve_llm_call_parameters_override_wins_and_falls_back_to_contract_default(fake_llm_adapter_factory):
+    block = _EchoReasoningBlock(llm_adapter=fake_llm_adapter_factory([]))
+    registry = build_default_prompt_registry()
+    contract = registry.get("generic_reasoning_block_v1")
+
+    explicit = block._resolve_llm_call_parameters(LLMCallParameters(temperature=0.9), contract)
+    assert explicit.temperature == 0.9
+
+    fallback = block._resolve_llm_call_parameters(LLMCallParameters(), contract)
+    assert fallback.temperature == contract.default_temperature
+
+
+async def test_llm_call_parameters_actually_reach_the_adapter(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory([{"answer": "hello"}])
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+
+    await block.run(
+        _make_block_input(llm_call_parameters=LLMCallParameters(model="gpt-4o", temperature=0.0))
+    )
+
+    assert adapter.calls[0]["model"] == "gpt-4o"
+    assert adapter.calls[0]["temperature"] == 0.0

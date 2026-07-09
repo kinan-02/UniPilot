@@ -50,7 +50,6 @@ async def run_schema_repair_loop(
     initial_errors: list[str],
     max_attempts: int,
     temperature: float | None = None,
-    output_schema_name: str | None = None,
 ) -> SchemaRepairOutcome:
     """Repeatedly ask the repair prompt to fix `initial_result` until valid or exhausted."""
     current_result = initial_result
@@ -81,7 +80,6 @@ async def run_schema_repair_loop(
 
         current_result = normalize_structured_result(
             _unwrap_repair_candidate(candidate),
-            output_schema_name=output_schema_name,
             output_schema=output_schema,
         )
         validation = validate_against_schema(current_result, output_schema)

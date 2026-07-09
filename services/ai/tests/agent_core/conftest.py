@@ -25,6 +25,9 @@ class FakeLLMAdapter:
         system_prompt: str,
         user_prompt: str,
         temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
     ) -> dict[str, Any]:
@@ -33,6 +36,9 @@ class FakeLLMAdapter:
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
                 "temperature": temperature,
+                "model": model,
+                "thinking_enabled": thinking_enabled,
+                "reasoning_effort": reasoning_effort,
                 "response_schema": response_schema,
             }
         )

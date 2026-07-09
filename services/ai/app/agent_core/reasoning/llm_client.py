@@ -52,8 +52,20 @@ def _cached_chat_llm(
     return ChatOpenAI(**kwargs)
 
 
-def build_chat_llm(*, settings: Settings | None = None, temperature: float = 0.0) -> Any | None:
-    """Return a LangChain ChatOpenAI instance, or None when not configured."""
+def build_chat_llm(
+    *,
+    settings: Settings | None = None,
+    temperature: float = 0.0,
+    model: str | None = None,
+    thinking_enabled: bool | None = None,
+    reasoning_effort: str | None = None,
+) -> Any | None:
+    """Return a LangChain ChatOpenAI instance, or None when not configured.
+
+    `model`/`thinking_enabled`/`reasoning_effort` are per-call overrides for
+    per-role reasoning-block tuning (AGENT_VISION.md §6.2) -- each falls back
+    to the global setting when omitted, so existing callers are unaffected.
+    """
     cfg = settings or get_settings()
     api_key = (cfg.openai_api_key or "").strip()
     if not api_key:
@@ -65,13 +77,19 @@ def build_chat_llm(*, settings: Settings | None = None, temperature: float = 0.0
         logger.warning("agent_chat_llm_unavailable_import")
         return None
 
-    model = (cfg.openai_chat_model or "gpt-4o-mini").strip()
+    resolved_model = (model or cfg.openai_chat_model or "gpt-4o-mini").strip()
     base_url = (cfg.openai_base_url or "").strip().rstrip("/")
+    resolved_thinking_enabled = (
+        thinking_enabled if thinking_enabled is not None else cfg.is_agent_llm_thinking_enabled()
+    )
+    resolved_reasoning_effort = (
+        reasoning_effort if reasoning_effort is not None else cfg.resolved_agent_llm_reasoning_effort()
+    )
     return _cached_chat_llm(
         api_key,
         base_url,
-        model,
+        resolved_model,
         round(float(temperature), 4),
-        cfg.is_agent_llm_thinking_enabled(),
-        cfg.resolved_agent_llm_reasoning_effort(),
+        resolved_thinking_enabled,
+        resolved_reasoning_effort,
     )

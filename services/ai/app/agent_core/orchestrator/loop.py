@@ -54,6 +54,10 @@ async def run_plan_to_completion(
     tool_registry: ToolRegistry,
     plan_id: str,
     max_planner_invocations: int = DEFAULT_MAX_PLANNER_INVOCATIONS,
+    sub_asks: list[str] | None = None,
+    constraints: list[str] | None = None,
+    open_questions: list[str] | None = None,
+    implies_action_request: bool = False,
 ) -> tuple[PlanExecutionState, StateEntry | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
 
@@ -73,6 +77,10 @@ async def run_plan_to_completion(
         planner_input = PlannerInvocationInput(
             user_goal=user_goal,
             original_user_message=original_user_message,
+            sub_asks=sub_asks or [],
+            constraints=constraints or [],
+            open_questions=open_questions or [],
+            implies_action_request=implies_action_request,
             state_index=_build_state_index(state),
             monitor_flags=monitor_flags,
             replan_reason=replan_reason,
