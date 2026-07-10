@@ -24,6 +24,26 @@ Use the ECC plugin's skills and agents when they fit the task at hand (e.g. `pyt
 `react-reviewer`, `fastapi-patterns`, `tdd-workflow`). ECC rule packs relevant to this repo live at
 `.claude/rules/ecc/{common,python,typescript,react,web}/`.
 
+The ECC plugin (`ecc@ecc`) only loads in a terminal CLI session (`/plugin` isn't supported in the
+VS Code extension chat surface as of extension v2.1.206). For chat sessions, a curated subset of
+ECC's skills and agents — matched to this repo's actual stack — is copied directly into
+`.claude/skills/` and `.claude/agents/`, which Claude Code loads natively in any session, plugin or
+not:
+
+- **Skills**: `python-patterns`, `python-testing`, `fastapi-patterns`, `react-patterns`,
+  `react-testing`, `react-performance`, `frontend-patterns`, `frontend-a11y`, `api-design`,
+  `security-review`, `security-scan`, `tdd-workflow`, `verification-loop`, `e2e-testing`,
+  `docker-patterns`, `redis-patterns`, `mcp-server-patterns`, `error-handling`
+- **Agents**: `python-reviewer`, `fastapi-reviewer`, `react-reviewer`, `typescript-reviewer`,
+  `security-reviewer`, `database-reviewer`, `code-explorer`, `docs-lookup`, `e2e-runner`
+
+These are a deliberate subset, not the full ECC bundle (172 skills / 66 agents) — only what matches
+this repo's Python/FastAPI + MongoDB/Redis backend and React/TS frontend. ECC's hooks were
+intentionally **not** copied here to avoid double-running against the plugin's own hooks in a CLI
+session; hook-based automation (e.g. auto-formatting) is CLI-only for now. When adding a new ECC
+skill/agent to this set, copy it from the plugin's own cache
+(`~/.claude/plugins/cache/ecc/ecc/<version>/{skills,agents}/`) rather than re-cloning the ECC repo.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
