@@ -213,4 +213,12 @@ async def generate_and_store_semester_plan(
     )
 
     stored_plan = await create_semester_plan(database, user_id, plan_data)
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(
+        database,
+        user_id,
+        "new_plan",
+        plan_id=str(stored_plan["_id"]),
+    )
     return {"status": "ok", "plan": stored_plan}

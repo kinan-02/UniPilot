@@ -807,8 +807,52 @@ def advise(
     technion_raw_dir: str,
     user_context: UserContext | None = None,
 ) -> dict[str, Any]:
-    """Full pipeline: semester resolve → retrieval agent → profile merge → synthesis."""
+    """Full pipeline: input guard → semester resolve → retrieval → synthesis → compliance."""
     ctx = user_context or UserContext()
+
+    from app.services.input_compliance_agent import run_input_compliance_guard
+
+    input_compliance = run_input_compliance_guard(question)
+    if input_compliance.blocked:
+        refusal = AdvisorResponse(
+            answer=input_compliance.refusal_message or _default_fallback(question),
+            confidence="low",
+            contacts=[
+                "faculty undergraduate studies office"
+                if not _question_is_hebrew(question)
+                else "לשכת לימודי הסמכה בפקולטה"
+            ],
+        )
+        return {
+            "question": question,
+            "input_compliance": input_compliance.to_public_dict(),
+            "semester_resolution": None,
+            "retrieval_agent": {
+                "status": "scope_blocked",
+                "iterations": 0,
+                "steps": [],
+            },
+            "profile_agent_invocations": [],
+            "planning_agent_invocations": [],
+            "regulation_agent_invocations": [],
+            "retrieval_blocks": [],
+            "compliance_guard": {
+                "status": "skipped",
+                "issueCount": 0,
+                "issues": [],
+                "remediations": ["skipped_input_blocked"],
+            },
+            "output_compliance": {
+                "status": "skipped",
+                "unsupportedClaims": [],
+                "reasoning": "Input blocked before synthesis.",
+                "method": "skipped",
+                "remediations": [],
+            },
+            "user_profile": _merge_user_profile(ctx),
+            "response": refusal.model_dump(),
+            "eligibility": None,
+        }
 
     semester_resolution = resolve_semester_from_query(
         question,
@@ -856,6 +900,27 @@ def advise(
         semester_resolution=semester_resolution,
     )
 
+    from app.services.compliance_guard import run_compliance_guard
+    from app.services.output_compliance_agent import run_output_compliance_guard
+
+    compliance = run_compliance_guard(
+        question=question,
+        response=response,
+        retrieval_blocks=retrieval.blocks,
+        user_context=ctx,
+        engine=engine,
+    )
+    if compliance.response is not None:
+        response = compliance.response
+
+    output_compliance = run_output_compliance_guard(
+        question=question,
+        response=response,
+        retrieval_blocks=retrieval.blocks,
+    )
+    if output_compliance.response is not None:
+        response = output_compliance.response
+
     merged_eligibility = response.eligibility
     for block in retrieval.blocks:
         if block.get("facts"):
@@ -864,6 +929,7 @@ def advise(
 
     return {
         "question": question,
+        "input_compliance": input_compliance.to_public_dict(),
         "semester_resolution": _serialize_semester_resolution(semester_resolution),
         "retrieval_agent": {
             "status": retrieval.status,
@@ -874,6 +940,8 @@ def advise(
         "planning_agent_invocations": planning_invocations,
         "regulation_agent_invocations": regulation_invocations,
         "retrieval_blocks": retrieval.blocks,
+        "compliance_guard": compliance.to_public_dict(),
+        "output_compliance": output_compliance.to_public_dict(),
         "user_profile": profile,
         "response": response.model_dump(),
         "eligibility": merged_eligibility,

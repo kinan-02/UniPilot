@@ -437,6 +437,23 @@ export const he = {
     quickActionAdvisor: 'שאלו שאלות מבוססות קטלוג על קורסים, תקנות וזכאות.',
     degreeStatus: 'סטטוס תואר',
   },
+  watchdog: {
+    title: 'התראות יזומות',
+    subtitle: 'UniPilot זיהה שינויים שכדאי לשים לב אליהם.',
+    loading: 'בודק התראות חדשות…',
+    emptyTitle: 'אין התראות יזומות כרגע',
+    emptySubtitle:
+      'התראות יופיעו כש-UniPilot יזהה פערים בלוח הזמנים, בעיות בקדם-דרישות או סיכונים חמורים.',
+    dismiss: 'הסתר',
+    navBadge: '{{count}} התראות יזומות',
+    actionReviewProgress: 'צפייה בהתקדמות',
+    actionOpenPlan: 'פתיחת תוכנית',
+    actionViewRisks: 'צפייה בסיכונים',
+    severity: {
+      high: 'גבוה',
+      medium: 'בינוני',
+    },
+  },
   advisor: {
     title: 'יועץ אקדמי',
     subtitle: 'שאלו על קורסים, מערכי שעות, קדם-דרישות ותקנות — התשובות מבוססות על קטלוג הטכניון והוויקי.',

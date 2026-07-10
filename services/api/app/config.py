@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     academic_risks_collection: str = "academic_risks"
     advisor_conversations_collection: str = "advisor_conversations"
     ai_jobs_collection: str = "ai_jobs"
+    ai_recommendations_collection: str = "ai_recommendations"
     simulation_scenarios_collection: str = "simulation_scenarios"
     simulation_results_collection: str = "simulation_results"
     worker_queue_name: str = "ai_jobs"

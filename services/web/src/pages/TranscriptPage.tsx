@@ -10,6 +10,7 @@ import { TranscriptPageSkeleton } from '../components/transcript/TranscriptPageS
 import { TranscriptSummaryCard } from '../components/transcript/TranscriptSummaryCard'
 import { Card, EmptyState, PageHeader } from '../components/ui/Card'
 import { TRANSCRIPT_QUERY_KEY, useTranscriptRecords } from '../hooks/useTranscriptRecords'
+import { invalidateRecommendations } from '../lib/recommendationsQuery'
 import { useTranslation } from '../i18n'
 import { defaultSemesterCode } from '../lib/semester'
 import { computeTranscriptStats } from '../lib/transcript'
@@ -36,6 +37,7 @@ export function TranscriptPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      void invalidateRecommendations(queryClient)
     },
   })
 

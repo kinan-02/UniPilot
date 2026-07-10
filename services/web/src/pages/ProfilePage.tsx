@@ -18,6 +18,7 @@ import {
   invalidateStudentProfile,
   useStudentProfileQuery,
 } from '../lib/studentProfileQuery'
+import { invalidateRecommendations } from '../lib/recommendationsQuery'
 
 export function ProfilePage() {
   const queryClient = useQueryClient()
@@ -126,6 +127,7 @@ export function ProfilePage() {
       await invalidateStudentProfile(queryClient)
       queryClient.invalidateQueries({ queryKey: ['progress'] })
       queryClient.invalidateQueries({ queryKey: ['curriculum-graph'] })
+      void invalidateRecommendations(queryClient)
       setMessage(t('profilePrograms.saveSuccess'))
       setError('')
     },

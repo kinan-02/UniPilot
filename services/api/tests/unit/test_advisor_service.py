@@ -94,6 +94,9 @@ async def test_ask_advisor_for_user_includes_agent_trace_when_requested() -> Non
         "profile_agent_invocations": [{"sub_question": "eligibility", "status": "ok"}],
         "retrieval_blocks": [{"intent": "course_fit", "source": "profile_agent"}],
         "semester_resolution": {"confidence": "high"},
+        "compliance_guard": {"status": "passed", "issueCount": 0, "issues": [], "remediations": []},
+        "input_compliance": {"status": "passed", "category": "academic_advising", "blocked": False},
+        "output_compliance": {"status": "passed", "unsupportedClaims": [], "method": "llm"},
         "response": {"answer": "כן", "confidence": "medium"},
     }
     database = AsyncMock()
@@ -123,6 +126,9 @@ async def test_ask_advisor_for_user_includes_agent_trace_when_requested() -> Non
     assert trace["retrievalAgent"]["status"] == "ok"
     assert len(trace["profileAgentInvocations"]) == 1
     assert len(trace["retrievalBlocks"]) == 1
+    assert trace["complianceGuard"]["status"] == "passed"
+    assert trace["inputCompliance"]["status"] == "passed"
+    assert trace["outputCompliance"]["status"] == "passed"
 
 
 @pytest.mark.asyncio

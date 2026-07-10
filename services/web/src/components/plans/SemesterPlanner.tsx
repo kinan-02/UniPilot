@@ -10,6 +10,7 @@ import { useTranslation } from '../../i18n'
 import { downloadIcs, generatePlanIcs } from '../../lib/icsExport'
 import { ensurePlanningProfile, PlanningProfileError, courseTitle } from '../../lib/planning'
 import { fetchStudentProfileOrNull, useStudentProfileQuery } from '../../lib/studentProfileQuery'
+import { invalidateRecommendations } from '../../lib/recommendationsQuery'
 import { courseNumbersInConflict } from '../../lib/planner'
 import {
   extractLessonOptions,
@@ -770,6 +771,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
     mutationFn: persistPlanWithSchedule,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['plans'] })
+      void invalidateRecommendations(queryClient)
       syncFromSavedPlan(data.semesterPlan)
       if (!planId) {
         navigate(`/plans/${data.semesterPlan.id}/edit`, { replace: true })
@@ -802,6 +804,7 @@ export function SemesterPlanner({ planId }: SemesterPlannerProps) {
       setErrors([])
       queryClient.setQueryData(['plan', planId], data)
       queryClient.invalidateQueries({ queryKey: ['plans'] })
+      void invalidateRecommendations(queryClient)
     },
     onError: (err) => {
       if (err instanceof Error && err.message === 'validation') return

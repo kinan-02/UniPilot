@@ -4,6 +4,7 @@ import type {
   AdvisorAskResponse,
   AdvisorConversation,
   AiJob,
+  AiRecommendation,
   SimulationOperation,
   SimulationResult,
   SimulationRunResponse,
@@ -392,4 +393,17 @@ export const risksApi = {
     }),
   get: (id: string) =>
     apiRequest<{ academicRiskAnalysis: AcademicRiskAnalysis }>(`/academic-risks/${id}`),
+}
+
+export const recommendationsApi = {
+  list: (page = 1, limit = 20, status = 'active') =>
+    apiRequest<{
+      recommendations: AiRecommendation[]
+      pagination: { total: number; page: number; limit: number }
+    }>(`/ai/recommendations?status=${encodeURIComponent(status)}&page=${page}&limit=${limit}`),
+  dismiss: (recommendationId: string) =>
+    apiRequest<{ recommendation: AiRecommendation }>(
+      `/ai/recommendations/${recommendationId}/dismiss`,
+      { method: 'POST' },
+    ),
 }

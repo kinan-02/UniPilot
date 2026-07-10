@@ -479,6 +479,14 @@ async def create_manual_semester_plan(
         status=payload.get("status", "draft"),
     )
     stored_plan = await create_semester_plan(database, user_id, plan_data)
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(
+        database,
+        user_id,
+        "new_plan",
+        plan_id=str(stored_plan["_id"]),
+    )
     return {"status": "ok", "plan": stored_plan}
 
 
@@ -577,6 +585,14 @@ async def create_semester_plan_version_by_user(
         user_id,
         source_plan,
         name=name,
+    )
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(
+        database,
+        user_id,
+        "new_plan",
+        plan_id=str(stored_plan["_id"]),
     )
     return {"status": "ok", "plan": stored_plan, "sourcePlanId": plan_id}
 

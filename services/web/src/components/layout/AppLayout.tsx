@@ -12,6 +12,7 @@ import {
   UserCircle,
 } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
+import { useActiveRecommendationCount } from '../../components/watchdog/WatchdogNudgesCard'
 import { useTranslation } from '../../i18n'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/Button'
@@ -22,6 +23,7 @@ export function AppLayout() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
+  const recommendationCount = useActiveRecommendationCount()
   const isPlannerWorkspace = /^\/plans\/(?:new|[^/]+\/edit)$/.test(location.pathname)
 
   const navItems = [
@@ -79,7 +81,18 @@ export function AppLayout() {
               }
             >
               <Icon className="h-4 w-4" />
-              {label}
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="truncate">{label}</span>
+                {to === '/' && recommendationCount > 0 ? (
+                  <span
+                    className="inline-flex min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                    data-testid="nav-recommendations-badge"
+                    aria-label={t('watchdog.navBadge', { count: recommendationCount })}
+                  >
+                    {recommendationCount}
+                  </span>
+                ) : null}
+              </span>
             </NavLink>
           ))}
         </nav>

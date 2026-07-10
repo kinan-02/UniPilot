@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Search } from 'lucide-react'
 import { catalogApi, transcriptApi } from '../../api/endpoints'
 import { TRANSCRIPT_QUERY_KEY } from '../../hooks/useTranscriptRecords'
+import { invalidateRecommendations } from '../../lib/recommendationsQuery'
 import { useCatalogCourses } from '../../hooks/useCatalogCourses'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { TranscriptSemesterPicker } from './TranscriptSemesterPicker'
@@ -112,6 +113,7 @@ export function TranscriptAddCourseForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      void invalidateRecommendations(queryClient)
       setQuery('')
       setSelectedCourse(null)
       setError('')

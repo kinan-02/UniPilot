@@ -1,5 +1,6 @@
 const express = require("express");
 const { startQueueConsumer } = require("./queueConsumer");
+const { startWatchdogCron } = require("./watchdogCron");
 
 const app = express();
 const port = Number(process.env.WORKER_PORT) || 3002;
@@ -18,4 +19,5 @@ app.listen(port, "0.0.0.0", () => {
   startQueueConsumer().catch((error) => {
     console.error("[worker] failed to start queue consumer:", error);
   });
+  startWatchdogCron();
 });

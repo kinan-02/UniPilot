@@ -98,6 +98,11 @@ async def commit_transcript_import(
         if public_record:
             created.append(public_record)
 
+    if created:
+        from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+        await maybe_enqueue_watchdog_scan(database, user_id, "profile_change")
+
     return {
         "created": created,
         "skippedDuplicates": skipped_duplicates,

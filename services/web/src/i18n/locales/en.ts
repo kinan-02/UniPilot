@@ -438,6 +438,23 @@ export const en: TranslationTree = {
     quickActionAdvisor: 'Ask grounded questions about courses, regulations, and eligibility.',
     degreeStatus: 'Degree status',
   },
+  watchdog: {
+    title: 'Proactive alerts',
+    subtitle: 'UniPilot noticed changes that may need your attention.',
+    loading: 'Checking for new alerts…',
+    emptyTitle: 'No proactive alerts right now',
+    emptySubtitle:
+      'Alerts appear when UniPilot spots schedule gaps, prerequisite issues, or high-severity risks.',
+    dismiss: 'Dismiss',
+    navBadge: '{{count}} proactive alerts',
+    actionReviewProgress: 'Review progress',
+    actionOpenPlan: 'Open plan',
+    actionViewRisks: 'View risks',
+    severity: {
+      high: 'High',
+      medium: 'Medium',
+    },
+  },
   advisor: {
     title: 'Academic advisor',
     subtitle: 'Ask questions about courses, schedules, prerequisites, and regulations — answers are grounded in the Technion catalog and wiki.',

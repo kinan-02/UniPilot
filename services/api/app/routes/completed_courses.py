@@ -116,6 +116,9 @@ async def create_completed_course_record(
         ) from None
 
     course_summary = catalog_repository.course_summary_from_document(course)
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(database, auth.user_id, "profile_change")
     return success_response(
         {
             "completedCourse": to_public_completed_course(record, course_summary),
@@ -204,6 +207,9 @@ async def update_completed_course_record(
 
     record = update_result["record"]
     course_summary = await resolve_course_summary(database, str(record["courseId"]))
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(database, auth.user_id, "profile_change")
     return success_response(
         {
             "completedCourse": to_public_completed_course(record, course_summary),
@@ -232,5 +238,9 @@ async def delete_completed_course_record(
             status_code=403,
             detail="Only manual completed course records can be deleted",
         )
+
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(database, auth.user_id, "profile_change")
 
     return success_response({"deleted": True})

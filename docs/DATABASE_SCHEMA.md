@@ -282,10 +282,16 @@ Source of truth inputs: `docs/DOMAIN_MODEL.md`, `docs/PROJECT_CONTEXT.md`
 
 ---
 
-## 3.9 ai_recommendations (Later)
+## 3.9 ai_recommendations (AGT-8 proactive watchdog)
 
-- user-owned immutable recommendation artifacts.
-- indexes: `{ userId: 1, createdAt: -1 }`, `{ userId: 1, planId: 1, createdAt: -1 }`.
+- user-owned proactive nudges from the watchdog worker.
+- **Fields:**
+  - `_id`, `userId`, `type` (`watchdog_nudge`), `nudgeType` (`pace|prereq|risk`)
+  - `trigger` (`profile_change|new_plan|weekly_cron`), `severity`, `title`, `body`, `evidence`
+  - `planId`, `riskAnalysisId` (optional links)
+  - `dedupeKey` (unique per user), `status` (`active|dismissed`)
+  - `createdAt`, `updatedAt`
+- indexes: `{ userId: 1, createdAt: -1 }`, `{ userId: 1, status: 1, createdAt: -1 }`, unique `{ userId: 1, dedupeKey: 1 }`.
 
 ## 3.10 simulation_scenarios (Later)
 

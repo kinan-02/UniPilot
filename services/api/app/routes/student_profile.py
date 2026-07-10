@@ -150,6 +150,10 @@ async def update_profile(
     if not updated_profile:
         raise HTTPException(status_code=404, detail="Student profile not found")
 
+    from app.services.watchdog_enqueue import maybe_enqueue_watchdog_scan
+
+    await maybe_enqueue_watchdog_scan(database, auth.user_id, "profile_change")
+
     return success_response({"profile": to_public_student_profile(updated_profile)})
 
 

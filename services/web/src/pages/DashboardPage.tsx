@@ -7,6 +7,7 @@ import { DashboardProgressHero } from '../components/dashboard/DashboardProgress
 import { DashboardQuickActions } from '../components/dashboard/DashboardQuickActions'
 import { DashboardSetupPrompt } from '../components/dashboard/DashboardSetupPrompt'
 import { DashboardStatsRow } from '../components/dashboard/DashboardStatsRow'
+import { WatchdogNudgesCard } from '../components/watchdog/WatchdogNudgesCard'
 import { PageHeader } from '../components/ui/Card'
 import { useAuth } from '../auth/AuthContext'
 import { useTranslation } from '../i18n'
@@ -96,6 +97,8 @@ export function DashboardPage() {
         statusLabel={statusLabel}
         t={t}
       />
+
+      <WatchdogNudgesCard />
 
       <DashboardStatsRow
         semesterCode={profile?.currentSemesterCode}

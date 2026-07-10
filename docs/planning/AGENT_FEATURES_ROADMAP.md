@@ -56,8 +56,8 @@ Legend — Priority: **P0** (course-critical), **P1** (high value), **P2** (wow 
 | AGT-5 | Regulation & Rights specialist | 2 | P1 | No | done |
 | AGT-6 | Transcript Import Copilot | 2 | P1 | No | todo |
 | AGT-7 | Prerequisite Unlock Strategist | 2 | P1 | No | todo |
-| AGT-8 | Proactive Watchdog (worker/cron nudges) | 2 | P1 | Yes | todo |
-| AGT-9 | Compliance Guard (verifier before response) | 2 | P1 | No | todo |
+| AGT-8 | Proactive Watchdog (worker/cron nudges) | 2 | P1 | Yes | done |
+| AGT-9 | Compliance Guard (verifier before response) | 2 | P1 | No | done |
 | AGT-10 | Decision Memory Layer | 2 | P2 | No | todo |
 | AGT-11 | Multi-Agent Council (deliberation demo) | 3 | P2 | Optional | todo |
 | AGT-12 | Schedule Negotiator | 3 | P2 | No | todo |
@@ -286,7 +286,9 @@ parse preview
 - Course IDs exist in catalog/graph.
 - No contradictions with retrieval blocks.
 
-**On failure:** orchestrator revises, downgrades confidence, or adds contacts.
+**On failure:** downgrade confidence, correct eligibility, strip unknown courses, append disclaimer, add contacts.
+
+**Status:** done (v2) — `input_compliance_agent.py`, `compliance_guard.py`, `output_compliance_agent.py`; `agentTrace.inputCompliance`, `complianceGuard`, `outputCompliance`.
 
 ---
 
@@ -395,5 +397,6 @@ Expose in optional `agentTrace` for grading demos.
 
 | Date | Change |
 |------|--------|
+| 2026-07-04 | AGT-8 done: proactive watchdog (`watchdog_scan` jobs, `ai_recommendations`, weekly cron hook) |
 | 2026-06-28 | AGT-1 done: `ai_jobs`, `/ai/jobs`, worker queue consumer, `advisor_deep_plan` job type |
 | 2026-06-28 | Initial roadmap from agentic features brainstorm |

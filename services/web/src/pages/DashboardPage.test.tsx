@@ -15,6 +15,7 @@ vi.mock('../api/endpoints', () => ({
   progressApi: { get: vi.fn() },
   plansApi: { list: vi.fn() },
   risksApi: { list: vi.fn() },
+  recommendationsApi: { list: vi.fn() },
 }))
 
 function renderDashboard() {
@@ -47,6 +48,10 @@ describe('DashboardPage', () => {
     vi.mocked(endpoints.risksApi.list).mockResolvedValue({
       academicRiskAnalyses: [],
       pagination: { total: 0 },
+    })
+    vi.mocked(endpoints.recommendationsApi.list).mockResolvedValue({
+      recommendations: [],
+      pagination: { total: 0, page: 1, limit: 20 },
     })
   })
 
@@ -99,6 +104,47 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('dashboard-quick-actions')).toBeInTheDocument()
     expect(screen.getByTestId('dashboard-action-transcript')).toBeInTheDocument()
     expect(screen.getByText('2025-1')).toBeInTheDocument()
+  })
+
+  it('renders proactive watchdog nudges when recommendations exist', async () => {
+    vi.mocked(endpoints.profileApi.get).mockResolvedValue({
+      profile: {
+        id: 'p1',
+        userId: 'u1',
+        institutionId: 'technion',
+        programType: 'BSc',
+        degreeId: 'd1',
+        catalogYear: 2025,
+        currentSemesterCode: '2025-1',
+      },
+    })
+    vi.mocked(endpoints.progressApi.get).mockResolvedValue({
+      graduationProgress: {
+        degreeId: 'd1',
+        completionPercentage: 42,
+        completedCredits: 60,
+        totalRequiredCredits: 140,
+        statusSummary: 'in_progress',
+      },
+    })
+    vi.mocked(endpoints.recommendationsApi.list).mockResolvedValue({
+      recommendations: [
+        {
+          id: 'rec-1',
+          type: 'watchdog_nudge',
+          nudgeType: 'risk',
+          severity: 'high',
+          title: 'High-severity academic risk detected',
+          body: 'Your latest risk analysis flagged issues.',
+          status: 'active',
+        },
+      ],
+      pagination: { total: 1, page: 1, limit: 20 },
+    })
+
+    renderDashboard()
+    expect(await screen.findByTestId('watchdog-nudges-card')).toBeInTheDocument()
+    expect(screen.getByText('High-severity academic risk detected')).toBeInTheDocument()
   })
 
   it('shows loading skeleton while profile loads', async () => {

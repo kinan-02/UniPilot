@@ -612,6 +612,23 @@ export type SimulationRunResponse =
       job: AiJob
     }
 
+export type AiRecommendation = {
+  id: string
+  type: string
+  nudgeType?: 'pace' | 'prereq' | 'risk' | string | null
+  trigger?: string | null
+  severity?: 'high' | 'medium' | string | null
+  title: string
+  body: string
+  evidence?: Record<string, unknown>
+  planId?: string | null
+  riskAnalysisId?: string | null
+  dedupeKey?: string | null
+  status?: 'active' | 'dismissed' | string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
 export type AdvisorAgentTrace = {
   retrievalAgent: {
     status?: string | null
@@ -622,6 +639,27 @@ export type AdvisorAgentTrace = {
   planningAgentInvocations?: Array<Record<string, unknown>>
   regulationAgentInvocations?: Array<Record<string, unknown>>
   retrievalBlocks?: Array<Record<string, unknown>>
+  inputCompliance?: {
+    status?: string | null
+    category?: string | null
+    reason?: string | null
+    method?: string | null
+    blocked?: boolean | null
+    refusalMessage?: string | null
+  } | null
+  complianceGuard?: {
+    status?: string | null
+    issueCount?: number | null
+    issues?: Array<Record<string, unknown>>
+    remediations?: string[]
+  } | null
+  outputCompliance?: {
+    status?: string | null
+    unsupportedClaims?: string[]
+    reasoning?: string | null
+    method?: string | null
+    remediations?: string[]
+  } | null
   semesterResolution?: Record<string, unknown> | null
 }
 

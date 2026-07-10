@@ -144,6 +144,8 @@ services:
       API_SERVICE_URL: http://api:8000
       REDIS_URL: redis://:${REDIS_PASSWORD:-unipilot_dev_redis_password}@redis:6379
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
+      WATCHDOG_WEEKLY_SCAN_ENABLED: ${WATCHDOG_WEEKLY_SCAN_ENABLED:-false}
+      WATCHDOG_WEEKLY_SCAN_INTERVAL_MS: ${WATCHDOG_WEEKLY_SCAN_INTERVAL_MS:-604800000}
     depends_on:
       api:
         condition: service_healthy

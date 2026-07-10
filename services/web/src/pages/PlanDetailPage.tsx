@@ -10,6 +10,7 @@ import { Button } from '../components/ui/Button'
 import { Badge, Card, PageHeader, Spinner } from '../components/ui/Card'
 import { useTranslation } from '../i18n'
 import { buildPlanWhatIfText } from '../lib/simulationLinks'
+import { invalidateRecommendations } from '../lib/recommendationsQuery'
 import { formatCredits } from '../lib/utils'
 
 export function PlanDetailPage() {
@@ -28,6 +29,7 @@ export function PlanDetailPage() {
     mutationFn: () => plansApi.forkVersion(id),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['plans'] })
+      void invalidateRecommendations(queryClient)
       navigate(`/plans/${data.semesterPlan.id}/edit`)
     },
   })

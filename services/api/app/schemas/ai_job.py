@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-AiJobType = Literal["advisor_deep_plan", "simulation_run"]
+AiJobType = Literal["advisor_deep_plan", "simulation_run", "watchdog_scan"]
 AiJobStatus = Literal["pending", "processing", "completed", "failed"]
 
 
@@ -24,6 +24,13 @@ class SimulationRunPayload(BaseModel):
     scenario_id: str = Field(min_length=1)
 
 
+class WatchdogScanPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    trigger: Literal["profile_change", "new_plan", "weekly_cron"] = "profile_change"
+    plan_id: str | None = Field(default=None, alias="planId")
+
+
 class CreateAiJobRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -36,6 +43,8 @@ class CreateAiJobRequest(BaseModel):
             AdvisorDeepPlanPayload.model_validate(self.payload)
         if self.type == "simulation_run":
             SimulationRunPayload.model_validate(self.payload)
+        if self.type == "watchdog_scan":
+            WatchdogScanPayload.model_validate(self.payload)
         return self
 
 

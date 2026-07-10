@@ -116,6 +116,9 @@ def _build_agent_trace(raw: dict[str, Any]) -> dict[str, Any]:
             "planningAgentInvocations": raw.get("planning_agent_invocations") or [],
             "regulationAgentInvocations": raw.get("regulation_agent_invocations") or [],
             "retrievalBlocks": raw.get("retrieval_blocks") or [],
+            "inputCompliance": raw.get("input_compliance"),
+            "complianceGuard": raw.get("compliance_guard"),
+            "outputCompliance": raw.get("output_compliance"),
             "semesterResolution": raw.get("semester_resolution"),
         }
     )

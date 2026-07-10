@@ -13,6 +13,7 @@ import {
 import { transcriptImportApi } from '../../api/endpoints'
 import { useTranscriptPreviewCatalog } from '../../hooks/useTranscriptPreviewCatalog'
 import { TRANSCRIPT_QUERY_KEY } from '../../hooks/useTranscriptRecords'
+import { invalidateRecommendations } from '../../lib/recommendationsQuery'
 import { compareSemesterCodesDesc, gradeBadgeTone } from '../../lib/transcript'
 import {
   displayTitleForParsedCourse,
@@ -123,6 +124,7 @@ export function TranscriptPdfUpload({ locale, t, featured = false }: TranscriptP
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: TRANSCRIPT_QUERY_KEY })
       queryClient.invalidateQueries({ queryKey: ['progress'] })
+      void invalidateRecommendations(queryClient)
       const { createdCount, skippedCount, unresolvedCount } = data.importResult
       setSuccess(
         t('transcript.upload.importSuccess', {

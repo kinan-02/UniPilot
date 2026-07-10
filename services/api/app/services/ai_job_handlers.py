@@ -7,9 +7,10 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings, get_settings
-from app.schemas.ai_job import AdvisorDeepPlanPayload, SimulationRunPayload
+from app.schemas.ai_job import AdvisorDeepPlanPayload, SimulationRunPayload, WatchdogScanPayload
 from app.services.advisor_service import ask_advisor_for_user
 from app.services.simulation_job_runner import run_scenario_from_job
+from app.services.watchdog_service import run_watchdog_for_user
 
 
 async def handle_advisor_deep_plan(
@@ -65,9 +66,33 @@ async def handle_simulation_run(
     )
 
 
+async def handle_watchdog_scan(
+    database: AsyncIOMotorDatabase,
+    user_id: str,
+    payload: dict[str, Any],
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    from app.repositories.user_repository import find_user_by_id
+
+    validated = WatchdogScanPayload.model_validate(payload)
+    user = await find_user_by_id(database, user_id)
+    email = user.get("email") if user else None
+
+    return await run_watchdog_for_user(
+        database,
+        user_id,
+        trigger=validated.trigger,
+        plan_id=validated.plan_id,
+        user_email=str(email) if email else None,
+        settings=settings,
+    )
+
+
 JOB_HANDLERS = {
     "advisor_deep_plan": handle_advisor_deep_plan,
     "simulation_run": handle_simulation_run,
+    "watchdog_scan": handle_watchdog_scan,
 }
 
 
