@@ -14,15 +14,20 @@ class LLMCallParameters(BaseModel):
     meaning "fall back to the contract's/adapter's own default" -- never a
     hardcoded global.
 
-    Deliberately excludes `max_tokens`/`top_p`/timeout/retry-policy: no
-    evidenced per-role need for them, so they're not added as speculative
-    surface.
+    `timeout`/`max_retries` exist so one component (e.g. the Planner) can
+    set its own request-level bound without affecting any other component's
+    calls -- `None` here means "use the adapter's own default," exactly like
+    every other field. Deliberately still excludes `max_tokens`/`top_p`: no
+    evidenced per-role need for those yet, so they're not added as
+    speculative surface.
     """
 
     model: str | None = None
     temperature: float | None = None
     thinking_enabled: bool | None = None
     reasoning_effort: str | None = None
+    timeout: float | None = None
+    max_retries: int | None = None
 
 
 class BaseReasoningBlockInput(BaseModel):

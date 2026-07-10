@@ -30,6 +30,8 @@ class FakeLLMAdapter:
         reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         self.calls.append(
             {
@@ -40,6 +42,8 @@ class FakeLLMAdapter:
                 "thinking_enabled": thinking_enabled,
                 "reasoning_effort": reasoning_effort,
                 "response_schema": response_schema,
+                "timeout": timeout,
+                "max_retries": max_retries,
             }
         )
         if not self._responses:

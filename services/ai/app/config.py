@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -51,6 +52,14 @@ class Settings(BaseSettings):
     agent_reasoning_adaptive_confidence_threshold: float = 0.75
     agent_llm_thinking_enabled: bool = True
     agent_llm_reasoning_effort: str | None = None
+    # Which provider's wire format `llm_client._cached_chat_llm` should
+    # translate abstract reasoning-control params (thinking_enabled/
+    # reasoning_effort) into -- the ONE setting that needs to change, along
+    # with openai_api_key/openai_base_url/openai_chat_model above, when the
+    # foundation model is swapped. Defaults to "deepseek" to match the
+    # provider actually configured today; no other file needs editing for a
+    # provider swap unless the new provider's mechanism is genuinely novel.
+    agent_llm_provider: Literal["deepseek", "openai"] = "deepseek"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -141,6 +150,9 @@ class Settings(BaseSettings):
     def resolved_agent_llm_reasoning_effort(self) -> str | None:
         value = (self.agent_llm_reasoning_effort or "").strip()
         return value or None
+
+    def resolved_agent_llm_provider(self) -> str:
+        return self.agent_llm_provider
 
 
 @lru_cache

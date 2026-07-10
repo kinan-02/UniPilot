@@ -13,7 +13,7 @@ from app.agent_core.orchestrator.context_builder import build_subagent_context_p
 from app.agent_core.orchestrator.monitor import evaluate_step_result
 from app.agent_core.orchestrator.step_prep import run_step_prep
 from app.agent_core.planning.planner import build_next_plan_steps
-from app.agent_core.planning.schemas import PlannerInvocationInput, RoleName, StateEntrySummary
+from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName, StateEntrySummary
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
@@ -22,6 +22,30 @@ from app.agent_core.synthesis.synthesis import compose_answer
 from app.agent_core.tools.registry import ToolRegistry
 
 DEFAULT_MAX_PLANNER_INVOCATIONS = 5
+
+# STOPGAP: PlanStep no longer carries a `role` (Planner output no longer
+# decides it, per docs/agent/PLANNER_OUTPUT_DESIGN.md §3) and no real
+# Orchestrator-side role-assignment decision exists yet. A single hardcoded
+# default would silently defeat the composition short-circuit below (its
+# `state.entries[-1].role == "composition"` check could never fire) --
+# so this keyword heuristic stands in until real role-assignment is
+# designed and built as its own follow-up (PLANNER_OUTPUT_DESIGN.md §7 /
+# AGENT_VISION.md §7). Matches the design doc's own point that a
+# well-written `objective` should make the right role "nearly mechanical".
+_STOPGAP_ROLE_KEYWORDS: dict[RoleName, tuple[str, ...]] = {
+    "composition": ("compose", "final answer", "synthesi"),
+    "calculation_validation": ("verify", "validate", "calculat", "check"),
+    "simulation_planning": ("simulat", "what if", "hypothetical", "project"),
+    "interpretation": ("interpret", "explain", "determine", "analyz"),
+}
+
+
+def _stopgap_role_for_step(step: PlanStep) -> RoleName:
+    objective = step.objective.lower()
+    for role_name, keywords in _STOPGAP_ROLE_KEYWORDS.items():
+        if any(keyword in objective for keyword in keywords):
+            return role_name
+    return "retrieval"
 
 
 def _certainty_band(confidence: float) -> str:
@@ -82,13 +106,18 @@ async def run_plan_to_completion(
             open_questions=open_questions or [],
             implies_action_request=implies_action_request,
             state_index=_build_state_index(state),
+            plan_graph_so_far=state.plan_graph,
             monitor_flags=monitor_flags,
             replan_reason=replan_reason,
         )
         planner_output = await build_next_plan_steps(
-            planner_input=planner_input, llm_adapter=llm_adapter, block_id=f"{plan_id}-planner-{invocation}"
+            planner_input=planner_input,
+            llm_adapter=llm_adapter,
+            block_id=f"{plan_id}-planner-{invocation}",
+            invocation=invocation,
         )
         plan_status = planner_output.plan_status
+        state.merge_plan_graph(planner_output.plan_graph)
 
         if plan_status == "blocked_needs_clarification":
             break
@@ -98,7 +127,7 @@ async def run_plan_to_completion(
         should_replan = False
 
         for step in planner_output.next_steps:
-            role = role_roster[step.role]
+            role = role_roster[_stopgap_role_for_step(step)]
             step_prep_output = await run_step_prep(
                 step=step, state=state, llm_adapter=llm_adapter, block_id=f"{plan_id}-{step.step_id}-prep"
             )
@@ -114,7 +143,7 @@ async def run_plan_to_completion(
             entry = StateEntry(
                 entry_id=f"{step.step_id}-{len(state.entries)}",
                 step_id=step.step_id,
-                role=step.role,
+                role=role.name,
                 status=subagent_result.status,
                 output_schema_name=step_prep_output.output_schema_name,
                 data=subagent_result.result or {},

@@ -44,6 +44,8 @@ class LLMAdapter(Protocol):
         reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -94,6 +96,8 @@ class ChatLLMAdapter:
         reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         cfg = self._settings or get_settings()
         llm = build_chat_llm(
@@ -102,6 +106,8 @@ class ChatLLMAdapter:
             model=model,
             thinking_enabled=thinking_enabled,
             reasoning_effort=reasoning_effort,
+            timeout=timeout,
+            max_retries=max_retries,
         )
         if llm is None:
             raise LLMAdapterError("llm_unavailable")

@@ -19,34 +19,23 @@ from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.default_registry import build_default_tool_registry
 
 _RESPONSES = [
-    # 1. Planner invocation 1 -- one step: retrieval.
+    # 1. Planner invocation 1 -- one step: retrieval. Flat, matching
+    # PLANNER_OUTPUT_SCHEMA directly -- PlannerReasoningBlock (BaseReasoningBlock)
+    # calls the adapter directly with no "pass payload" envelope to unwrap,
+    # unlike the old ReasoningBlock-based step-prep/subagent calls below.
     {
-        "status": "ok",
-        "summary": "Decomposed into first step: fetch course info.",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.8,
-        "result": {
-            "plan_status": "in_progress",
-            "next_steps": [
-                {
-                    "step_id": "s1",
-                    "title": "Fetch course record",
-                    "objective": "Fetch the record for course 234218.",
-                    "role": "retrieval",
-                    "depends_on": [],
-                    "success_criteria": ["course record fetched"],
-                    "assumptions_to_verify": [],
-                    "risk_level": "low",
-                }
-            ],
-            "plan_summary": "Step 1: fetch course record.",
-            "anticipated_followup": ["compose final answer"],
-            "clarification_question": None,
-        },
+        "plan_status": "in_progress",
+        "next_steps": [
+            {
+                "step_id": "A",
+                "objective": "Fetch the record for course 234218.",
+                "depends_on": [],
+                "success_criteria": ["course record fetched"],
+                "assumptions_to_verify": [],
+            }
+        ],
+        "plan_summary": "Step 1: fetch course record.",
+        "clarification_question": None,
     },
     # 2. Step 1 step-prep.
     {
@@ -110,34 +99,21 @@ _RESPONSES = [
             "facts": {"course_id": "234218", "name": "Some Course"},
         },
     },
-    # 6. Planner invocation 2 -- one step: composition, plan complete.
+    # 6. Planner invocation 2 -- one step: composition, plan complete. Flat,
+    # same reason as invocation 1's response above.
     {
-        "status": "ok",
-        "summary": "step 1 done, compose the answer now",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.9,
-        "result": {
-            "plan_status": "complete",
-            "next_steps": [
-                {
-                    "step_id": "s2",
-                    "title": "Compose final answer",
-                    "objective": "Compose the final answer to the user.",
-                    "role": "composition",
-                    "depends_on": ["s1"],
-                    "success_criteria": ["answer composed"],
-                    "assumptions_to_verify": [],
-                    "risk_level": "low",
-                }
-            ],
-            "plan_summary": "Step 2: compose the final answer.",
-            "anticipated_followup": [],
-            "clarification_question": None,
-        },
+        "plan_status": "complete",
+        "next_steps": [
+            {
+                "step_id": "A",
+                "objective": "Compose the final answer to the user.",
+                "depends_on": ["1a"],
+                "success_criteria": ["answer composed"],
+                "assumptions_to_verify": [],
+            }
+        ],
+        "plan_summary": "Step 2: compose the final answer.",
+        "clarification_question": None,
     },
     # 7. Step 2 step-prep.
     {
@@ -154,7 +130,7 @@ _RESPONSES = [
             "description": "Compose the final answer using step 1's result.",
             "specific_instructions": [],
             "tone_language_notes": "",
-            "context_requirements": ["s1"],
+            "context_requirements": ["1a"],
             "tool_grant_override": None,
         },
     },
@@ -206,7 +182,7 @@ async def test_two_step_plan_holds_together_end_to_end(fake_llm_adapter_factory)
 
     # 1. Exactly 2 entries, correct step_id/role/certainty.basis.
     assert len(state.entries) == 2
-    assert [e.step_id for e in state.entries] == ["s1", "s2"]
+    assert [e.step_id for e in state.entries] == ["1a", "2a"]
     assert [e.role for e in state.entries] == ["retrieval", "composition"]
     assert state.entries[0].certainty.basis == "wiki_derived"
     assert state.entries[1].certainty.basis == "llm_interpretation"
@@ -220,7 +196,7 @@ async def test_two_step_plan_holds_together_end_to_end(fake_llm_adapter_factory)
 
     # 5. The final entry is the composition step, and it's what got returned.
     assert final_entry is not None
-    assert final_entry.step_id == "s2"
+    assert final_entry.step_id == "2a"
     assert final_entry.role == "composition"
     assert final_entry.data["answer_text"] == "Course 234218 is Some Course."
 

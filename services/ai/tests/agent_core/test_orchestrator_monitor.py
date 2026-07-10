@@ -10,7 +10,7 @@ from app.agent_core.planning.state import CertaintyTag, StateEntry
 
 
 def _step(**overrides) -> PlanStep:
-    defaults = dict(step_id="s1", title="t", objective="o", role="retrieval")
+    defaults = dict(step_id="s1", objective="o")
     defaults.update(overrides)
     return PlanStep(**defaults)
 

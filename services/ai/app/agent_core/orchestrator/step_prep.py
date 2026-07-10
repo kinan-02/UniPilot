@@ -56,7 +56,7 @@ async def run_step_prep(
     reasoning_input = ReasoningBlockInput(
         block_id=block_id,
         agent_name="step_prep",
-        objective=f"Decide what the step '{step.title}' needs in order to run.",
+        objective=f"Decide what the step '{step.objective}' needs in order to run.",
         task_context={
             "step": step.model_dump(),
             "available_dependency_step_ids": step.depends_on,

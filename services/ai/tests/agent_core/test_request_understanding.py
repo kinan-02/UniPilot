@@ -40,6 +40,11 @@ async def test_single_sub_ask_happy_path(fake_llm_adapter_factory):
     assert output.user_goal == "Determine remaining graduation requirements."
     assert output.decline_message is None
     assert output.schema_valid is True
+    # Regression guard: the Planner sets its own request-level timeout/
+    # max_retries (planning/planner.py) -- RU must never inherit them. RU's
+    # own call carries no override, so both must be None here.
+    assert adapter.calls[0]["timeout"] is None
+    assert adapter.calls[0]["max_retries"] is None
 
 
 async def test_multiple_sub_asks_render_into_joined_user_goal(fake_llm_adapter_factory):

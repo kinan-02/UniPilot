@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.schemas import RoleName
+from app.agent_core.planning.schemas import PlanGraph, RoleName
 
 CertaintyBasis = Literal[
     "official_record",
@@ -67,6 +67,10 @@ class PlanExecutionState(BaseModel):
 
     plan_id: str
     entries: list[StateEntry] = Field(default_factory=list)
+    # Whole-plan graph accumulated across every Planner invocation so far
+    # (docs/agent/PLANNER_OUTPUT_DESIGN.md §5) -- the single persistent
+    # accumulator each invocation's own delta `PlanGraph` merges into.
+    plan_graph: PlanGraph = Field(default_factory=PlanGraph)
 
     def append(self, entry: StateEntry) -> None:
         self.entries.append(entry)
@@ -80,6 +84,23 @@ class PlanExecutionState(BaseModel):
     def slice(self, step_ids: list[str]) -> list[StateEntry]:
         wanted = set(step_ids)
         return [entry for entry in self.entries if entry.step_id in wanted]
+
+    def merge_plan_graph(self, delta: PlanGraph) -> None:
+        """Fold one Planner invocation's own delta graph into the
+        accumulated whole-plan view. `forward` keys are always new (a step
+        id is only ever produced once), so a plain update is safe.
+        `dependents` entries can grow on *either* side -- a new step in this
+        delta may point back at an already-accumulated step, or an already-
+        accumulated key may already have entries from an earlier merge --
+        so existing lists are extended, not overwritten. `execution_layers`
+        is appended, not recomputed: a later invocation's steps can only
+        exist because an earlier invocation's relevant results already came
+        back, so cross-invocation layers are strictly sequential."""
+        self.plan_graph.forward.update(delta.forward)
+        for step_id, new_dependents in delta.dependents.items():
+            existing = self.plan_graph.dependents.setdefault(step_id, [])
+            existing.extend(dependent for dependent in new_dependents if dependent not in existing)
+        self.plan_graph.execution_layers.extend(delta.execution_layers)
 
 
 __all__ = [

@@ -70,9 +70,9 @@ async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_f
     # The rest of the chain completes exactly as already proven in
     # test_skeleton_end_to_end.py's own end-to-end test.
     assert len(state.entries) == 2
-    assert [e.step_id for e in state.entries] == ["s1", "s2"]
+    assert [e.step_id for e in state.entries] == ["1a", "2a"]
     assert final_entry is not None
-    assert final_entry.step_id == "s2"
+    assert final_entry.step_id == "2a"
     assert final_entry.data["answer_text"] == "Course 234218 is Some Course."
 
     # Every queued response was consumed in order, nothing left over.

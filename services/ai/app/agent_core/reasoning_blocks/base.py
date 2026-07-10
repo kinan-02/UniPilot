@@ -187,6 +187,8 @@ class BaseReasoningBlock(ABC):
             ),
             thinking_enabled=requested.thinking_enabled,
             reasoning_effort=requested.reasoning_effort,
+            timeout=requested.timeout,
+            max_retries=requested.max_retries,
         )
 
     async def _invoke_llm(
@@ -220,6 +222,8 @@ class BaseReasoningBlock(ABC):
                 reasoning_effort=params.reasoning_effort,
                 response_schema=response_schema,
                 raw_model_text_out=raw_text_holder,
+                timeout=params.timeout,
+                max_retries=params.max_retries,
             )
         except LLMAdapterError:
             logger.warning(
@@ -272,7 +276,14 @@ class BaseReasoningBlock(ABC):
                 output_schema=output_schema,
                 errors=errors,
             )
-            params = self._resolve_llm_call_parameters(LLMCallParameters(), contract)
+            # The repair pass's own contract (SCHEMA_REPAIR_V1) supplies its
+            # own defaults, but the ORIGINAL caller's request-level
+            # overrides (timeout, max_retries, thinking_enabled, ...) must
+            # still apply here too -- a fresh, empty LLMCallParameters()
+            # would silently drop them for every repair attempt, including
+            # a caller-set timeout that's supposed to bound every one of
+            # that caller's own calls, not just the first.
+            params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, contract)
             try:
                 call_result = await self._invoke_llm(
                     system_prompt=contract.role_prompt,

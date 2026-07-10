@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.agent_core.planning.schemas import PlanGraph
 from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
 
 
@@ -55,3 +56,34 @@ def test_slice_of_empty_list_returns_empty():
     state = PlanExecutionState(plan_id="p1")
     state.append(_entry("s1"))
     assert state.slice([]) == []
+
+
+def test_merge_plan_graph_unions_forward_edges():
+    state = PlanExecutionState(plan_id="p1")
+    state.merge_plan_graph(PlanGraph(forward={"1a": []}, dependents={"1a": []}, execution_layers=[["1a"]]))
+    state.merge_plan_graph(PlanGraph(forward={"2a": ["1a"]}, dependents={"1a": ["2a"], "2a": []}, execution_layers=[["2a"]]))
+    assert state.plan_graph.forward == {"1a": [], "2a": ["1a"]}
+
+
+def test_merge_plan_graph_grows_a_prior_steps_dependents_list():
+    """A later invocation's new step depending on an earlier invocation's
+    step must extend that earlier step's `dependents` list, not just add a
+    fresh entry under the new step's own id (PLANNER_OUTPUT_DESIGN.md §5)."""
+    state = PlanExecutionState(plan_id="p1")
+    state.merge_plan_graph(PlanGraph(forward={"1a": []}, dependents={"1a": []}, execution_layers=[["1a"]]))
+    state.merge_plan_graph(PlanGraph(forward={"2a": ["1a"]}, dependents={"1a": ["2a"], "2a": []}, execution_layers=[["2a"]]))
+    assert state.plan_graph.dependents["1a"] == ["2a"]
+
+
+def test_merge_plan_graph_does_not_duplicate_a_dependent_seen_twice():
+    state = PlanExecutionState(plan_id="p1")
+    state.merge_plan_graph(PlanGraph(forward={"1a": []}, dependents={"1a": ["1b"]}))
+    state.merge_plan_graph(PlanGraph(forward={}, dependents={"1a": ["1b"]}))
+    assert state.plan_graph.dependents["1a"] == ["1b"]
+
+
+def test_merge_plan_graph_appends_execution_layers_across_invocations():
+    state = PlanExecutionState(plan_id="p1")
+    state.merge_plan_graph(PlanGraph(execution_layers=[["1a", "1b"], ["1c"]]))
+    state.merge_plan_graph(PlanGraph(execution_layers=[["2a"]]))
+    assert state.plan_graph.execution_layers == [["1a", "1b"], ["1c"], ["2a"]]
