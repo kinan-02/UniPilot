@@ -8,9 +8,8 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.core.responses import error_response
-from app.routes.advisor import router as advisor_router
+from app.retrieval.graph_engine.graph_registry import graph_registry
 from app.routes.health import router as health_router
-from app.services.graph_registry import graph_registry
 
 
 @asynccontextmanager
@@ -34,7 +33,6 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.include_router(health_router)
-    app.include_router(advisor_router)
     return app
 
 

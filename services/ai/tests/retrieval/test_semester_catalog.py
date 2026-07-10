@@ -1,4 +1,9 @@
-"""Tests for semester catalog discovery and query resolution."""
+"""Tests for semester catalog discovery and query resolution.
+
+Migrated from `tests/test_semester_catalog.py` (Stack A, deleted) -- the
+Stack A and Stack B copies of `semester_catalog.py` were byte-identical, so
+this preserves the only direct unit coverage this module had.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from app.services.semester_catalog import (
+from app.retrieval.graph_engine.semester_catalog import (
     infer_current_semester,
     offering_keys_to_plan_semester_code,
     plan_semester_code_from_filename,
@@ -28,7 +33,7 @@ def test_resolve_semester_from_hebrew_spring_query(tmp_path: Path):
     (tmp_path / "courses_2025_201.json").write_text("[]", encoding="utf-8")
     (tmp_path / "courses_2025_202.json").write_text("[]", encoding="utf-8")
 
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     result = resolve_semester_from_query("מה לוח הזמנים בסמסטר אביב 2026?", catalogs)
@@ -43,7 +48,7 @@ def test_resolve_semester_from_hebrew_winter_query(tmp_path: Path):
     (tmp_path / "courses_2025_201.json").write_text("[]", encoding="utf-8")
     (tmp_path / "courses_2025_202.json").write_text("[]", encoding="utf-8")
 
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     result = resolve_semester_from_query("סמסטר חורף 2026", catalogs, today=date(2026, 4, 1))
@@ -57,7 +62,7 @@ def test_resolve_semester_flags_contradictory_terms(tmp_path: Path):
     (tmp_path / "courses_2025_201.json").write_text("[]", encoding="utf-8")
     (tmp_path / "courses_2025_202.json").write_text("[]", encoding="utf-8")
 
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     result = resolve_semester_from_query("Winter Spring 2026", catalogs, today=date(2026, 4, 1))
@@ -68,7 +73,7 @@ def test_resolve_semester_flags_contradictory_terms(tmp_path: Path):
 
 def test_resolve_semester_defaults_when_unspecified(tmp_path: Path):
     (tmp_path / "courses_2025_201.json").write_text("[]", encoding="utf-8")
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     result = resolve_semester_from_query("מה הסילבוס של הקורס?", catalogs, today=date(2026, 4, 1))
@@ -80,7 +85,7 @@ def test_resolve_semester_defaults_when_unspecified(tmp_path: Path):
 def test_calendar_year_mapping(tmp_path: Path):
     path = tmp_path / "courses_2025_202.json"
     path.write_text("[]", encoding="utf-8")
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     assert catalogs[0].calendar_year == 2026
@@ -97,7 +102,7 @@ def test_discover_from_manifest_without_all_files(tmp_path: Path):
     (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "courses_2025_201.json").write_text("[]", encoding="utf-8")
 
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     assert [catalog.filename for catalog in catalogs] == ["courses_2025_201.json"]
@@ -105,7 +110,7 @@ def test_discover_from_manifest_without_all_files(tmp_path: Path):
 
 def test_infer_current_semester_summer(tmp_path: Path):
     (tmp_path / "courses_2025_202.json").write_text("[]", encoding="utf-8")
-    from app.services.semester_catalog import discover_semester_catalogs
+    from app.retrieval.graph_engine.semester_catalog import discover_semester_catalogs
 
     catalogs = discover_semester_catalogs(tmp_path)
     current = infer_current_semester(catalogs, today=date(2026, 8, 1))

@@ -9,23 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.retrieval.intent_types import AgentIntent
-
 _PROFILE_CONFIG_PATH = Path(__file__).with_name("profile_config.json")
-
-# Intents where answers are universal catalog/regulation facts — student profile adds noise.
-WIKI_ONLY_INTENTS: frozenset[AgentIntent] = frozenset(
-    {
-        "program_minor_lookup",
-        "track_structure_lookup",
-        "regulation_lookup",
-        "catalog_search",
-    }
-)
-
-
-def intent_omits_student_profile(intent: AgentIntent) -> bool:
-    return intent in WIKI_ONLY_INTENTS
 
 
 class RerankBoosts(BaseModel):
@@ -125,43 +109,6 @@ def get_profile(name: str) -> RetrievalProfile:
 
 def get_rerank_boosts() -> RerankBoosts:
     return load_profile_config().rerankBoosts
-
-
-def select_profiles_for_intent(
-    intent: AgentIntent,
-    *,
-    entities: dict[str, Any] | None = None,
-) -> list[RetrievalProfile]:
-    """Return ordered retrieval profiles for an intent (spec §7)."""
-    config = load_profile_config()
-    names = list(config.intentMapping.get(intent) or [])
-    if not names:
-        names = ["fallback_academic_search"]
-
-    entities = entities or {}
-    if intent == "course_question" and entities.get("courseNumber"):
-        if "course_exact_lookup" not in names:
-            names.insert(0, "course_exact_lookup")
-    if intent == "catalog_search" and not entities.get("courseNumber"):
-        names = ["course_semantic_search"]
-
-    profiles: list[RetrievalProfile] = []
-    seen: set[str] = set()
-    for name in names:
-        if name in seen:
-            continue
-        seen.add(name)
-        profiles.append(get_profile(name))
-    return profiles
-
-
-def primary_profile_for_intent(
-    intent: AgentIntent,
-    *,
-    entities: dict[str, Any] | None = None,
-) -> RetrievalProfile:
-    profiles = select_profiles_for_intent(intent, entities=entities)
-    return profiles[0] if profiles else get_profile("fallback_academic_search")
 
 
 def profile_allows_wiki(profile: RetrievalProfile) -> bool:

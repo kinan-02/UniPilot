@@ -1,4 +1,9 @@
-"""FastAPI route tests for the AI service."""
+"""FastAPI route tests for the AI service.
+
+`/retrieve`, `/advise`, `/infer` were removed with the retired advisor HTTP
+surface (see docs/agent/TOOL_PRIMITIVES_PROGRESS.md) -- `agent_core` will get
+its own routes once it's wired up to replace it.
+"""
 
 from __future__ import annotations
 
@@ -16,21 +21,3 @@ def test_health_returns_service_payload():
     assert body["service"] == "ai"
     assert body["status"] == "ok"
     assert "academic_graph" in body
-
-
-def test_retrieve_requires_intent():
-    response = client.post("/retrieve", json={})
-    assert response.status_code == 400
-    assert response.json()["success"] is False
-
-
-def test_advise_requires_question():
-    response = client.post("/advise", json={})
-    assert response.status_code == 400
-    assert response.json()["success"] is False
-
-
-def test_infer_returns_202_stub():
-    response = client.post("/infer", json={})
-    assert response.status_code == 202
-    assert response.json()["status"] == "queued"

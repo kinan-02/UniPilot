@@ -97,3 +97,14 @@ class GraphRegistry:
 
 
 graph_registry = GraphRegistry()
+
+
+def warmup_graph_engine(*, settings: Settings | None = None) -> dict[str, Any]:
+    """Pre-load the wiki + semester JSON graph (e.g. for eval runs / startup
+    warmup) -- moved here from the retired intent-driven `graph_retriever.py`,
+    unchanged, since it never touched anything intent-shaped itself.
+    """
+    cfg = settings or get_settings()
+    if not cfg.is_graph_configured():
+        return {"configured": False}
+    return graph_registry.refresh_stats(cfg)

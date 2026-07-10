@@ -20,13 +20,32 @@ _ALL_TOOL_NAMES = {
     "propose_action",
 }
 
+# All 10 registry entries now have real implementations -- see
+# tests/agent_core/tools/test_*.py (one file per primitive). Nothing left
+# in _STUB_TOOL_NAMES; kept as an empty set (not deleted) so
+# test_every_stub_returns_not_implemented still runs -- with zero cases --
+# rather than needing to be resurrected by hand the next time a primitive
+# is retired back to stub status.
+_STUB_TOOL_NAMES: set[str] = _ALL_TOOL_NAMES - {
+    "get_entity",
+    "traverse_relationship",
+    "search_knowledge",
+    "mutate_state",
+    "apply_deterministic_rule",
+    "extract_temporal_pattern",
+    "search_over_state",
+    "interpret_text",
+    "compose_answer",
+    "propose_action",
+}
+
 
 def test_default_registry_has_all_ten_primitives():
     registry = build_default_tool_registry()
     assert set(registry.names()) == _ALL_TOOL_NAMES
 
 
-@pytest.mark.parametrize("tool_name", sorted(_ALL_TOOL_NAMES))
+@pytest.mark.parametrize("tool_name", sorted(_STUB_TOOL_NAMES))
 async def test_every_stub_returns_not_implemented(tool_name):
     registry = build_default_tool_registry()
     descriptor = registry.get(tool_name)

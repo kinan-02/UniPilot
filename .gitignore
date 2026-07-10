@@ -1,4 +1,5 @@
 .env
+.claude
 **/.env
 .DS_Store
 node_modules/
@@ -91,3 +92,6 @@ services/agent/data/cache/wiki_embedding_index.json
 services/agent/data/cache/wiki_embedding_index.compact.pkl.gz
 services/agent/data/cache/wiki_embedding_index.meta.json
 services/agent/data/cache/backups/
+.mcp.json
+CLAUDE.md
+.claude-flow

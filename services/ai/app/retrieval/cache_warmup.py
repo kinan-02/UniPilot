@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.config import Settings, get_settings
-from app.retrieval.graph_retriever import warmup_graph_engine
+from app.retrieval.graph_engine.graph_registry import warmup_graph_engine
 from app.retrieval.profiles import load_profile_config
 from app.retrieval.wiki_paths import resolve_wiki_root
 

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from app.services.graph_registry import graph_registry
+from app.retrieval.graph_engine.graph_registry import graph_registry
 
 router = APIRouter(tags=["health"])
 

@@ -1,31 +1,104 @@
 """`search_knowledge` -- semantic resolution over the wiki (docs/agent/AGENT_VISION.md §5, primitive 2).
 
-The eventual real implementation calls into the already-ported
-`app.retrieval.graph_retriever`/`hybrid_wiki_retriever` -- deliberately not
-wired yet, per this pass's scope (stub interfaces only).
+Thin wrapper over
+`app.retrieval.graph_engine.academic_graph_engine.AcademicGraphEngine.search_wiki`
+(BM25 + optional embeddings, via `app.retrieval.graph_engine.graph_registry`)
+-- the same engine `get_entity`/`traverse_relationship` already use.
+`app.retrieval.graph_retriever`/`hybrid_wiki_retriever` (the old
+intent-driven wrapper and the legacy pre-graph retriever) have since been
+retired entirely -- see docs/agent/TOOL_PRIMITIVES_PROGRESS.md.
+
+Unlike `get_entity`/`traverse_relationship`, a search returning zero matches
+is a legitimate outcome, not a failure -- `ok=True` with an empty `matches`
+list, never `ok=False`, since "nothing matched" is an accurate answer, not an
+error (`error` stays reserved for genuine `ok=False` failure paths).
+`certainty.confidence` is derived from the top hit's own relevance score via
+`min(1.0, score / 10.0)` -- the same BM25-score-to-confidence heuristic the
+now-retired `graph_retriever.py` used for `wiki_search` blocks, reused here
+rather than invented fresh.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Any
 
-from app.agent_core.tools.envelope import ToolOutputEnvelope, not_implemented_envelope
+from pydantic import BaseModel, Field
+
+from app.agent_core.planning.state import CertaintyTag, SourceRef
+from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor
+from app.retrieval.graph_engine.graph_registry import graph_registry
 
 TOOL_NAME = "search_knowledge"
+
+_DEFAULT_LIMIT = 5
+_MAX_LIMIT = 20
 
 
 class SearchKnowledgeInput(BaseModel):
     query: str
+    limit: int = Field(default=_DEFAULT_LIMIT, ge=1)
+
+
+def _confidence_from_score(score: float) -> float:
+    return max(0.0, min(1.0, score / 10.0))
 
 
 async def run_search_knowledge(payload: SearchKnowledgeInput) -> ToolOutputEnvelope:
-    return not_implemented_envelope(TOOL_NAME)
+    query = (payload.query or "").strip()
+    if not query:
+        return ToolOutputEnvelope(ok=False, data=None, error="query_required")
+
+    limit = max(1, min(payload.limit, _MAX_LIMIT))
+
+    try:
+        if not graph_registry.is_configured():
+            return ToolOutputEnvelope(ok=False, data=None, error="academic_graph_not_configured")
+        engine = graph_registry.get_engine()
+    except Exception as exc:  # noqa: BLE001 -- a tool must fail closed, never raise
+        return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
+
+    try:
+        hits = engine.search_wiki(query, limit=limit)
+    except Exception as exc:  # noqa: BLE001 -- a tool must fail closed, never raise
+        return ToolOutputEnvelope(ok=False, data=None, error=f"search_failed: {exc}")
+
+    matches: list[dict[str, Any]] = [
+        {
+            "slug": hit.get("slug"),
+            "title": hit.get("title"),
+            "titleHe": hit.get("title_he"),
+            "kind": hit.get("kind"),
+            "sectionTitle": hit.get("sectionTitle"),
+            "content": hit.get("content"),
+            "score": hit.get("score"),
+        }
+        for hit in hits
+    ]
+
+    top_score = float(matches[0]["score"] or 0.0) if matches else 0.0
+    source_ref = SourceRef(page=str(matches[0]["slug"])) if matches and matches[0].get("slug") else None
+
+    # `ok=True` even with zero matches -- "nothing matched" is an accurate,
+    # successful search result, not an error; `error` stays reserved for
+    # `ok=False` paths, consistent with every other primitive's envelope
+    # contract. Callers detect "no matches" from an empty `data["matches"]`.
+    return ToolOutputEnvelope(
+        ok=True,
+        data={"query": query, "matches": matches},
+        certainty=CertaintyTag(
+            basis="wiki_derived",
+            confidence=_confidence_from_score(top_score),
+            source_ref=source_ref,
+        ),
+    )
 
 
 DESCRIPTOR = ToolDescriptor(
     name=TOOL_NAME,
-    description="Semantic resolution over the wiki when the exact entity isn't already named.",
+    description="Semantic resolution over the wiki when the exact entity isn't already named. "
+    "Returns ranked wiki chunks (slug, title, section, content, score) via BM25 + optional "
+    "embeddings. An empty result set is a legitimate outcome, not a failure.",
     input_model=SearchKnowledgeInput,
     output_model=ToolOutputEnvelope,
     side_effect="read",
