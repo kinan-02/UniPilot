@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     openai_chat_model: str = "gpt-5-mini"
     advisor_max_retrieval_iterations: int = 5
+    # Ceiling on real LLM calls per turn (BudgetedLLMAdapter) -- see
+    # app/agent_core/reasoning/reasoning_budget.py for why this exists.
+    agent_reasoning_call_budget_per_turn: int = 80
 
     # -- Retrieval port (services/agent/app/retrieval) additions below --
 

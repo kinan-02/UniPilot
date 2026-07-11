@@ -22,10 +22,12 @@ from fastapi import APIRouter, Depends
 from app.agent_core.orchestrator.state_index import certainty_band
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter
+from app.agent_core.reasoning.reasoning_budget import BudgetedLLMAdapter
 from app.agent_core.request_understanding.schemas import RequestUnderstandingReasoningBlockOutput
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.turn import run_agent_turn
+from app.config import get_settings
 from app.core.responses import success_response
 from app.dependencies.internal_auth import require_internal_service_token
 from app.schemas.advise import AdviseRequest
@@ -118,10 +120,13 @@ def _build_advise_response(
 @router.post("/advise")
 async def advise_route(payload: AdviseRequest) -> dict[str, Any]:
     plan_id = str(uuid4())
+    llm_adapter = BudgetedLLMAdapter(
+        ChatLLMAdapter(), max_calls=get_settings().agent_reasoning_call_budget_per_turn
+    )
     understanding, state, final_entry, clarification_question = await run_agent_turn(
         original_user_message=payload.question,
         user_id=payload.user_id,
-        llm_adapter=ChatLLMAdapter(),
+        llm_adapter=llm_adapter,
         role_roster=build_default_role_roster(),
         tool_registry=build_default_tool_registry(),
         plan_id=plan_id,
