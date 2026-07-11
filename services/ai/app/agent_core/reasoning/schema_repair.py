@@ -50,6 +50,7 @@ async def run_schema_repair_loop(
     initial_errors: list[str],
     max_attempts: int,
     temperature: float | None = None,
+    timeout: float | None = None,
 ) -> SchemaRepairOutcome:
     """Repeatedly ask the repair prompt to fix `initial_result` until valid or exhausted."""
     current_result = initial_result
@@ -72,6 +73,7 @@ async def run_schema_repair_loop(
                 user_prompt=user_prompt,
                 temperature=temperature if temperature is not None else contract.default_temperature,
                 response_schema=output_schema,
+                timeout=timeout,
             )
         except LLMAdapterError as exc:
             logger.warning("reasoning_schema_repair_llm_failed", extra={"attempt": attempt})

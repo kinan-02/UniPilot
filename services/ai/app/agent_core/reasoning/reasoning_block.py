@@ -441,6 +441,7 @@ class ReasoningBlock:
                         else None
                     ),
                     raw_model_text_out=raw_text_holder,
+                    timeout=input.timeout,
                 )
             except LLMAdapterError as exc:
                 reason = str(exc)
@@ -559,6 +560,7 @@ class ReasoningBlock:
             output_schema=input.output_schema,
             initial_errors=validation.errors,
             max_attempts=input.max_schema_repair_attempts,
+            timeout=input.timeout,
         )
         if repair_outcome.valid:
             return candidate.model_copy(

@@ -51,6 +51,7 @@ def build_reasoning_block_input(
         min_reasoning_iterations=params.min_iterations,
         max_reasoning_iterations=params.max_iterations,
         temperature=params.temperature,
+        timeout=params.timeout,
         prompt_contract_name=role.prompt_contract_name,
     )
 

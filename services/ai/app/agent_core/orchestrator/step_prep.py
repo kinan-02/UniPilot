@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 
 STEP_PREP_OUTPUT_SCHEMA_NAME = "step_prep_output_v1"
 
+# Same rationale as the classifier's/success-check's own 15s ceiling
+# (task_handler_classifier.py, task_handler_success_check.py): a single,
+# cheap, single-shot decision should never be allowed to fall through to the
+# LLM adapter's own much larger default timeout.
+_TIMEOUT_SECONDS = 20.0
+
 STEP_PREP_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -81,6 +87,7 @@ async def run_step_prep(
         min_reasoning_iterations=1,
         max_reasoning_iterations=1,
         temperature=0.0,
+        timeout=_TIMEOUT_SECONDS,
     )
 
     try:

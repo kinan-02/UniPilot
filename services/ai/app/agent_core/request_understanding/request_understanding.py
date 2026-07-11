@@ -17,7 +17,7 @@ from typing import Any
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
-from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput
+from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, LLMCallParameters
 from app.agent_core.request_understanding.schemas import (
     ConversationTurn,
     RequestUnderstandingReasoningBlockInput,
@@ -54,6 +54,10 @@ REQUEST_UNDERSTANDING_OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 _MAX_SCHEMA_REPAIR_ATTEMPTS = 2
+# Same rationale as the classifier's/success-check's own timeout: a single,
+# single-shot decision should never fall through to the LLM adapter's own
+# much larger default timeout (the gap behind a real 8+ minute live hang).
+_TIMEOUT_SECONDS = 30.0
 
 
 def _request_understanding_contract() -> PromptContract:
@@ -341,6 +345,7 @@ async def understand_request(
         output_schema_name=REQUEST_UNDERSTANDING_OUTPUT_SCHEMA_NAME,
         output_schema=REQUEST_UNDERSTANDING_OUTPUT_SCHEMA,
         prompt_contract_name=REQUEST_UNDERSTANDING_V1,
+        llm_call_parameters=LLMCallParameters(timeout=_TIMEOUT_SECONDS),
     )
     return await block.run(block_input)
 

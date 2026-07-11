@@ -54,6 +54,12 @@ class ReasoningBlockInput(BaseModel):
     max_reasoning_iterations: int | None = None
     max_schema_repair_attempts: int = 2
     temperature: float | None = None
+    # Per-call ceiling passed straight through to `LLMAdapter.complete_json`.
+    # Without this, every pass (and every schema-repair attempt) fell through
+    # to the underlying OpenAI SDK's own 600s default -- a real live smoke
+    # test found a turn hang for 8+ minutes with no ceiling in effect at all,
+    # traced back to this field not existing on this input at the time.
+    timeout: float | None = None
     # Which `PromptRegistry` contract to use for the reasoning-pass system prompt.
     # Defaults to the generic Phase 1 contract when omitted, so Phase 1 callers
     # (and tests) are unaffected. Phase 2+ role-specific callers set this to

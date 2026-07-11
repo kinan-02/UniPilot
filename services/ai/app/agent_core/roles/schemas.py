@@ -16,6 +16,12 @@ class RoleReasoningDefaults(BaseModel):
     max_iterations: int
     temperature: float
     model_name: str | None = None  # None = service default model
+    # Per-call ceiling for this role's own reasoning-block calls (threaded
+    # into `ReasoningBlockInput.timeout` by `subagents/builder.py`). Without
+    # this, every specialist-role call fell through to the LLM adapter's own
+    # much larger default timeout -- the same gap that caused a real 8+
+    # minute live turn hang before any of these roles had one set.
+    timeout: float | None = None
 
 
 class RoleDefinition(BaseModel):
