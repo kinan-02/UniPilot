@@ -39,6 +39,8 @@ class _FakeLLMAdapter:
         reasoning_effort: str | None = None,
         response_schema: dict[str, Any] | None = None,
         raw_model_text_out: list[str] | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> dict[str, Any]:
         self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt})
         if not self._responses:
