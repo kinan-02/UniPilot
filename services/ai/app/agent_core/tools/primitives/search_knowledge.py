@@ -69,6 +69,13 @@ async def run_search_knowledge(payload: SearchKnowledgeInput) -> ToolOutputEnvel
             "title": hit.get("title"),
             "titleHe": hit.get("title_he"),
             "kind": hit.get("kind"),
+            # A structured course-code field for course-classified hits,
+            # sourced from the engine's own slug->code map -- turns the
+            # previously-implicit "course slugs lead with their 8-digit
+            # code" convention into an explicit, tested contract, rather
+            # than requiring callers to parse it out of the slug string
+            # themselves (docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #3).
+            "courseCode": engine.slug_to_course_code.get(hit.get("slug", "")) if hit.get("kind") == "course" else None,
             "sectionTitle": hit.get("sectionTitle"),
             "content": hit.get("content"),
             "score": hit.get("score"),
@@ -98,7 +105,8 @@ DESCRIPTOR = ToolDescriptor(
     name=TOOL_NAME,
     description="Semantic resolution over the wiki when the exact entity isn't already named. "
     "Returns ranked wiki chunks (slug, title, section, content, score) via BM25 + optional "
-    "embeddings. An empty result set is a legitimate outcome, not a failure.",
+    "embeddings, plus a structured courseCode when a hit is a course page. An empty result "
+    "set is a legitimate outcome, not a failure.",
     input_model=SearchKnowledgeInput,
     output_model=ToolOutputEnvelope,
     side_effect="read",

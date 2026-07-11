@@ -74,7 +74,7 @@ async def test_search_returns_ranked_matches(use_real_academic_engine):
     assert matches
     assert any(match["slug"] == "student-rights" for match in matches)
     for match in matches:
-        assert set(match.keys()) == {"slug", "title", "titleHe", "kind", "sectionTitle", "content", "score"}
+        assert set(match.keys()) == {"slug", "title", "titleHe", "kind", "courseCode", "sectionTitle", "content", "score"}
     assert result.certainty.basis == "wiki_derived"
     assert 0.0 <= result.certainty.confidence <= 1.0
     assert result.certainty.source_ref is not None
@@ -97,6 +97,43 @@ async def test_limit_is_respected(use_real_academic_engine):
     result = await run_search_knowledge(SearchKnowledgeInput(query="course prerequisites credits", limit=2))
     assert result.ok is True
     assert len(result.data["matches"]) <= 2
+
+
+async def test_non_course_kind_hit_has_none_course_code(use_real_academic_engine):
+    result = await run_search_knowledge(SearchKnowledgeInput(query="student rights ombudsman"))
+    match = next(m for m in result.data["matches"] if m["slug"] == "student-rights")
+    assert match["kind"] != "course"
+    assert match["courseCode"] is None
+
+
+async def test_course_kind_hit_resolves_course_code_from_the_real_engine_map(use_real_academic_engine, monkeypatch):
+    """00440148's wiki page (slug `00440148-waves-distributed-systems`) is the
+    same real, verified course fixture `test_get_entity.py` uses -- proves
+    `courseCode` resolves via the real engine's `slug_to_course_code` map,
+    not a canned/fabricated value."""
+    real_search_wiki = use_real_academic_engine.search_wiki
+
+    def _inject_course_hit(query, **kwargs):
+        hits = real_search_wiki(query, **kwargs)
+        hits.insert(
+            0,
+            {
+                "slug": "00440148-waves-distributed-systems",
+                "title": "Waves and Distributed Systems",
+                "title_he": None,
+                "kind": "course",
+                "sectionTitle": None,
+                "content": "...",
+                "score": 5.0,
+            },
+        )
+        return hits
+
+    monkeypatch.setattr(use_real_academic_engine, "search_wiki", _inject_course_hit)
+
+    result = await run_search_knowledge(SearchKnowledgeInput(query="student rights"))
+    course_match = next(m for m in result.data["matches"] if m["slug"] == "00440148-waves-distributed-systems")
+    assert course_match["courseCode"] == "00440148"
 
 
 async def test_limit_is_clamped_to_hard_ceiling(use_real_academic_engine, monkeypatch):
