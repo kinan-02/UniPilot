@@ -14,17 +14,26 @@ from app.repositories import catalog_repository
 async def validate_degree_id_for_profile(
     database: AsyncIOMotorDatabase,
     degree_id: str | None,
-) -> None:
+) -> str | None:
+    """Validates `degree_id` against the catalog, and returns the resolved
+    wiki slug for it (the same identifier `services/ai`'s
+    `get_entity(entity_type="program"/"track"/"minor", ...)` expects), or
+    `None` when no degree is selected. Degree-program documents already
+    carry this slug under `metadata.wikiPage`; path-option documents
+    (minors, special/graduate programs) carry it as a top-level `wikiSlug`
+    -- both are already fetched here to validate `degree_id`, so this
+    returns what was already looked up rather than discarding it
+    (docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #2)."""
     if degree_id is None:
-        return
+        return None
 
     program = await catalog_repository.find_degree_program_by_id(database, degree_id)
     if program:
-        return
+        return program.get("metadata", {}).get("wikiPage")
 
     path_option = await catalog_repository.find_path_option_by_id(database, degree_id)
     if path_option and path_option.get("selectableAsPrimary"):
-        return
+        return path_option.get("wikiSlug")
 
     raise HTTPException(
         status_code=400,

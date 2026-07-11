@@ -29,7 +29,9 @@ async def ensure_student_profile_indexes(database: AsyncIOMotorDatabase) -> None
     )
 
 
-def build_profile_document(user_id: str, profile_data: dict[str, Any]) -> dict[str, Any]:
+def build_profile_document(
+    user_id: str, profile_data: dict[str, Any], program_slug: str | None = None
+) -> dict[str, Any]:
     parsed_user_id = parse_object_id(user_id)
     if parsed_user_id is None:
         raise ValueError("Invalid user id for student profile")
@@ -43,6 +45,11 @@ def build_profile_document(user_id: str, profile_data: dict[str, Any]) -> dict[s
         "facultyId": profile_data.get("facultyId"),
         "programType": profile_data["programType"],
         "degreeId": parse_object_id(degree_id) if degree_id else None,
+        # The wiki slug for `degreeId`, resolved server-side at creation time
+        # (never client-supplied) -- see validate_degree_id_for_profile,
+        # which already looks this up while validating degreeId
+        # (docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #2).
+        "programSlug": program_slug,
         "catalogYear": profile_data["catalogYear"],
         "currentSemesterCode": profile_data["currentSemesterCode"],
         "academicPath": profile_data.get("academicPath") or {},
@@ -57,8 +64,9 @@ async def create_student_profile(
     database: AsyncIOMotorDatabase,
     user_id: str,
     profile_data: dict[str, Any],
+    program_slug: str | None = None,
 ) -> dict[str, Any]:
-    profile_document = build_profile_document(user_id, profile_data)
+    profile_document = build_profile_document(user_id, profile_data, program_slug)
     insert_result = await database[STUDENT_PROFILES_COLLECTION].insert_one(profile_document)
     return {
         "_id": insert_result.inserted_id,
@@ -81,6 +89,7 @@ async def update_student_profile_by_user_id(
     database: AsyncIOMotorDatabase,
     user_id: str,
     updates: dict[str, Any],
+    program_slug: str | None = None,
 ) -> dict[str, Any] | None:
     parsed_user_id = parse_object_id(user_id)
     if parsed_user_id is None:
@@ -99,6 +108,11 @@ async def update_student_profile_by_user_id(
     if "degreeId" in updates:
         degree_id = updates["degreeId"]
         update_document["degreeId"] = parse_object_id(degree_id) if degree_id else None
+        # Recompute alongside degreeId, never independently -- the caller
+        # (routes/student_profile.py) only resolves a new program_slug when
+        # degreeId is actually part of this update, so it's never stale
+        # relative to whatever degreeId this same call is setting.
+        update_document["programSlug"] = program_slug
     if "catalogYear" in updates:
         update_document["catalogYear"] = updates["catalogYear"]
     if "currentSemesterCode" in updates:
@@ -153,6 +167,7 @@ def to_public_student_profile(profile_document: dict[str, Any] | None) -> dict[s
         "facultyId": profile_document.get("facultyId"),
         "programType": profile_document["programType"],
         "degreeId": str(degree_id) if degree_id else None,
+        "programSlug": profile_document.get("programSlug"),
         "catalogYear": profile_document["catalogYear"],
         "currentSemesterCode": profile_document["currentSemesterCode"],
         "academicPath": profile_document.get("academicPath") or {},

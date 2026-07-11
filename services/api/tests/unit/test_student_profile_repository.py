@@ -73,6 +73,16 @@ def test_build_profile_document_handles_no_degree_id():
     assert doc["degreeId"] is None
 
 
+def test_build_profile_document_defaults_program_slug_to_none():
+    doc = build_profile_document(VALID_USER_ID, VALID_PROFILE_DATA)
+    assert doc["programSlug"] is None
+
+
+def test_build_profile_document_stores_program_slug_when_provided():
+    doc = build_profile_document(VALID_USER_ID, VALID_PROFILE_DATA, program_slug="program-alonim")
+    assert doc["programSlug"] == "program-alonim"
+
+
 def test_build_profile_document_raises_on_invalid_user_id():
     with pytest.raises(ValueError, match="Invalid user id"):
         build_profile_document("bad-id", VALID_PROFILE_DATA)
@@ -119,6 +129,26 @@ def test_to_public_student_profile_extracts_fields():
     assert result["degreeId"] is None
     assert result["revision"] == 1
     assert result["createdAt"] == "2025-01-01T00:00:00Z"
+
+
+def test_to_public_student_profile_exposes_program_slug():
+    doc = {
+        "_id": ObjectId(),
+        "userId": ObjectId(VALID_USER_ID),
+        "institutionId": "technion",
+        "programType": "BSc",
+        "degreeId": None,
+        "programSlug": "program-alonim",
+        "catalogYear": 2024,
+        "currentSemesterCode": "2024-2",
+        "preferences": {},
+        "revision": 1,
+        "createdAt": datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "updatedAt": datetime(2025, 1, 2, tzinfo=timezone.utc),
+    }
+    result = to_public_student_profile(doc)
+    assert result is not None
+    assert result["programSlug"] == "program-alonim"
 
 
 def test_to_public_student_profile_stringifies_degree_id():
@@ -192,6 +222,39 @@ async def test_update_student_profile_updates_degree_id(mongo_database):
     )
     assert result is not None
     assert result["degreeId"] == ObjectId(degree_id)
+
+
+@pytest.mark.asyncio
+async def test_create_student_profile_stores_program_slug(mongo_database):
+    result = await create_student_profile(
+        mongo_database, VALID_USER_ID, VALID_PROFILE_DATA, program_slug="program-alonim"
+    )
+    assert result["programSlug"] == "program-alonim"
+
+
+@pytest.mark.asyncio
+async def test_update_student_profile_sets_program_slug_alongside_degree_id(mongo_database):
+    await create_student_profile(mongo_database, VALID_USER_ID, VALID_PROFILE_DATA)
+    degree_id = str(ObjectId())
+    result = await update_student_profile_by_user_id(
+        mongo_database, VALID_USER_ID, {"degreeId": degree_id}, program_slug="program-avivim"
+    )
+    assert result is not None
+    assert result["programSlug"] == "program-avivim"
+
+
+@pytest.mark.asyncio
+async def test_update_student_profile_preserves_program_slug_on_unrelated_update(mongo_database):
+    """An unrelated field update (no degreeId in this call) must never
+    overwrite the existing, still-accurate programSlug."""
+    await create_student_profile(
+        mongo_database, VALID_USER_ID, VALID_PROFILE_DATA, program_slug="program-alonim"
+    )
+    result = await update_student_profile_by_user_id(
+        mongo_database, VALID_USER_ID, {"catalogYear": 2025}
+    )
+    assert result is not None
+    assert result["programSlug"] == "program-alonim"
 
 
 @pytest.mark.asyncio

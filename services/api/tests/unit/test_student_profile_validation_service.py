@@ -21,8 +21,21 @@ async def test_validate_degree_id_allows_existing_degree_program(mongo_database)
 
 
 @pytest.mark.asyncio
+async def test_validate_degree_id_returns_the_wiki_page_slug_for_a_degree_program(mongo_database):
+    """docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #2 -- degree-program documents
+    carry their wiki slug under metadata.wikiPage; the seeded fixture's real
+    value is "track-data-information-engineering"."""
+    from tests.fixtures.graduation_progress_fixtures import seed_graduation_progress_fixtures
+
+    fixtures = await seed_graduation_progress_fixtures(mongo_database)
+    resolved_slug = await validate_degree_id_for_profile(mongo_database, fixtures["programId"])
+    assert resolved_slug == "track-data-information-engineering"
+
+
+@pytest.mark.asyncio
 async def test_validate_degree_id_allows_none(mongo_database):
-    await validate_degree_id_for_profile(mongo_database, None)
+    result = await validate_degree_id_for_profile(mongo_database, None)
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -35,6 +48,22 @@ async def test_validate_degree_id_allows_primary_path_option(mongo_database):
     )
     assert graduate is not None
     await validate_degree_id_for_profile(mongo_database, str(graduate["_id"]))
+
+
+@pytest.mark.asyncio
+async def test_validate_degree_id_returns_the_wiki_slug_for_a_path_option(mongo_database):
+    """A path-option document (minor, special/graduate program) carries its
+    wiki slug as a top-level wikiSlug field -- the seeded fixture's real
+    value is "grad-data-science"."""
+    from tests.fixtures.catalog_production_fixtures import seed_catalog_production_fixtures
+
+    await seed_catalog_production_fixtures(mongo_database)
+    graduate = await mongo_database[get_settings().catalog_path_options_collection].find_one(
+        {"kind": "graduate_program", "selectableAsPrimary": True}
+    )
+    assert graduate is not None
+    resolved_slug = await validate_degree_id_for_profile(mongo_database, str(graduate["_id"]))
+    assert resolved_slug == "grad-data-science"
 
 
 @pytest.mark.asyncio

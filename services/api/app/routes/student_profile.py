@@ -84,7 +84,7 @@ async def create_profile(
             detail="Student profile already exists for this user",
         )
 
-    await validate_degree_id_for_profile(database, payload.degreeId)
+    program_slug = await validate_degree_id_for_profile(database, payload.degreeId)
     if payload.academicPath is not None:
         await validate_academic_path_for_profile(
             database,
@@ -97,6 +97,7 @@ async def create_profile(
             database,
             auth.user_id,
             profile_payload_from_create_request(payload),
+            program_slug=program_slug,
         )
     except DuplicateKeyError:
         raise HTTPException(
@@ -132,8 +133,12 @@ async def update_profile(
     degree_id = payload.degreeId if payload.degreeId is not None else (
         str(existing_profile["degreeId"]) if existing_profile.get("degreeId") else None
     )
+    # Only recomputed when degreeId is actually part of THIS update -- an
+    # unrelated field update (e.g. catalogYear) must never overwrite the
+    # existing, still-accurate programSlug.
+    program_slug: str | None = None
     if payload.degreeId is not None:
-        await validate_degree_id_for_profile(database, payload.degreeId)
+        program_slug = await validate_degree_id_for_profile(database, payload.degreeId)
     if payload.academicPath is not None:
         await validate_academic_path_for_profile(
             database,
@@ -145,6 +150,7 @@ async def update_profile(
         database,
         auth.user_id,
         profile_payload_from_update_request(payload),
+        program_slug=program_slug,
     )
 
     if not updated_profile:

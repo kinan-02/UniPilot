@@ -193,7 +193,11 @@ async def test_create_profile_accepts_valid_degree_id(auth_client, mongo_databas
     )
 
     assert response.status_code == 201
-    assert response.json()["data"]["profile"]["degreeId"] == fixtures["programId"]
+    profile = response.json()["data"]["profile"]
+    assert profile["degreeId"] == fixtures["programId"]
+    # docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #2 -- server-resolved from the
+    # degree program's own metadata.wikiPage, never client-supplied.
+    assert profile["programSlug"] == "track-data-information-engineering"
 
 
 @pytest.mark.asyncio
