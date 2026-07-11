@@ -1,0 +1,34 @@
+---
+title: "02080174 — Project in design urban (פרויקט בסטודיו עיצוב עירוני*)"
+title_he: פרויקט בסטודיו עיצוב עירוני*
+aliases: [פרויקט בסטודיו עיצוב עירוני*, Project in design urban, 02080174]
+type: entity
+tags: [course, faculty-architecture-town-planning]
+faculty: faculty-architecture-town-planning
+course_code: "02080174"
+credits: "0.0"
+level: graduate
+sources: 1
+created: 2026-06-24
+updated: 2026-06-24
+---
+
+# 02080174 — Project in design urban
+
+**Hebrew name:** פרויקט בסטודיו עיצוב עירוני*
+**Credits:** 0.0 נ"ז
+**Faculty:** [[faculty-architecture-town-planning]]
+
+## Description
+
+_No description available in catalog source._
+
+## פרטי הקורס בעברית
+
+**שם:** פרויקט בסטודיו עיצוב עירוני*
+**נקודות זכות:** 0.0 נ"ז
+**פקולטה:** [[faculty-architecture-town-planning]]
+
+## Sources
+
+- [[technion-architecture-catalog-2025-2026]]

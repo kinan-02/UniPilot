@@ -1,0 +1,385 @@
+---
+title: Civil Engineering (Water or Transportation Specialization) Track — Civil & Environmental Engineering
+title_he: מסלול הנדסה אזרחית – הנדסת מים או הנדסת תחבורה
+aliases: [הנדסה אזרחית, מסלול הנדסת מים, מסלול הנדסת תחבורה, Civil Engineering Track]
+type: entity
+tags: [track, bsc, faculty-civil-environmental-engineering]
+faculty: faculty-civil-environmental-engineering
+sources: 1
+created: 2026-06-21
+updated: 2026-06-21
+---
+
+# Civil Engineering (Water or Transportation Specialization) Track
+
+- **Faculty:** [[faculty-civil-environmental-engineering]]
+- **Degree:** B.Sc. (מוסמך למדעים בהנדסה אזרחית)
+- **Program Code:** 001201-1-000
+- **Total Credits:** 157.5 נ"ז
+- **Duration:** 4 years (8 semesters)
+
+## Credit Breakdown
+
+| Category | Credits |
+|---|---|
+| Mandatory courses (מקצועות חובה) | 106.0 |
+| Specialization electives (מקצועות בחירה בהתמחות) | 34.5 |
+| Specialization project (פרויקטים בתחום ההתמחות) | 5.0 |
+| General Technion electives (מקצועות בחירה כלל-טכניוניים) | 12.0 |
+
+General electives include: 6 nq enrichment courses, 4 nq free electives, 2 nq physical education.
+
+## Semester-by-Semester Course Table (Mandatory Courses)
+
+### Semester 1
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140102-intro-engineering-mechanics|00140102]] | מבוא למכניקה הנדסית | 4.5 |
+| [[01040042-calculus-1m2|01040042]] | חדו"א 1מ2 | 5.0 |
+| [[01040019-linear-algebra-m|01040019]] | אלגברה ליניארית מ' | 4.5 |
+| [[01140051-physics-1|01140051]] | פיזיקה 1 | 2.5 |
+| [[01250001-general-chemistry|01250001]] | כימיה כללית | 3.0 |
+| [[03940800-physical-education|03940800]] | חינוך גופני | 1.0 |
+| **Semester total** | | **20.5** |
+
+> Note: Students without "physics 1 prerequisites" may take פיזיקה 1ל (1140077) instead of פיזיקה 1, and may defer מבוא למכניקה הנדסית to Semester 2.
+
+### Semester 2
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140008-engineering-graphical-information|00140008]] | מידע גרפי הנדסי | 3.0 |
+| [[00140104-strength-of-materials-1|00140104]] | תורת החוזק 1 | 4.0 |
+| [[01040044-calculus-2m2|01040044]] | חדו"א 2מ2 | 5.0 |
+| [[01040131-ordinary-differential-equations|01040131]] | משוואות דיפ' רגילות/ח' | 2.5 |
+| [[02340128-intro-computer-python|02340128]] | מבוא למחשב – שפת פייתון | 4.0 |
+| [[03240033-technical-english-advanced-b|03240033]] | אנגלית טכנית מתקדמים ב' | 3.0 |
+| **Semester total** | | **21.5** |
+
+### Semester 3
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140003-statistics|00140003]] | סטטיסטיקה | 3.0 |
+| [[00140214-fundamentals-fluid-mechanics|00140214]] | יסודות מכניקת הזורמים | 4.0 |
+| [[00140316-intro-environmental-engineering|00140316]] | מבוא להנדסת הסביבה | 2.5 |
+| [[00140505-building-materials|00140505]] | חומרי בנייה | 3.5 |
+| [[01040228-partial-differential-equations-m|01040228]] | משוואות דיפ' חלקיות מ' | 3.0 |
+| [[01140052-physics-2|01140052]] | פיזיקה 2 | 3.5 |
+| [[03140536-intro-materials-engineering-a|03140536]] | מבוא להנדסת חומרים א' | 2.0 |
+| **Semester total** | | **21.5** |
+
+> Note: Students without "physics 2 prerequisites" take פיזיקה 2ל (1140078) instead. Offered spring semester only.
+
+### Semester 4
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140006-intro-numerical-methods|00140006]] | מבוא לשיטות נומריות | 3.0 |
+| [[00140153-concrete-structures-1|00140153]] | מבני בטון 1 | 4.0 |
+| [[00140405-engineering-geology|00140405]] | גיאולוגיה הנדסית | 2.0 |
+| [[00140702-transportation-planning|00140702]] | תכנון תחבורה | 4.5 |
+| [[00150019-intro-control|00150019]] | מבוא לבקרה | 4.0 |
+| Specialization electives | מקצועות בחירת התמחות | 4.0 |
+| **Semester total** | | **~21.5** |
+
+### Semester 5
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140205-hydraulics|00140205]] | הידרוליקה | 3.0 |
+| [[00140212-intro-engineering-hydrology|00140212]] | מבוא להידרולוגיה הנדסית | 2.5 |
+| [[00140409-geomechanics|00140409]] | גיאומכניקה | 4.0 |
+| [[00140841-fundamentals-surveying-mapping-1|00140841]] | יסודות המיפוי והמדידה 1 | 3.5 |
+| Specialization electives | מקצועות בחירת התמחות | 8.5 |
+| **Semester total** | | **~21.5** |
+
+### Semester 6
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140004-systems-analysis|00140004]] | ניתוח מערכות | 3.0 |
+| [[00140603-engineering-economics-finance|00140603]] | כלכלה הנדסית ומימון | 2.5 |
+| [[00940202-intro-data|00940202]] | מבוא לניתוח נתונים | 3.5 |
+| [[03940800-physical-education|03940800]] | חינוך גופני | 1.0 |
+| Specialization electives | מקצועות בחירת התמחות | 11.0 |
+| **Semester total** | | **~21.0** |
+
+### Semester 7
+
+| Course Code | Course Name | Credits |
+|---|---|---|
+| [[00140618-intro-construction-management-safety|00140618]] | מבוא לניהול ובטיחות בבנייה | 4.0 |
+| Project | פרויקט | 2.5 |
+| Specialization electives | מקצועות בחירת התמחות | 7.5 |
+| General electives | מקצועות בחירה כלל-טכניוניים | 4.0 |
+| **Semester total** | | **~18.0** |
+
+### Semester 8
+
+| Category | Credits |
+|---|---|
+| Project | 2.5 |
+| Specialization electives | 3.5 |
+| General electives | 6.0 |
+| **Semester total** | **12.0** |
+
+## Specialization Requirements
+
+Students must choose **at least one specialization** (Water or Transportation) and complete all mandatory courses in that specialization plus two projects totaling 5 credits. Remaining credits come from the elective list.
+
+With coordinator approval, up to 2 specialization elective courses may be replaced by other faculty courses not on the list.
+
+One project may be completed in each specialization area, provided all prerequisites for each project are satisfied.
+
+---
+
+### Specialization 1 — Water Engineering (הנדסת מים)
+
+**Mandatory courses (18.5 nq):**
+
+| Code | Course | Recommended Semester | Credits |
+|---|---|---|---|
+| 00140332* | כימיה של המים | 4 | 4.0 |
+| 00140412** | יסודות הטיפול במים ושפכים | 5 | 3.0 |
+| 00140977** | מבוא לתהליכי זרימה וזיהום | 5 | 3.0 |
+| 01240503** | כימיה פיזיקלית 1ב | 5 | 2.5 |
+| 00140325*** | תכן מערכות מים ושפכים | 6 | 3.5 |
+| 00160203**** | הנדסת מערכות משאבי מים 1 | 7 | 2.5 |
+
+**Projects:**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140201-water-engineering-project-1|00140201]] | פרויקט בהנדסת מים 1 | 2.5 |
+| [[00140202-water-engineering-project-2|00140202]] | פרויקט בהנדסת מים 2 | 2.5 |
+
+**Electives (16.0 nq) — must choose at least 2 marked with *:**
+
+| Code | Course | Credits |
+|---|---|---|
+| *00140411 | הנדסת קרקע | 3.5 |
+| *00140941 | הנדסת ניקוז | 3.5 |
+| *00160206 | מכניקת זורמים סביבתית | 3.0 |
+| *00160223 | הידרולוגיה של מי תהום | 4.5 |
+| [[00140305-water-wastewater-treatment-lab|00140305]] | מעבדה לטיפול במים ושפכים | 2.5 |
+| [[00140329-intro-renewable-energy|00140329]] | מבוא לאנרגיה מתחדשת | 2.5 |
+| [[00140935-measurement-methods|00140935]] | שיטות מדידה | 2.0 |
+| [[00140940-transfer-phenomena|00140940]] | תופעות מעבר | 3.0 |
+| [[00140942-hydraulic-engineering-reservoirs|00140942]] | הנדסה הידרולית ומאגרים | 3.5 |
+| [[00140943-control-laboratory|00140943]] | מעבדה לבקרה | 2.0 |
+| [[00140952-soil-survey-geographic-information|00140952]] | סקר קרקעות ומערכות מידע | 2.5 |
+| [[00140956-intro-soil-chemistry|00140956]] | מבוא לכימיה של הקרקע | 2.5 |
+| [[00140958-irrigation-engineering-1|00140958]] | הנדסת השקיה 1 | 3.5 |
+| [[00140972-pumps-pumping-systems|00140972]] | משאבות ומערכות שאיבה | 2.5 |
+| [[00160208-marine-engineering|00160208]] | הנדסה ימית | 2.5 |
+| [[00160209-port-coastal-engineering|00160209]] | הנדסת נמלים וחופים | 2.5 |
+| [[00160210-water-waves|00160210]] | גלי מים | 2.5 |
+| [[00160211-surface-runoff-hydrology|00160211]] | הידרולוגיה של נגר על-קרקעי | 2.5 |
+| [[00170012-porous-media-physics|00170012]] | פיזיקה של סביבה נקבובית | 2.5 |
+| [[00960411-machine-learning-1|00960411]] | למידה חישובית 1 | 3.5 |
+| [[01140054-physics-3|01140054]] | פיזיקה 3 | 3.5 |
+
+---
+
+### Specialization 2 — Transportation Engineering (הנדסת תחבורה)
+
+**Mandatory courses (19 nq):**
+
+| Code | Course | Recommended Semester | Credits |
+|---|---|---|---|
+| *00140779 | תכן גיאומטרי ותפעול דרכים | 4 | 4.0 |
+| **00140733 | הנדסה וניהול של תנועה | 5 | 4.5 |
+| **00940591 | מבוא לכלכלה | 5 | 3.5 |
+| ***00140735 | מבוא לתכן מיסעות | 6 | 2.5 |
+| ****00140709 | מעבדת דרכים | 7 | 2.0 |
+| ****00140710 | מיסעות גמישות | 7 | 2.5 |
+
+**Projects (choose sufficient to reach 5 nq):**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140721-transportation-planning-project|00140721]] | פרויקט בתכנון תחבורה | 2.5 |
+| [[00140722-traffic-project|00140722]] | פרויקט בתעבורה | 2.5 |
+| [[00140723-road-design-operations-project|00140723]] | פרויקט בתכן ותפעול דרכים | 2.5 |
+| [[00140724-road-structure-project|00140724]] | פרויקט במבנה דרך | 2.5 |
+| 00140719 + 00140720 | פרויקט מורחב בתחבורה חלק א'+ב' | 5.0 |
+
+**Electives (15.5 nq) — must choose at least 2 marked with *:**
+
+| Code | Course | Credits |
+|---|---|---|
+| *00140725 | מבוא לתחבורה מסילתית | 2.5 |
+| *00140726 | בטיחות בדרכים | 2.5 |
+| *00140728 | תכן תשתיות תחבורה | 2.5 |
+| *00140734 | תכנון תחבורה ציבורית | 4.0 |
+| [[00140411-soil-engineering|00140411]] | הנדסת קרקע | 3.5 |
+| [[00140615-intro-financial-management|00140615]] | מבוא לניהול פיננסי | 2.5 |
+| [[00140617-project-planning-control|00140617]] | תכנון ובקרה של פרויקטים | 3.0 |
+| [[00140631-infrastructure-cost-estimation|00140631]] | אומדן עלויות בפרויקטי תשתית | 3.0 |
+| [[00140632-infrastructure-projects-methods-management|00140632]] | פרויקטי תשתית: שיטות וניהול | 3.0 |
+| [[00140714-traffic-facilities-design|00140714]] | תכן מתקני תעבורה | 2.5 |
+| [[00140717-air-transportation|00140717]] | תחבורה אווירית | 2.5 |
+| [[00140845-oop-for-geospatial-data|00140845]] | תכנות מונחה עצמים למידע גרפי | 3.0 |
+| [[00140846-geospatial-databases|00140846]] | מסדי נתונים גיאו-מרחביים | 3.0 |
+| [[00140941-drainage-engineering|00140941]] | הנדסת ניקוז | 3.5 |
+| [[00160306-air-pollution|00160306]] | זיהום אויר | 3.5 |
+| [[00160504-quality-assurance-control-construction|00160504]] | אבטחת איכות ובקרת איכות בבנייה | 2.0 |
+| [[00160709-urban-regional-planning|00160709]] | תכנון עירוני ואיזורי | 2.0 |
+| [[00160712-rigid-pavements|00160712]] | מיסעות קשיחות | 2.5 |
+| [[00160713-optimal-control-transportation|00160713]] | בקרה אופטימלית בתחבורה | 2.0 |
+| [[00160714-special-topics-transportation-engineering|00160714]] | נושאים מיוחדים בהנדסת תחבורה | 2.5 |
+| [[00160837-ml-methods-geo-environmental-engineering|00160837]] | שיטות בלמידת מכונה בהנדסה גיאו-סביבתית | 3.0 |
+| [[00960411-machine-learning-1|00960411]] | למידה חישובית 1 | 3.5 |
+| [[02050598-transportation-and-city|02050598]] | תחבורה והעיר | 2.0 |
+| [[02070600-people-oriented-transportation-planning|02070600]] | תכנון תחבורה מוטה אנשים | 3.0 |
+
+---
+
+### Secondary Specialization in Construction Management (התמחות משנית בניהול הבנייה)
+
+Students in the Transportation specialization may add a secondary specialization in Construction Management. They study all mandatory Transportation courses plus:
+
+**Mandatory secondary specialization courses (12 nq):**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140609-construction-mechanization-automation|00140609]] | מיכון ואוטומציה בבנייה | 2.5 |
+| [[00140619-construction-methods-execution|00140619]] | שיטות ביצוע בבנייה | 4.0 |
+| [[00140613-human-resources-management|00140613]] | ניהול משאבי אנוש | 2.5 |
+| [[00140617-project-planning-control|00140617]] | תכנון ובקרה של פרויקטים | 3.0 |
+
+**Secondary specialization project:**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140601-construction-management-project|00140601]] | פרויקט בניהול הבנייה | 2.5 |
+
+**Secondary specialization electives (completing 3.5 nq from this list and/or from the transportation elective list):**
+
+| Code | Course | Credits |
+|---|---|---|
+| [[00140600-construction-management-seminar|00140600]] | סמינריון בניהול הבנייה | 1.5 |
+| [[00140615-intro-financial-management|00140615]] | מבוא לניהול פיננסי | 2.5 |
+| [[00140616-project-execution-management-leadership|00140616]] | ביצוע פרויקטים: ניהול ומנהיגות | 2.5 |
+| [[00140631-infrastructure-cost-estimation|00140631]] | אומדן עלויות של פרויקטי תשתית | 3.0 |
+| [[00140632-infrastructure-projects-methods-management|00140632]] | פרויקטי תשתית: שיטות וניהול | 3.0 |
+
+## Special Notes
+
+- Most courses are annual and designed to start in the winter semester.
+- Students choosing Transportation specialization may additionally pursue a secondary specialization in Construction Management.
+- With coordinator approval, up to 2 specialization elective courses may be replaced by non-listed faculty courses.
+- One project may be taken from each specialization, but all prerequisites for each project must be met.
+
+---
+
+## נתונים בעברית
+
+### תכנית הלימודים בהנדסה אזרחית
+
+**מספר תכנית:** 001201-1-000
+
+על מנת להשלים את התואר יש לצבור 157.5 נקודות לפי הפרוט הבא:
+- 106.0 נק' מקצועות חובה
+- 34.5 נק' מקצועות בחירה
+- 5.0 נק' פרויקטים בתחום ההתמחות
+- 12.0 נק' מקצועות בחירה כלל-טכניוניים (6 נק' בחירה מתוך קורסי העשרה, 4 נק' בחירה כללית, 2 נק' בחירה מתוך קורסי חינוך גופני)
+
+#### מקצועות חובה – השיבוץ המומלץ לפי סמסטרים
+
+**סמסטר 1:**
+- 00140102 מבוא למכניקה הנדסית — 4.5 נק'
+- 01040042 חדו"א 1מ2 — 5.0 נק'
+- 01040019 אלגברה ליניארית מ' — 4.5 נק'
+- 01140051 פיזיקה 1 — 2.5 נק'
+- 01250001 כימיה כללית — 3.0 נק'
+- 03940800 חינוך גופני — 1.0 נק'
+
+הערה: סטודנטים חסרי "השלמות פיזיקה 1" אינם יכולים ללמוד את המקצועות מבוא למכניקה הנדסית ופיזיקה 1. סטודנטים אלה יכולים ללמוד את המקצוע פיזיקה 1ל 1140077 הכולל את ההשלמות בפיזיקה 1, במקום המקצוע פיזיקה 1. סטודנטים אלה יוכלו ללמוד את המקצוע מבוא למכניקה הנדסית בסמסטר 2.
+
+**סמסטר 2:**
+- 00140008 מידע גרפי הנדסי — 3.0 נק'
+- 00140104 תורת החוזק 1 — 4.0 נק'
+- 01040044 חדו"א 2מ2 — 5.0 נק'
+- 01040131 משוואות דיפ' רגילות/ח' — 2.5 נק'
+- 02340128 מבוא למחשב – שפת פייתון — 4.0 נק'
+- 03240033 אנגלית טכנית מתקדמים ב' — 3.0 נק'
+
+**סמסטר 3:**
+- 00140003 סטטיסטיקה — 3.0 נק'
+- 00140214 יסודות מכניקת הזורמים — 4.0 נק'
+- 00140316 מבוא להנדסת הסביבה — 2.5 נק'
+- 00140505 חומרי בנייה — 3.5 נק'
+- 01040228 משוואות דיפ' חלקיות מ' — 3.0 נק'
+- 01140052 פיזיקה 2 — 3.5 נק'
+- 03140536 מבוא להנדסת חומרים א' — 2.0 נק'
+
+הערה: סטודנטים חסרי "השלמות פיזיקה 2" אינם יכולים ללמוד את המקצוע פיזיקה 2. סטודנטים אלה יכולים ללמוד את המקצוע פיזיקה 2ל 1140078 הכולל את ההשלמות בפיזיקה 2. המקצוע ניתן בסמסטר אביב בלבד.
+
+**סמסטר 4:**
+- 00140006 מבוא לשיטות נומריות — 3.0 נק'
+- 00140153 מבני בטון 1 — 4.0 נק'
+- 00140405 גיאולוגיה הנדסית — 2.0 נק'
+- 00140702 תכנון תחבורה — 4.5 נק'
+- 00150019 מבוא לבקרה — 4.0 נק'
+- מקצועות בחירת התמחות — 4.0 נק'
+
+**סמסטר 5:**
+- 00140205 הידרוליקה — 3.0 נק'
+- 00140212 מבוא להידרולוגיה הנדסית — 2.5 נק'
+- 00140409 גיאומכניקה — 4.0 נק'
+- 00140841 יסודות המיפוי והמדידה 1 — 3.5 נק'
+- מקצועות בחירת התמחות — 8.5 נק'
+
+**סמסטר 6:**
+- 00140004 ניתוח מערכות — 3.0 נק'
+- 00140603 כלכלה הנדסית ומימון — 2.5 נק'
+- 00940202 מבוא לניתוח נתונים — 3.5 נק'
+- 03940800 חינוך גופני — 1.0 נק'
+- מקצועות בחירת התמחות — 11.0 נק'
+
+**סמסטר 7:**
+- 00140618 מבוא לניהול ובטיחות בבנייה — 4.0 נק'
+- פרויקט — 2.5 נק'
+- מקצועות בחירת התמחות — 7.5 נק'
+- מקצועות בחירה כלל-טכניוניים — 4.0 נק'
+
+**סמסטר 8:**
+- פרויקט — 2.5 נק'
+- מקצועות בחירת התמחות — 3.5 נק'
+- מקצועות בחירה כלל-טכניוניים — 6.0 נק'
+
+#### מקצועות בחירה בתחום ההתמחות
+
+יש לבחור לפחות התמחות אחת (הנדסת מים או הנדסת תחבורה) וללמוד את כל מקצועות החובה בהתמחות בתוספת שני פרויקטים בהיקף כולל של 5 נקודות. את הנקודות הנותרות יש לבחור מרשימת מקצועות הבחירה בהתמחות.
+
+באישור מרכז ההתמחות, ניתן להחליף עד שני קורסים ממקצועות הבחירה בקורס פקולטי שאינו ברשימה.
+
+**התמחות 1 – הנדסת מים**
+
+מקצועות חובה בהתמחות (18.5 נק'):
+- *00140332 כימיה של המים (מומלץ בסמסטר 4) — 4.0 נק'
+- **00140412 יסודות הטיפול במים ושפכים (מומלץ בסמסטר 5) — 3.0 נק'
+- **00140977 מבוא לתהליכי זרימה וזיהום (מומלץ בסמסטר 5) — 3.0 נק'
+- **01240503 כימיה פיזיקלית 1ב (מומלץ בסמסטר 5) — 2.5 נק'
+- ***00140325 תכן מערכות מים ושפכים (מומלץ בסמסטר 6) — 3.5 נק'
+- ****00160203 הנדסת מערכות משאבי מים 1 (מומלץ בסמסטר 7) — 2.5 נק'
+
+**התמחות 2 – הנדסת תחבורה**
+
+מקצועות חובה בהתמחות (19 נק'):
+- *00140779 תכן גיאומטרי ותפעול דרכים (מומלץ בסמסטר 4) — 4.0 נק'
+- **00140733 הנדסה וניהול של תנועה (מומלץ בסמסטר 5) — 4.5 נק'
+- **00940591 מבוא לכלכלה (מומלץ בסמסטר 5) — 3.5 נק'
+- ***00140735 מבוא לתכן מיסעות (מומלץ בסמסטר 6) — 2.5 נק'
+- ****00140709 מעבדת דרכים (מומלץ בסמסטר 7) — 2.0 נק'
+- ****00140710 מיסעות גמישות (מומלץ בסמסטר 7) — 2.5 נק'
+
+במסגרת ההתמחות בתחבורה ניתן לבחור להוסיף התמחות משנית בניהול הבנייה.
+
+---
+
+## Sources
+- [[technion-full-catalog-2025-2026]]

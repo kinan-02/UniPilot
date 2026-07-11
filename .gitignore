@@ -45,18 +45,18 @@ scripts/verification_report.json
 # Sample transcript PDFs kept locally for manual testing
 /*.pdf
 
-# Technion raw source files (local only — large, licensing-sensitive)
-services/data-engineering/data/raw/**/*.json
-services/data-engineering/data/raw/**/*.pdf
-!services/data-engineering/data/raw/**/README.md
-!services/data-engineering/data/raw/**/manifest.json
+# # Technion raw source files (local only — large, licensing-sensitive)
+# services/data-engineering/data/raw/**/*.json
+# services/data-engineering/data/raw/**/*.pdf
+# !services/data-engineering/data/raw/**/README.md
+# !services/data-engineering/data/raw/**/manifest.json
 
-# Local Obsidian / catalog vault (large PDFs + notes — not product code)
-services/data-engineering/data/catalog_valut/
+# # Local Obsidian / catalog vault (large PDFs + notes — not product code)
+# services/data-engineering/data/catalog_valut/
 
-# Generated data-engineering artifacts (local extraction outputs)
-services/data-engineering/data/generated/**
-!services/data-engineering/data/generated/**/README.md
+# # Generated data-engineering artifacts (local extraction outputs)
+# services/data-engineering/data/generated/**
+# !services/data-engineering/data/generated/**/README.md
 
 # Large generated quality reports (commit markdown summary or sample JSON only)
 services/data-engineering/data/reports/technion/dds_staging_quality_report.json
