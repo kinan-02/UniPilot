@@ -106,13 +106,15 @@ async def run_plan_to_completion(
             for step_id, entry in zip(layer, entries):
                 state.append(entry)
                 step = steps_by_id[step_id]
-                decision = evaluate_step_result(step, entry)
+                decision = await evaluate_step_result(
+                    step, entry, llm_adapter=llm_adapter, block_id=f"{plan_id}-{step.step_id}-monitor"
+                )
                 if decision == "replan":
                     monitor_flags.append(f"step {step.step_id} failed")
                     replan_reason = f"step {step.step_id} failed"
                     should_replan = True
                 if decision == "clarify":
-                    monitor_flags.append(f"step {step.step_id} partial")
+                    monitor_flags.append(f"step {step.step_id} partial or did not fully satisfy its success criteria")
             if should_replan:
                 # Let the whole in-flight layer finish (it already has, by
                 # the time we get here) but never start the NEXT layer once
