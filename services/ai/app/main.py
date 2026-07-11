@@ -1,5 +1,6 @@
 """UniPilot AI FastAPI application."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -11,6 +12,14 @@ from app.core.responses import error_response
 from app.retrieval.graph_engine.graph_registry import graph_registry
 from app.routes.advise import router as advise_router
 from app.routes.health import router as health_router
+
+# Without this, INFO-level logs (including reasoning_block_trace -- the
+# per-call duration/status data emitted by every real reasoning call, see
+# app/agent_core/reasoning/tracing.py) are silently dropped: with no handler
+# configured anywhere, Python's logging module only surfaces WARNING+ via its
+# "handler of last resort." A live latency investigation found zero trace
+# output in `docker logs` for this exact reason.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager

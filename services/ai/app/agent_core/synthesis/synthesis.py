@@ -23,6 +23,16 @@ _COMPOSITION_OUTPUT_SCHEMA = {
     "required": ["answer_text"],
 }
 
+# Emitted verbatim by `schema_validator.validate_against_schema` when the
+# model's final pass reports status="ok" but leaves `result` entirely absent
+# (as opposed to present-but-malformed). The generic schema-repair loop
+# (`schema_repair.py`) cannot recover this for Composition specifically: its
+# only required field, `answer_text`, IS the content -- "fix the structure,
+# do not add new facts" is a contradiction when the fix requires writing the
+# missing prose from scratch. A retry of the original pass (fresh model
+# attempt over the same facts) is the only recovery that can actually work.
+_RESULT_MISSING_MARKER = "result_is_missing"
+
 
 async def compose_answer(
     *,
@@ -48,13 +58,22 @@ async def compose_answer(
         output_schema=_COMPOSITION_OUTPUT_SCHEMA,
         guardrails=list(composition_role.guardrails),
     )
-    return await run_subagent(
+    result = await run_subagent(
         role=composition_role,
         context_package=context_package,
         tool_registry=tool_registry,
         llm_adapter=llm_adapter,
         block_id=block_id,
     )
+    if result.status == "failed" and _RESULT_MISSING_MARKER in result.warnings:
+        result = await run_subagent(
+            role=composition_role,
+            context_package=context_package,
+            tool_registry=tool_registry,
+            llm_adapter=llm_adapter,
+            block_id=f"{block_id}-retry",
+        )
+    return result
 
 
 __all__ = ["compose_answer"]

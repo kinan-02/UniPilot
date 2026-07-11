@@ -17,5 +17,23 @@ __all__ = ["ReasoningTrace", "log_reasoning_trace"]
 
 
 def log_reasoning_trace(trace: ReasoningTrace, *, log: logging.Logger | None = None) -> None:
-    """Emit one structured log line for a completed `ReasoningBlock.run` call."""
-    (log or logger).info("reasoning_block_trace", extra={"reasoningTrace": trace.model_dump()})
+    """Emit one structured log line for a completed `ReasoningBlock.run` call.
+
+    The summary is folded directly into the log message (not left in `extra`
+    alone) so it's visible under a plain `%(message)s`-style formatter --
+    `extra` fields are silently dropped by the default formatter otherwise,
+    which is exactly why a real latency investigation found zero trace
+    output despite every reasoning call already going through this path.
+    """
+    (log or logger).info(
+        "reasoning_block_trace block_id=%s agent=%s status=%s iterations=%d "
+        "repair_attempts=%d duration_ms=%.0f schema_valid=%s",
+        trace.block_id,
+        trace.agent_name,
+        trace.status,
+        trace.iterations_used,
+        trace.repair_attempts_used,
+        trace.duration_ms,
+        trace.schema_valid,
+        extra={"reasoningTrace": trace.model_dump()},
+    )

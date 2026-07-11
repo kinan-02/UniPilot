@@ -360,10 +360,24 @@ class BaseReasoningBlock(ABC):
         shape-specific one (no `iterations_used`, no persona transcript,
         ...), since this is called generically from `run()` regardless of
         which concrete shape ran.
+
+        The summary is folded directly into the log message (not left in
+        `extra` alone) so it's visible under a plain `%(message)s`-style
+        formatter -- see `reasoning/tracing.py::log_reasoning_trace` for the
+        same fix applied to the other (newer) reasoning-block module; this
+        one had the identical bare-message-only bug.
         """
         duration_ms = (time.monotonic() - started_at) * 1000.0
         logger.info(
-            "reasoning_block_trace",
+            "reasoning_block_trace block_id=%s agent=%s status=%s schema_valid=%s "
+            "confidence=%.2f llm_calls=%d duration_ms=%.0f",
+            block_input.block_id,
+            block_input.agent_name,
+            output.status,
+            output.schema_valid,
+            output.confidence,
+            output.total_llm_calls_used,
+            duration_ms,
             extra={
                 "reasoningBlockTrace": {
                     "block_id": block_input.block_id,
