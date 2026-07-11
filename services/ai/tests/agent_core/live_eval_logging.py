@@ -94,7 +94,7 @@ class LoggingLLMAdapter:
 
 
 def _to_jsonable(value: Any) -> Any:
-    return value.model_dump() if hasattr(value, "model_dump") else value
+    return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
 
 
 class LiveEvalLog:

@@ -9,6 +9,35 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _APP_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _resolve_repo_root() -> Path:
+    """Repo root on host (UniPilot/); in Docker fall back to the app root (/app).
+
+    Ported from `services/api/app/config.py`'s identical fix -- pydantic-
+    settings' `env_file` is resolved relative to cwd, which silently misses
+    the real root `.env` (and falls back to wrong defaults) whenever this
+    service is run from a cwd other than its own package root, e.g. `pytest`
+    invoked from `services/ai/`.
+    """
+    config_path = Path(__file__).resolve()
+    for parent in config_path.parents:
+        if (parent / "docker-compose.yml").is_file():
+            return parent
+    return _APP_ROOT
+
+
+_REPO_ROOT = _resolve_repo_root()
+
+
+def _settings_env_files() -> tuple[str, ...]:
+    paths: list[str] = []
+    for candidate in (_REPO_ROOT / ".env", _APP_ROOT / ".env", Path.cwd() / ".env"):
+        if candidate.is_file():
+            resolved = str(candidate.resolve())
+            if resolved not in paths:
+                paths.append(resolved)
+    return tuple(paths) if paths else (".env",)
+
+
 class Settings(BaseSettings):
     service_name: str = "ai"
     environment: str = "development"
@@ -62,7 +91,7 @@ class Settings(BaseSettings):
     agent_llm_provider: Literal["deepseek", "openai"] = "deepseek"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_settings_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )

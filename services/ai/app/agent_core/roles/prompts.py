@@ -74,6 +74,12 @@ def _interpretation_agent_contract() -> PromptContract:
             _TOOL_ROUTING_RULE,
             "Always cite the exact wiki page/section the interpretation came from.",
             "Return status='needs_more_context' rather than guess when the wiki text doesn't clearly answer the question.",
+            "If asked to verify a claim that no unusual temporary exception, waiver, or "
+            "special-case policy currently applies, you can only confirm what the static "
+            "wiki text says today -- you can never confirm the ABSENCE of a temporary "
+            "exception that simply hasn't been written into the wiki yet. Add an explicit "
+            "warning that this specific part of the claim is unverifiable rather than "
+            "reporting it as confirmed (docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #5).",
         ],
         allowed_context_fields=None,
         output_schema_name="interpretation_agent_output_v1",

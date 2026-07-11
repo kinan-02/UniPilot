@@ -14,14 +14,28 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.routes.advise as advise_module
 from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry, ToolInvocationRecord
+from app.dependencies.internal_auth import require_internal_service_token
 from app.main import app
 from app.routes.advise import _derive_course_ids
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _bypass_internal_auth_by_default():
+    """Most tests below exercise business logic, not auth -- override the
+    internal-service-token gate to a no-op so they aren't coupled to whether
+    a real INTERNAL_SERVICE_TOKEN happens to be resolvable from the ambient
+    environment. test_advise_route_rejects_invalid_internal_service_token
+    removes this override for its own duration to test the real gate."""
+    app.dependency_overrides[require_internal_service_token] = lambda: None
+    yield
+    app.dependency_overrides.pop(require_internal_service_token, None)
 
 
 def test_health_returns_service_payload():
@@ -170,6 +184,7 @@ async def test_advise_route_blocked_needs_clarification(monkeypatch):
 
 
 def test_advise_route_rejects_invalid_internal_service_token(monkeypatch):
+    app.dependency_overrides.pop(require_internal_service_token, None)
     monkeypatch.setattr(
         "app.dependencies.internal_auth.get_settings",
         lambda: SimpleNamespace(resolved_internal_service_token=lambda: "expected-token"),
