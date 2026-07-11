@@ -10,10 +10,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.monitor import evaluate_step_result
+from app.agent_core.orchestrator.parallel_dispatch import dispatch_layer_concurrently
 from app.agent_core.orchestrator.state_index import build_state_index
 from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.planner import build_next_plan_steps
-from app.agent_core.planning.schemas import PlannerInvocationInput, RoleName
+from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
@@ -79,10 +80,11 @@ async def run_plan_to_completion(
         monitor_flags = []
         replan_reason = None
         should_replan = False
+        steps_by_id = {step.step_id: step for step in planner_output.next_steps}
 
-        for step in planner_output.next_steps:
-            entry = await run_task_handler(
-                step=step,
+        async def _dispatch_one(step_id: str, _steps_by_id: dict[str, PlanStep] = steps_by_id) -> StateEntry:
+            return await run_task_handler(
+                step=_steps_by_id[step_id],
                 state=state,
                 role_roster=role_roster,
                 tool_registry=tool_registry,
@@ -90,16 +92,35 @@ async def run_plan_to_completion(
                 original_user_message=original_user_message,
                 plan_id=plan_id,
             )
-            state.append(entry)
 
-            decision = evaluate_step_result(step, entry)
-            if decision == "replan":
-                monitor_flags.append(f"step {step.step_id} failed")
-                replan_reason = f"step {step.step_id} failed"
-                should_replan = True
+        # Dispatch one execution layer at a time -- steps within a layer are
+        # independent of each other (that's what makes them the same layer)
+        # and run concurrently; each layer fully completes and gets appended
+        # to `state` before the next layer starts, so a later layer's steps
+        # can rely on an earlier layer's results being present. Mirrors
+        # `task_handler.py::_run_nested_subplan`'s identical layer-by-layer
+        # pattern, so both nesting levels of this orchestrator share one
+        # mental model instead of two.
+        for layer in planner_output.plan_graph.execution_layers:
+            entries = await dispatch_layer_concurrently(layer, _dispatch_one)
+            for step_id, entry in zip(layer, entries):
+                state.append(entry)
+                step = steps_by_id[step_id]
+                decision = evaluate_step_result(step, entry)
+                if decision == "replan":
+                    monitor_flags.append(f"step {step.step_id} failed")
+                    replan_reason = f"step {step.step_id} failed"
+                    should_replan = True
+                if decision == "clarify":
+                    monitor_flags.append(f"step {step.step_id} partial")
+            if should_replan:
+                # Let the whole in-flight layer finish (it already has, by
+                # the time we get here) but never start the NEXT layer once
+                # this batch needs a replan -- same semantics the old
+                # sequential loop had (stop dispatching further steps in
+                # this batch once a failure is detected), just at layer
+                # granularity instead of per-step.
                 break
-            if decision == "clarify":
-                monitor_flags.append(f"step {step.step_id} partial")
 
         if should_replan:
             continue
