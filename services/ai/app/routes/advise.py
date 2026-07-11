@@ -14,6 +14,7 @@ the frontend's `AdvisorReply` type are unchanged by this route.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ from app.schemas.advise import AdviseRequest
 router = APIRouter(dependencies=[Depends(require_internal_service_token)])
 
 _FALLBACK_CLARIFICATION_MESSAGE = "I need more information to answer that -- could you clarify your question?"
+_TIMEOUT_MESSAGE = "This question is taking longer than expected to analyze -- please try again or ask something more specific."
 
 
 def _derive_course_ids(state: PlanExecutionState) -> list[str]:
@@ -120,17 +122,39 @@ def _build_advise_response(
 @router.post("/advise")
 async def advise_route(payload: AdviseRequest) -> dict[str, Any]:
     plan_id = str(uuid4())
+    settings = get_settings()
     llm_adapter = BudgetedLLMAdapter(
-        ChatLLMAdapter(), max_calls=get_settings().agent_reasoning_call_budget_per_turn
+        ChatLLMAdapter(), max_calls=settings.agent_reasoning_call_budget_per_turn
     )
-    understanding, state, final_entry, clarification_question = await run_agent_turn(
-        original_user_message=payload.question,
-        user_id=payload.user_id,
-        llm_adapter=llm_adapter,
-        role_roster=build_default_role_roster(),
-        tool_registry=build_default_tool_registry(),
-        plan_id=plan_id,
-    )
+    try:
+        understanding, state, final_entry, clarification_question = await asyncio.wait_for(
+            run_agent_turn(
+                original_user_message=payload.question,
+                user_id=payload.user_id,
+                llm_adapter=llm_adapter,
+                role_roster=build_default_role_roster(),
+                tool_registry=build_default_tool_registry(),
+                plan_id=plan_id,
+            ),
+            timeout=settings.agent_turn_timeout_seconds,
+        )
+    except asyncio.TimeoutError:
+        # A manual end-to-end smoke test found a real turn hang with no
+        # ceiling at all (ReasoningBlock's own complete_json calls never pass
+        # a timeout) -- this bounds the worst case so a slow/hung LLM call
+        # can never block a worker indefinitely; the student gets an honest
+        # "try again" answer instead of the request hanging forever.
+        return success_response(
+            {
+                "question": payload.question,
+                **_response_payload(
+                    answer=_TIMEOUT_MESSAGE,
+                    confidence="low",
+                    course_ids=[],
+                    retrieval_status="timeout",
+                ),
+            }
+        )
     return success_response(
         _build_advise_response(
             question=payload.question,

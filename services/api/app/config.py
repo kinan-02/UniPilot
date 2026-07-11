@@ -75,7 +75,10 @@ class Settings(BaseSettings):
     transcript_import_rate_limit_window_ms: int = 60_000
     transcript_import_rate_limit_max: int = 10
     ai_service_url: str | None = None
-    ai_advisor_timeout_seconds: int = 120
+    # Must stay comfortably above services/ai's own agent_turn_timeout_seconds
+    # (180s default) so that service's own ceiling has a chance to return a
+    # clean, honest timeout answer before this client gives up on it first.
+    ai_advisor_timeout_seconds: int = 200
     agent_service_url: str | None = None
     agent_turn_timeout_seconds: int = 180
     agent_conversations_collection: str = "agent_conversations"

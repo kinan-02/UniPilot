@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     # Ceiling on real LLM calls per turn (BudgetedLLMAdapter) -- see
     # app/agent_core/reasoning/reasoning_budget.py for why this exists.
     agent_reasoning_call_budget_per_turn: int = 80
+    # Already declared in the root .env (AGENT_TURN_TIMEOUT_SECONDS) but never
+    # actually read anywhere in this service until routes/advise.py wraps the
+    # whole run_agent_turn call in asyncio.wait_for with it -- a manual
+    # docker-compose smoke test found a real turn hang with no ceiling at all
+    # (ReasoningBlock's own complete_json calls never pass a timeout, so a
+    # single slow/hung LLM response could block a worker indefinitely).
+    agent_turn_timeout_seconds: int = 180
 
     # -- Retrieval port (services/agent/app/retrieval) additions below --
 
