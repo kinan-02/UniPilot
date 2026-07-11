@@ -37,6 +37,16 @@ logger = logging.getLogger(__name__)
 
 PLANNER_V1 = "planner_v1"
 
+# A distinct contract, not a distinct code path -- registered alongside
+# planner_v1 in the same registry and run through the exact same
+# PlannerReasoningBlock. Used by orchestrator/task_handler.py when it
+# recursively decomposes a single, too-complex PlanStep into its own
+# private sub-plan: the role_prompt below frames that context correctly
+# ("decomposing one internal step of a larger plan") instead of planner_v1's
+# own framing ("the student's request"), which would otherwise be actively
+# misleading for a nested invocation.
+NESTED_PLANNER_V1 = "planner_nested_v1"
+
 PLANNER_OUTPUT_SCHEMA_NAME = "planner_invocation_output_v1"
 
 _PLAN_STEP_SCHEMA: dict[str, Any] = {
@@ -181,11 +191,37 @@ def _planner_contract() -> PromptContract:
     )
 
 
+def _planner_nested_contract() -> PromptContract:
+    """Same instructions/safety_rules/schema as planner_v1, verbatim --
+    only `name` and `role_prompt` differ. One structured decision (the
+    Planner's own instructions for depends_on completeness, batching,
+    open_questions handling, etc.) should never fork into two independently
+    drifting copies; `.model_copy` guarantees that."""
+    base = _planner_contract()
+    return base.model_copy(
+        update={
+            "name": NESTED_PLANNER_V1,
+            "role_prompt": (
+                "You are the Planner for the UniPilot Agent, a Technion academic advising assistant. "
+                "You are being invoked by a task handler to decompose ONE internal step of a larger "
+                "plan -- not a fresh user turn. `user_goal` here is that one step's own objective, "
+                "not the student's original request; `original_user_message` is passed through only "
+                "for tone/language grounding. You are invoked repeatedly over the course of resolving "
+                "this one step. Each time, given that step's objective plus everything this private "
+                "sub-plan has accumulated so far, your one job is to produce the NEXT batch of "
+                "runnable work steps needed to fully resolve it -- never a full upfront plan, and "
+                "never more than what is genuinely fully knowable right now."
+            ),
+        }
+    )
+
+
 def build_planner_prompt_registry() -> PromptRegistry:
     """The two generic contracts plus this layer's own -- mirrors
     `request_understanding.build_request_understanding_prompt_registry()`'s pattern."""
     registry = build_default_prompt_registry()
     registry.register(_planner_contract())
+    registry.register(_planner_nested_contract())
     return registry
 
 
@@ -340,6 +376,7 @@ async def build_next_plan_steps(
     llm_adapter: LLMAdapter,
     block_id: str,
     invocation: int,
+    prompt_contract_name: str = PLANNER_V1,
 ) -> PlannerInvocationOutput:
     block = PlannerReasoningBlock(llm_adapter=llm_adapter)
     block_output = await block.run(
@@ -349,7 +386,7 @@ async def build_next_plan_steps(
             objective=planner_input.user_goal,
             output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
             output_schema=PLANNER_OUTPUT_SCHEMA,
-            prompt_contract_name=PLANNER_V1,
+            prompt_contract_name=prompt_contract_name,
             planner_input=planner_input,
             # Explicitly requested, unlike Request Understanding (which
             # defers to the adapter's global default): dependency-
@@ -385,6 +422,7 @@ async def build_next_plan_steps(
 
 __all__ = [
     "PLANNER_V1",
+    "NESTED_PLANNER_V1",
     "PLANNER_OUTPUT_SCHEMA_NAME",
     "PLANNER_OUTPUT_SCHEMA",
     "PlannerReasoningBlock",

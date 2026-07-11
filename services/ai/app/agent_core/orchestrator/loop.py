@@ -9,64 +9,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.agent_core.orchestrator.context_builder import build_subagent_context_package
 from app.agent_core.orchestrator.monitor import evaluate_step_result
-from app.agent_core.orchestrator.step_prep import run_step_prep
+from app.agent_core.orchestrator.state_index import build_state_index
+from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.planner import build_next_plan_steps
-from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName, StateEntrySummary
+from app.agent_core.planning.schemas import PlannerInvocationInput, RoleName
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
-from app.agent_core.subagents.run import run_subagent
 from app.agent_core.synthesis.synthesis import compose_answer
 from app.agent_core.tools.registry import ToolRegistry
 
 DEFAULT_MAX_PLANNER_INVOCATIONS = 5
-
-# STOPGAP: PlanStep no longer carries a `role` (Planner output no longer
-# decides it, per docs/agent/PLANNER_OUTPUT_DESIGN.md §3) and no real
-# Orchestrator-side role-assignment decision exists yet. A single hardcoded
-# default would silently defeat the composition short-circuit below (its
-# `state.entries[-1].role == "composition"` check could never fire) --
-# so this keyword heuristic stands in until real role-assignment is
-# designed and built as its own follow-up (PLANNER_OUTPUT_DESIGN.md §7 /
-# AGENT_VISION.md §7). Matches the design doc's own point that a
-# well-written `objective` should make the right role "nearly mechanical".
-_STOPGAP_ROLE_KEYWORDS: dict[RoleName, tuple[str, ...]] = {
-    "composition": ("compose", "final answer", "synthesi"),
-    "calculation_validation": ("verify", "validate", "calculat", "check"),
-    "simulation_planning": ("simulat", "what if", "hypothetical", "project"),
-    "interpretation": ("interpret", "explain", "determine", "analyz"),
-}
-
-
-def _stopgap_role_for_step(step: PlanStep) -> RoleName:
-    objective = step.objective.lower()
-    for role_name, keywords in _STOPGAP_ROLE_KEYWORDS.items():
-        if any(keyword in objective for keyword in keywords):
-            return role_name
-    return "retrieval"
-
-
-def _certainty_band(confidence: float) -> str:
-    if confidence >= 0.8:
-        return "high"
-    if confidence >= 0.5:
-        return "medium"
-    return "low"
-
-
-def _build_state_index(state: PlanExecutionState) -> list[StateEntrySummary]:
-    return [
-        StateEntrySummary(
-            entry_id=entry.entry_id,
-            step_id=entry.step_id,
-            role=entry.role,
-            summary=f"{entry.status} ({entry.output_schema_name})",
-            certainty_band=_certainty_band(entry.certainty.confidence),  # type: ignore[arg-type]
-        )
-        for entry in state.entries
-    ]
 
 
 async def run_plan_to_completion(
@@ -105,7 +59,7 @@ async def run_plan_to_completion(
             constraints=constraints or [],
             open_questions=open_questions or [],
             implies_action_request=implies_action_request,
-            state_index=_build_state_index(state),
+            state_index=build_state_index(state.entries),
             plan_graph_so_far=state.plan_graph,
             monitor_flags=monitor_flags,
             replan_reason=replan_reason,
@@ -127,31 +81,14 @@ async def run_plan_to_completion(
         should_replan = False
 
         for step in planner_output.next_steps:
-            role = role_roster[_stopgap_role_for_step(step)]
-            step_prep_output = await run_step_prep(
-                step=step, state=state, llm_adapter=llm_adapter, block_id=f"{plan_id}-{step.step_id}-prep"
-            )
-            context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
-            subagent_result = await run_subagent(
-                role=role,
-                context_package=context_package,
+            entry = await run_task_handler(
+                step=step,
+                state=state,
+                role_roster=role_roster,
                 tool_registry=tool_registry,
                 llm_adapter=llm_adapter,
-                block_id=f"{plan_id}-{step.step_id}",
-            )
-
-            entry = StateEntry(
-                entry_id=f"{step.step_id}-{len(state.entries)}",
-                step_id=step.step_id,
-                role=role.name,
-                status=subagent_result.status,
-                output_schema_name=step_prep_output.output_schema_name,
-                data=subagent_result.result or {},
-                certainty=subagent_result.certainty,
-                assumptions=subagent_result.assumptions,
-                warnings=subagent_result.warnings,
-                tool_audit_trail=subagent_result.tool_audit_trail,
-                produced_at=datetime.now(timezone.utc),
+                original_user_message=original_user_message,
+                plan_id=plan_id,
             )
             state.append(entry)
 

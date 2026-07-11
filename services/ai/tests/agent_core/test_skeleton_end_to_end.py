@@ -37,6 +37,8 @@ _RESPONSES = [
         "plan_summary": "Step 1: fetch course record.",
         "clarification_question": None,
     },
+    # 2a. Task handler's cheap classifier for step 1 -- atomic, retrieval role.
+    {"atomic": True, "role_if_atomic": "retrieval"},
     # 2. Step 1 step-prep.
     {
         "status": "ok",
@@ -99,6 +101,8 @@ _RESPONSES = [
             "facts": {"course_id": "234218", "name": "Some Course"},
         },
     },
+    # 5a. Task handler's success-criteria check for step 1 -- met.
+    {"criteria_met": True, "unmet_criteria": []},
     # 6. Planner invocation 2 -- one step: composition, plan complete. Flat,
     # same reason as invocation 1's response above.
     {
@@ -115,6 +119,8 @@ _RESPONSES = [
         "plan_summary": "Step 2: compose the final answer.",
         "clarification_question": None,
     },
+    # 6a. Task handler's cheap classifier for step 2 -- atomic, composition role.
+    {"atomic": True, "role_if_atomic": "composition"},
     # 7. Step 2 step-prep.
     {
         "status": "ok",
@@ -163,6 +169,8 @@ _RESPONSES = [
             "assumptions": [],
         },
     },
+    # 9a. Task handler's success-criteria check for step 2 -- met.
+    {"criteria_met": True, "unmet_criteria": []},
 ]
 
 

@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.agent_core.planning.schemas import PlanGraph
-from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
+from app.agent_core.planning.state import (
+    CertaintyTag,
+    NestedExecutionTrace,
+    NestedStepTrace,
+    PlanExecutionState,
+    StateEntry,
+)
 
 
 def _entry(step_id: str, entry_id: str | None = None) -> StateEntry:
@@ -87,3 +93,35 @@ def test_merge_plan_graph_appends_execution_layers_across_invocations():
     state.merge_plan_graph(PlanGraph(execution_layers=[["1a", "1b"], ["1c"]]))
     state.merge_plan_graph(PlanGraph(execution_layers=[["2a"]]))
     assert state.plan_graph.execution_layers == [["1a", "1b"], ["1c"], ["2a"]]
+
+
+def test_state_entry_nested_trace_defaults_to_none():
+    assert _entry("s1").nested_trace is None
+
+
+def test_state_entry_nested_trace_round_trips_through_model_dump_and_validate():
+    nested_trace = NestedExecutionTrace(
+        private_plan_id="p1:s1",
+        rounds_used=2,
+        rounds_exhausted=False,
+        entries=[
+            NestedStepTrace(
+                entry_id="1a-0",
+                step_id="1a",
+                role="retrieval",
+                status="succeeded",
+                certainty=CertaintyTag(basis="official_record", confidence=0.9),
+                warnings=["some_warning"],
+            )
+        ],
+    )
+    entry = _entry("s1").model_copy(update={"nested_trace": nested_trace})
+
+    dumped = entry.model_dump()
+    restored = StateEntry.model_validate(dumped)
+
+    assert restored.nested_trace is not None
+    assert restored.nested_trace.private_plan_id == "p1:s1"
+    assert restored.nested_trace.rounds_used == 2
+    assert restored.nested_trace.entries[0].step_id == "1a"
+    assert restored.nested_trace.entries[0].warnings == ["some_warning"]

@@ -46,6 +46,33 @@ class ToolInvocationRecord(BaseModel):
     output_certainty: CertaintyTag | None = None
 
 
+class NestedStepTrace(BaseModel):
+    """One entry in a task handler's private sub-plan (docs/agent/AGENT_VISION.md
+    §7, task-handler follow-up) -- auxiliary/observability record only, never
+    consumed by downstream dependents. Preserved on the parent StateEntry so
+    debugging and eval logs can see what actually happened inside a
+    task-handler-resolved step, without that internal plumbing ever leaking
+    into `StateEntry.data`."""
+
+    entry_id: str
+    step_id: str
+    role: RoleName
+    status: StepStatus
+    certainty: CertaintyTag
+    warnings: list[str] = Field(default_factory=list)
+
+
+class NestedExecutionTrace(BaseModel):
+    """What a task handler's recursive/nested path leaves behind on the final
+    StateEntry it hands back to the shared plan state."""
+
+    private_plan_id: str
+    rounds_used: int
+    rounds_exhausted: bool = False
+    entries: list[NestedStepTrace] = Field(default_factory=list)
+    tool_audit_trail: list[ToolInvocationRecord] = Field(default_factory=list)
+
+
 class StateEntry(BaseModel):
     entry_id: str
     step_id: str
@@ -58,6 +85,10 @@ class StateEntry(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     tool_audit_trail: list[ToolInvocationRecord] = Field(default_factory=list)
     produced_at: datetime
+    # Present only when this entry was produced by a task handler's nested
+    # sub-plan rather than one direct specialist dispatch -- auxiliary
+    # metadata, never read by any downstream step's own dependency slicing.
+    nested_trace: NestedExecutionTrace | None = None
 
 
 class PlanExecutionState(BaseModel):
@@ -109,6 +140,8 @@ __all__ = [
     "SourceRef",
     "CertaintyTag",
     "ToolInvocationRecord",
+    "NestedStepTrace",
+    "NestedExecutionTrace",
     "StateEntry",
     "PlanExecutionState",
 ]
