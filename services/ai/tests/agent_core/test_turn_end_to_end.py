@@ -43,8 +43,9 @@ async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_f
     role_roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()
 
-    understanding, state, final_entry = await run_agent_turn(
+    understanding, state, final_entry, clarification_question = await run_agent_turn(
         original_user_message=_RAW_MESSAGE,
+        user_id="test-user-1",
         llm_adapter=adapter,
         role_roster=role_roster,
         tool_registry=tool_registry,
@@ -86,8 +87,9 @@ async def test_out_of_scope_request_never_reaches_the_planner(fake_llm_adapter_f
     role_roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()
 
-    understanding, state, final_entry = await run_agent_turn(
+    understanding, state, final_entry, clarification_question = await run_agent_turn(
         original_user_message="Write me a poem.",
+        user_id="test-user-1",
         llm_adapter=adapter,
         role_roster=role_roster,
         tool_registry=tool_registry,

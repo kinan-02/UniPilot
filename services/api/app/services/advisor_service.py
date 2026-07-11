@@ -1,4 +1,4 @@
-"""Build advisor user context and call the internal AI service."""
+"""Call the internal AI service on behalf of a student."""
 
 from __future__ import annotations
 
@@ -8,17 +8,6 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.clients.ai_advisor_client import AiAdvisorClientError, ask_advisor
 from app.config import Settings, get_settings
-from app.services.student_user_context_service import build_student_user_context
-
-
-async def build_advisor_user_context(
-    database: AsyncIOMotorDatabase,
-    user_id: str,
-) -> dict[str, Any]:
-    context = await build_student_user_context(database, user_id)
-    if "user_id" in context:
-        return {key: value for key, value in context.items() if key != "user_id"}
-    return context
 
 
 async def ask_advisor_for_user(
@@ -29,11 +18,10 @@ async def ask_advisor_for_user(
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     settings = settings or get_settings()
-    user_context = await build_advisor_user_context(database, user_id)
     try:
         raw = await ask_advisor(
             question=question,
-            user_context=user_context,
+            user_id=user_id,
             settings=settings,
         )
     except AiAdvisorClientError as exc:

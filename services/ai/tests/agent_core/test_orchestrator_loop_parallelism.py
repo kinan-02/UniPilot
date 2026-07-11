@@ -68,9 +68,10 @@ async def test_same_layer_steps_dispatch_concurrently_not_sequentially(monkeypat
 
     event_loop = asyncio.get_event_loop()
     start = event_loop.time()
-    state, final_entry = await loop_module.run_plan_to_completion(
+    state, final_entry, clarification_question = await loop_module.run_plan_to_completion(
         user_goal="test goal",
         original_user_message="test message",
+        user_id="test-user-1",
         llm_adapter=None,  # never touched -- build_next_plan_steps is monkeypatched
         role_roster={},  # never touched -- compose_answer's fallback path is short-circuited
         tool_registry=None,  # never touched -- run_task_handler is monkeypatched

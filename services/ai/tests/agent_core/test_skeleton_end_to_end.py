@@ -185,9 +185,10 @@ async def test_two_step_plan_holds_together_end_to_end(fake_llm_adapter_factory)
     role_roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()
 
-    state, final_entry = await run_plan_to_completion(
+    state, final_entry, clarification_question = await run_plan_to_completion(
         user_goal="What course is 234218?",
         original_user_message="What course is 234218?",
+        user_id="test-user-1",
         llm_adapter=adapter,
         role_roster=role_roster,
         tool_registry=tool_registry,

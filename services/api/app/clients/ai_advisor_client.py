@@ -19,7 +19,7 @@ class AiAdvisorClientError(Exception):
 async def ask_advisor(
     *,
     question: str,
-    user_context: dict[str, Any],
+    user_id: str,
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     settings = settings or get_settings()
@@ -34,7 +34,7 @@ async def ask_advisor(
         response = await client.post(
             url,
             headers=headers,
-            json={"question": question, "user_context": user_context},
+            json={"question": question, "user_id": user_id},
         )
 
     payload = response.json() if response.content else {}

@@ -23,21 +23,24 @@ from app.agent_core.tools.registry import ToolRegistry
 async def run_agent_turn(
     *,
     original_user_message: str,
+    user_id: str,
     llm_adapter: LLMAdapter,
     role_roster: dict[RoleName, RoleDefinition],
     tool_registry: ToolRegistry,
     plan_id: str,
     max_planner_invocations: int = DEFAULT_MAX_PLANNER_INVOCATIONS,
-) -> tuple[RequestUnderstandingReasoningBlockOutput, PlanExecutionState, StateEntry | None]:
+) -> tuple[RequestUnderstandingReasoningBlockOutput, PlanExecutionState, StateEntry | None, str | None]:
     """Drives the full confirmed chain: raw message in, final answer out.
 
-    Returns `(understanding, state, final_entry)`. Callers must check
-    `understanding.in_scope` first: when `False`, the Planner never ran --
-    `state` is empty and `final_entry` is `None` -- and the answer is
-    `understanding.decline_message`, not anything in `state`/`final_entry`.
-    When `in_scope` is `True`, `final_entry` is `None` under the exact same
-    conditions `run_plan_to_completion` already documents (blocked on
-    clarification, or the invocation budget ran out).
+    Returns `(understanding, state, final_entry, clarification_question)`.
+    Callers must check `understanding.in_scope` first: when `False`, the
+    Planner never ran -- `state` is empty, `final_entry` and
+    `clarification_question` are both `None` -- and the answer is
+    `understanding.decline_message`, not anything else in the return value.
+    When `in_scope` is `True`, `final_entry`/`clarification_question` are
+    `None`/populated under the exact same conditions
+    `run_plan_to_completion` already documents (blocked on clarification, or
+    the invocation budget ran out).
     """
     understanding = await understand_request(
         original_user_message=original_user_message,
@@ -45,11 +48,12 @@ async def run_agent_turn(
         block_id=f"{plan_id}-request-understanding",
     )
     if not understanding.in_scope:
-        return understanding, PlanExecutionState(plan_id=plan_id), None
+        return understanding, PlanExecutionState(plan_id=plan_id), None, None
 
-    state, final_entry = await run_plan_to_completion(
+    state, final_entry, clarification_question = await run_plan_to_completion(
         user_goal=understanding.user_goal or original_user_message,
         original_user_message=original_user_message,
+        user_id=user_id,
         llm_adapter=llm_adapter,
         role_roster=role_roster,
         tool_registry=tool_registry,
@@ -60,7 +64,7 @@ async def run_agent_turn(
         open_questions=understanding.open_questions,
         implies_action_request=understanding.implies_action_request,
     )
-    return understanding, state, final_entry
+    return understanding, state, final_entry, clarification_question
 
 
 __all__ = ["run_agent_turn"]

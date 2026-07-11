@@ -35,7 +35,7 @@ async def test_ask_advisor_returns_data_on_success() -> None:
     with patch("app.clients.ai_advisor_client.httpx.AsyncClient", return_value=mock_client):
         result = await ask_advisor(
             question="What is the syllabus?",
-            user_context={"completed_courses": []},
+            user_id="user-1",
             settings=settings,
         )
 
@@ -43,6 +43,7 @@ async def test_ask_advisor_returns_data_on_success() -> None:
     mock_client.post.assert_awaited_once()
     call_kwargs = mock_client.post.await_args.kwargs
     assert call_kwargs["headers"]["X-Internal-Service-Token"] == "test-token"
+    assert call_kwargs["json"] == {"question": "What is the syllabus?", "user_id": "user-1"}
 
 
 @pytest.mark.asyncio
@@ -62,6 +63,6 @@ async def test_ask_advisor_raises_on_http_error() -> None:
 
     with patch("app.clients.ai_advisor_client.httpx.AsyncClient", return_value=mock_client):
         with pytest.raises(AiAdvisorClientError) as exc_info:
-            await ask_advisor(question="test", user_context={})
+            await ask_advisor(question="test", user_id="user-1")
 
     assert exc_info.value.status_code == 503

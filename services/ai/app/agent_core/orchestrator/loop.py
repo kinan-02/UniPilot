@@ -28,6 +28,7 @@ async def run_plan_to_completion(
     *,
     user_goal: str,
     original_user_message: str,
+    user_id: str,
     llm_adapter: LLMAdapter,
     role_roster: dict[RoleName, RoleDefinition],
     tool_registry: ToolRegistry,
@@ -37,20 +38,23 @@ async def run_plan_to_completion(
     constraints: list[str] | None = None,
     open_questions: list[str] | None = None,
     implies_action_request: bool = False,
-) -> tuple[PlanExecutionState, StateEntry | None]:
+) -> tuple[PlanExecutionState, StateEntry | None, str | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
 
-    Returns `(state, None)` when the plan never reached `plan_status="complete"`
-    (blocked on clarification, or the invocation budget ran out) -- the caller
-    must treat `None` as "no answer yet," not a crash. Otherwise returns the
-    final `StateEntry` to compose the answer from (a composition-role step's
-    own entry if the Planner ended the plan with one, else a synthesis
-    fallback entry -- see below).
+    Returns `(state, None, clarification_question)` when the plan never
+    reached `plan_status="complete"` -- the caller must treat a `None` final
+    entry as "no answer yet," not a crash. `clarification_question` is the
+    real question text when the plan is blocked on a genuine ambiguity, else
+    `None` (e.g. the invocation budget simply ran out). Otherwise returns
+    `(state, final_entry, None)`: the final `StateEntry` to compose the
+    answer from (a composition-role step's own entry if the Planner ended
+    the plan with one, else a synthesis fallback entry -- see below).
     """
     state = PlanExecutionState(plan_id=plan_id)
     monitor_flags: list[str] = []
     replan_reason: str | None = None
     plan_status = "in_progress"
+    clarification_question: str | None = None
 
     for invocation in range(1, max_planner_invocations + 1):
         planner_input = PlannerInvocationInput(
@@ -75,6 +79,7 @@ async def run_plan_to_completion(
         state.merge_plan_graph(planner_output.plan_graph)
 
         if plan_status == "blocked_needs_clarification":
+            clarification_question = planner_output.clarification_question
             break
 
         monitor_flags = []
@@ -90,6 +95,7 @@ async def run_plan_to_completion(
                 tool_registry=tool_registry,
                 llm_adapter=llm_adapter,
                 original_user_message=original_user_message,
+                user_id=user_id,
                 plan_id=plan_id,
             )
 
@@ -130,7 +136,7 @@ async def run_plan_to_completion(
             break
 
     if plan_status != "complete":
-        return state, None
+        return state, None, clarification_question
 
     # The vision's own worked example (§7) dispatches Composition as just
     # another plan step, through the same generic path as every other role
@@ -139,7 +145,7 @@ async def run_plan_to_completion(
     # for a plan that reached "complete" without ever assigning a
     # composition step.
     if state.entries and state.entries[-1].role == "composition":
-        return state, state.entries[-1]
+        return state, state.entries[-1], None
 
     composed = await compose_answer(
         state=state,
@@ -163,7 +169,7 @@ async def run_plan_to_completion(
         produced_at=datetime.now(timezone.utc),
     )
     state.append(fallback_entry)
-    return state, fallback_entry
+    return state, fallback_entry, None
 
 
 __all__ = ["DEFAULT_MAX_PLANNER_INVOCATIONS", "run_plan_to_completion"]

@@ -104,7 +104,7 @@ async def _run(
             return top_classify
         return sub_classify[step.step_id]
 
-    async def fake_dispatch(*, step, role, state, tool_registry, llm_adapter, block_id):
+    async def fake_dispatch(*, step, role, state, tool_registry, llm_adapter, block_id, user_id):
         if step.step_id == top_step_id and not top_calls_used["dispatch"]:
             top_calls_used["dispatch"] = True
             return top_dispatch
@@ -136,6 +136,7 @@ async def _run(
         tool_registry=TOOL_REGISTRY,
         llm_adapter=object(),
         original_user_message="hello",
+        user_id="test-user-1",
         plan_id="p1",
         **kwargs,
     )
@@ -406,7 +407,9 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
 
     captured_sub_steps: list[PlanStep] = []
 
-    async def fake_dispatch_nested_sub_step(*, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step):
+    async def fake_dispatch_nested_sub_step(
+        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id
+    ):
         captured_sub_steps.append(sub_step)
         return StateEntry(
             entry_id=f"{sub_step.step_id}-0",
@@ -447,6 +450,7 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
         tool_registry=TOOL_REGISTRY,
         llm_adapter=adapter,
         original_user_message="hello",
+        user_id="test-user-1",
         plan_id="p1",
         max_rounds=1,
     )

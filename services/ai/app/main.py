@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.core.responses import error_response
 from app.retrieval.graph_engine.graph_registry import graph_registry
+from app.routes.advise import router as advise_router
 from app.routes.health import router as health_router
 
 
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.include_router(health_router)
+    app.include_router(advise_router)
     return app
 
 

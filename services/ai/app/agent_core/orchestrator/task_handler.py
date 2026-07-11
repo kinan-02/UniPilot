@@ -58,6 +58,7 @@ async def run_task_handler(
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
     original_user_message: str,
+    user_id: str,
     plan_id: str,
     max_rounds: int = DEFAULT_MAX_TASK_HANDLER_ROUNDS,
 ) -> StateEntry:
@@ -80,6 +81,7 @@ async def run_task_handler(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=f"{plan_id}-{step.step_id}",
+            user_id=user_id,
         )
         criteria_met = result.status == "succeeded" and await check_success_criteria(
             step=step,
@@ -100,6 +102,7 @@ async def run_task_handler(
         tool_registry=tool_registry,
         llm_adapter=llm_adapter,
         original_user_message=original_user_message,
+        user_id=user_id,
         plan_id=plan_id,
         max_rounds=max_rounds,
     )
@@ -122,6 +125,7 @@ async def _dispatch_single_specialist(
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
     block_id: str,
+    user_id: str,
 ) -> SubagentResult:
     """The existing step_prep -> context_builder -> run_subagent chain,
     wrapped as one non-recursive helper -- used by BOTH the atomic fast path
@@ -129,7 +133,7 @@ async def _dispatch_single_specialist(
     `PlanExecutionState` it's given (the shared top-level `state`, or a
     task handler's own private one)."""
     step_prep_output = await run_step_prep(
-        step=step, state=state, llm_adapter=llm_adapter, block_id=f"{block_id}-prep"
+        step=step, state=state, llm_adapter=llm_adapter, block_id=f"{block_id}-prep", user_id=user_id
     )
     context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
     return await run_subagent(
@@ -169,6 +173,7 @@ async def _run_nested_subplan(
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
     original_user_message: str,
+    user_id: str,
     plan_id: str,
     max_rounds: int,
 ) -> tuple[PlanExecutionState, str | None, int, bool]:
@@ -229,6 +234,7 @@ async def _run_nested_subplan(
                 llm_adapter=llm_adapter,
                 plan_id=plan_id,
                 step=step,
+                user_id=user_id,
             )
 
         round_monitor_flags = []
@@ -263,6 +269,7 @@ async def _dispatch_nested_sub_step(
     llm_adapter: LLMAdapter,
     plan_id: str,
     step: PlanStep,
+    user_id: str,
 ) -> StateEntry:
     """One sub-step of the private sub-plan. Calls the classifier for ROLE
     ASSIGNMENT ONLY -- it does not re-decide whether to recurse. If this
@@ -290,6 +297,7 @@ async def _dispatch_nested_sub_step(
         tool_registry=tool_registry,
         llm_adapter=llm_adapter,
         block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}",
+        user_id=user_id,
     )
     criteria_met = result.status == "succeeded" and await check_success_criteria(
         step=sub_step,
