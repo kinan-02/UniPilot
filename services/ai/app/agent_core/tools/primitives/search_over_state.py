@@ -43,9 +43,15 @@ from app.retrieval.graph_engine.graph_registry import graph_registry
 
 TOOL_NAME = "search_over_state"
 
-_KNOWN_OBJECTIVES: frozenset[str] = frozenset({"minimize_semesters"})
+_KNOWN_OBJECTIVES: frozenset[str] = frozenset({"minimize_semesters", "find_substitute"})
 _KNOWN_CONSTRAINT_TYPES: frozenset[str] = frozenset(
-    {"courses_required", "courses_required_by_track", "max_credits_per_semester", "max_semesters"}
+    {
+        "courses_required",
+        "courses_required_by_track",
+        "max_credits_per_semester",
+        "max_semesters",
+        "substitute_for",
+    }
 )
 _DEFAULT_MAX_SEMESTERS = 8
 
@@ -81,6 +87,8 @@ def _validate_constraint_types(constraints: list[dict[str, Any]]) -> str | None:
             return f"unknown_constraint_type: {ctype}"
         if ctype == "courses_required_by_track" and not constraint.get("trackSlug"):
             return "courses_required_by_track_requires_trackSlug"
+        if ctype == "substitute_for" and not (constraint.get("courseId") and constraint.get("trackSlug")):
+            return "substitute_for_requires_courseId_and_trackSlug"
     return None
 
 
@@ -116,6 +124,29 @@ async def _resolve_required_courses(constraints: list[dict[str, Any]]) -> _Handl
                 if entry.get("nodeType") == "course":
                     required.add(entry["id"])
     return {"required": required}, None
+
+
+async def _resolve_substitute_candidates(constraints: list[dict[str, Any]]) -> _HandlerResult:
+    """`find_substitute`'s candidate pool: every other course in the same
+    track's `contains` list as the course being substituted -- the only
+    "these courses are somehow related" structure the graph actually has
+    (no explicit elective-bucket/substitutability edges exist). Reuses the
+    exact same `contains` traversal `courses_required_by_track` already
+    does; validated exactly-one `substitute_for` constraint by
+    `run_search_over_state` before this is called.
+    """
+    constraint = next(c for c in constraints if c.get("type") == "substitute_for")
+    course_id = str(constraint["courseId"])
+    track_slug = constraint["trackSlug"]
+    result = await run_traverse_relationship(
+        TraverseRelationshipInput(entity=track_slug, relation="contains", direction="forward")
+    )
+    if not result.ok:
+        return None, f"substitute_pool_unavailable: {track_slug}: {result.error}"
+    candidates = {
+        entry["id"] for entry in result.data["relatedEntities"] if entry.get("nodeType") == "course"
+    } - {course_id}
+    return {"required": candidates}, None
 
 
 def _completed_course_numbers(state: dict[str, Any]) -> set[str]:
@@ -241,6 +272,14 @@ async def run_search_over_state(payload: SearchOverStateInput) -> ToolOutputEnve
     if type_error:
         return ToolOutputEnvelope(ok=False, data=None, error=type_error)
 
+    substitute_constraints = [c for c in payload.constraints if c.get("type") == "substitute_for"]
+    if objective == "find_substitute" and not substitute_constraints:
+        return ToolOutputEnvelope(ok=False, data=None, error="substitute_for_constraint_required")
+    if objective != "find_substitute" and substitute_constraints:
+        return ToolOutputEnvelope(ok=False, data=None, error="substitute_for_constraint_requires_find_substitute_objective")
+    if len(substitute_constraints) > 1:
+        return ToolOutputEnvelope(ok=False, data=None, error="substitute_for_constraint_must_be_singular")
+
     max_credits, error = _resolve_numeric_bound(payload.constraints, "max_credits_per_semester", default=None)
     if error:
         return ToolOutputEnvelope(ok=False, data=None, error=error)
@@ -257,7 +296,10 @@ async def run_search_over_state(payload: SearchOverStateInput) -> ToolOutputEnve
     except Exception as exc:  # noqa: BLE001 -- a tool must fail closed, never raise
         return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
 
-    resolved, error = await _resolve_required_courses(payload.constraints)
+    if objective == "find_substitute":
+        resolved, error = await _resolve_substitute_candidates(payload.constraints)
+    else:
+        resolved, error = await _resolve_required_courses(payload.constraints)
     if error:
         return ToolOutputEnvelope(ok=False, data=None, error=error)
     required = resolved["required"]
@@ -285,8 +327,8 @@ async def run_search_over_state(payload: SearchOverStateInput) -> ToolOutputEnve
 DESCRIPTOR = ToolDescriptor(
     name=TOOL_NAME,
     description="Constrained search/optimization over a state object given a typed constraint "
-    "list and an objective -- the same engine for plan generation, what-if simulation, and "
-    "(later) requirement-substitute search, parameterized differently each time. "
+    "list and an objective -- the same engine for plan generation (minimize_semesters) and "
+    "requirement-substitute search (find_substitute), parameterized differently each time. "
     "See docs/agent/SEARCH_OVER_STATE_CONTRACT.md for the constraint/objective vocabulary.",
     input_model=SearchOverStateInput,
     output_model=ToolOutputEnvelope,

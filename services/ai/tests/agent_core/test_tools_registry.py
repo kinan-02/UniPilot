@@ -7,7 +7,7 @@ import pytest
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.tools.registry import ToolDescriptor, ToolNotFoundError, ToolRegistry
 
-_ALL_TOOL_NAMES = {
+_ALL_PRIMITIVE_TOOL_NAMES = {
     "get_entity",
     "search_knowledge",
     "traverse_relationship",
@@ -20,27 +20,31 @@ _ALL_TOOL_NAMES = {
     "propose_action",
 }
 
-# All 10 registry entries now have real implementations -- see
-# tests/agent_core/tools/test_*.py (one file per primitive). Nothing left
-# in _STUB_TOOL_NAMES; kept as an empty set (not deleted) so
-# test_every_stub_returns_not_implemented still runs -- with zero cases --
-# rather than needing to be resurrected by hand the next time a primitive
-# is retired back to stub status.
-_STUB_TOOL_NAMES: set[str] = _ALL_TOOL_NAMES - {
-    "get_entity",
-    "traverse_relationship",
-    "search_knowledge",
-    "mutate_state",
-    "apply_deterministic_rule",
-    "extract_temporal_pattern",
-    "search_over_state",
-    "interpret_text",
-    "compose_answer",
-    "propose_action",
+# Higher-level composite tools (docs/agent/HIGHER_LEVEL_TOOLS.md), built on
+# top of the primitives above -- same flat ToolRegistry, not a separate
+# mechanism.
+_ALL_COMPOSITE_TOOL_NAMES = {
+    "get_policy_answer",
+    "get_course_profile",
+    "simulate_course_disruption",
+    "check_eligibility",
+    "get_track_requirements",
+    "compare_plans",
+    "audit_graduation_progress",
+    "find_requirement_substitutes",
 }
 
+_ALL_TOOL_NAMES = _ALL_PRIMITIVE_TOOL_NAMES | _ALL_COMPOSITE_TOOL_NAMES
 
-def test_default_registry_has_all_ten_primitives():
+# Every primitive and composite has a real implementation now -- see
+# tests/agent_core/tools/test_*.py (one file per tool). Kept as an empty
+# set (not deleted) so test_every_stub_returns_not_implemented still runs
+# -- with zero cases -- rather than needing to be resurrected by hand the
+# next time a tool is retired back to stub status.
+_STUB_TOOL_NAMES: set[str] = set()
+
+
+def test_default_registry_has_all_primitives_and_composites():
     registry = build_default_tool_registry()
     assert set(registry.names()) == _ALL_TOOL_NAMES
 

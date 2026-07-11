@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_core.planning.state import CertaintyTag
 
@@ -21,6 +21,11 @@ class ToolOutputEnvelope(BaseModel):
     data: dict[str, Any] | None = None
     certainty: CertaintyTag | None = None
     error: str | None = None
+    # Non-fatal caveats about an `ok=True` result (e.g. "found via wiki
+    # only, not in the active semester catalog") -- feeds directly into
+    # AGENT_VISION.md §7.3's `SubagentResult.warnings` one layer up. Empty
+    # by default so every existing call site stays unaffected.
+    warnings: list[str] = Field(default_factory=list)
 
 
 def not_implemented_envelope(tool_name: str) -> ToolOutputEnvelope:

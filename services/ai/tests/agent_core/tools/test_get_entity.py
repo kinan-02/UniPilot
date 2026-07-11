@@ -239,6 +239,7 @@ async def test_course_in_catalog_only_warns_missing_wiki_page(use_real_academic_
     assert result.ok is True
     assert "wikiSlug" not in result.data
     assert result.certainty.basis == "official_record"
+    assert result.warnings == ["no_wiki_page_found_for_course"]
 
 
 async def test_course_in_wiki_only_warns_missing_catalog_entry(use_real_academic_engine):
@@ -247,6 +248,13 @@ async def test_course_in_wiki_only_warns_missing_catalog_entry(use_real_academic
     assert "name" not in result.data
     assert "wikiSlug" in result.data
     assert result.certainty.basis == "wiki_derived"
+    assert result.warnings == ["course_not_in_active_semester_catalog"]
+
+
+async def test_course_in_both_catalog_and_wiki_has_no_warnings(use_real_academic_engine):
+    result = await run_get_entity(GetEntityInput(entity_type="course", entity_id="00440148"))
+    assert result.ok is True
+    assert result.warnings == []
 
 
 # -- get_entity: exception paths, never propagate -----------------------
