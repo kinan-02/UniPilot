@@ -43,6 +43,7 @@ from the caller; it never blocks on a future primitive to exist.
 | `courses_required_by_track` | `trackSlug` | Resolves required courses via `traverse_relationship(trackSlug, "contains", "forward")` — real graph edges, not caller-guessed |
 | `max_credits_per_semester` | `value: number` | Caps total credits scheduled per semester (existing `plannedSemesters` credits count toward the cap too) |
 | `max_semesters` | `value: int` | Bounds how many future semesters the search considers (default `8` if not given — a search must be bounded; documented default, not silently unbounded) |
+| `substitute_for` | `courseId, trackSlug` | Only valid with `objective="find_substitute"` — see that section below. Exactly one per call. |
 
 Multiple `courses_required`/`courses_required_by_track` entries union
 together. Multiple `max_credits_per_semester`/`max_semesters` entries use
@@ -55,14 +56,37 @@ never optional.
 
 ## `objective` — `str`
 
-- `"minimize_semesters"` — v1's only implemented objective: schedule every
-  required-but-not-yet-satisfied course across the fewest future semesters
-  possible, respecting all constraints.
+- `"minimize_semesters"` — schedule every required-but-not-yet-satisfied
+  course across the fewest future semesters possible, respecting all
+  constraints.
+- `"find_substitute"` — reuses the exact same forward-scheduling walk, but
+  with the "required" set replaced by a **substitute candidate pool**
+  instead of a caller-specified requirement list: every other course in the
+  `substitute_for` constraint's `trackSlug`'s `contains` list (excluding
+  `courseId` itself). Requires exactly one `substitute_for` constraint
+  (`{"type": "substitute_for", "courseId": ..., "trackSlug": ...}`); other
+  constraint types (`max_credits_per_semester`, `max_semesters`) still apply
+  as bounds, but `courses_required`/`courses_required_by_track` are ignored
+  for this objective (there is no separate "required" set — the candidate
+  pool *is* the search target). A `substitute_for` constraint given with any
+  other objective fails closed
+  (`substitute_for_constraint_requires_find_substitute_objective`) rather
+  than being silently ignored.
+
+  **Known limitation, by design, not an oversight**: the graph has no
+  explicit elective-bucket or substitutability structure — `contains` is a
+  track's *entire* flat required-course list, required and elective mixed
+  together with no sub-grouping. So a `find_substitute` candidate is
+  "structurally plausible" (same track, not yet completed/planned, actually
+  schedulable) — **not** a semantic claim that it fulfills the exact same
+  requirement line `courseId` was filling. `find_requirement_substitutes`
+  (the higher-level composite built on this objective,
+  `docs/agent/HIGHER_LEVEL_TOOLS.md`) surfaces this caveat directly in its
+  own output rather than hiding it.
 
 Any other value fails closed (`unknown_objective`) — the vocabulary is open
-for future objectives (`check_feasibility`, `find_substitute` for
-requirement-substitute search) without changing the tool's shape, but only
-`minimize_semesters` exists today.
+for future objectives (e.g. `check_feasibility`) without changing the
+tool's shape.
 
 ## Algorithm (v1 — greedy/topological, not a general CSP solver)
 
@@ -130,8 +154,13 @@ case (step 4, nothing left to predict).
 - `<type>_requires_positive_numeric_value` — `max_credits_per_semester`/`max_semesters` given a non-numeric or non-positive `value` (fails closed rather than silently falling back to the default, which could produce a confusingly unbounded search when the caller thought they'd capped it)
 - `courses_required_by_track_requires_trackSlug`
 - `courses_required_by_track_failed: <slug>: <underlying traverse_relationship error>` — propagates the real reason (not found, graph unavailable, etc.) rather than collapsing every failure into one generic "not found" label
+- `substitute_for_requires_courseId_and_trackSlug`
+- `substitute_for_constraint_required` — `objective="find_substitute"` given with no `substitute_for` constraint
+- `substitute_for_constraint_requires_find_substitute_objective` — a `substitute_for` constraint given with any other objective
+- `substitute_for_constraint_must_be_singular` — more than one `substitute_for` constraint in one call
+- `substitute_pool_unavailable: <trackSlug>: <underlying traverse_relationship error>` — `find_substitute`'s equivalent of `courses_required_by_track_failed`
 - `academic_graph_not_configured` / `academic_graph_unavailable: <exc>`
 
 ## Status
 
-- `search_over_state` (`services/ai/app/agent_core/tools/primitives/search_over_state.py`) — implements `objective="minimize_semesters"` only. Additional objectives (`check_feasibility`, `find_substitute`) are a planned follow-up once this is tested end to end.
+- `search_over_state` (`services/ai/app/agent_core/tools/primitives/search_over_state.py`) — implements `objective="minimize_semesters"` and `objective="find_substitute"`. `check_feasibility` remains a possible future objective, not yet needed by anything built so far.

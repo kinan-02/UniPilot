@@ -96,6 +96,45 @@ async def test_courses_required_by_track_missing_slug_fails_closed():
     assert "courses_required_by_track_requires_trackSlug" in result.error
 
 
+async def test_substitute_for_missing_fields_fails_closed():
+    result = await run_search_over_state(
+        SearchOverStateInput(
+            state={}, constraints=[{"type": "substitute_for", "courseId": "00440148"}], objective="find_substitute"
+        )
+    )
+    assert result.ok is False
+    assert "substitute_for_requires_courseId_and_trackSlug" in result.error
+
+
+async def test_find_substitute_objective_requires_substitute_for_constraint():
+    result = await run_search_over_state(SearchOverStateInput(state={}, constraints=[], objective="find_substitute"))
+    assert result.ok is False
+    assert "substitute_for_constraint_required" in result.error
+
+
+async def test_substitute_for_constraint_rejected_outside_find_substitute():
+    result = await run_search_over_state(
+        SearchOverStateInput(
+            state={},
+            constraints=[
+                {"type": "substitute_for", "courseId": "00440148", "trackSlug": "track-materials-engineering"}
+            ],
+            objective="minimize_semesters",
+        )
+    )
+    assert result.ok is False
+    assert "substitute_for_constraint_requires_find_substitute_objective" in result.error
+
+
+async def test_multiple_substitute_for_constraints_rejected():
+    constraint = {"type": "substitute_for", "courseId": "00440148", "trackSlug": "track-materials-engineering"}
+    result = await run_search_over_state(
+        SearchOverStateInput(state={}, constraints=[constraint, dict(constraint)], objective="find_substitute")
+    )
+    assert result.ok is False
+    assert "substitute_for_constraint_must_be_singular" in result.error
+
+
 async def test_graph_not_configured_fails_closed(monkeypatch):
     from app.retrieval.graph_engine.graph_registry import graph_registry
 
@@ -388,6 +427,53 @@ async def test_courses_required_by_track_not_found_fails_closed(use_real_academi
     )
     assert result.ok is False
     assert "courses_required_by_track_failed: track-does-not-exist" in result.error
+
+
+# -- real-data: find_substitute objective -----------------------------------
+
+
+async def test_find_substitute_excludes_the_course_itself_from_the_pool(use_real_academic_data):
+    """track-materials-engineering has 57 required courses (verified in
+    test_get_track_requirements.py); substituting for one of them ("00350022",
+    verified directly to be a member) should yield a 56-course candidate
+    pool that never includes "00350022" itself."""
+    state = {"currentSemesterCode": "2025-1", "completedCourses": [], "plannedSemesters": {}}
+    result = await run_search_over_state(
+        SearchOverStateInput(
+            state=state,
+            constraints=[
+                {
+                    "type": "substitute_for",
+                    "courseId": "00350022",
+                    "trackSlug": "track-materials-engineering",
+                }
+            ],
+            objective="find_substitute",
+        )
+    )
+    assert result.ok is True
+    assert len(result.data["requiredCourses"]) == 56
+    assert "00350022" not in result.data["requiredCourses"]
+    # Verified directly: within the default 8-semester bound, 13 of the 56
+    # candidates come out schedulable, the first ("00350053", "01040019")
+    # landing in the very next semester (2025-2).
+    scheduled = [c["courseNumber"] for courses in result.data["plan"].values() for c in courses]
+    assert len(scheduled) == 13
+    assert set(result.data["plan"]["2025-2"][i]["courseNumber"] for i in range(2)) == {"00350053", "01040019"}
+
+
+async def test_find_substitute_pool_from_unknown_track_fails_closed(use_real_academic_data):
+    result = await run_search_over_state(
+        SearchOverStateInput(
+            state={"currentSemesterCode": "2025-1"},
+            constraints=[
+                {"type": "substitute_for", "courseId": "00350022", "trackSlug": "track-does-not-exist"}
+            ],
+            objective="find_substitute",
+        )
+    )
+    assert result.ok is False
+    assert "substitute_pool_unavailable: track-does-not-exist" in result.error
 
 
 async def test_multiple_max_semesters_constraints_use_the_minimum(use_real_academic_data):

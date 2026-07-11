@@ -1,0 +1,128 @@
+"""`check_eligibility` -- higher-level composite tool (docs/agent/HIGHER_LEVEL_TOOLS.md).
+
+Exposes `AcademicGraphEngine.evaluate_eligibility` -- the one place that
+already gets AND/OR prerequisite logic right (see
+`search_over_state.py`'s own docstring for why `traverse_relationship`'s
+flattened `has_prerequisite` edges can't be used for this) -- as its own
+callable, plus an optional single-semester offering check. Currently that
+logic is only reachable *inside* `search_over_state`'s multi-semester
+search.
+
+**Deliberately narrow, not a partial reimplementation of `search_over_state`.**
+Eligibility here is a snapshot: "given what's genuinely `status=="completed"`
+right now, is this course eligible" -- it does **not** account for courses
+merely *planned* (not yet completed) satisfying a prerequisite, the way
+`search_over_state`'s own multi-semester walk does (where an earlier
+semester's scheduled course legitimately counts as satisfied by the time a
+later semester is reached). A caller that needs *that* -- "will I be
+eligible after my planned courses are done" -- needs the real multi-semester
+search, not this tool. This tool answers the smaller, much more common
+question: "can I take this right now / next semester, given what I've
+actually finished."
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.primitives.extract_temporal_pattern import (
+    ExtractTemporalPatternInput,
+    run_extract_temporal_pattern,
+)
+from app.agent_core.tools.registry import ToolDescriptor
+from app.retrieval.graph_engine.graph_registry import graph_registry
+
+TOOL_NAME = "check_eligibility"
+
+_SEMESTER_CODE_RE = re.compile(r"^(\d+)-([1-3])$")
+
+
+class CheckEligibilityInput(BaseModel):
+    course_id: str
+    state: dict[str, Any] = Field(default_factory=dict)
+    target_semester: str | None = None
+
+
+def _completed_course_numbers(state: dict[str, Any]) -> set[str]:
+    return {
+        str(entry.get("courseNumber"))
+        for entry in state.get("completedCourses") or []
+        if entry.get("status") == "completed" and entry.get("courseNumber")
+    }
+
+
+async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnvelope:
+    course_id = (payload.course_id or "").strip()
+    if not course_id:
+        return ToolOutputEnvelope(ok=False, data=None, error="course_id_required")
+
+    target_semester = payload.target_semester
+    term_index: int | None = None
+    if target_semester:
+        match = _SEMESTER_CODE_RE.match(target_semester.strip())
+        if not match:
+            return ToolOutputEnvelope(ok=False, data=None, error=f"unparseable_target_semester: {target_semester}")
+        term_index = int(match.group(2))
+
+    try:
+        if not graph_registry.is_configured():
+            return ToolOutputEnvelope(ok=False, data=None, error="academic_graph_not_configured")
+        engine = graph_registry.get_engine()
+    except Exception as exc:  # noqa: BLE001 -- a tool must fail closed, never raise
+        return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
+
+    if course_id not in engine.graph:
+        return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: {course_id}")
+
+    completed = _completed_course_numbers(payload.state)
+    eligible, missing = engine.evaluate_eligibility(course_id, completed)
+
+    data: dict[str, Any] = {
+        "courseId": course_id,
+        "eligible": eligible,
+        "missingPrerequisites": missing,
+        "targetSemester": target_semester,
+        "offeringPattern": None,
+        "schedulable": None,
+    }
+    warnings: list[str] = []
+
+    if target_semester:
+        offering_result = await run_extract_temporal_pattern(
+            ExtractTemporalPatternInput(fact_type="course_offering", entity=course_id)
+        )
+        if offering_result.ok:
+            data["offeringPattern"] = {
+                **offering_result.data,
+                "certainty": offering_result.certainty.model_dump(mode="json"),
+            }
+            term_pattern = offering_result.data["termPatterns"].get(str(term_index))
+            offered_this_term = term_pattern is None or term_pattern["label"] != "never"
+            data["schedulable"] = eligible and offered_this_term
+        else:
+            warnings.append("offering_pattern_unavailable")
+
+    return ToolOutputEnvelope(
+        ok=True,
+        data=data,
+        certainty=CertaintyTag(basis="official_record", confidence=1.0),
+        warnings=warnings,
+    )
+
+
+DESCRIPTOR = ToolDescriptor(
+    name=TOOL_NAME,
+    description="Check whether a course is eligible right now given genuinely completed "
+    "courses (AND/OR-aware prerequisite logic), optionally combined with an offering-pattern "
+    "check for one target semester. Narrower and cheaper than a full search_over_state run "
+    "-- does not account for merely-planned (not yet completed) courses.",
+    input_model=CheckEligibilityInput,
+    output_model=ToolOutputEnvelope,
+    side_effect="read",
+    callable=run_check_eligibility,
+)

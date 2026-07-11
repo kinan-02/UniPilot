@@ -181,6 +181,7 @@ def _course_entity_result(engine: AcademicGraphEngine, course_code: str) -> Tool
             confidence=1.0,
             source_ref=SourceRef(page=wiki_slug or course_code),
         ),
+        warnings=warnings,
     )
 
 
