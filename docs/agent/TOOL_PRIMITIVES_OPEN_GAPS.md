@@ -15,7 +15,7 @@ doesn't, or what one role needs from another that isn't wired up yet.
 
 ---
 
-## 1. GPA / academic standing / probation status are not stored facts anywhere
+## 1. GPA / academic standing / probation status are not stored facts anywhere — RESOLVED
 
 **Where it surfaced:** Step A asked a Retrieval subagent to fetch "academic standing (GPA,
 probation status)." Checked both schemas directly (`services/api/app/schemas/student_profile.py`,
@@ -29,13 +29,21 @@ Calculation/Retrieval role split in `AGENT_VISION.md` §7.2 (Calculation is the 
 constrained to "cite which rule and which facts it applied"; Retrieval isn't supposed to
 compute anything).
 
-**Suggested handling:** Don't change the primitives. Fix the plan shape instead — Step A's
-objective should be narrowed to "fetch raw completed-course grades and profile data," and a
-downstream `apply_deterministic_rule` (Calculation) step should own turning that into an
-actual GPA/probation-threshold check, using a rule sourced from Step C's policy interpretation.
-This is really the same shape as gap #6 below (Step D) — the Planner should be decomposing
-"fetch raw data" from "compute a derived status" as two separate steps, not folding both into
-one subagent's job.
+**How it's resolved:** Confirmed against a REAL model call, not just architectural plausibility
+— `tests/agent_core/test_task_handler_gap_live_eval.py::test_gap_1_gpa_probation_step_is_not_treated_as_pure_retrieval`
+runs the real classifier (`task_handler_classifier.py::classify_step`) and the real nested
+Planner (`NESTED_PLANNER_V1`) against Step A's actual, verbatim recorded objective. The task
+handler's classifier initially only flagged the step non-atomic without any domain knowledge
+about WHY, and re-running the same live eval showed this was flaky: the nested planner's own
+decomposition sometimes still routed a sub-step asking for "cumulative GPA, probation status"
+straight to Retrieval, which has no honest way to compute it. Fixed with one new instruction
+added to BOTH the shared Planner contract (`planning/planner.py::_planner_contract`, which
+`NESTED_PLANNER_V1` inherits via `.model_copy`) and the classifier's own contract
+(`orchestrator/task_handler_classifier.py::_task_handler_classifier_contract`): a
+cumulative/semester GPA or academic-standing/probation status is explicitly called out as a
+DERIVED fact (computed from raw per-course grades via `apply_deterministic_rule`), never a
+field a bare Retrieval fetch can return. Re-running the live eval after this fix passed
+consistently.
 
 ---
 
@@ -97,7 +105,7 @@ is now an explicit, tested contract; see
 
 ---
 
-## 4. Mandatory-vs-elective course status isn't a graph fact — it's prose
+## 4. Mandatory-vs-elective course status isn't a graph fact — it's prose — RESOLVED
 
 **Where it surfaced:** Step B needs "which degree requirements it fulfills (mandatory,
 elective, etc.)." `traverse_relationship`'s `belongs_to`/`contains` edges only say a course
@@ -112,13 +120,28 @@ subagent's tool ceiling includes it is an orchestrator decision that doesn't see
 anywhere yet — so this success criterion is currently unimplementable by a pure-Retrieval
 subagent as scoped.
 
-**Suggested handling:** Either (a) explicitly grant `interpret_text` to the Retrieval role's
-tool ceiling for exactly this kind of "structural fact wrapped in prose" case, or (b) have
-the Planner insert a dedicated Interpretation step after Retrieval for track-requirement
-classification, feeding its result back into the same shared plan-execution state. (b) is
-more consistent with the role separation the rest of the design leans on; (a) is less
-plan-structure overhead for what's arguably a small, single-fact lookup. Worth a real
-decision, not a default.
+**How it's resolved:** Option (b) from the original suggestion — keeping Retrieval's tool
+ceiling unchanged — confirmed against real model calls in
+`tests/agent_core/test_task_handler_gap_live_eval.py`. One new instruction added to both the
+shared Planner contract and the classifier's contract (same two files as gap #1's fix) states
+that a course's/program's requirement-fulfillment status (mandatory/elective/core) lives in
+prose, not a graph edge, and must never be bundled into the same step as a structural catalog
+fetch. Confirming this surfaced a SECOND, deeper issue the original write-up didn't
+anticipate: requirement-fulfillment status is relative to one specific degree program (the
+same course can be mandatory in one program, elective in another), so it can't be resolved at
+all without knowing which program applies. The real, original recorded plan
+(`live_eval_logs/full_turn-20260710T191712Z.json`) never wired this step to depend on the
+sibling step that fetches the student's declared program — a dependency-graph gap, not a
+role-grant gap. Fixed with a second instruction in the shared Planner contract: a
+requirement-fulfillment step must declare a dependency on whichever step fetches the
+student's declared program (adding one if none exists yet).
+`test_gap_4_mandatory_elective_step_gets_an_interpretation_capable_path` confirms the nested
+planner now correctly separates the two concerns (and, absent program context, legitimately
+returns `blocked_needs_clarification` rather than guessing — a pass, not a failure);
+`test_gap_4_top_level_plan_wires_requirement_fulfillment_step_to_program_step` confirms a
+fresh, real, end-to-end top-level plan (via a real Request-Understanding + Planner call, not
+hand-built steps) now wires that dependency edge itself, which should prevent this
+clarification need from arising at all in normal use.
 
 ---
 
@@ -205,10 +228,10 @@ returning an incomplete result.
 
 | # | Gap | Surfaced in | Fix type | Status |
 |---|-----|--------------|----------|--------|
-| 1 | GPA/probation not stored; shouldn't be computed by Retrieval | Step A | Plan-shape (split fetch vs. compute) | Open |
+| 1 | GPA/probation not stored; shouldn't be computed by Retrieval | Step A | Planner/classifier prompt instruction (derived-fact rule) | Resolved |
 | 2 | No program → wiki-slug mapping | Step A | Propagate existing catalog metadata (`programSlug` on `student_profiles`) | Resolved |
 | 3 | No slug → course-code field in `search_knowledge` output | Step B | Small primitive-output addition (`courseCode`) | Resolved |
-| 4 | Mandatory/elective status needs `interpret_text`, role grant unclear | Step B | Orchestrator/role-grant decision | Open |
+| 4 | Mandatory/elective status needs `interpret_text`, role grant unclear | Step B | Planner/classifier prompt instruction + dependency-graph wiring | Resolved |
 | 5 | "No temporary exceptions" unverifiable | Step C | Behavior fix (flag as unverifiable), no new primitive yet | Open |
 | 6 | Step D conflates Calculation + Composition roles | Step D | Task handler (dispatch-time decomposition) | Resolved |
 | 7 | Step D needs a fact (`extract_temporal_pattern`) no upstream step fetched | Step D | Task handler (private nested planning) | Resolved |
@@ -222,8 +245,19 @@ for the behavioral test coverage. Gap 3 was resolved with a small additive field
 Gap 2 was resolved in `services/api` by propagating a wiki slug the catalog already carries
 onto `student_profiles` at profile-creation/update time (`app/services/student_profile_validation.py`,
 `app/repositories/student_profile_repository.py`, `app/routes/student_profile.py`) — no new
-lookup table, reusing data that already existed. Gaps 1, 4, and 5 remain open; per the
-discussion that led to this update, gaps 1 and 4 are also likely substantially mitigated by
-the task handler's own dispatch-time role/decomposition decisions (see the design discussion
-this doc grew out of), but that's worth confirming against real usage before doing more work
-on them, rather than assuming.
+lookup table, reusing data that already existed.
+
+Gaps 1 and 4 were confirmed and resolved against REAL model calls (DeepSeek, via
+`services/ai/tests/agent_core/test_task_handler_gap_live_eval.py::pytest.mark.live`), not
+just architectural plausibility — the task handler's mechanism alone was not sufficient
+without two targeted, explicit prompt instructions added to both
+`planning/planner.py::_planner_contract` (inherited by `NESTED_PLANNER_V1` via `.model_copy`)
+and `orchestrator/task_handler_classifier.py::_task_handler_classifier_contract`: (1) a GPA/
+academic-standing/probation value is a derived fact needing `apply_deterministic_rule`, never
+a bare Retrieval fetch; (2) a requirement-fulfillment status (mandatory/elective/core) lives
+in prose needing `interpret_text`, and is relative to one specific degree program, so a step
+asking for it must depend on whichever step fetches that program. The first live-eval run
+before these fixes showed real, observed non-determinism (the classifier sometimes correctly
+recognized these cases without any explicit instruction, sometimes didn't) — after adding the
+instructions, repeated live runs passed consistently. Gap 5 remains open (deliberately, per
+YAGNI — see its own section above).

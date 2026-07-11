@@ -86,6 +86,18 @@ def _task_handler_classifier_contract() -> PromptContract:
             "role_if_atomic must be null whenever atomic is false -- a non-atomic step gets "
             "decomposed by the task handler's own nested planner, which decides roles for its own "
             "sub-steps separately; this call never assigns a role to a step it judged non-atomic.",
+            "If success_criteria asks for a course's or program's REQUIREMENT-FULFILLMENT status "
+            "(e.g. mandatory, elective, core, which track/degree requirement it satisfies) bundled "
+            "together with structural catalog fields (course code, credits, prerequisites), treat "
+            "the step as NOT atomic: that status lives in prose and needs interpret_text, which is "
+            "granted only to the interpretation role, never retrieval -- retrieval cannot honestly "
+            "satisfy that half of the criteria.",
+            "If success_criteria asks for a cumulative GPA, semester GPA, or academic-standing/"
+            "probation status as if it were a directly fetchable field (rather than explicitly "
+            "asking only for raw per-course grades and credits), treat the step as NOT atomic: a "
+            "GPA/standing value is DERIVED by applying a rule to raw grades, which retrieval alone "
+            "has no tool to do -- never assign role_if_atomic='retrieval' to a step whose criteria "
+            "expects an already-computed GPA or standing label back.",
             f"When atomic is true, role_if_atomic must be exactly one of: {', '.join(_ROLE_VALUES)}.",
             "When genuinely uncertain whether a step is atomic, prefer atomic=false. A wrongly "
             "non-atomic verdict only costs one extra bounded planning round; a wrongly atomic "

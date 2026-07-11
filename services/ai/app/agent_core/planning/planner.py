@@ -169,6 +169,29 @@ def _planner_contract() -> PromptContract:
             "alone, what KIND of work it is (looking something up, interpreting/explaining a "
             "result, validating a calculation, exploring a hypothetical, or composing a final "
             "answer) without needing any other field to disambiguate.",
+            "A course's or program's REQUIREMENT-FULFILLMENT status (e.g. mandatory, elective, "
+            "core, which track/degree requirement it satisfies) is a fact that lives in prose "
+            "describing degree/track requirements, not a structured graph attribute -- it requires "
+            "reading and interpreting that text, unlike a course's code, credit count, or "
+            "prerequisite list, which are structured lookups. Never bundle a requirement-fulfillment "
+            "classification into the same step as a purely structural catalog fetch; give it its "
+            "own separate step instead.",
+            "A student's cumulative GPA, semester GPA, or academic-standing/probation status is a "
+            "DERIVED fact computed from raw per-course grades and credit weights against a policy "
+            "threshold -- never assume it is a field a Retrieval fetch can simply return. A step "
+            "asking for it must either be scoped as 'fetch the raw per-course grades and credits' "
+            "(a Retrieval-shaped fetch) or, when a derived value/status is genuinely required, "
+            "include a separate step that applies the relevant rule to those raw facts "
+            "(a Calculation/apply_deterministic_rule step) -- never one step that expects a bare "
+            "fetch to return an already-computed GPA or standing label.",
+            "A requirement-fulfillment status is always relative to ONE specific degree program or "
+            "track -- the same course can be mandatory in one program and elective in another -- so "
+            "it can never be resolved without knowing which program applies. If any step in this "
+            "same batch, plan_graph_so_far, or state_index fetches (or will fetch) the student's "
+            "declared degree program, the requirement-fulfillment step MUST declare that step as a "
+            "dependency. If no such step exists anywhere yet, add one to this batch and depend on "
+            "it, rather than leaving the requirement-fulfillment step to discover the missing "
+            "program on its own later.",
             "success_criteria and assumptions_to_verify must be concrete and checkable -- specific "
             "facts or conditions that can be verified true or false against the step's actual "
             "result, never a vague hedge like 'gather relevant information'.",
