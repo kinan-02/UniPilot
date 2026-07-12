@@ -27,7 +27,7 @@ def log_reasoning_trace(trace: ReasoningTrace, *, log: logging.Logger | None = N
     """
     (log or logger).info(
         "reasoning_block_trace block_id=%s agent=%s status=%s iterations=%d "
-        "repair_attempts=%d duration_ms=%.0f schema_valid=%s",
+        "repair_attempts=%d duration_ms=%.0f schema_valid=%s warnings=%s",
         trace.block_id,
         trace.agent_name,
         trace.status,
@@ -35,5 +35,6 @@ def log_reasoning_trace(trace: ReasoningTrace, *, log: logging.Logger | None = N
         trace.repair_attempts_used,
         trace.duration_ms,
         trace.schema_valid,
+        trace.warnings[:10],
         extra={"reasoningTrace": trace.model_dump()},
     )

@@ -116,6 +116,18 @@ async def run_subagent_tool_loop(
         )
         current_output = await block.run(current_input)
 
+    if current_output.status == "needs_tool":
+        # The round budget is exhausted, so these requests are never
+        # actually executed -- without this, there was no way to tell
+        # whether the round cap was hit on a legitimate additional need or
+        # a repeat/redundant request, since only *executed* tool calls were
+        # logged (subagent_tool_invoked, above).
+        logger.info(
+            "subagent_tool_loop_exhausted_still_needs_tool rounds_used=%d unexecuted_requests=%s",
+            rounds_used,
+            [{"tool_name": r.tool_name, "arguments": r.arguments} for r in current_output.tool_requests],
+        )
+
     return current_output, audit_trail
 
 
