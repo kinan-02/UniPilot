@@ -1,6 +1,8 @@
 # Calculation-Validation reasoning block & expression-tree implementation plan
 
-**Status: planned, not yet implemented.** This document is the execution-ready plan for two
+**Status: implemented** (commits `646c044` Part 1, `97c5663` Part 2 -- full unit test suite green,
+zero new regressions). Live-eval verification against the credits-remaining scenario (Part 3 step 4)
+is still outstanding. This document is the plan for two
 related changes, designed together in conversation on 2026-07-12 after a live-eval investigation
 (see `TOOL_PRIMITIVES_OPEN_GAPS.md`/session history) found the Calculation-Validation role
 structurally unable to answer "how many credits do I have left" — both because
