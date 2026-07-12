@@ -8,6 +8,7 @@ so no real LLM call is ever made.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -32,6 +33,7 @@ class FakeLLMAdapter:
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         self.calls.append(
             {

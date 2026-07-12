@@ -13,6 +13,7 @@ shapes above have genuinely incompatible internal call graphs.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -98,6 +99,7 @@ class BaseReasoningBlock(ABC):
         prompt_registry: PromptRegistry,
         debug_observer: ReasoningBlockDebugObserver | None = None,
         debug_case_id: str | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> None:
         # Exactly one adapter, one registry -- the honest common minimum.
         # A future shape that genuinely needs more than one (e.g. a
@@ -108,6 +110,7 @@ class BaseReasoningBlock(ABC):
         self._prompt_registry = prompt_registry
         self._debug_observer = debug_observer
         self._debug_case_id = debug_case_id
+        self._streaming_queue = streaming_queue
 
     # ------------------------------------------------------------------
     # The one structural guarantee every shape gets for free: never raises.
@@ -202,16 +205,11 @@ class BaseReasoningBlock(ABC):
         block_input: BaseReasoningBlockInput,
         telemetry: RunTelemetry,
     ) -> LlmCallResult:
-        """Thin wrapper around `LLMAdapter.complete_json`.
-
-        Returns parsed JSON and raw text together. Catches `LLMAdapterError`
-        only long enough to log which `phase` failed, then re-raises --
-        it never swallows, because `run()`'s outer wrapper is the one place
-        that owns "never raises". Increments `telemetry.call_count`
-        regardless of outcome.
+        """Wraps the actual adapter call with schema-support and telemetry.
+        Never raises -- handles `LLMAdapterError` natively.
         """
         telemetry.call_count += 1
-        raw_text_holder: list[str] = []
+        raw_text_out: list[str] = []
         try:
             parsed = await self._llm_adapter.complete_json(
                 system_prompt=system_prompt,
@@ -221,17 +219,19 @@ class BaseReasoningBlock(ABC):
                 thinking_enabled=params.thinking_enabled,
                 reasoning_effort=params.reasoning_effort,
                 response_schema=response_schema,
-                raw_model_text_out=raw_text_holder,
+                raw_model_text_out=raw_text_out,
                 timeout=params.timeout,
                 max_retries=params.max_retries,
+                streaming_queue=self._streaming_queue,
             )
+            raw_text = raw_text_out[0] if raw_text_out else ""
         except LLMAdapterError:
             logger.warning(
                 "reasoning_block_llm_call_failed",
                 extra={"block_id": block_input.block_id, "phase": phase},
             )
             raise
-        return LlmCallResult(parsed=parsed, raw_text=raw_text_holder[0] if raw_text_holder else "")
+        return LlmCallResult(parsed=parsed, raw_text=raw_text)
 
     def _validate_schema(self, result: Any, schema: dict[str, Any]) -> SchemaValidationResult:
         return validate_against_schema(result, schema)

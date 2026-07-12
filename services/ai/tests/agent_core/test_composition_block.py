@@ -1,0 +1,188 @@
+"""Tests for `CompositionReasoningBlock`/`run_composition_subagent`
+(docs/agent/agent_plans/COMPOSITION_REASONING_BLOCK_PLAN.md).
+
+All scenarios exercised through the public `run_composition_subagent` entry point.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
+from app.agent_core.subagents.composition_block import run_composition_subagent
+from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
+from app.agent_core.planning.state import CertaintyTag
+
+
+def _context_package() -> SubagentContextPackage:
+    return SubagentContextPackage(
+        rendered_prompt="Compose the final answer.",
+        structured_fields=StepInstructionFields(goal="Write an answer.", description="Write it."),
+        dependency_state=[],
+        tool_grant=[],  # Composition has no tool access
+        output_schema_name="generic_step_output_v1",
+        output_schema={"type": "object"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_happy_path_returns_succeeded(fake_llm_adapter_factory) -> None:
+    llm_adapter = fake_llm_adapter_factory(
+        responses=[
+            {"answer_text": "The retake policy allows 2 retakes."},
+        ]
+    )
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result == {"answer_text": "The retake policy allows 2 retakes."}
+    assert result.certainty == CertaintyTag(basis="llm_interpretation", confidence=1.0)
+    assert not result.warnings
+    assert not result.tool_audit_trail
+    assert len(llm_adapter._responses) == 0
+
+
+@pytest.mark.asyncio
+async def test_malformed_result_triggers_schema_repair_and_recovers(fake_llm_adapter_factory) -> None:
+    llm_adapter = fake_llm_adapter_factory(
+        responses=[
+            {"wrong_key": "Oops"},  # Fails schema
+            {"answer_text": "Recovered answer."},
+        ]
+    )
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result == {"answer_text": "Recovered answer."}
+    assert len(llm_adapter._responses) == 0
+
+
+@pytest.mark.asyncio
+async def test_schema_repair_exhausted_fails_closed(fake_llm_adapter_factory) -> None:
+    llm_adapter = fake_llm_adapter_factory(
+        responses=[
+            {"wrong_key": "1"},
+            {"wrong_key": "2"},
+            {"wrong_key": "3"},
+        ]
+    )
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "failed"
+    assert "composition_failed: schema_validation_failed" in result.warnings
+    assert len(llm_adapter._responses) == 0
+
+
+@pytest.mark.asyncio
+async def test_blank_or_placeholder_answer_fails_closed(fake_llm_adapter_factory) -> None:
+    llm_adapter = fake_llm_adapter_factory(
+        responses=[
+            {"answer_text": "   "},
+            {"answer_text": "   "},
+        ]
+    )
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "failed"
+    assert "composition_failed: empty_answer_text" in result.warnings
+    assert len(llm_adapter._responses) == 0
+
+    llm_adapter2 = fake_llm_adapter_factory(
+        responses=[
+            {"answer_text": GENERIC_BLANK_FIELD_PLACEHOLDER},
+            {"answer_text": GENERIC_BLANK_FIELD_PLACEHOLDER},
+        ]
+    )
+
+    result2 = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter2,
+        block_id="test-block",
+    )
+
+    assert result2.status == "failed"
+    assert "composition_failed: empty_answer_text" in result2.warnings
+
+
+@pytest.mark.asyncio
+async def test_retries_once_when_result_is_missing_and_returns_retry_outcome(fake_llm_adapter_factory) -> None:
+    llm_adapter = fake_llm_adapter_factory(
+        responses=[
+            # First attempt fails with empty text (semantic check)
+            {"answer_text": "  "},
+            # Second attempt succeeds
+            {"answer_text": "Retry succeeded."},
+        ]
+    )
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result == {"answer_text": "Retry succeeded."}
+    assert len(llm_adapter._responses) == 0
+
+
+@pytest.mark.asyncio
+async def test_does_not_retry_when_the_failure_is_not_result_is_missing(fake_llm_adapter_factory) -> None:
+    # We can fake it by raising an LLM error which gives reasoning_block_failed: internal_error.
+    class ErrorAdapter:
+        async def complete_json(self, *args, **kwargs):
+            raise ValueError("Some catastrophic error")
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=ErrorAdapter(),
+        block_id="test-block",
+    )
+
+    assert result.status == "failed"
+    assert "reasoning_block_failed: internal_error" in result.warnings
+    # Did not retry
+    assert "empty_answer_text" not in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_subagent_result_shape_parity(fake_llm_adapter_factory) -> None:
+    llm_adapter = fake_llm_adapter_factory(
+        responses=[
+            {"answer_text": "Works."},
+        ]
+    )
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.certainty.basis == "llm_interpretation"
+    assert result.certainty.confidence == 1.0
+    assert result.assumptions == []
+    assert result.warnings == []
+    assert result.tool_audit_trail == []
+    assert not result.needs_another_round

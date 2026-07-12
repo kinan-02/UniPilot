@@ -12,6 +12,9 @@ covered by `test_expression_tree.py`), only the block's own draft -> validate
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from app.agent_core.planning.state import CertaintyTag, StateEntry
 from app.agent_core.subagents.calculation_validation_block import (
     _MAX_REPAIR_ATTEMPTS,
     run_calculation_validation_subagent,
@@ -174,3 +177,51 @@ async def test_returns_subagent_result_shape_matching_the_generic_paths_output(f
     assert isinstance(result.tool_audit_trail, list)
     assert result.tool_audit_trail[0].tool_name == "apply_deterministic_rule"
     assert result.needs_another_round is False
+
+
+async def test_dependency_facts_nested_under_data_facts_are_promoted_to_top_level_refs(
+    fake_llm_adapter_factory,
+):
+    """Regression guard: `ref` is a flat, single-hop lookup
+    (`expression_tree.py`'s `facts[node.ref]`, no dotted-path traversal), but
+    a retrieval-shaped dependency's actual fetched values live nested one
+    level deeper, under its own `data["facts"]`. Keying the calc-validation
+    `facts` dict only by step_id handed the model the whole retrieval
+    envelope (confidence, source_ref, ...) where a list/number was expected,
+    producing "of_not_a_list"/"ref not found" no matter how many repair
+    attempts it got (found via a live-eval run against a real seeded
+    student). Confirms a fact nested under `data["facts"]` is now directly
+    ref-able by its own key, resolved for real through the actual
+    `apply_deterministic_rule` tool call."""
+    dependency = StateEntry(
+        entry_id="2a-0",
+        step_id="2a",
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        data={"certainty_basis": "official_record", "confidence": 0.9, "facts": {"gpa": 3.4}},
+        certainty=CertaintyTag(basis="official_record", confidence=0.9),
+        produced_at=datetime.now(timezone.utc),
+    )
+    context_package = SubagentContextPackage(
+        rendered_prompt="Check the GPA.",
+        structured_fields=StepInstructionFields(goal="Check the GPA.", description="Check the GPA."),
+        dependency_state=[dependency],
+        tool_grant=["apply_deterministic_rule"],
+        output_schema_name="generic_step_output_v1",
+        output_schema={"type": "object"},
+    )
+    adapter = fake_llm_adapter_factory(
+        [{"op": "compare", "left": {"ref": "gpa"}, "comparator": ">=", "right": {"const": 2.0}}]
+    )
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_calculation_validation_subagent(
+        context_package=context_package,
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert registry.call_count == 1

@@ -15,10 +15,12 @@ the frontend's `AdvisorReply` type are unchanged by this route.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from app.agent_core.orchestrator.state_index import certainty_band
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
@@ -60,6 +62,26 @@ def _derive_course_ids(state: PlanExecutionState) -> list[str]:
                     course_ids.add(str(entity_id))
     return sorted(course_ids)
 
+def _derive_sources(state: PlanExecutionState) -> list[str]:
+    """Grounded in real tool calls: every successful get_entity or search_knowledge 
+    that returned wiki pages, catalog records, or tracks."""
+    sources: set[str] = set()
+    for entry in state.entries:
+        for record in entry.tool_audit_trail:
+            if record.tool_name == "get_entity" and record.output_ok:
+                entity_type = record.arguments.get("entity_type")
+                if entity_type in ("wiki_page", "track", "program", "minor", "faculty"):
+                    entity_id = record.arguments.get("entity_id")
+                    if entity_id:
+                        sources.add(str(entity_id))
+            elif record.tool_name == "search_knowledge" and record.output_ok:
+                matches = record.output_data.get("matches", []) if isinstance(record.output_data, dict) else []
+                for match in matches:
+                    slug = match.get("slug")
+                    if slug:
+                        sources.add(str(slug))
+    return sorted(sources)
+
 
 def _response_payload(
     *,
@@ -67,6 +89,7 @@ def _response_payload(
     confidence: str,
     course_ids: list[str],
     retrieval_status: str,
+    sources: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "response": {
@@ -78,7 +101,7 @@ def _response_payload(
             # faked (docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md's own
             # discipline: don't fabricate what the system can't ground).
             "wiki_slugs": [],
-            "sources": [],
+            "sources": sources or [],
             "contacts": [],
             "eligibility": None,
         },
@@ -101,6 +124,7 @@ def _build_advise_response(
             confidence="low",
             course_ids=[],
             retrieval_status="out_of_scope",
+            sources=[],
         )
     elif final_entry is None:
         payload = _response_payload(
@@ -108,6 +132,7 @@ def _build_advise_response(
             confidence="low",
             course_ids=[],
             retrieval_status="blocked_needs_clarification" if clarification_question else "incomplete",
+            sources=_derive_sources(state),
         )
     else:
         payload = _response_payload(
@@ -115,6 +140,7 @@ def _build_advise_response(
             confidence=certainty_band(final_entry.certainty.confidence),
             course_ids=_derive_course_ids(state),
             retrieval_status=final_entry.status,
+            sources=_derive_sources(state),
         )
     return {"question": question, **payload}
 
@@ -164,6 +190,71 @@ async def advise_route(payload: AdviseRequest) -> dict[str, Any]:
             clarification_question=clarification_question,
         )
     )
+
+@router.post("/advise/stream")
+async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
+    plan_id = str(uuid4())
+    settings = get_settings()
+    llm_adapter = BudgetedLLMAdapter(
+        ChatLLMAdapter(), max_calls=settings.agent_reasoning_call_budget_per_turn
+    )
+    streaming_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def _run_agent_and_close_queue():
+        try:
+            understanding, state, final_entry, clarification_question = await asyncio.wait_for(
+                run_agent_turn(
+                    original_user_message=payload.question,
+                    user_id=payload.user_id,
+                    llm_adapter=llm_adapter,
+                    role_roster=build_default_role_roster(),
+                    tool_registry=build_default_tool_registry(),
+                    plan_id=plan_id,
+                    streaming_queue=streaming_queue,
+                ),
+                timeout=settings.agent_turn_timeout_seconds,
+            )
+            final_payload = _build_advise_response(
+                question=payload.question,
+                understanding=understanding,
+                state=state,
+                final_entry=final_entry,
+                clarification_question=clarification_question,
+            )
+            # Signal completion and push the final payload
+            await streaming_queue.put(json.dumps({"type": "final", "data": final_payload}))
+        except asyncio.TimeoutError:
+            final_payload = {
+                "question": payload.question,
+                **_response_payload(
+                    answer=_TIMEOUT_MESSAGE,
+                    confidence="low",
+                    course_ids=[],
+                    retrieval_status="timeout",
+                    sources=[],
+                ),
+            }
+            await streaming_queue.put(json.dumps({"type": "final", "data": final_payload}))
+        except Exception as e:
+            await streaming_queue.put(json.dumps({"type": "error", "error": str(e)}))
+        finally:
+            await streaming_queue.put(None)  # EOF
+
+    async def _event_generator():
+        task = asyncio.create_task(_run_agent_and_close_queue())
+        while True:
+            chunk = await streaming_queue.get()
+            if chunk is None:
+                break
+            # Langchain's astream gives text chunks for the answer.
+            # We differentiate raw text chunks vs final JSON dump string
+            if chunk.startswith('{"type":'):
+                yield f"data: {chunk}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+        await task
+
+    return StreamingResponse(_event_generator(), media_type="text/event-stream")
 
 
 __all__ = ["router"]

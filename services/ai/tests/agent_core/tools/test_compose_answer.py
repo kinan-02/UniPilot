@@ -7,6 +7,7 @@ made (same `_FakeLLMAdapter` pattern as test_interpret_text.py).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -34,6 +35,7 @@ class _FakeLLMAdapter:
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt})
         if not self._responses:

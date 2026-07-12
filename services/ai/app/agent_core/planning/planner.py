@@ -209,6 +209,15 @@ def _planner_contract() -> PromptContract:
             "batch, 'complete' when this batch is the last one needed to answer the request, "
             "'blocked_needs_clarification' when a genuine ambiguity blocks proceeding. Never leave "
             "it to be inferred from next_steps being empty.",
+            "If state_index/plan_graph_so_far already shows a fact was fetched and came back "
+            "explicitly null/absent from an authoritative source (e.g. the student's own profile has "
+            "no declared degree program or track), that fact is CONCLUSIVELY known to be absent, not "
+            "merely unfound -- never schedule another step that re-fetches the same record or "
+            "searches elsewhere trying to re-derive it; that step cannot succeed and only burns the "
+            "planning budget. Either proceed using the absence itself as a known fact (e.g. compose an "
+            "answer that says the student has not yet declared a program), or, only if the missing "
+            "fact is genuinely required and cannot be substituted, set "
+            "plan_status='blocked_needs_clarification' and ask the student for it directly.",
         ],
         allowed_context_fields=None,
         output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,

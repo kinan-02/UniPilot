@@ -89,13 +89,14 @@ def _cached_chat_llm(
     real API error to investigate, not be silently rewritten underneath the
     caller.
     """
+    import httpx
     from langchain_openai import ChatOpenAI
 
     kwargs: dict[str, Any] = {"model": model, "temperature": temperature, "api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
     if timeout is not None:
-        kwargs["timeout"] = timeout
+        kwargs["timeout"] = httpx.Timeout(timeout, read=timeout)
     if max_retries is not None:
         kwargs["max_retries"] = max_retries
     _apply_reasoning_kwargs(

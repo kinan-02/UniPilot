@@ -57,3 +57,46 @@ def test_build_state_index_preserves_order_and_maps_every_field():
 
 def test_build_state_index_of_empty_list_returns_empty():
     assert build_state_index([]) == []
+
+
+def test_build_state_index_includes_a_data_preview_when_data_is_non_empty():
+    """The Planner used to see only pass/fail status, never a step's actual
+    returned facts -- e.g. no way to tell a fetched-but-null program field
+    apart from a step that simply failed for some unrelated reason. A bounded
+    preview of `entry.data` is now folded into `summary` so the Planner's own
+    "don't re-derive an already-confirmed-absent fact" instruction has
+    something concrete to act on."""
+    entry = StateEntry(
+        entry_id="s1-0",
+        step_id="s1",
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        data={"programSlug": None, "facultyId": None},
+        certainty=CertaintyTag(basis="official_record", confidence=0.95),
+        produced_at=datetime.now(timezone.utc),
+    )
+
+    summary = build_state_index([entry])[0].summary
+
+    assert summary.startswith("succeeded (generic_step_output_v1): ")
+    assert "programSlug" in summary
+    assert "null" in summary
+
+
+def test_build_state_index_truncates_an_oversized_data_preview():
+    entry = StateEntry(
+        entry_id="s1-0",
+        step_id="s1",
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        data={"blob": "x" * 500},
+        certainty=CertaintyTag(basis="official_record", confidence=0.95),
+        produced_at=datetime.now(timezone.utc),
+    )
+
+    summary = build_state_index([entry])[0].summary
+
+    assert summary.endswith("...(truncated)")
+    assert len(summary) < 500

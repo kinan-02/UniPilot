@@ -23,6 +23,7 @@ counter (see `tests/agent_core/test_orchestrator_task_handler.py`'s
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.context_builder import build_subagent_context_package
@@ -43,6 +44,10 @@ from app.agent_core.planning.state import (
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.subagents.calculation_validation_block import run_calculation_validation_subagent
+from app.agent_core.subagents.composition_block import run_composition_subagent
+from app.agent_core.subagents.interpretation_block import run_interpretation_subagent
+from app.agent_core.subagents.retrieval_block import run_retrieval_subagent
+from app.agent_core.subagents.simulation_planning_block import run_simulation_planning_subagent
 from app.agent_core.subagents.run import run_subagent
 from app.agent_core.subagents.schemas import SubagentResult
 from app.agent_core.tools.registry import ToolRegistry
@@ -62,6 +67,7 @@ async def run_task_handler(
     user_id: str,
     plan_id: str,
     max_rounds: int = DEFAULT_MAX_TASK_HANDLER_ROUNDS,
+    streaming_queue: asyncio.Queue[str] | None = None,
 ) -> StateEntry:
     """Never appends to `state` itself -- the caller still owns
     `state.append(entry)`, unchanged from today's `loop.py` behavior."""
@@ -83,6 +89,7 @@ async def run_task_handler(
             llm_adapter=llm_adapter,
             block_id=f"{plan_id}-{step.step_id}",
             user_id=user_id,
+            streaming_queue=streaming_queue,
         )
         criteria_met = result.status == "succeeded" and await check_success_criteria(
             step=step,
@@ -127,6 +134,7 @@ async def _dispatch_single_specialist(
     llm_adapter: LLMAdapter,
     block_id: str,
     user_id: str,
+    streaming_queue: asyncio.Queue[str] | None = None,
 ) -> SubagentResult:
     """The existing step_prep -> context_builder -> run_subagent chain,
     wrapped as one non-recursive helper -- used by BOTH the atomic fast path
@@ -143,6 +151,34 @@ async def _dispatch_single_specialist(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=block_id,
+        )
+    if role.name == "retrieval":
+        return await run_retrieval_subagent(
+            context_package=context_package,
+            tool_registry=tool_registry,
+            llm_adapter=llm_adapter,
+            block_id=block_id,
+        )
+    if role.name == "interpretation":
+        return await run_interpretation_subagent(
+            context_package=context_package,
+            tool_registry=tool_registry,
+            llm_adapter=llm_adapter,
+            block_id=block_id,
+        )
+    if role.name == "simulation_planning":
+        return await run_simulation_planning_subagent(
+            context_package=context_package,
+            tool_registry=tool_registry,
+            llm_adapter=llm_adapter,
+            block_id=block_id,
+        )
+    if role.name == "composition":
+        return await run_composition_subagent(
+            context_package=context_package,
+            llm_adapter=llm_adapter,
+            block_id=block_id,
+            streaming_queue=streaming_queue,
         )
     return await run_subagent(
         role=role,
@@ -203,6 +239,18 @@ async def _run_nested_subplan(
     # rewrite.py would silently strip such a reference as a "dangling"
     # dependency.
     private_state.plan_graph.forward.update({dep_id: [] for dep_id in step.depends_on})
+    # The graph-shape pre-seed above only stops rewrite.py from stripping the
+    # reference as dangling -- it does NOT make the parent's actual data
+    # available. Without copying the real entries too, a nested sub-step
+    # whose `context_requirements` names one of these parent dependency ids
+    # gets back an EMPTY `state.slice(...)` (the data lives in `parent_state.
+    # entries`, never in `private_state.entries`), so `context_builder.py`
+    # hands it an empty `dependency_state` and e.g. `calculation_validation`
+    # fails with "ref '<name>' not found in facts (available: [])" no matter
+    # how many rounds it gets -- a structurally impossible-to-satisfy retry,
+    # not a genuine transient failure.
+    for parent_entry in parent_state.slice(step.depends_on):
+        private_state.append(parent_entry)
 
     clarification_question: str | None = None
     rounds_used = 0

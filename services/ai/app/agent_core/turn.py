@@ -10,6 +10,8 @@ module rather than a function bolted onto `orchestrator.loop`.
 
 from __future__ import annotations
 
+import asyncio
+
 from app.agent_core.orchestrator.loop import DEFAULT_MAX_PLANNER_INVOCATIONS, run_plan_to_completion
 from app.agent_core.planning.schemas import RoleName
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
@@ -29,6 +31,7 @@ async def run_agent_turn(
     tool_registry: ToolRegistry,
     plan_id: str,
     max_planner_invocations: int = DEFAULT_MAX_PLANNER_INVOCATIONS,
+    streaming_queue: asyncio.Queue[str] | None = None,
 ) -> tuple[RequestUnderstandingReasoningBlockOutput, PlanExecutionState, StateEntry | None, str | None]:
     """Drives the full confirmed chain: raw message in, final answer out.
 
@@ -63,6 +66,7 @@ async def run_agent_turn(
         constraints=understanding.constraints,
         open_questions=understanding.open_questions,
         implies_action_request=understanding.implies_action_request,
+        streaming_queue=streaming_queue,
     )
     return understanding, state, final_entry, clarification_question
 

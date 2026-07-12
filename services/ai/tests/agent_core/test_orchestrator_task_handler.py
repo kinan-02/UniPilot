@@ -104,7 +104,7 @@ async def _run(
             return top_classify
         return sub_classify[step.step_id]
 
-    async def fake_dispatch(*, step, role, state, tool_registry, llm_adapter, block_id, user_id):
+    async def fake_dispatch(*, step, role, state, tool_registry, llm_adapter, block_id, user_id, streaming_queue=None):
         if step.step_id == top_step_id and not top_calls_used["dispatch"]:
             top_calls_used["dispatch"] = True
             return top_dispatch
@@ -459,6 +459,89 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
     assert captured_sub_steps[0].depends_on == ["s1"]
 
 
+async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """Regression guard: `_run_nested_subplan` used to pre-seed only
+    `plan_graph.forward` for a parent dependency (enough to stop
+    `rewrite_step_ids` stripping it as dangling) without copying the actual
+    parent `StateEntry` -- so a nested sub-step depending on a parent id got
+    an EMPTY `private_state.slice(...)`, and e.g. `calculation_validation`
+    failed with "ref not found in facts (available: [])" no matter how many
+    rounds it got (found via a live-eval run against an undeclared-major
+    student). Confirms the parent's real data is now visible to the nested
+    sub-plan from the start."""
+    step = _step(step_id="1a", depends_on=["s1"])
+    parent_state = PlanExecutionState(plan_id="p1")
+    parent_state.append(
+        StateEntry(
+            entry_id="s1-0",
+            step_id="s1",
+            role="retrieval",
+            status="succeeded",
+            output_schema_name="generic_step_output_v1",
+            data={"completed_courses": [{"courseNumber": "104166", "grade": 78}]},
+            certainty=CertaintyTag(basis="official_record", confidence=0.95),
+            produced_at=datetime.now(timezone.utc),
+        )
+    )
+
+    captured_states: list[PlanExecutionState] = []
+
+    async def fake_dispatch_nested_sub_step(
+        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id
+    ):
+        captured_states.append(private_state)
+        return StateEntry(
+            entry_id=f"{sub_step.step_id}-0",
+            step_id=sub_step.step_id,
+            role="retrieval",
+            status="succeeded",
+            output_schema_name="generic_step_output_v1",
+            data={},
+            certainty=CertaintyTag(basis="wiki_derived", confidence=0.9),
+            produced_at=datetime.now(timezone.utc),
+        )
+
+    monkeypatch.setattr(task_handler_module, "_dispatch_nested_sub_step", fake_dispatch_nested_sub_step)
+
+    adapter = fake_llm_adapter_factory(
+        [
+            {
+                "plan_status": "complete",
+                "next_steps": [
+                    {
+                        "step_id": "A",
+                        "objective": "use s1's result",
+                        "depends_on": ["s1"],
+                        "success_criteria": [],
+                        "assumptions_to_verify": [],
+                    }
+                ],
+                "plan_summary": "",
+                "clarification_question": None,
+            }
+        ]
+    )
+
+    await task_handler_module._run_nested_subplan(
+        step=step,
+        parent_state=parent_state,
+        role_roster=ROLE_ROSTER,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        original_user_message="hello",
+        user_id="test-user-1",
+        plan_id="p1",
+        max_rounds=1,
+    )
+
+    assert len(captured_states) == 1
+    sliced = captured_states[0].slice(["s1"])
+    assert len(sliced) == 1
+    assert sliced[0].data == {"completed_courses": [{"courseNumber": "104166", "grade": 78}]}
+
+
 async def test_dispatch_single_specialist_routes_calculation_validation_role_to_dedicated_block(
     monkeypatch, fake_llm_adapter_factory
 ):
@@ -495,6 +578,162 @@ async def test_dispatch_single_specialist_routes_calculation_validation_role_to_
     )
 
     assert calls == {"calculation_validation": 1, "generic": 0}
+    assert result.status == "succeeded"
+
+
+async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_block(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """`docs/agent/agent_plans/RETRIEVAL_REASONING_BLOCK_PLAN.md` --
+    the `retrieval` role dispatches through the dedicated
+    `run_retrieval_subagent`, never the generic `run_subagent`."""
+    calls = {"retrieval": 0, "generic": 0}
+
+    async def fake_retrieval_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+        calls["retrieval"] += 1
+        return _subagent_result(status="succeeded", data={"facts": {"foo": "bar"}})
+
+    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id):
+        calls["generic"] += 1
+        return _subagent_result(status="succeeded")
+
+    monkeypatch.setattr(
+        task_handler_module, "run_retrieval_subagent", fake_retrieval_subagent
+    )
+    monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
+
+    step = _step(step_id="1a")
+    state = PlanExecutionState(plan_id="p1")
+    adapter = fake_llm_adapter_factory([])
+
+    result = await task_handler_module._dispatch_single_specialist(
+        step=step,
+        role=ROLE_ROSTER["retrieval"],
+        state=state,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        block_id="p1-1a",
+        user_id="test-user-1",
+    )
+
+    assert calls == {"retrieval": 1, "generic": 0}
+    assert result.status == "succeeded"
+
+
+async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicated_block(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """`docs/agent/agent_plans/INTERPRETATION_REASONING_BLOCK_PLAN.md` --
+    the `interpretation` role dispatches through the dedicated
+    `run_interpretation_subagent`, never the generic `run_subagent`."""
+    calls = {"interpretation": 0, "generic": 0}
+
+    async def fake_interpretation_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+        calls["interpretation"] += 1
+        return _subagent_result(status="succeeded", data={"answer": "Up to 2 retakes allowed."})
+
+    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id):
+        calls["generic"] += 1
+        return _subagent_result(status="succeeded")
+
+    monkeypatch.setattr(
+        task_handler_module, "run_interpretation_subagent", fake_interpretation_subagent
+    )
+    monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
+
+    step = _step(step_id="1a")
+    state = PlanExecutionState(plan_id="p1")
+    adapter = fake_llm_adapter_factory([])
+
+    result = await task_handler_module._dispatch_single_specialist(
+        step=step,
+        role=ROLE_ROSTER["interpretation"],
+        state=state,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        block_id="p1-1a",
+        user_id="test-user-1",
+    )
+
+    assert calls == {"interpretation": 1, "generic": 0}
+    assert result.status == "succeeded"
+
+
+async def test_dispatch_single_specialist_routes_simulation_planning_role_to_dedicated_block(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """`docs/agent/agent_plans/SIMULATION_PLANNING_REASONING_BLOCK_PLAN.md` --
+    the `simulation_planning` role dispatches through the dedicated
+    `run_simulation_planning_subagent`, never the generic `run_subagent`."""
+    calls = {"simulation_planning": 0, "generic": 0}
+
+    async def fake_simulation_planning_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+        calls["simulation_planning"] += 1
+        return _subagent_result(status="succeeded", data={"outcome": {"semestersUsed": 1}})
+
+    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id):
+        calls["generic"] += 1
+        return _subagent_result(status="succeeded")
+
+    monkeypatch.setattr(
+        task_handler_module, "run_simulation_planning_subagent", fake_simulation_planning_subagent
+    )
+    monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
+
+    step = _step(step_id="1a")
+    state = PlanExecutionState(plan_id="p1")
+    adapter = fake_llm_adapter_factory([])
+
+    result = await task_handler_module._dispatch_single_specialist(
+        step=step,
+        role=ROLE_ROSTER["simulation_planning"],
+        state=state,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        block_id="p1-1a",
+        user_id="test-user-1",
+    )
+
+    assert calls == {"simulation_planning": 1, "generic": 0}
+    assert result.status == "succeeded"
+
+
+async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_block(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """`docs/agent/agent_plans/COMPOSITION_REASONING_BLOCK_PLAN.md` --
+    the `composition` role dispatches through the dedicated
+    `run_composition_subagent`, never the generic `run_subagent`."""
+    calls = {"composition": 0, "generic": 0}
+
+    async def fake_composition_subagent(*, context_package, llm_adapter, block_id, streaming_queue=None):
+        calls["composition"] += 1
+        return _subagent_result(status="succeeded", data={"answer_text": "done"})
+
+    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id):
+        calls["generic"] += 1
+        return _subagent_result(status="succeeded")
+
+    monkeypatch.setattr(
+        task_handler_module, "run_composition_subagent", fake_composition_subagent
+    )
+    monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
+
+    step = _step(step_id="1a")
+    state = PlanExecutionState(plan_id="p1")
+    adapter = fake_llm_adapter_factory([])
+
+    result = await task_handler_module._dispatch_single_specialist(
+        step=step,
+        role=ROLE_ROSTER["composition"],
+        state=state,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        block_id="p1-1a",
+        user_id="test-user-1",
+    )
+
+    assert calls == {"composition": 1, "generic": 0}
     assert result.status == "succeeded"
 
 

@@ -334,7 +334,24 @@ async def run_calculation_validation_subagent(
     # like "source: completed_courses record (user_id ...) + course entity
     # 00950120") -- flattening by step_id gives it a smaller, cleaner
     # surface to build expressions against than raw `dependency_state`.
-    facts = {entry.step_id: entry.data for entry in context_package.dependency_state}
+    facts: dict[str, Any] = {}
+    for entry in context_package.dependency_state:
+        facts[entry.step_id] = entry.data
+        # `ref` is a single-hop lookup (expression_tree.py's `facts[node.ref]`
+        # -- no dotted-path traversal). A retrieval/interpretation dependency's
+        # actual fetched values live one level deeper, under its own
+        # `data["facts"]` -- referencing it only by step_id would hand the
+        # model the whole result envelope (confidence, source_ref, ...) where
+        # a list/number was expected, producing "of_not_a_list" or "ref not
+        # found" no matter how the expression is retried. Promote those
+        # inner keys to the top level too (additive -- never overwrites an
+        # existing step_id key) so a fact fetched as e.g. `facts:
+        # {"completed_courses": [...]}` is directly ref-able as
+        # `{"ref": "completed_courses"}`.
+        inner_facts = entry.data.get("facts") if isinstance(entry.data, dict) else None
+        if isinstance(inner_facts, dict):
+            for key, value in inner_facts.items():
+                facts.setdefault(key, value)
 
     block_input = _CalculationValidationBlockInput(
         block_id=block_id,

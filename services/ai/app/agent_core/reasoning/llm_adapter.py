@@ -8,6 +8,7 @@ settings/environment.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Protocol, runtime_checkable
 
@@ -46,6 +47,7 @@ class LLMAdapter(Protocol):
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -98,6 +100,7 @@ class ChatLLMAdapter:
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         cfg = self._settings or get_settings()
         llm = build_chat_llm(
@@ -120,7 +123,7 @@ class ChatLLMAdapter:
 
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
-        if response_schema is not None and cfg.is_agent_reasoning_structured_output_enabled():
+        if response_schema is not None and cfg.is_agent_reasoning_structured_output_enabled() and streaming_queue is None:
             structured_payload = await self._complete_with_structured_output(
                 llm,
                 messages=messages,
@@ -134,7 +137,19 @@ class ChatLLMAdapter:
             # free-text path used when the flag is off.
 
         try:
-            response = await llm.ainvoke(messages)
+            if streaming_queue:
+                response_text_chunks = []
+                async for chunk in llm.astream(messages):
+                    chunk_text = _response_text_content(chunk)
+                    response_text_chunks.append(chunk_text)
+                    await streaming_queue.put(chunk_text)
+                full_text = "".join(response_text_chunks)
+                # Mock a response object for parsing
+                class _MockResponse:
+                    content = full_text
+                response = _MockResponse()
+            else:
+                response = await llm.ainvoke(messages)
         except Exception as exc:
             logger.exception("reasoning_llm_adapter_call_failed")
             raise LLMAdapterError("llm_call_failed") from exc

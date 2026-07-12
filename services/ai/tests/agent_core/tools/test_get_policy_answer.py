@@ -9,6 +9,7 @@ match is reused from test_search_knowledge.py's own verified fact.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -44,6 +45,7 @@ class _FakeLLMAdapter:
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         self.calls.append(user_prompt)
         if not self._responses:
@@ -93,6 +95,13 @@ async def test_no_relevant_source_found(monkeypatch):
 
 
 async def test_answers_from_top_ranked_source(use_real_academic_engine, monkeypatch):
+    import app.agent_core.tools.composites.get_policy_answer as module
+    from app.agent_core.tools.envelope import ToolOutputEnvelope
+
+    async def _fake_search(*_a, **_k):
+        return ToolOutputEnvelope(ok=True, data={"query": "x", "matches": [{"slug": "student-rights", "score": 1.0}]})
+    monkeypatch.setattr(module, "run_search_knowledge", _fake_search)
+
     fake = _FakeLLMAdapter(
         [{"status": "determined", "answer": "4 days", "cited_section": "5.4 Grade Appeal", "confidence": 0.9}]
     )
@@ -112,6 +121,13 @@ async def test_answers_from_top_ranked_source(use_real_academic_engine, monkeypa
 
 
 async def test_falls_back_to_next_candidate_when_first_is_undetermined(use_real_academic_engine, monkeypatch):
+    import app.agent_core.tools.composites.get_policy_answer as module
+    from app.agent_core.tools.envelope import ToolOutputEnvelope
+
+    async def _fake_search(*_a, **_k):
+        return ToolOutputEnvelope(ok=True, data={"query": "x", "matches": [{"slug": "regulations-undergraduate"}, {"slug": "student-rights"}]})
+    monkeypatch.setattr(module, "run_search_knowledge", _fake_search)
+
     fake = _FakeLLMAdapter(
         [
             {"status": "cannot_determine", "answer": None, "cited_section": None, "confidence": 0.0},
@@ -129,6 +145,13 @@ async def test_falls_back_to_next_candidate_when_first_is_undetermined(use_real_
 
 
 async def test_cannot_determine_when_every_candidate_fails(use_real_academic_engine, monkeypatch):
+    import app.agent_core.tools.composites.get_policy_answer as module
+    from app.agent_core.tools.envelope import ToolOutputEnvelope
+
+    async def _fake_search(*_a, **_k):
+        return ToolOutputEnvelope(ok=True, data={"query": "x", "matches": [{"slug": "regulations-undergraduate"}, {"slug": "student-rights"}, {"slug": "faculty-mathematics"}]})
+    monkeypatch.setattr(module, "run_search_knowledge", _fake_search)
+
     fake = _FakeLLMAdapter(
         [
             {"status": "cannot_determine", "answer": None, "cited_section": None, "confidence": 0.0}

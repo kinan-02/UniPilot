@@ -33,6 +33,7 @@ from uuid import uuid4
 import pytest
 from bson import ObjectId
 
+import app.db.mongo as mongo_module
 from app.agent_core.reasoning.llm_client import agent_llm_available
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.default_registry import build_default_tool_registry
@@ -51,6 +52,21 @@ def live_eval_log():
     log = LiveEvalLog(suite_name="specialist_subagents")
     yield log
     log.write()
+
+
+@pytest.fixture(autouse=True)
+async def _fresh_mongo_client_per_test():
+    """`get_mongo_client()` memoizes an `AsyncIOMotorClient` at module scope,
+    but `pytest.ini` sets `asyncio_default_fixture_loop_scope = function` --
+    a fresh event loop per test. Reusing a client created under a prior
+    test's (now-closed) loop raises `RuntimeError: Event loop is closed` the
+    moment a second Mongo-touching test runs in the same session. Force a
+    fresh client per test instead."""
+    mongo_module._mongo_client = None
+    yield
+    if mongo_module._mongo_client is not None:
+        mongo_module._mongo_client.close()
+        mongo_module._mongo_client = None
 
 
 @pytest.fixture

@@ -7,6 +7,7 @@ Synthesis.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.monitor import evaluate_step_result
@@ -38,6 +39,7 @@ async def run_plan_to_completion(
     constraints: list[str] | None = None,
     open_questions: list[str] | None = None,
     implies_action_request: bool = False,
+    streaming_queue: asyncio.Queue[str] | None = None,
 ) -> tuple[PlanExecutionState, StateEntry | None, str | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
 
@@ -97,6 +99,7 @@ async def run_plan_to_completion(
                 original_user_message=original_user_message,
                 user_id=user_id,
                 plan_id=plan_id,
+                streaming_queue=streaming_queue,
             )
 
         # Dispatch one execution layer at a time -- steps within a layer are
@@ -154,6 +157,7 @@ async def run_plan_to_completion(
         tool_registry=tool_registry,
         llm_adapter=llm_adapter,
         block_id=f"{plan_id}-synthesis",
+        streaming_queue=streaming_queue,
     )
     fallback_entry = StateEntry(
         entry_id=f"synthesis-{len(state.entries)}",

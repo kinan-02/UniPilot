@@ -75,6 +75,14 @@ def _task_handler_success_check_contract() -> PromptContract:
             "When genuinely uncertain whether a criterion is met, prefer NOT met -- a false negative "
             "here only costs one extra bounded planning round; a false positive silently ships an "
             "incomplete result to the rest of the plan.",
+            "Exception to the above: if the specialist_result explicitly and authoritatively confirms "
+            "a fact is absent (e.g. a student profile field is present but null/unset, or a lookup "
+            "returned a definitive 'not found' rather than an error), and the criterion only asked to "
+            "identify or fetch that fact, treat the criterion as MET with an 'absent' finding -- do "
+            "not mark it unmet. The fact has been conclusively determined, just not to a present "
+            "value; retrying will not produce a different, more complete answer from the same "
+            "authoritative source. Only mark it unmet if the result is ambiguous about whether the "
+            "fact was actually looked up at all.",
         ],
         allowed_context_fields=None,
         output_schema_name=_OUTPUT_SCHEMA_NAME,

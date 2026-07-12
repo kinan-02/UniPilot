@@ -99,7 +99,7 @@ def _eligible_for_adaptive_early_exit(
         return False
     if payload.confidence is None or payload.confidence < confidence_threshold:
         return False
-    if payload.missing_context or payload.validation_notes:
+    if payload.missing_context:
         return False
     return True
 

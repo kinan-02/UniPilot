@@ -58,42 +58,19 @@ _RESPONSES = [
             "tool_grant_override": None,
         },
     },
-    # 3. Step 1 subagent (retrieval), pass 1 -- requests a tool, early exit.
+    # 3. Step 1 subagent (retrieval), round 1 -- RetrievalReasoningBlock's own
+    # per-round schema (status: "ready" | "need_tools"), requests a tool.
     {
-        "status": "needs_tool",
-        "summary": "Requesting course entity.",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
+        "status": "need_tools",
         "tool_requests": [
             {"tool_name": "get_entity", "purpose": "fetch course 234218", "arguments": {"entity_type": "course", "entity_id": "234218"}}
         ],
-        "confidence": 0.5,
-        "result": None,
     },
-    # 4. Step 1 subagent, re-invocation after tool result, pass 1/2 -- not final.
+    # 4. Step 1 subagent, round 2 -- finalizes with the tool result in hand.
+    # One combined decide-and-finalize call, unlike the old generic path's
+    # separate "not final" + "final" passes.
     {
-        "status": "ok",
-        "summary": "reviewing tool result",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.6,
-        "result": None,
-    },
-    # 5. Step 1 subagent, re-invocation, pass 2/2 -- final.
-    {
-        "status": "ok",
-        "summary": "done",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.9,
+        "status": "ready",
         "result": {
             "certainty_basis": "wiki_derived",
             "confidence": 0.9,
@@ -101,13 +78,13 @@ _RESPONSES = [
             "facts": {"course_id": "234218", "name": "Some Course"},
         },
     },
-    # 5a. Task handler's success-criteria check for step 1 -- met.
+    # 4a. Task handler's success-criteria check for step 1 -- met.
     {"criteria_met": True, "unmet_criteria": []},
-    # 5b. Monitor's own OUTER success-criteria check for step 1 (against the
+    # 4b. Monitor's own OUTER success-criteria check for step 1 (against the
     # original top-level step's own success_criteria, separate from the task
     # handler's internal check above) -- met.
     {"criteria_met": True, "unmet_criteria": []},
-    # 6. Planner invocation 2 -- one step: composition, plan complete. Flat,
+    # 5. Planner invocation 2 -- one step: composition, plan complete. Flat,
     # same reason as invocation 1's response above.
     {
         "plan_status": "complete",
@@ -123,9 +100,9 @@ _RESPONSES = [
         "plan_summary": "Step 2: compose the final answer.",
         "clarification_question": None,
     },
-    # 6a. Task handler's cheap classifier for step 2 -- atomic, composition role.
+    # 5a. Task handler's cheap classifier for step 2 -- atomic, composition role.
     {"atomic": True, "role_if_atomic": "composition"},
-    # 7. Step 2 step-prep.
+    # 6. Step 2 step-prep.
     {
         "status": "ok",
         "summary": "prepped step 2",
@@ -144,38 +121,13 @@ _RESPONSES = [
             "tool_grant_override": None,
         },
     },
-    # 8. Step 2 subagent (composition), pass 1/2 -- not final.
+    # 7. Step 2 subagent (composition) -- single-shot.
     {
-        "status": "ok",
-        "summary": "reviewing context",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.7,
-        "result": None,
+        "answer_text": "Course 234218 is Some Course."
     },
-    # 9. Step 2 subagent (composition), pass 2/2 -- final.
-    {
-        "status": "ok",
-        "summary": "composed",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.95,
-        "result": {
-            "answer_text": "Course 234218 is Some Course.",
-            "certainty_basis": "llm_interpretation",
-            "confidence": 0.95,
-            "assumptions": [],
-        },
-    },
-    # 9a. Task handler's success-criteria check for step 2 -- met.
+    # 8a. Task handler's success-criteria check for step 2 -- met.
     {"criteria_met": True, "unmet_criteria": []},
-    # 9b. Monitor's own OUTER success-criteria check for step 2 -- met.
+    # 8b. Monitor's own OUTER success-criteria check for step 2 -- met.
     {"criteria_met": True, "unmet_criteria": []},
 ]
 

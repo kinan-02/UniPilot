@@ -1,14 +1,18 @@
-"""Tests for `agent_core.synthesis.synthesis.compose_answer`'s retry-once
-behavior on a `result_is_missing` failure -- monkeypatch the collaborator
-(`run_subagent`), not the LLM, per this suite's own established convention
-(see test_orchestrator_loop_parallelism.py)."""
+"""Tests for `agent_core.synthesis.synthesis.compose_answer`.
+
+This tests the Orchestrator's terminal synthesis step, confirming it correctly
+delegates to the Composition reasoning block (`run_composition_subagent`) with
+the full unsliced dependency state, rather than a sliced subset.
+"""
 
 from __future__ import annotations
 
 import pytest
+from datetime import datetime, timezone
 
-from app.agent_core.planning.state import CertaintyTag, PlanExecutionState
+from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
 from app.agent_core.roles.roster import build_default_role_roster
+from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.subagents.schemas import SubagentResult
 from app.agent_core.synthesis import synthesis as synthesis_module
 
@@ -23,44 +27,80 @@ def _result(*, status: str, warnings: list[str], answer_text: str | None = None)
 
 
 @pytest.mark.asyncio
-async def test_retries_once_when_result_is_missing_and_returns_the_retry_outcome(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[str] = []
+async def test_compose_answer_passes_the_full_unsliced_state_as_dependency_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_context = []
 
-    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id, **kwargs):
-        calls.append(block_id)
-        if len(calls) == 1:
-            return _result(status="failed", warnings=["schema_validation_failed", "result_is_missing"])
+    async def fake_run_composition_subagent(*, context_package, llm_adapter, block_id, **kwargs):
+        captured_context.append(context_package)
         return _result(status="succeeded", warnings=[], answer_text="The composed answer.")
 
-    monkeypatch.setattr(synthesis_module, "run_subagent", fake_run_subagent)
+    monkeypatch.setattr(synthesis_module, "run_composition_subagent", fake_run_composition_subagent)
 
-    result = await synthesis_module.compose_answer(
-        state=PlanExecutionState(plan_id="p1"),
+    # Build a state with multiple entries to prove they are passed verbatim.
+    state = PlanExecutionState(plan_id="p1")
+    state.entries.append(
+        StateEntry(
+            entry_id="e1",
+            step_id="1",
+            role="retrieval",
+            status="succeeded",
+            output_schema_name="dummy",
+            certainty=CertaintyTag(basis="wiki_derived", confidence=1.0),
+            produced_at=datetime.now(timezone.utc)
+        )
+    )
+    state.entries.append(
+        StateEntry(
+            entry_id="e2",
+            step_id="2",
+            role="interpretation",
+            status="succeeded",
+            output_schema_name="dummy",
+            certainty=CertaintyTag(basis="llm_interpretation", confidence=0.8),
+            produced_at=datetime.now(timezone.utc)
+        )
+    )
+
+    await synthesis_module.compose_answer(
+        state=state,
         user_goal="What courses have I completed?",
         composition_role=build_default_role_roster()["composition"],
-        tool_registry=None,  # never touched -- run_subagent is monkeypatched
-        llm_adapter=None,  # never touched -- run_subagent is monkeypatched
+        tool_registry=None,
+        llm_adapter=None,
         block_id="p1-synthesis",
     )
 
-    assert calls == ["p1-synthesis", "p1-synthesis-retry"]
-    assert result.status == "succeeded"
-    assert result.result == {"answer_text": "The composed answer."}
+    assert len(captured_context) == 1
+    pkg = captured_context[0]
+    # The full unsliced state must be passed down.
+    assert len(pkg.dependency_state) == 2
+    assert pkg.dependency_state[0].step_id == "1"
+    assert pkg.dependency_state[1].step_id == "2"
 
 
 @pytest.mark.asyncio
-async def test_does_not_retry_when_the_failure_is_not_result_is_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[str] = []
+async def test_compose_answer_raises_on_a_nonempty_tool_grant() -> None:
+    role = build_default_role_roster()["composition"].model_copy(
+        update={"tool_grant_ceiling": ("search_knowledge",)}
+    )
 
-    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id, **kwargs):
-        calls.append(block_id)
-        return _result(status="failed", warnings=["schema_validation_failed", "answer_text: 123 is not of type 'string'"])
+    with pytest.raises(ValueError, match="zero tool grant"):
+        await synthesis_module.compose_answer(
+            state=PlanExecutionState(plan_id="p1"),
+            user_goal="Does this fail?",
+            composition_role=role,
+            tool_registry=None,
+            llm_adapter=None,
+            block_id="p1-synthesis",
+        )
 
-    monkeypatch.setattr(synthesis_module, "run_subagent", fake_run_subagent)
+
+@pytest.mark.asyncio
+async def test_compose_answer_delegates_to_run_composition_subagent_and_returns_its_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run_composition_subagent(*, context_package, llm_adapter, block_id, **kwargs):
+        return _result(status="failed", warnings=["something_went_wrong"], answer_text=None)
+
+    monkeypatch.setattr(synthesis_module, "run_composition_subagent", fake_run_composition_subagent)
 
     result = await synthesis_module.compose_answer(
         state=PlanExecutionState(plan_id="p1"),
@@ -71,28 +111,6 @@ async def test_does_not_retry_when_the_failure_is_not_result_is_missing(
         block_id="p1-synthesis",
     )
 
-    assert calls == ["p1-synthesis"]
+    # Returns the exact object the wrapper returned, no manipulation
     assert result.status == "failed"
-
-
-@pytest.mark.asyncio
-async def test_does_not_retry_on_a_successful_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[str] = []
-
-    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id, **kwargs):
-        calls.append(block_id)
-        return _result(status="succeeded", warnings=[], answer_text="Fine on the first try.")
-
-    monkeypatch.setattr(synthesis_module, "run_subagent", fake_run_subagent)
-
-    result = await synthesis_module.compose_answer(
-        state=PlanExecutionState(plan_id="p1"),
-        user_goal="What courses have I completed?",
-        composition_role=build_default_role_roster()["composition"],
-        tool_registry=None,
-        llm_adapter=None,
-        block_id="p1-synthesis",
-    )
-
-    assert calls == ["p1-synthesis"]
-    assert result.status == "succeeded"
+    assert result.warnings == ["something_went_wrong"]

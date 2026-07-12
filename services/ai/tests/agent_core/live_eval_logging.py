@@ -13,6 +13,7 @@ order) written to `tests/agent_core/live_eval_logs/`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -59,6 +60,7 @@ class LoggingLLMAdapter:
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         local_raw: list[str] = []
         result = await self._adapter.complete_json(
@@ -72,6 +74,7 @@ class LoggingLLMAdapter:
             raw_model_text_out=local_raw,
             timeout=timeout,
             max_retries=max_retries,
+            streaming_queue=streaming_queue,
         )
         if raw_model_text_out is not None and local_raw:
             raw_model_text_out.append(local_raw[0])
