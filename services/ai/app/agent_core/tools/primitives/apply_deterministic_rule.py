@@ -14,10 +14,15 @@ from __future__ import annotations
 from numbers import Number
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.agent_core.planning.state import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.primitives.expression_tree import (
+    ExpressionNode,
+    evaluate_expression,
+    validate_expression_tree,
+)
 from app.agent_core.tools.registry import ToolDescriptor
 
 TOOL_NAME = "apply_deterministic_rule"
@@ -159,10 +164,37 @@ def _field_comparison(rule: dict[str, Any], facts: dict[str, Any]) -> _HandlerRe
     }, None
 
 
+def _expression(rule: dict[str, Any], facts: dict[str, Any]) -> _HandlerResult:
+    raw_expression = rule.get("expression")
+    if not isinstance(raw_expression, dict):
+        return None, "expression_required"
+    try:
+        node = ExpressionNode.model_validate(raw_expression)
+    except ValidationError as exc:
+        return None, f"invalid_expression_shape: {exc}"
+
+    # Defense in depth: validated again here even though
+    # CalculationValidationReasoningBlock (docs/agent/
+    # CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md Part 2) already runs
+    # this same check before ever calling this tool -- nothing here should
+    # assume that pre-check actually ran (any caller could reach this tool
+    # directly).
+    errors = validate_expression_tree(node, facts=facts)
+    if errors:
+        return None, f"expression_validation_failed: {'; '.join(errors[:5])}"
+
+    value, trace, eval_errors = evaluate_expression(node, facts)
+    if eval_errors:
+        return None, f"expression_evaluation_failed: {'; '.join(eval_errors[:5])}"
+
+    return {"type": "expression", "result": value, "trace": trace}, None
+
+
 _HANDLERS: dict[str, Any] = {
     "sum_threshold": _sum_threshold,
     "count_threshold": _count_threshold,
     "field_comparison": _field_comparison,
+    "expression": _expression,
 }
 
 
@@ -195,9 +227,11 @@ async def run_apply_deterministic_rule(payload: ApplyDeterministicRuleInput) -> 
 DESCRIPTOR = ToolDescriptor(
     name=TOOL_NAME,
     description="Apply a deterministic rule to given facts (credit totals, threshold checks, "
-    "academic-standing checks). Pure computation -- returns 'insufficient to determine' "
-    "(ok=False) rather than a best guess. `rule` must include a `type` key set to one of: "
-    "sum_threshold, count_threshold, field_comparison. See "
+    "academic-standing checks, arbitrary arithmetic over given facts). Pure computation -- "
+    "returns 'insufficient to determine' (ok=False) rather than a best guess. `rule` must "
+    "include a `type` key set to one of: sum_threshold, count_threshold, field_comparison, "
+    "expression (a small composable operator tree -- sum/count/average/add/subtract/"
+    "multiply/divide/compare -- for a calculation not covered by the other 3 types). See "
     "docs/agent/DETERMINISTIC_RULE_CONTRACT.md for the full rule shape.",
     input_model=ApplyDeterministicRuleInput,
     output_model=ToolOutputEnvelope,

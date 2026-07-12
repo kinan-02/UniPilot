@@ -383,3 +383,88 @@ async def test_every_comparator(comparator, value, threshold, expected):
     )
     assert result.ok is True
     assert result.data["satisfied"] is expected
+
+
+# -- expression (docs/agent/CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md Part 1) --
+
+
+async def test_expression_happy_path_end_to_end():
+    """160 minus the sum of completed credits -- the credits-remaining case
+    this rule type was added to cover."""
+    rule = {
+        "type": "expression",
+        "expression": {
+            "op": "subtract",
+            "left": {"const": 160},
+            "right": {"op": "sum", "of": {"ref": "completed_courses"}, "field": "credits_earned"},
+        },
+    }
+    facts = {"completed_courses": [{"credits_earned": 3.5}, {"credits_earned": 2.0}]}
+    result = await run_apply_deterministic_rule(ApplyDeterministicRuleInput(rule=rule, facts=facts))
+    assert result.ok is True
+    assert result.data["type"] == "expression"
+    assert result.data["result"] == 154.5
+    assert result.data["trace"] == [
+        "sum(ref:completed_courses.credits_earned) = 5.5",
+        "160 - 5.5 = 154.5",
+    ]
+    assert result.certainty.basis == "official_record"
+    assert result.certainty.confidence == 1.0
+
+
+async def test_expression_missing_expression_key_fails_closed():
+    result = await run_apply_deterministic_rule(ApplyDeterministicRuleInput(rule={"type": "expression"}, facts={}))
+    assert result.ok is False
+    assert "expression_required" in result.error
+
+
+async def test_expression_malformed_shape_fails_closed():
+    """Doesn't even parse as an `ExpressionNode` -- more than one of
+    const/ref/op set."""
+    result = await run_apply_deterministic_rule(
+        ApplyDeterministicRuleInput(
+            rule={"type": "expression", "expression": {"const": 1, "ref": "x"}}, facts={"x": 1}
+        )
+    )
+    assert result.ok is False
+    assert "invalid_expression_shape" in result.error
+
+
+async def test_expression_validation_failure_path():
+    """Parses fine, but references a `ref` that isn't in `facts` --
+    `validate_expression_tree` catches this before evaluation ever runs."""
+    rule = {
+        "type": "expression",
+        "expression": {"op": "sum", "of": {"ref": "nonexistent"}, "field": "credits"},
+    }
+    result = await run_apply_deterministic_rule(ApplyDeterministicRuleInput(rule=rule, facts={}))
+    assert result.ok is False
+    assert "expression_validation_failed" in result.error
+    assert "nonexistent" in result.error
+
+
+async def test_expression_evaluation_failure_path():
+    """Structurally valid, but a runtime surprise (non-numeric field value)
+    only detectable at evaluation time."""
+    rule = {
+        "type": "expression",
+        "expression": {"op": "sum", "of": {"ref": "completed_courses"}, "field": "credits_earned"},
+    }
+    result = await run_apply_deterministic_rule(
+        ApplyDeterministicRuleInput(rule=rule, facts={"completed_courses": [{"credits_earned": "three"}]})
+    )
+    assert result.ok is False
+    assert "expression_evaluation_failed" in result.error
+
+
+async def test_expression_does_not_affect_existing_rule_types():
+    """The 3 existing rule types stay exactly as they were -- adding
+    `expression` to `_HANDLERS` doesn't change their dispatch."""
+    result = await run_apply_deterministic_rule(
+        ApplyDeterministicRuleInput(
+            rule={"type": "sum_threshold", "source": "x", "field": "v", "comparator": ">=", "threshold": 1},
+            facts={"x": [{"v": 2}]},
+        )
+    )
+    assert result.ok is True
+    assert result.data["type"] == "sum_threshold"
