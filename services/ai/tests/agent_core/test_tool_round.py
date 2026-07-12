@@ -14,6 +14,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from app.agent_core.subagents.tool_round import execute_tool_round
+from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor, ToolRegistry
 
@@ -194,3 +195,57 @@ async def test_no_requests_returns_unchanged_copy_and_no_records():
     assert records == []
     assert merged == original
     assert merged is not original
+
+
+async def test_shared_tool_call_cache_avoids_a_second_real_call_across_separate_rounds():
+    """Regression guard: a live-eval run found `get_entity(student_profile,
+    "student_123")` called 40 times with identical arguments in one turn --
+    each call landed in a different `RetrievalReasoningBlock` instance (or a
+    sibling nested sub-plan), so the existing `tool_results_so_far` dict
+    (block-local, thrown away when that one instance returns) never helped.
+    A `ToolCallCache` shared ACROSS separate `execute_tool_round` calls --
+    simulating two different block instances -- must serve the second
+    identical request from cache instead of re-invoking the tool."""
+    registry = _CountingToolRegistry(_make_registry(ok=True))
+    cache = ToolCallCache()
+    request = [{"tool_name": "fake_tool", "arguments": {"entity_id": "234218"}}]
+
+    merged_1, records_1 = await execute_tool_round(
+        tool_requests=request,
+        tool_grant=["fake_tool"],
+        tool_registry=registry,
+        tool_results_so_far={},
+        tool_call_cache=cache,
+    )
+    # A brand-new, empty `tool_results_so_far` -- as a fresh block instance
+    # (or a sibling nested sub-plan) would start with -- but the SAME cache.
+    merged_2, records_2 = await execute_tool_round(
+        tool_requests=request,
+        tool_grant=["fake_tool"],
+        tool_registry=registry,
+        tool_results_so_far={},
+        tool_call_cache=cache,
+    )
+
+    assert registry.call_count == 1  # the real tool ran exactly once
+    assert records_1[0].from_cache is False
+    assert records_2[0].from_cache is True
+    assert records_2[0].output_ok is True
+    assert merged_1 == merged_2
+
+
+async def test_without_a_cache_a_second_round_still_pays_for_a_real_call():
+    """Omitting `tool_call_cache` (its default) must behave exactly as
+    before this feature existed -- every existing caller that doesn't pass
+    it stays unaffected."""
+    registry = _CountingToolRegistry(_make_registry(ok=True))
+    request = [{"tool_name": "fake_tool", "arguments": {"entity_id": "234218"}}]
+
+    await execute_tool_round(
+        tool_requests=request, tool_grant=["fake_tool"], tool_registry=registry, tool_results_so_far={}
+    )
+    await execute_tool_round(
+        tool_requests=request, tool_grant=["fake_tool"], tool_registry=registry, tool_results_so_far={}
+    )
+
+    assert registry.call_count == 2

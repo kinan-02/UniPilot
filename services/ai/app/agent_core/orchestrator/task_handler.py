@@ -50,6 +50,7 @@ from app.agent_core.subagents.retrieval_block import run_retrieval_subagent
 from app.agent_core.subagents.simulation_planning_block import run_simulation_planning_subagent
 from app.agent_core.subagents.run import run_subagent
 from app.agent_core.subagents.schemas import SubagentResult
+from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 
 DEFAULT_MAX_TASK_HANDLER_ROUNDS = 3
@@ -68,6 +69,7 @@ async def run_task_handler(
     plan_id: str,
     max_rounds: int = DEFAULT_MAX_TASK_HANDLER_ROUNDS,
     streaming_queue: asyncio.Queue[str] | None = None,
+    tool_call_cache: ToolCallCache | None = None,
 ) -> StateEntry:
     """Never appends to `state` itself -- the caller still owns
     `state.append(entry)`, unchanged from today's `loop.py` behavior."""
@@ -90,6 +92,7 @@ async def run_task_handler(
             block_id=f"{plan_id}-{step.step_id}",
             user_id=user_id,
             streaming_queue=streaming_queue,
+            tool_call_cache=tool_call_cache,
         )
         criteria_met = result.status == "succeeded" and await check_success_criteria(
             step=step,
@@ -113,6 +116,7 @@ async def run_task_handler(
         user_id=user_id,
         plan_id=plan_id,
         max_rounds=max_rounds,
+        tool_call_cache=tool_call_cache,
     )
     return _entry_from_nested_subplan(
         step=step,
@@ -135,6 +139,7 @@ async def _dispatch_single_specialist(
     block_id: str,
     user_id: str,
     streaming_queue: asyncio.Queue[str] | None = None,
+    tool_call_cache: ToolCallCache | None = None,
 ) -> SubagentResult:
     """The existing step_prep -> context_builder -> run_subagent chain,
     wrapped as one non-recursive helper -- used by BOTH the atomic fast path
@@ -158,6 +163,7 @@ async def _dispatch_single_specialist(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=block_id,
+            tool_call_cache=tool_call_cache,
         )
     if role.name == "interpretation":
         return await run_interpretation_subagent(
@@ -165,6 +171,7 @@ async def _dispatch_single_specialist(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=block_id,
+            tool_call_cache=tool_call_cache,
         )
     if role.name == "simulation_planning":
         return await run_simulation_planning_subagent(
@@ -172,6 +179,7 @@ async def _dispatch_single_specialist(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=block_id,
+            tool_call_cache=tool_call_cache,
         )
     if role.name == "composition":
         return await run_composition_subagent(
@@ -220,6 +228,7 @@ async def _run_nested_subplan(
     user_id: str,
     plan_id: str,
     max_rounds: int,
+    tool_call_cache: ToolCallCache | None = None,
 ) -> tuple[PlanExecutionState, str | None, int, bool]:
     """The task handler's own private mini-orchestrator: mirrors
     `orchestrator/loop.py::run_plan_to_completion`'s own invoke-repeatedly
@@ -291,6 +300,7 @@ async def _run_nested_subplan(
                 plan_id=plan_id,
                 step=step,
                 user_id=user_id,
+                tool_call_cache=tool_call_cache,
             )
 
         round_monitor_flags = []
@@ -326,6 +336,7 @@ async def _dispatch_nested_sub_step(
     plan_id: str,
     step: PlanStep,
     user_id: str,
+    tool_call_cache: ToolCallCache | None = None,
 ) -> StateEntry:
     """One sub-step of the private sub-plan. Calls the classifier for ROLE
     ASSIGNMENT ONLY -- it does not re-decide whether to recurse. If this
@@ -354,6 +365,7 @@ async def _dispatch_nested_sub_step(
         llm_adapter=llm_adapter,
         block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}",
         user_id=user_id,
+        tool_call_cache=tool_call_cache,
     )
     criteria_met = result.status == "succeeded" and await check_success_criteria(
         step=sub_step,

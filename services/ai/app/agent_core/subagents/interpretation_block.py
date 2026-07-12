@@ -34,6 +34,7 @@ from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetr
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
 from app.agent_core.subagents.tool_round import execute_tool_round
+from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
         *,
         llm_adapter: LLMAdapter,
         tool_registry: ToolRegistry,
+        tool_call_cache: ToolCallCache | None = None,
         prompt_registry: PromptRegistry | None = None,
         **kwargs: Any,
     ) -> None:
@@ -152,6 +154,7 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
             llm_adapter=llm_adapter, prompt_registry=prompt_registry or _build_prompt_registry(), **kwargs
         )
         self._tool_registry = tool_registry
+        self._tool_call_cache = tool_call_cache
 
     async def _run_internal(
         self, block_input: _InterpretationBlockInput, telemetry: RunTelemetry
@@ -245,6 +248,7 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
                     tool_registry=self._tool_registry,
                     tool_results_so_far=tool_results_so_far,
                     log_prefix="interpretation",
+                    tool_call_cache=self._tool_call_cache,
                 )
                 tool_audit_trail.extend(new_records)
                 continue
@@ -333,6 +337,7 @@ async def run_interpretation_subagent(
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
     block_id: str,
+    tool_call_cache: ToolCallCache | None = None,
 ) -> SubagentResult:
     block_input = _InterpretationBlockInput(
         block_id=block_id,
@@ -347,7 +352,9 @@ async def run_interpretation_subagent(
         output_schema=_INTERPRETATION_OUTPUT_SCHEMA,
         tool_grant=list(context_package.tool_grant),
     )
-    block = InterpretationReasoningBlock(llm_adapter=llm_adapter, tool_registry=tool_registry)
+    block = InterpretationReasoningBlock(
+        llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache
+    )
     output = await block.run(block_input)
 
     status: Literal["succeeded", "partial", "failed"] = (

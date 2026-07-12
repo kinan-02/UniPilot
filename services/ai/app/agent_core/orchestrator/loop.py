@@ -20,6 +20,7 @@ from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.synthesis.synthesis import compose_answer
+from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 
 DEFAULT_MAX_PLANNER_INVOCATIONS = 5
@@ -40,6 +41,7 @@ async def run_plan_to_completion(
     open_questions: list[str] | None = None,
     implies_action_request: bool = False,
     streaming_queue: asyncio.Queue[str] | None = None,
+    tool_call_cache: ToolCallCache | None = None,
 ) -> tuple[PlanExecutionState, StateEntry | None, str | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
 
@@ -100,6 +102,7 @@ async def run_plan_to_completion(
                 user_id=user_id,
                 plan_id=plan_id,
                 streaming_queue=streaming_queue,
+                tool_call_cache=tool_call_cache,
             )
 
         # Dispatch one execution layer at a time -- steps within a layer are

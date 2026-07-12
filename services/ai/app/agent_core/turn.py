@@ -19,6 +19,7 @@ from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.request_understanding.request_understanding import understand_request
 from app.agent_core.request_understanding.schemas import RequestUnderstandingReasoningBlockOutput
 from app.agent_core.roles.schemas import RoleDefinition
+from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 
 
@@ -53,6 +54,10 @@ async def run_agent_turn(
     if not understanding.in_scope:
         return understanding, PlanExecutionState(plan_id=plan_id), None, None
 
+    # One cache per turn, never a module-level global or caller-supplied
+    # value -- created fresh here so concurrent turns/requests can never
+    # see each other's cached tool results.
+    tool_call_cache = ToolCallCache()
     state, final_entry, clarification_question = await run_plan_to_completion(
         user_goal=understanding.user_goal or original_user_message,
         original_user_message=original_user_message,
@@ -67,6 +72,7 @@ async def run_agent_turn(
         open_questions=understanding.open_questions,
         implies_action_request=understanding.implies_action_request,
         streaming_queue=streaming_queue,
+        tool_call_cache=tool_call_cache,
     )
     return understanding, state, final_entry, clarification_question
 

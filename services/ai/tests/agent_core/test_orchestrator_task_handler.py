@@ -104,7 +104,9 @@ async def _run(
             return top_classify
         return sub_classify[step.step_id]
 
-    async def fake_dispatch(*, step, role, state, tool_registry, llm_adapter, block_id, user_id, streaming_queue=None):
+    async def fake_dispatch(
+        *, step, role, state, tool_registry, llm_adapter, block_id, user_id, streaming_queue=None, tool_call_cache=None
+    ):
         if step.step_id == top_step_id and not top_calls_used["dispatch"]:
             top_calls_used["dispatch"] = True
             return top_dispatch
@@ -417,7 +419,7 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
     captured_sub_steps: list[PlanStep] = []
 
     async def fake_dispatch_nested_sub_step(
-        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id
+        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id, tool_call_cache=None
     ):
         captured_sub_steps.append(sub_step)
         return StateEntry(
@@ -498,7 +500,7 @@ async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
     captured_states: list[PlanExecutionState] = []
 
     async def fake_dispatch_nested_sub_step(
-        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id
+        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id, tool_call_cache=None
     ):
         captured_states.append(private_state)
         return StateEntry(
@@ -598,7 +600,7 @@ async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_blo
     `run_retrieval_subagent`, never the generic `run_subagent`."""
     calls = {"retrieval": 0, "generic": 0}
 
-    async def fake_retrieval_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+    async def fake_retrieval_subagent(*, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None):
         calls["retrieval"] += 1
         return _subagent_result(status="succeeded", data={"facts": {"foo": "bar"}})
 
@@ -637,7 +639,7 @@ async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicate
     `run_interpretation_subagent`, never the generic `run_subagent`."""
     calls = {"interpretation": 0, "generic": 0}
 
-    async def fake_interpretation_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+    async def fake_interpretation_subagent(*, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None):
         calls["interpretation"] += 1
         return _subagent_result(status="succeeded", data={"answer": "Up to 2 retakes allowed."})
 
@@ -676,7 +678,9 @@ async def test_dispatch_single_specialist_routes_simulation_planning_role_to_ded
     `run_simulation_planning_subagent`, never the generic `run_subagent`."""
     calls = {"simulation_planning": 0, "generic": 0}
 
-    async def fake_simulation_planning_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+    async def fake_simulation_planning_subagent(
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None
+    ):
         calls["simulation_planning"] += 1
         return _subagent_result(status="succeeded", data={"outcome": {"semestersUsed": 1}})
 

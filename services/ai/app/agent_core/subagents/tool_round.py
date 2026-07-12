@@ -19,6 +19,7 @@ import logging
 from typing import Any
 
 from app.agent_core.planning.state import ToolInvocationRecord
+from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolNotFoundError, ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ async def execute_tool_round(
     tool_registry: ToolRegistry,
     tool_results_so_far: dict[str, Any],
     log_prefix: str = "tool_round",
+    tool_call_cache: ToolCallCache | None = None,
 ) -> tuple[dict[str, Any], list[ToolInvocationRecord]]:
     """Returns a NEW merged results dict (never mutates `tool_results_so_far`)
     plus this round's new audit records."""
@@ -45,6 +47,26 @@ async def execute_tool_round(
         if tool_name not in tool_grant:
             audit_records.append(ToolInvocationRecord(tool_name=tool_name, arguments=arguments, output_ok=False))
             logger.warning("%s_tool_not_in_grant", log_prefix, extra={"toolName": tool_name})
+            continue
+
+        # Checked before the registry lookup: a sibling nested sub-plan (or
+        # an earlier round in this same one) may have already paid for this
+        # exact call -- found via a live-eval run where the identical
+        # get_entity/search_knowledge call recurred dozens of times in one
+        # turn because nothing outlived any single block instance.
+        cached = tool_call_cache.get(result_key) if tool_call_cache is not None else None
+        if cached is not None:
+            merged_results[result_key] = cached["envelope"]
+            audit_records.append(
+                ToolInvocationRecord(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    output_ok=True,
+                    output_certainty=cached["certainty"],
+                    from_cache=True,
+                )
+            )
+            logger.info("%s_tool_cache_hit tool=%s arguments=%s", log_prefix, tool_name, arguments)
             continue
 
         try:
@@ -79,7 +101,10 @@ async def execute_tool_round(
             arguments,
         )
         if envelope.ok:
-            merged_results[result_key] = envelope.model_dump(mode="json")
+            dumped = envelope.model_dump(mode="json")
+            merged_results[result_key] = dumped
+            if tool_call_cache is not None:
+                tool_call_cache.set(result_key, {"envelope": dumped, "certainty": envelope.certainty})
 
     return merged_results, audit_records
 

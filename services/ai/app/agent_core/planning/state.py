@@ -44,6 +44,11 @@ class ToolInvocationRecord(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     output_ok: bool
     output_certainty: CertaintyTag | None = None
+    # True when this call was served from the turn-scoped `ToolCallCache`
+    # instead of actually invoking the tool -- lets logs/audits distinguish
+    # a real call from a reused one (found necessary while investigating why
+    # one call's arguments recurred dozens of times across a single turn).
+    from_cache: bool = False
 
 
 class NestedStepTrace(BaseModel):
