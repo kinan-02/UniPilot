@@ -216,6 +216,15 @@ async def test_classified_non_atomic_skips_atomic_attempt_entirely(monkeypatch):
 
     assert entry.status == "succeeded"
     assert entry.role == "composition"
+    # Regression guard: routes/advise.py's final-answer extraction and
+    # loop.py's own composition short-circuit both do a flat
+    # `data.get("answer_text")` on any StateEntry whose role is
+    # "composition" -- wrapping it under `sub_results` (every other role's
+    # shape) silently produced a blank final answer even though the agent
+    # composed a correct one internally (found live: the real answer ended
+    # up at data["sub_results"]["1a1"]["answer_text"] instead of
+    # data["answer_text"]).
+    assert entry.data == {"answer_text": "done"}
 
 
 async def test_round_cap_exhaustion_never_fabricates_success(monkeypatch):

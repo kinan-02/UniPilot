@@ -457,11 +457,6 @@ def _entry_from_nested_subplan(
     else:
         certainty = CertaintyTag(basis="llm_interpretation", confidence=0.0)
 
-    data = {"sub_results": {entry.step_id: entry.data for entry in succeeded_entries}}
-    all_warnings = [*warnings, *(w for entry in private_state.entries for w in entry.warnings)]
-    all_assumptions = [a for entry in private_state.entries for a in entry.assumptions]
-    all_tool_audit = [record for entry in private_state.entries for record in entry.tool_audit_trail]
-
     # Resolved (not left open): loop.py's own composition short-circuit
     # checks `state.entries[-1].role == "composition"`, so this isn't
     # cosmetic. The last SUCCESSFUL entry's role (in the private plan's own
@@ -469,6 +464,21 @@ def _entry_from_nested_subplan(
     # genuinely ended with a composition-shaped step; falls back to
     # "retrieval" only when nothing succeeded at all.
     role: RoleName = succeeded_entries[-1].role if succeeded_entries else "retrieval"
+
+    if succeeded_entries and role == "composition":
+        # `routes/advise.py`'s final-answer extraction and loop.py's own
+        # composition short-circuit both do a flat `data.get("answer_text")`
+        # on any StateEntry whose role is "composition" -- wrapping it under
+        # `sub_results` like every other role silently produces a blank
+        # final answer even though the agent composed a correct one
+        # internally (found via a live-eval run: the composed answer was
+        # buried at data["sub_results"]["1a"]["answer_text"]).
+        data = succeeded_entries[-1].data
+    else:
+        data = {"sub_results": {entry.step_id: entry.data for entry in succeeded_entries}}
+    all_warnings = [*warnings, *(w for entry in private_state.entries for w in entry.warnings)]
+    all_assumptions = [a for entry in private_state.entries for a in entry.assumptions]
+    all_tool_audit = [record for entry in private_state.entries for record in entry.tool_audit_trail]
 
     nested_trace = NestedExecutionTrace(
         private_plan_id=private_state.plan_id,
