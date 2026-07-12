@@ -61,6 +61,35 @@ async def test_unknown_course_fails_closed(use_real_academic_engine):
     assert "entity_not_found" in result.error
 
 
+async def test_course_entity_resolves_a_completed_courses_object_id(
+    use_real_academic_engine, fake_database_factory
+):
+    """A live-eval run found the model reliably passing a completed_courses
+    record's own `courseId` (a Mongo _id reference, not a course code) as
+    entity_id for entity_type="course" -- this must still resolve rather
+    than fail closed."""
+    course_object_id = ObjectId()
+    set_test_database(
+        fake_database_factory({"courses": [{"_id": course_object_id, "courseNumber": "00440148"}]})
+    )
+
+    result = await run_get_entity(GetEntityInput(entity_type="course", entity_id=str(course_object_id)))
+
+    assert result.ok is True
+    assert result.data["entityId"] == "00440148"
+
+
+async def test_course_entity_with_unresolvable_object_id_fails_closed(
+    use_real_academic_engine, fake_database_factory
+):
+    set_test_database(fake_database_factory({"courses": []}))
+
+    result = await run_get_entity(GetEntityInput(entity_type="course", entity_id=str(ObjectId())))
+
+    assert result.ok is False
+    assert "entity_not_found" in result.error
+
+
 async def test_track_entity(use_real_academic_engine):
     result = await run_get_entity(
         GetEntityInput(entity_type="track", entity_id="track-biomedical-engineering")

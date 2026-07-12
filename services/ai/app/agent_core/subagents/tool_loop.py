@@ -13,6 +13,7 @@ the new, generic `ToolRegistry`.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from app.agent_core.planning.state import ToolInvocationRecord
@@ -52,6 +53,14 @@ async def run_subagent_tool_loop(
 
         for request in current_output.tool_requests:
             tool_name = request.tool_name
+            # Keyed by tool name + arguments, not tool name alone: the same
+            # tool (e.g. get_entity) is routinely called more than once with
+            # different arguments in a single step (fetch completed_courses,
+            # then a course's own details). Keying by tool name alone let a
+            # later call silently overwrite an earlier, still-needed result
+            # under the same dict key -- found while investigating a live
+            # Retrieval convergence failure.
+            result_key = f"{tool_name}:{json.dumps(request.arguments, sort_keys=True, default=str)}"
             if tool_name not in tool_grant:
                 audit_trail.append(
                     ToolInvocationRecord(tool_name=tool_name, arguments=request.arguments, output_ok=False)
@@ -86,8 +95,21 @@ async def run_subagent_tool_loop(
                     output_certainty=envelope.certainty,
                 )
             )
+            # A tool call that runs without raising but still comes back
+            # `ok=False` (a legitimate business-logic failure, e.g.
+            # entity_not_found) was previously silent -- no exception, no
+            # warning -- making it indistinguishable from the model simply
+            # asking for another round. Log every real invocation's outcome
+            # so a stuck tool loop is diagnosable from logs alone.
+            logger.info(
+                "subagent_tool_invoked tool=%s ok=%s error=%s arguments=%s",
+                tool_name,
+                envelope.ok,
+                envelope.error,
+                request.arguments,
+            )
             if envelope.ok:
-                tool_results[tool_name] = envelope.model_dump(mode="json")
+                tool_results[result_key] = envelope.model_dump(mode="json")
 
         current_input = current_input.model_copy(
             update={"task_context": {**current_input.task_context, "tool_results": tool_results}}

@@ -3,10 +3,14 @@ loop `reasoning/` alone doesn't provide (docs/agent/AGENT_VISION.md §6.1, §7.3
 
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 from app.agent_core.reasoning.reasoning_block import ReasoningBlock
 from app.agent_core.reasoning.schemas import ReasoningBlockInput
 from app.agent_core.subagents.tool_loop import DEFAULT_MAX_ROUNDS, run_subagent_tool_loop
 from app.agent_core.tools.default_registry import build_default_tool_registry
+from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.registry import ToolDescriptor, ToolRegistry
 
 _OUTPUT_SCHEMA = {"type": "object"}
 
@@ -138,3 +142,88 @@ async def test_bounded_to_max_rounds_even_if_still_needs_tool(fake_llm_adapter_f
     assert len(adapter.calls) == DEFAULT_MAX_ROUNDS
     assert len(audit_trail) == DEFAULT_MAX_ROUNDS
     assert final_output.status == "needs_tool"
+
+
+class _EchoInput(BaseModel):
+    entity_type: str
+    entity_id: str
+
+
+def _always_ok_registry() -> ToolRegistry:
+    """A fake `get_entity` that always succeeds, echoing its own arguments
+    into `data` -- lets a test tell two distinct successful calls to the
+    SAME tool name apart by their result content."""
+
+    async def _callable(payload: _EchoInput) -> ToolOutputEnvelope:
+        return ToolOutputEnvelope(ok=True, data={"entityType": payload.entity_type, "entityId": payload.entity_id})
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDescriptor(
+            name="get_entity",
+            description="test double",
+            input_model=_EchoInput,
+            output_model=ToolOutputEnvelope,
+            side_effect="read",
+            callable=_callable,
+        )
+    )
+    return registry
+
+
+async def test_two_distinct_successful_calls_to_the_same_tool_do_not_clobber_each_other(
+    fake_llm_adapter_factory,
+):
+    """Regression guard: `tool_results` used to be keyed by tool name alone,
+    so a second successful get_entity call (different arguments) silently
+    overwrote the first's result -- found while investigating a live
+    Retrieval convergence failure where a completed_courses fetch's result
+    was at risk of being erased by a follow-up course-detail call."""
+    second_pass_response = {
+        "status": "needs_tool",
+        "summary": "still enriching",
+        "key_factors": [],
+        "missing_context": [],
+        "validation_notes": [],
+        "warnings": [],
+        "tool_requests": [
+            {
+                "tool_name": "get_entity",
+                "purpose": "enrich",
+                "arguments": {"entity_type": "course", "entity_id": "00440148"},
+            }
+        ],
+        "confidence": 0.5,
+        "result": None,
+    }
+    final_response = {
+        "status": "ok",
+        "summary": "done",
+        "key_factors": [],
+        "missing_context": [],
+        "validation_notes": [],
+        "warnings": [],
+        "tool_requests": [],
+        "confidence": 0.9,
+        "result": {},
+    }
+    adapter = fake_llm_adapter_factory([second_pass_response, final_response])
+    block = ReasoningBlock(llm_adapter=adapter)
+    initial_output = _needs_tool_output(
+        "get_entity", {"entity_type": "completed_courses", "entity_id": "user-1"}
+    )
+
+    await run_subagent_tool_loop(
+        block=block,
+        initial_input=_reasoning_input(),
+        initial_output=initial_output,
+        tool_grant=["get_entity"],
+        tool_registry=_always_ok_registry(),
+    )
+
+    # The final call's own user_prompt carries every prior tool_results entry
+    # accumulated so far -- both the first (completed_courses) and second
+    # (course) calls' results must both still be present, under distinct keys.
+    final_user_prompt = adapter.calls[-1]["user_prompt"]
+    assert "user-1" in final_user_prompt
+    assert "00440148" in final_user_prompt

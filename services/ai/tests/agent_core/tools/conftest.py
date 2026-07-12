@@ -54,6 +54,8 @@ class _FakeCollection:
         self._docs = docs
 
     def _matches(self, query: dict[str, Any]) -> list[dict[str, Any]]:
+        if "_id" in query:
+            return [doc for doc in self._docs if doc.get("_id") == query["_id"]]
         user_id = query.get("userId")
         return [doc for doc in self._docs if doc.get("userId") == user_id]
 

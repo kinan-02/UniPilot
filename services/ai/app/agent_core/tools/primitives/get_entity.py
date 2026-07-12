@@ -25,7 +25,7 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_core.planning.state import CertaintyTag, SourceRef
 from app.agent_core.tools.envelope import ToolOutputEnvelope
@@ -46,7 +46,24 @@ _KNOWN_ENTITY_TYPES: frozenset[str] = _WIKI_ENTITY_TYPES | _MONGO_ENTITY_TYPES |
 
 class GetEntityInput(BaseModel):
     entity_type: str
-    entity_id: str
+    # A real live-eval run found the model reliably confusing this with a
+    # `completed_courses` record's own `courseId` (a Mongo _id reference to
+    # the same course) when following up a completed_courses fetch with a
+    # course-detail lookup -- that ObjectId is NEVER a valid entity_id for
+    # entity_type="course" and always fails with entity_not_found, which
+    # then stalled the whole retrieval tool loop. Spelled out explicitly
+    # here (not just in the tool's own description) since this is the exact
+    # field the model gets wrong.
+    entity_id: str = Field(
+        description=(
+            "For entity_type in course/track/program/minor/faculty/wiki_page: the "
+            "course CODE or wiki slug (e.g. '00950120') -- never a completed_courses "
+            "record's own `courseId` field, which is a database reference, not a "
+            "course code, and will always fail with entity_not_found. For "
+            "entity_type in student_profile/completed_courses/semester_plan: the "
+            "student's own user_id."
+        )
+    )
 
 
 def _sanitize_value(value: Any) -> Any:
@@ -242,15 +259,44 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
         return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
 
     if entity_type == "course":
-        return _course_entity_result(engine, entity_id)
+        course_code = entity_id
+        if ObjectId.is_valid(entity_id):
+            # A live-eval run found the model reliably passing a
+            # completed_courses record's own `courseId` (a Mongo _id
+            # reference) here instead of its `courseNumber` -- clarifying
+            # the field description alone did not change this across
+            # repeated live runs. Resolve it defensively rather than
+            # relying solely on the model choosing the right field: course
+            # CONTENT still comes exclusively from the graph engine below,
+            # this only translates a foreign-key format.
+            resolved = await _resolve_course_code_from_object_id(entity_id)
+            if resolved is not None:
+                course_code = resolved
+        return _course_entity_result(engine, course_code)
     return _wiki_entity_result(engine, entity_type, entity_id)
+
+
+_COURSES_COLLECTION = "courses"
+
+
+async def _resolve_course_code_from_object_id(object_id: str) -> str | None:
+    try:
+        database = await get_database()
+        course = await database[_COURSES_COLLECTION].find_one({"_id": ObjectId(object_id)})
+    except Exception:  # noqa: BLE001 -- resolution is best-effort, never raises
+        return None
+    if course is None:
+        return None
+    course_number = course.get("courseNumber")
+    return str(course_number) if course_number else None
 
 
 DESCRIPTOR = ToolDescriptor(
     name=TOOL_NAME,
     description="Structured fetch of any named record: course, track, program, minor, "
     "faculty, wiki_page (generic wiki entity, incl. regulation topics), student profile, "
-    "completed courses, or semester plans.",
+    "completed courses, or semester plans. IMPORTANT: entity_id's expected format depends "
+    "entirely on entity_type -- see entity_id's own field description before calling.",
     input_model=GetEntityInput,
     output_model=ToolOutputEnvelope,
     side_effect="read",
