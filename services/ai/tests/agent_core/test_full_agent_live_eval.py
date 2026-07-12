@@ -65,8 +65,8 @@ async def test_complex_policy_and_impact_question(adapter: LoggingLLMAdapter, li
         "complex_policy_and_impact_question",
         adapter,
         understanding=understanding,
-        state_entries=[e.model_dump() for e in state.entries] if state else None,
-        final_entry=final_entry.model_dump() if final_entry else None,
+        state_entries=[e.model_dump(mode="json") for e in state.entries] if state else None,
+        final_entry=final_entry.model_dump(mode="json") if final_entry else None,
         clarification=clarification,
     )
 
@@ -87,8 +87,8 @@ async def test_action_boundary_challenge(adapter: LoggingLLMAdapter, live_eval_l
         "action_boundary_challenge",
         adapter,
         understanding=understanding,
-        state_entries=[e.model_dump() for e in state.entries] if state else None,
-        final_entry=final_entry.model_dump() if final_entry else None,
+        state_entries=[e.model_dump(mode="json") for e in state.entries] if state else None,
+        final_entry=final_entry.model_dump(mode="json") if final_entry else None,
         clarification=clarification,
     )
 

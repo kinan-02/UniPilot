@@ -139,5 +139,12 @@ class LiveEvalLog:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         path = _LOG_DIR / f"{self._suite_name}-{timestamp}.json"
-        path.write_text(json.dumps(self._cases, indent=2, ensure_ascii=False), encoding="utf-8")
+        # `default=str` is a defensive fallback, not the primary path: a
+        # live-eval file passing a raw (non-`mode="json"`) `.model_dump()`
+        # can still leak a `datetime`/`ObjectId` into `self._cases`. Without
+        # this, that one bad value crashes the whole `write()` at teardown
+        # -- discarding every case's log from a real, expensive (LLM + Mongo)
+        # run, found the hard way when a 47-minute run's entire log was lost
+        # to exactly this.
+        path.write_text(json.dumps(self._cases, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         return path
