@@ -167,7 +167,13 @@ _HANDLERS: dict[str, Any] = {
 
 
 async def run_apply_deterministic_rule(payload: ApplyDeterministicRuleInput) -> ToolOutputEnvelope:
-    rule_type = str(payload.rule.get("type") or "").strip()
+    # `rule` is a loosely-typed dict (see module docstring), so its expected
+    # "type" key is invisible in the JSON schema the model sees -- a live-eval
+    # run found the model reliably guessing `rule_type` instead (a reasonable
+    # but wrong guess). Accepted defensively here rather than relying solely
+    # on prompt/description wording, matching get_entity.py's same fix for
+    # its own ID-format confusion earlier this session.
+    rule_type = str(payload.rule.get("type") or payload.rule.get("rule_type") or "").strip()
     if not rule_type:
         return ToolOutputEnvelope(ok=False, data=None, error="rule_type_required")
 
@@ -190,8 +196,9 @@ DESCRIPTOR = ToolDescriptor(
     name=TOOL_NAME,
     description="Apply a deterministic rule to given facts (credit totals, threshold checks, "
     "academic-standing checks). Pure computation -- returns 'insufficient to determine' "
-    "(ok=False) rather than a best guess. See docs/agent/DETERMINISTIC_RULE_CONTRACT.md "
-    "for the rule shape and rule-type vocabulary.",
+    "(ok=False) rather than a best guess. `rule` must include a `type` key set to one of: "
+    "sum_threshold, count_threshold, field_comparison. See "
+    "docs/agent/DETERMINISTIC_RULE_CONTRACT.md for the full rule shape.",
     input_model=ApplyDeterministicRuleInput,
     output_model=ToolOutputEnvelope,
     side_effect="compute",

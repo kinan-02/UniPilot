@@ -30,6 +30,38 @@ async def test_unknown_rule_type_fails_closed():
     assert "unknown_rule_type: guess_the_answer" in result.error
 
 
+async def test_rule_type_key_accepted_as_an_alias_for_type():
+    """A live-eval run found the model reliably using `rule_type` instead of
+    `type` -- `rule` is a loosely-typed dict, so this key name is invisible
+    in the JSON schema the model sees. Accepted as an alias rather than
+    relying solely on prompt wording."""
+    result = await run_apply_deterministic_rule(
+        ApplyDeterministicRuleInput(
+            rule={"rule_type": "count_threshold", "source": "items", "comparator": ">=", "threshold": 0},
+            facts={"items": []},
+        )
+    )
+    assert result.ok is True
+    assert result.data["type"] == "count_threshold"
+
+
+async def test_type_key_takes_precedence_over_rule_type_alias():
+    result = await run_apply_deterministic_rule(
+        ApplyDeterministicRuleInput(
+            rule={
+                "type": "count_threshold",
+                "rule_type": "guess_the_answer",
+                "source": "items",
+                "comparator": ">=",
+                "threshold": 0,
+            },
+            facts={"items": []},
+        )
+    )
+    assert result.ok is True
+    assert result.data["type"] == "count_threshold"
+
+
 # -- sum_threshold ------------------------------------------------------
 
 

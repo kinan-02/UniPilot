@@ -192,6 +192,16 @@ def _planner_contract() -> PromptContract:
             "dependency. If no such step exists anywhere yet, add one to this batch and depend on "
             "it, rather than leaving the requirement-fulfillment step to discover the missing "
             "program on its own later.",
+            "A degree/track's total-credit requirement (or any other specific number or rule that "
+            "lives only in that program's wiki-page prose, not a structured graph attribute) cannot "
+            "be produced by a bare Retrieval fetch of the program -- fetching a program/track entity "
+            "returns prose text, not a structured field. Extracting a specific number or rule from "
+            "that text needs its own separate Interpretation step (interpret_text), exactly like a "
+            "requirement-fulfillment classification above. When a step needs 'how many credits "
+            "remain', schedule: a Retrieval step for the student's own completed credits, an "
+            "Interpretation step to extract the program's total-credit requirement from its wiki "
+            "page, and a Calculation step comparing the two -- never a single Retrieval step expected "
+            "to return the remaining-credits count directly.",
             "success_criteria and assumptions_to_verify must be concrete and checkable -- specific "
             "facts or conditions that can be verified true or false against the step's actual "
             "result, never a vague hedge like 'gather relevant information'.",

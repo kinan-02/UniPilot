@@ -106,6 +106,51 @@ async def test_program_entity(use_real_academic_engine):
     assert result.data["slug"] == "program-alonim"
 
 
+async def test_program_entity_resolves_a_student_profile_degree_id_object_id(
+    use_real_academic_engine, fake_database_factory
+):
+    """A live-eval run found the model reliably passing a student_profile's
+    `degreeId` (a Mongo _id reference into degree_programs, not a wiki slug)
+    as entity_id for entity_type="program" -- this must still resolve."""
+    degree_object_id = ObjectId()
+    set_test_database(
+        fake_database_factory(
+            {"degree_programs": [{"_id": degree_object_id, "metadata": {"wikiPage": "program-alonim"}}]}
+        )
+    )
+
+    result = await run_get_entity(GetEntityInput(entity_type="program", entity_id=str(degree_object_id)))
+
+    assert result.ok is True
+    assert result.data["slug"] == "program-alonim"
+
+
+async def test_program_entity_with_unresolvable_degree_id_fails_closed(
+    use_real_academic_engine, fake_database_factory
+):
+    set_test_database(fake_database_factory({"degree_programs": []}))
+
+    result = await run_get_entity(GetEntityInput(entity_type="program", entity_id=str(ObjectId())))
+
+    assert result.ok is False
+    assert "entity_not_found" in result.error
+
+
+async def test_wiki_page_entity_type_never_attempts_object_id_resolution(
+    use_real_academic_engine, fake_database_factory
+):
+    """entity_type="wiki_page" has no database-id form to confuse with its
+    own entity_id -- an ObjectId-shaped slug should just fail closed as an
+    unknown slug, never trigger a degree_programs lookup."""
+    set_test_database(fake_database_factory({"degree_programs": []}))
+    object_id_shaped_slug = str(ObjectId())
+
+    result = await run_get_entity(GetEntityInput(entity_type="wiki_page", entity_id=object_id_shaped_slug))
+
+    assert result.ok is False
+    assert "entity_not_found" in result.error
+
+
 async def test_minor_entity(use_real_academic_engine):
     result = await run_get_entity(GetEntityInput(entity_type="minor", entity_id="minor-economics"))
     assert result.ok is True

@@ -273,10 +273,36 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
             if resolved is not None:
                 course_code = resolved
         return _course_entity_result(engine, course_code)
-    return _wiki_entity_result(engine, entity_type, entity_id)
+
+    slug = entity_id
+    if entity_type != "wiki_page" and ObjectId.is_valid(entity_id):
+        # Same real bug as the course case above, confirmed live: a
+        # student_profile's `degreeId` (a Mongo _id reference into
+        # `degree_programs`) is not a valid entity_id for entity_type in
+        # program/track/minor/faculty -- those are wiki slugs
+        # (`degree_programs.metadata.wikiPage`). `wiki_page` is excluded
+        # because its own entity_id IS canonically a slug already; there is
+        # no database-id form of it to confuse with.
+        resolved = await _resolve_program_slug_from_object_id(entity_id)
+        if resolved is not None:
+            slug = resolved
+    return _wiki_entity_result(engine, entity_type, slug)
 
 
 _COURSES_COLLECTION = "courses"
+_DEGREE_PROGRAMS_COLLECTION = "degree_programs"
+
+
+async def _resolve_program_slug_from_object_id(object_id: str) -> str | None:
+    try:
+        database = await get_database()
+        program = await database[_DEGREE_PROGRAMS_COLLECTION].find_one({"_id": ObjectId(object_id)})
+    except Exception:  # noqa: BLE001 -- resolution is best-effort, never raises
+        return None
+    if program is None:
+        return None
+    wiki_page = (program.get("metadata") or {}).get("wikiPage")
+    return str(wiki_page) if wiki_page else None
 
 
 async def _resolve_course_code_from_object_id(object_id: str) -> str | None:
