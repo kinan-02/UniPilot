@@ -11,6 +11,8 @@ environment) so success/failure behavior is directly controllable.
 
 from __future__ import annotations
 
+import asyncio
+
 from pydantic import BaseModel
 
 from app.agent_core.subagents.tool_round import execute_tool_round
@@ -249,3 +251,61 @@ async def test_without_a_cache_a_second_round_still_pays_for_a_real_call():
     )
 
     assert registry.call_count == 2
+
+
+def _make_slow_registry(*, delay_seconds: float = 0.05) -> ToolRegistry:
+    """A tool whose real call takes a moment -- forces two genuinely
+    concurrent `execute_tool_round` calls to actually overlap in time,
+    rather than one finishing before the other even starts."""
+    registry = ToolRegistry()
+
+    async def _callable(payload: _FakeInput) -> ToolOutputEnvelope:
+        await asyncio.sleep(delay_seconds)
+        return ToolOutputEnvelope(ok=True, data={"entity_id": payload.entity_id})
+
+    registry.register(
+        ToolDescriptor(
+            name="fake_tool",
+            description="test stub",
+            input_model=_FakeInput,
+            output_model=ToolOutputEnvelope,
+            side_effect="read",
+            callable=_callable,
+        )
+    )
+    return registry
+
+
+async def test_concurrent_identical_requests_only_invoke_the_tool_once():
+    """Regression guard for the "thundering herd" gap: `orchestrator/
+    parallel_dispatch.py` dispatches a whole execution layer concurrently,
+    so several sibling steps can all check the cache, all see a miss (none
+    has finished yet), and all pay for a real call. A live-eval run found
+    only 27 of 272 identical `get_entity` calls served from cache in one
+    turn for exactly this reason. Two genuinely concurrent
+    `execute_tool_round` calls sharing one `ToolCallCache` must still only
+    invoke the underlying tool once."""
+    registry = _CountingToolRegistry(_make_slow_registry())
+    cache = ToolCallCache()
+    request = [{"tool_name": "fake_tool", "arguments": {"entity_id": "student_123"}}]
+
+    results = await asyncio.gather(
+        execute_tool_round(
+            tool_requests=request,
+            tool_grant=["fake_tool"],
+            tool_registry=registry,
+            tool_results_so_far={},
+            tool_call_cache=cache,
+        ),
+        execute_tool_round(
+            tool_requests=request,
+            tool_grant=["fake_tool"],
+            tool_registry=registry,
+            tool_results_so_far={},
+            tool_call_cache=cache,
+        ),
+    )
+
+    assert registry.call_count == 1
+    from_cache_flags = sorted(records[0].from_cache for _, records in results)
+    assert from_cache_flags == [False, True]
