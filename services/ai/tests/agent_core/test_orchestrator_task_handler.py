@@ -459,6 +459,45 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
     assert captured_sub_steps[0].depends_on == ["s1"]
 
 
+async def test_dispatch_single_specialist_routes_calculation_validation_role_to_dedicated_block(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """`docs/agent/CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md` Part 2.5 --
+    the `calculation_validation` role dispatches through the dedicated
+    `run_calculation_validation_subagent`, never the generic `run_subagent`."""
+    calls = {"calculation_validation": 0, "generic": 0}
+
+    async def fake_calculation_validation_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+        calls["calculation_validation"] += 1
+        return _subagent_result(status="succeeded", data={"type": "expression", "result": 5})
+
+    async def fake_run_subagent(*, role, context_package, tool_registry, llm_adapter, block_id):
+        calls["generic"] += 1
+        return _subagent_result(status="succeeded")
+
+    monkeypatch.setattr(
+        task_handler_module, "run_calculation_validation_subagent", fake_calculation_validation_subagent
+    )
+    monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
+
+    step = _step(step_id="1a")
+    state = PlanExecutionState(plan_id="p1")
+    adapter = fake_llm_adapter_factory([])  # step_prep falls back deterministically -- never queried
+
+    result = await task_handler_module._dispatch_single_specialist(
+        step=step,
+        role=ROLE_ROSTER["calculation_validation"],
+        state=state,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        block_id="p1-1a",
+        user_id="test-user-1",
+    )
+
+    assert calls == {"calculation_validation": 1, "generic": 0}
+    assert result.status == "succeeded"
+
+
 async def test_role_aggregation_uses_last_successful_entrys_role(monkeypatch):
     step = _step()
     sub1 = _step(step_id="1a1")

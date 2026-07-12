@@ -42,6 +42,7 @@ from app.agent_core.planning.state import (
 )
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
+from app.agent_core.subagents.calculation_validation_block import run_calculation_validation_subagent
 from app.agent_core.subagents.run import run_subagent
 from app.agent_core.subagents.schemas import SubagentResult
 from app.agent_core.tools.registry import ToolRegistry
@@ -136,6 +137,13 @@ async def _dispatch_single_specialist(
         step=step, state=state, llm_adapter=llm_adapter, block_id=f"{block_id}-prep", user_id=user_id
     )
     context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
+    if role.name == "calculation_validation":
+        return await run_calculation_validation_subagent(
+            context_package=context_package,
+            tool_registry=tool_registry,
+            llm_adapter=llm_adapter,
+            block_id=block_id,
+        )
     return await run_subagent(
         role=role,
         context_package=context_package,
