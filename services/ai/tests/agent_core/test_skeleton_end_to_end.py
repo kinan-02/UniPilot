@@ -37,26 +37,16 @@ _RESPONSES = [
         "plan_summary": "Step 1: fetch course record.",
         "clarification_question": None,
     },
-    # 2a. Task handler's cheap classifier for step 1 -- atomic, retrieval role.
-    {"atomic": True, "role_if_atomic": "retrieval"},
-    # 2. Step 1 step-prep.
+    # 2. Task handler's merged classify_and_prep for step 1 -- atomic, retrieval role + prep details.
     {
-        "status": "ok",
-        "summary": "prepped step 1",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.8,
-        "result": {
-            "goal": "Fetch course record",
-            "description": "Fetch the record for course 234218.",
-            "specific_instructions": ["Use get_entity to fetch the course."],
-            "tone_language_notes": "",
-            "context_requirements": [],
-            "tool_grant_override": None,
-        },
+        "atomic": True,
+        "role_if_atomic": "retrieval",
+        "goal": "Fetch course record",
+        "description": "Fetch the record for course 234218.",
+        "specific_instructions": ["Use get_entity to fetch the course."],
+        "tone_language_notes": "",
+        "context_requirements": [],
+        "tool_grant_override": None,
     },
     # 3. Step 1 subagent (retrieval), round 1 -- RetrievalReasoningBlock's own
     # per-round schema (status: "ready" | "need_tools"), requests a tool.
@@ -100,26 +90,16 @@ _RESPONSES = [
         "plan_summary": "Step 2: compose the final answer.",
         "clarification_question": None,
     },
-    # 5a. Task handler's cheap classifier for step 2 -- atomic, composition role.
-    {"atomic": True, "role_if_atomic": "composition"},
-    # 6. Step 2 step-prep.
+    # 5a. Task handler's merged classify_and_prep for step 2 -- atomic, composition role + prep details.
     {
-        "status": "ok",
-        "summary": "prepped step 2",
-        "key_factors": [],
-        "missing_context": [],
-        "validation_notes": [],
-        "warnings": [],
-        "tool_requests": [],
-        "confidence": 0.8,
-        "result": {
-            "goal": "Compose final answer",
-            "description": "Compose the final answer using step 1's result.",
-            "specific_instructions": [],
-            "tone_language_notes": "",
-            "context_requirements": ["1a"],
-            "tool_grant_override": None,
-        },
+        "atomic": True,
+        "role_if_atomic": "composition",
+        "goal": "Compose final answer",
+        "description": "Compose the final answer using step 1's result.",
+        "specific_instructions": [],
+        "tone_language_notes": "",
+        "context_requirements": ["1a"],
+        "tool_grant_override": None,
     },
     # 7. Step 2 subagent (composition) -- single-shot.
     {

@@ -38,6 +38,7 @@ from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentRes
 from app.agent_core.subagents.tool_round import execute_tool_round
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,10 @@ def _simulation_planning_round_contract() -> PromptContract:
             f"{build_shared_grounding_block()}\n\n"
             "You are the Simulation/Planning Agent. You own mutate_state and "
             "search_over_state, translating loose constraints into the formal objects "
-            "those primitives need, and produce projected plans or outcomes. A "
-            "hypothetical/simulated result must always be tagged as such, never phrased "
-            "as an official fact."
+            "those primitives need, and produce projected plans or outcomes, plus "
+            "higher-level tools that bundle a whole simulation/comparison/audit chain "
+            "into one call. A hypothetical/simulated result must always be tagged as "
+            "such, never phrased as an official fact."
         ),
         instructions=[
             "You may decide, interpret, and judge freely, but you may never directly assert a "
@@ -89,6 +91,13 @@ def _simulation_planning_round_contract() -> PromptContract:
             "already present in task_context or requested via tool_requests.",
             "Tag every simulated/projected result with certainty_basis='hypothetical_simulation' or "
             "'predicted_pattern' as appropriate -- never 'official_record'.",
+            "When granted, prefer a higher-level tool over assembling the equivalent chain of "
+            "mutate_state/search_over_state calls by hand: simulate_course_disruption instead of "
+            "mutate_state followed by a before/after search_over_state comparison; "
+            "check_eligibility for a single-course snapshot check instead of a full "
+            "search_over_state run; audit_graduation_progress instead of manually comparing "
+            "completed courses against a track's requirements; compare_plans instead of "
+            "hand-diffing two search_over_state results. Each does the same work in one call.",
             "If the first candidate fails a constraint, revise and retry before giving up.",
             "You must call at least one tool (e.g. mutate_state or search_over_state) before "
             "finalizing -- you may never answer status='ready' on the very first round.",
@@ -139,6 +148,7 @@ class SimulationPlanningReasoningBlock(BaseReasoningBlock):
         llm_adapter: LLMAdapter,
         tool_registry: ToolRegistry,
         tool_call_cache: ToolCallCache | None = None,
+        unresolvable_registry: UnresolvableEntityRegistry | None = None,
         prompt_registry: PromptRegistry | None = None,
         **kwargs: Any,
     ) -> None:
@@ -147,6 +157,7 @@ class SimulationPlanningReasoningBlock(BaseReasoningBlock):
         )
         self._tool_registry = tool_registry
         self._tool_call_cache = tool_call_cache
+        self._unresolvable_registry = unresolvable_registry
 
     async def _run_internal(
         self, block_input: _SimulationPlanningBlockInput, telemetry: RunTelemetry
@@ -238,6 +249,7 @@ class SimulationPlanningReasoningBlock(BaseReasoningBlock):
                     tool_results_so_far=tool_results_so_far,
                     log_prefix="simulation_planning",
                     tool_call_cache=self._tool_call_cache,
+                    unresolvable_registry=self._unresolvable_registry,
                 )
                 tool_audit_trail.extend(new_records)
                 continue
@@ -320,6 +332,7 @@ async def run_simulation_planning_subagent(
     llm_adapter: LLMAdapter,
     block_id: str,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> SubagentResult:
     block_input = _SimulationPlanningBlockInput(
         block_id=block_id,
@@ -335,7 +348,8 @@ async def run_simulation_planning_subagent(
         tool_grant=list(context_package.tool_grant),
     )
     block = SimulationPlanningReasoningBlock(
-        llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache
+        llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache,
+        unresolvable_registry=unresolvable_registry,
     )
     output = await block.run(block_input)
 

@@ -35,6 +35,29 @@ def test_composition_role_validator_rejects_a_nonempty_tool_grant():
         )
 
 
+def test_higher_level_composite_tools_are_actually_granted_to_the_roles_that_need_them():
+    """Regression guard: all 8 composite tools (docs/agent/HIGHER_LEVEL_TOOLS.md)
+    were built, tested, and registered in the default ToolRegistry, but the
+    roster's own tool_grant_ceiling was never updated to actually grant any
+    of them -- found via a live-eval run where retrieval/simulation_planning
+    kept re-assembling multi-primitive chains by hand across several rounds
+    instead of using the one-call composite that already existed for it."""
+    roster = build_default_role_roster()
+    assert set(roster["retrieval"].tool_grant_ceiling) >= {
+        "get_course_profile",
+        "get_policy_answer",
+        "get_track_requirements",
+    }
+    assert "get_policy_answer" in roster["interpretation"].tool_grant_ceiling
+    assert set(roster["simulation_planning"].tool_grant_ceiling) >= {
+        "simulate_course_disruption",
+        "check_eligibility",
+        "compare_plans",
+        "audit_graduation_progress",
+        "find_requirement_substitutes",
+    }
+
+
 def test_every_role_tool_grant_is_a_subset_of_the_registered_tools():
     roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()

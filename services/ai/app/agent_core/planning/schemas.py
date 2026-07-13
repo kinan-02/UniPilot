@@ -134,6 +134,7 @@ class PlannerInvocationInput(BaseModel):
     plan_graph_so_far: PlanGraph = Field(default_factory=PlanGraph)
     monitor_flags: list[str] = Field(default_factory=list)
     replan_reason: str | None = None
+    unresolvable_entities: list[str] = Field(default_factory=list)
 
 
 def planner_input_from_understanding(

@@ -24,6 +24,7 @@ from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentRes
 from app.agent_core.subagents.tool_round import execute_tool_round
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +70,22 @@ def _retrieval_round_contract() -> PromptContract:
         role_prompt=(
             f"{build_shared_grounding_block()}\n\n"
             "You are the Retrieval Agent. You resolve and fetch facts using get_entity, "
-            "search_knowledge, and traverse_relationship. You may iterate if what you find "
-            "is ambiguous. You return facts plus their source and confidence -- never "
-            "commentary or explanation prose."
+            "search_knowledge, and traverse_relationship, plus higher-level tools that bundle "
+            "several of those into one call. You may iterate if what you find is ambiguous. "
+            "You return facts plus their source and confidence -- never commentary or "
+            "explanation prose."
         ),
         instructions=[
             "You may decide, interpret, and judge freely, but you may never directly assert a "
             "computed or structural fact in your output without it coming from a tool call result "
             "already present in task_context or requested via tool_requests.",
             "Return facts with their source and confidence, never bare prose.",
+            "If a granted tool's own name/description already bundles the multi-step chain you'd "
+            "otherwise assemble by hand (e.g. get_course_profile instead of get_entity followed by "
+            "several traverse_relationship calls; get_track_requirements instead of get_entity "
+            "followed by traverse_relationship; get_policy_answer instead of search_knowledge "
+            "followed by an interpretation step), call that one tool instead -- it does the same "
+            "work in one round instead of several.",
             "If a search is ambiguous, request another tool call round rather than guessing.",
             "A record that was fetched successfully but has a field that is null/unset (e.g. a "
             "student profile with no declared program) is a CONFIDENT, fully resolved fact -- 'this "
@@ -132,6 +140,7 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
         llm_adapter: LLMAdapter,
         tool_registry: ToolRegistry,
         tool_call_cache: ToolCallCache | None = None,
+        unresolvable_registry: UnresolvableEntityRegistry | None = None,
         prompt_registry: PromptRegistry | None = None,
         **kwargs: Any,
     ) -> None:
@@ -140,6 +149,7 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
         )
         self._tool_registry = tool_registry
         self._tool_call_cache = tool_call_cache
+        self._unresolvable_registry = unresolvable_registry
 
     async def _run_internal(
         self, block_input: _RetrievalBlockInput, telemetry: RunTelemetry
@@ -223,6 +233,7 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
                     tool_results_so_far=tool_results_so_far,
                     log_prefix="retrieval",
                     tool_call_cache=self._tool_call_cache,
+                    unresolvable_registry=self._unresolvable_registry,
                 )
                 tool_audit_trail.extend(new_records)
                 continue
@@ -296,6 +307,7 @@ async def run_retrieval_subagent(
     llm_adapter: LLMAdapter,
     block_id: str,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> SubagentResult:
     block_input = _RetrievalBlockInput(
         block_id=block_id,
@@ -310,7 +322,7 @@ async def run_retrieval_subagent(
         output_schema=_RETRIEVAL_OUTPUT_SCHEMA,
         tool_grant=list(context_package.tool_grant),
     )
-    block = RetrievalReasoningBlock(llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache)
+    block = RetrievalReasoningBlock(llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache, unresolvable_registry=unresolvable_registry)
     output = await block.run(block_input)
 
     status: Literal["succeeded", "partial", "failed"] = (

@@ -98,5 +98,26 @@ def test_build_state_index_truncates_an_oversized_data_preview():
 
     summary = build_state_index([entry])[0].summary
 
+    assert len(summary) < 400
     assert summary.endswith("...(truncated)")
+
+
+def test_build_state_index_includes_a_warnings_preview_when_failed():
+    entry = StateEntry(
+        entry_id="s1-0",
+        step_id="s1",
+        role="retrieval",
+        status="failed",
+        output_schema_name="generic_step_output_v1",
+        data={},
+        warnings=["No course named 'Machine Learning' found"],
+        certainty=CertaintyTag(basis="wiki_derived", confidence=1.0),
+        produced_at=datetime.now(timezone.utc),
+    )
+
+    summary = build_state_index([entry])[0].summary
+
+    assert summary.startswith("failed (generic_step_output_v1): ")
+    assert "No course named 'Machine Learning' found" in summary
+    assert "warnings" in summary
     assert len(summary) < 500

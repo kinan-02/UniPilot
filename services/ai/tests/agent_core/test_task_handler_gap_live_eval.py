@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent_core.orchestrator.task_handler_classifier import classify_step
+from app.agent_core.orchestrator.task_handler_classify_and_prep import classify_and_prep_step
 from app.agent_core.planning.planner import NESTED_PLANNER_V1, build_next_plan_steps
 from app.agent_core.planning.schemas import PlanGraph, PlanStep, PlannerInvocationInput
 from app.agent_core.reasoning.llm_client import agent_llm_available
@@ -110,11 +110,11 @@ async def _classify_and_decompose(step: PlanStep, adapter: LoggingLLMAdapter, *,
     `(classifier_output, nested_plan_output, sub_step_roles)` where
     `sub_step_roles` maps each nested sub-step id to its own classifier
     verdict (role assignment only, mirroring `_dispatch_nested_sub_step`)."""
-    classifier_output = await classify_step(
-        step=step, dependency_context=[], llm_adapter=adapter, block_id=f"{block_prefix}-classifier"
+    cls_out, prep_out = await classify_and_prep_step(
+        step=step, dependency_context=[], llm_adapter=adapter, block_id=f"{block_prefix}-classifier", user_id="test-user-1"
     )
-    if classifier_output.atomic:
-        return classifier_output, None, {}
+    if cls_out.atomic:
+        return cls_out, None, {}
 
     planner_input = PlannerInvocationInput(
         user_goal=step.objective,
@@ -138,17 +138,18 @@ async def _classify_and_decompose(step: PlanStep, adapter: LoggingLLMAdapter, *,
 
     sub_step_roles: dict[str, str | None] = {}
     for sub_step in nested_plan.next_steps:
-        sub_classification = await classify_step(
+        sub_cls_out, sub_prep_out = await classify_and_prep_step(
             step=sub_step,
             dependency_context=[],
             llm_adapter=adapter,
             block_id=f"{block_prefix}-{sub_step.step_id}-classifier",
+            user_id="test-user-1",
         )
         sub_step_roles[sub_step.step_id] = (
-            sub_classification.role_if_atomic if sub_classification.atomic else None
+            sub_cls_out.role_if_atomic if sub_cls_out.atomic else None
         )
 
-    return classifier_output, nested_plan, sub_step_roles
+    return cls_out, nested_plan, sub_step_roles
 
 
 async def test_gap_1_gpa_probation_step_is_not_treated_as_pure_retrieval(

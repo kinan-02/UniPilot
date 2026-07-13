@@ -36,6 +36,7 @@ from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentRes
 from app.agent_core.subagents.tool_round import execute_tool_round
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,10 @@ def _interpretation_round_contract() -> PromptContract:
             "than reporting it as confirmed (docs/agent/TOOL_PRIMITIVES_OPEN_GAPS.md #5).",
             "You must call at least one tool (e.g. interpret_text) before finalizing -- you "
             "may never answer status='ready' on the very first round.",
+            "If you don't yet have a wiki page slug to interpret, prefer get_policy_answer (when "
+            "granted) over a separate search_knowledge-then-interpret_text sequence -- it does the "
+            "same search-then-interpret chain in one call, including trying multiple candidate "
+            "sources internally, so it usually resolves in one round instead of two or more.",
             "Output must be either a tool request (status='need_tools', provide tool_requests) OR "
             "a final result (status='ready', provide result matching the required schema, which "
             "requires a source_ref -- never finalize without one).",
@@ -147,6 +152,7 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
         llm_adapter: LLMAdapter,
         tool_registry: ToolRegistry,
         tool_call_cache: ToolCallCache | None = None,
+        unresolvable_registry: UnresolvableEntityRegistry | None = None,
         prompt_registry: PromptRegistry | None = None,
         **kwargs: Any,
     ) -> None:
@@ -155,6 +161,7 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
         )
         self._tool_registry = tool_registry
         self._tool_call_cache = tool_call_cache
+        self._unresolvable_registry = unresolvable_registry
 
     async def _run_internal(
         self, block_input: _InterpretationBlockInput, telemetry: RunTelemetry
@@ -249,6 +256,7 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
                     tool_results_so_far=tool_results_so_far,
                     log_prefix="interpretation",
                     tool_call_cache=self._tool_call_cache,
+                    unresolvable_registry=self._unresolvable_registry,
                 )
                 tool_audit_trail.extend(new_records)
                 continue
@@ -338,6 +346,7 @@ async def run_interpretation_subagent(
     llm_adapter: LLMAdapter,
     block_id: str,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> SubagentResult:
     block_input = _InterpretationBlockInput(
         block_id=block_id,
@@ -353,7 +362,8 @@ async def run_interpretation_subagent(
         tool_grant=list(context_package.tool_grant),
     )
     block = InterpretationReasoningBlock(
-        llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache
+        llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache,
+        unresolvable_registry=unresolvable_registry,
     )
     output = await block.run(block_input)
 

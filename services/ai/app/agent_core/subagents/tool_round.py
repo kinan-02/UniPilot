@@ -21,6 +21,7 @@ from typing import Any
 from app.agent_core.planning.state import ToolInvocationRecord
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolNotFoundError, ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ async def execute_tool_round(
     tool_results_so_far: dict[str, Any],
     log_prefix: str = "tool_round",
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> tuple[dict[str, Any], list[ToolInvocationRecord]]:
     """Returns a NEW merged results dict (never mutates `tool_results_so_far`)
     plus this round's new audit records."""
@@ -108,6 +110,53 @@ async def execute_tool_round(
                 merged_results[result_key] = dumped
                 if tool_call_cache is not None:
                     tool_call_cache.set(result_key, {"envelope": dumped, "certainty": envelope.certainty})
+                # Detect search_knowledge zero-match results: ok=True but
+                # data["matches"] is empty -- a conclusive "nothing exists"
+                # signal, not an error.  Record the query string so the
+                # Planner never re-schedules the same search.
+                if (
+                    unresolvable_registry is not None
+                    and tool_name == "search_knowledge"
+                    and isinstance(envelope.data, dict)
+                    and not envelope.data.get("matches")
+                ):
+                    query_str = arguments.get("query", "")
+                    if query_str:
+                        unresolvable_registry.record(
+                            query_str,
+                            f"search_knowledge returned zero matches for '{query_str}'",
+                        )
+            else:
+                # Detect get_entity entity_not_found errors: ok=False with
+                # error starting with "entity_not_found:" -- these are NOT
+                # cached by ToolCallCache (it only caches ok=True), so every
+                # retry re-hits the DB/graph today.  Record the entity
+                # identifier so the Planner stops scheduling retries.
+                if unresolvable_registry is not None:
+                    if (
+                        tool_name == "get_entity"
+                        and isinstance(envelope.error, str)
+                        and envelope.error.startswith("entity_not_found:")
+                    ):
+                        entity_id = arguments.get("entity_id", "")
+                        if entity_id:
+                            unresolvable_registry.record(
+                                entity_id,
+                                f"get_entity returned entity_not_found for '{entity_id}'",
+                            )
+                    # Detect search_knowledge failures (ok=False) due to missing graph
+                    # or missing index. If it fails, the query is effectively unresolvable
+                    # for this turn. Record it to stop the Planner from infinitely retrying.
+                    elif (
+                        tool_name == "search_knowledge"
+                        and isinstance(envelope.error, str)
+                    ):
+                        query_str = arguments.get("query", "")
+                        if query_str:
+                            unresolvable_registry.record(
+                                query_str,
+                                f"search_knowledge failed for '{query_str}': {envelope.error}",
+                            )
 
         if tool_call_cache is None:
             await _invoke_and_record()

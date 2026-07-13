@@ -29,8 +29,7 @@ from datetime import datetime, timezone
 from app.agent_core.orchestrator.context_builder import build_subagent_context_package
 from app.agent_core.orchestrator.parallel_dispatch import dispatch_layer_concurrently
 from app.agent_core.orchestrator.state_index import build_state_index
-from app.agent_core.orchestrator.step_prep import run_step_prep
-from app.agent_core.orchestrator.task_handler_classifier import classify_step
+from app.agent_core.orchestrator.task_handler_classify_and_prep import classify_and_prep_step
 from app.agent_core.orchestrator.task_handler_success_check import check_success_criteria
 from app.agent_core.planning.planner import NESTED_PLANNER_V1, build_next_plan_steps
 from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName
@@ -52,6 +51,7 @@ from app.agent_core.subagents.run import run_subagent
 from app.agent_core.subagents.schemas import SubagentResult
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 DEFAULT_MAX_TASK_HANDLER_ROUNDS = 3
 _ROUND_BUDGET_EXHAUSTED_WARNING = "task_handler_round_budget_exhausted"
@@ -70,14 +70,16 @@ async def run_task_handler(
     max_rounds: int = DEFAULT_MAX_TASK_HANDLER_ROUNDS,
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> StateEntry:
     """Never appends to `state` itself -- the caller still owns
     `state.append(entry)`, unchanged from today's `loop.py` behavior."""
-    classifier_output = await classify_step(
+    classifier_output, step_prep_output = await classify_and_prep_step(
         step=step,
         dependency_context=build_state_index(state.slice(step.depends_on)),
         llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-classifier",
+        block_id=f"{plan_id}-{step.step_id}-classify_and_prep",
+        user_id=user_id,
     )
 
     fallback_reason: str | None = None
@@ -85,6 +87,7 @@ async def run_task_handler(
         role_name = classifier_output.role_if_atomic
         result = await _dispatch_single_specialist(
             step=step,
+            step_prep_output=step_prep_output,
             role=role_roster[role_name],
             state=state,
             tool_registry=tool_registry,
@@ -93,6 +96,7 @@ async def run_task_handler(
             user_id=user_id,
             streaming_queue=streaming_queue,
             tool_call_cache=tool_call_cache,
+            unresolvable_registry=unresolvable_registry,
         )
         criteria_met = result.status == "succeeded" and await check_success_criteria(
             step=step,
@@ -117,6 +121,7 @@ async def run_task_handler(
         plan_id=plan_id,
         max_rounds=max_rounds,
         tool_call_cache=tool_call_cache,
+        unresolvable_registry=unresolvable_registry,
     )
     return _entry_from_nested_subplan(
         step=step,
@@ -132,6 +137,7 @@ async def run_task_handler(
 async def _dispatch_single_specialist(
     *,
     step: PlanStep,
+    step_prep_output: StepPrepOutput,
     role: RoleDefinition,
     state: PlanExecutionState,
     tool_registry: ToolRegistry,
@@ -140,15 +146,13 @@ async def _dispatch_single_specialist(
     user_id: str,
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> SubagentResult:
-    """The existing step_prep -> context_builder -> run_subagent chain,
+    """The existing context_builder -> run_subagent chain,
     wrapped as one non-recursive helper -- used by BOTH the atomic fast path
     above and every nested sub-step below. Generic over whichever
     `PlanExecutionState` it's given (the shared top-level `state`, or a
     task handler's own private one)."""
-    step_prep_output = await run_step_prep(
-        step=step, state=state, llm_adapter=llm_adapter, block_id=f"{block_id}-prep", user_id=user_id
-    )
     context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
     if role.name == "calculation_validation":
         return await run_calculation_validation_subagent(
@@ -164,6 +168,7 @@ async def _dispatch_single_specialist(
             llm_adapter=llm_adapter,
             block_id=block_id,
             tool_call_cache=tool_call_cache,
+            unresolvable_registry=unresolvable_registry,
         )
     if role.name == "interpretation":
         return await run_interpretation_subagent(
@@ -172,6 +177,7 @@ async def _dispatch_single_specialist(
             llm_adapter=llm_adapter,
             block_id=block_id,
             tool_call_cache=tool_call_cache,
+            unresolvable_registry=unresolvable_registry,
         )
     if role.name == "simulation_planning":
         return await run_simulation_planning_subagent(
@@ -180,6 +186,7 @@ async def _dispatch_single_specialist(
             llm_adapter=llm_adapter,
             block_id=block_id,
             tool_call_cache=tool_call_cache,
+            unresolvable_registry=unresolvable_registry,
         )
     if role.name == "composition":
         return await run_composition_subagent(
@@ -229,6 +236,7 @@ async def _run_nested_subplan(
     plan_id: str,
     max_rounds: int,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> tuple[PlanExecutionState, str | None, int, bool]:
     """The task handler's own private mini-orchestrator: mirrors
     `orchestrator/loop.py::run_plan_to_completion`'s own invoke-repeatedly
@@ -275,6 +283,7 @@ async def _run_nested_subplan(
             original_user_message=original_user_message,
             monitor_flags=round_monitor_flags,
             replan_reason=round_replan_reason,
+            unresolvable_registry=unresolvable_registry,
         )
         planner_output = await build_next_plan_steps(
             planner_input=planner_input,
@@ -301,6 +310,7 @@ async def _run_nested_subplan(
                 step=step,
                 user_id=user_id,
                 tool_call_cache=tool_call_cache,
+                unresolvable_registry=unresolvable_registry,
             )
 
         round_monitor_flags = []
@@ -337,6 +347,7 @@ async def _dispatch_nested_sub_step(
     step: PlanStep,
     user_id: str,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> StateEntry:
     """One sub-step of the private sub-plan. Calls the classifier for ROLE
     ASSIGNMENT ONLY -- it does not re-decide whether to recurse. If this
@@ -345,11 +356,12 @@ async def _dispatch_nested_sub_step(
     `_run_nested_subplan`'s own `replan_needed` flag triggers ANOTHER round
     of the SAME already-active nested Planner, never a second task-handler
     instance."""
-    classifier_output = await classify_step(
+    classifier_output, step_prep_output = await classify_and_prep_step(
         step=sub_step,
         dependency_context=build_state_index(private_state.entries),
         llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}-classifier",
+        block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}-classify_and_prep",
+        user_id=user_id,
     )
     if not (classifier_output.atomic and classifier_output.role_if_atomic is not None):
         return _failed_entry(
@@ -359,6 +371,7 @@ async def _dispatch_nested_sub_step(
     role_name = classifier_output.role_if_atomic
     result = await _dispatch_single_specialist(
         step=sub_step,
+        step_prep_output=step_prep_output,
         role=role_roster[role_name],
         state=private_state,
         tool_registry=tool_registry,
@@ -366,6 +379,7 @@ async def _dispatch_nested_sub_step(
         block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}",
         user_id=user_id,
         tool_call_cache=tool_call_cache,
+        unresolvable_registry=unresolvable_registry,
     )
     criteria_met = result.status == "succeeded" and await check_success_criteria(
         step=sub_step,
@@ -412,6 +426,7 @@ def _nested_planner_input(
     original_user_message: str,
     monitor_flags: list[str],
     replan_reason: str | None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> PlannerInvocationInput:
     dependency_entries = parent_state.slice(step.depends_on)
     return PlannerInvocationInput(
@@ -429,6 +444,7 @@ def _nested_planner_input(
         plan_graph_so_far=private_state.plan_graph,
         monitor_flags=monitor_flags,
         replan_reason=replan_reason,
+        unresolvable_entities=unresolvable_registry.snapshot() if unresolvable_registry else [],
     )
 
 

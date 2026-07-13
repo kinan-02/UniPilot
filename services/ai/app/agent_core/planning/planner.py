@@ -218,6 +218,26 @@ def _planner_contract() -> PromptContract:
             "answer that says the student has not yet declared a program), or, only if the missing "
             "fact is genuinely required and cannot be substituted, set "
             "plan_status='blocked_needs_clarification' and ask the student for it directly.",
+            "If state_index shows a prior step already failed and its warnings indicate a search/lookup "
+            "came back empty after being tried, or that no tool exists to perform an implied action, "
+            "do not schedule another step that retries a cosmetically different phrasing of the same "
+            "search or another approach to the same unperformable action -- that evidence should "
+            "instead flow into the final answer (state what wasn't found, or that the action can't "
+            "be performed) or a clarification question, never a silent retry loop.",
+            "When implies_action_request=true, the step that proposes/declines the action for "
+            "confirmation does not need to wait for every referenced entity to be fully resolved "
+            "first -- if resolving a referenced entity (a course name, a degree program) is proving "
+            "difficult (see state_index for prior failed attempts per the instruction above), schedule "
+            "the proposal/decline step early using whatever has been resolved so far, rather than "
+            "exhausting the exploration budget on ambiguous entity resolution before addressing the "
+            "action request at all.",
+            "If `unresolvable_entities` in your input lists a specific entity name or search query "
+            "that has already been tried and came back empty within this turn, do not schedule "
+            "another step that searches for the same entity or a trivially rephrased variant of it "
+            "-- that search has been conclusively tried and will not succeed on retry. Use the "
+            "absence itself as a known fact (e.g. state that the entity could not be found in the "
+            "catalog), or, only if the missing entity is genuinely required and cannot be "
+            "substituted, set plan_status='blocked_needs_clarification'.",
         ],
         allowed_context_fields=None,
         output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,

@@ -46,6 +46,15 @@ def build_state_index(entries: list[StateEntry]) -> list[StateEntrySummary]:
     for entry in entries:
         base = f"{entry.status} ({entry.output_schema_name})"
         preview = _data_preview(entry.data)
+        
+        if entry.status != "succeeded" and entry.warnings:
+            unique_warnings = list(dict.fromkeys(entry.warnings))
+            warnings_preview = _data_preview({"warnings": unique_warnings})
+            if preview:
+                preview = f"{preview} | {warnings_preview}"
+            else:
+                preview = warnings_preview
+                
         summaries.append(
             StateEntrySummary(
                 entry_id=entry.entry_id,

@@ -22,6 +22,7 @@ from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.synthesis.synthesis import compose_answer
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 DEFAULT_MAX_PLANNER_INVOCATIONS = 5
 
@@ -42,6 +43,7 @@ async def run_plan_to_completion(
     implies_action_request: bool = False,
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
+    unresolvable_registry: UnresolvableEntityRegistry | None = None,
 ) -> tuple[PlanExecutionState, StateEntry | None, str | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
 
@@ -72,6 +74,7 @@ async def run_plan_to_completion(
             plan_graph_so_far=state.plan_graph,
             monitor_flags=monitor_flags,
             replan_reason=replan_reason,
+            unresolvable_entities=unresolvable_registry.snapshot() if unresolvable_registry else [],
         )
         planner_output = await build_next_plan_steps(
             planner_input=planner_input,
@@ -103,6 +106,7 @@ async def run_plan_to_completion(
                 plan_id=plan_id,
                 streaming_queue=streaming_queue,
                 tool_call_cache=tool_call_cache,
+                unresolvable_registry=unresolvable_registry,
             )
 
         # Dispatch one execution layer at a time -- steps within a layer are

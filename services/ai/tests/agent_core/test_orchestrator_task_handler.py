@@ -23,7 +23,7 @@ from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.schemas import PlanGraph, PlannerInvocationOutput, PlanStep
 from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
 from app.agent_core.roles.roster import build_default_role_roster
-from app.agent_core.subagents.schemas import SubagentResult
+from app.agent_core.subagents.schemas import SubagentResult, StepPrepOutput, StepInstructionFields, ReasoningParamsOverride
 from app.agent_core.tools.default_registry import build_default_tool_registry
 
 ROLE_ROSTER = build_default_role_roster()
@@ -55,6 +55,16 @@ def _entry(step_id: str, confidence: float = 0.9) -> StateEntry:
 
 def _classifier(atomic: bool, role: str | None):
     return SimpleNamespace(atomic=atomic, role_if_atomic=role)
+
+def _dummy_step_prep_output():
+    return StepPrepOutput(
+        instruction_fields=StepInstructionFields(goal="g", description="d", specific_instructions=[]),
+        context_requirements=[],
+        reasoning_params=ReasoningParamsOverride(),
+        output_schema_name="generic_step_output_v1",
+        output_schema={"type": "object"},
+        tool_grant_override=None
+    )
 
 
 def _subagent_result(status="succeeded", data=None, confidence=0.9, basis="wiki_derived", warnings=None):
@@ -97,15 +107,26 @@ async def _run(
     top_classify_dependency_contexts: list = []
     top_calls_used = {"classify": False, "dispatch": False, "check": False}
 
-    async def fake_classify(*, step, dependency_context, llm_adapter, block_id):
+    async def fake_classify_and_prep(*, step, dependency_context, llm_adapter, block_id, user_id):
         if step.step_id == top_step_id and not top_calls_used["classify"]:
             top_calls_used["classify"] = True
             top_classify_dependency_contexts.append(dependency_context)
-            return top_classify
-        return sub_classify[step.step_id]
+            return top_classify, "dummy_prep"
+        return sub_classify[step.step_id], "dummy_prep"
 
     async def fake_dispatch(
-        *, step, role, state, tool_registry, llm_adapter, block_id, user_id, streaming_queue=None, tool_call_cache=None
+        *,
+        step,
+        step_prep_output,
+        role,
+        state,
+        tool_registry,
+        llm_adapter,
+        block_id,
+        user_id,
+        streaming_queue=None,
+        tool_call_cache=None,
+        unresolvable_registry=None,
     ):
         if step.step_id == top_step_id and not top_calls_used["dispatch"]:
             top_calls_used["dispatch"] = True
@@ -122,7 +143,7 @@ async def _run(
         planner_inputs.append(planner_input)
         return planner_queue.pop(0)
 
-    monkeypatch.setattr(task_handler_module, "classify_step", fake_classify)
+    monkeypatch.setattr(task_handler_module, "classify_and_prep_step", fake_classify_and_prep)
     monkeypatch.setattr(task_handler_module, "check_success_criteria", fake_check)
     monkeypatch.setattr(task_handler_module, "_dispatch_single_specialist", fake_dispatch)
     monkeypatch.setattr(task_handler_module, "build_next_plan_steps", fake_build_next_plan_steps)
@@ -419,7 +440,17 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
     captured_sub_steps: list[PlanStep] = []
 
     async def fake_dispatch_nested_sub_step(
-        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id, tool_call_cache=None
+        *,
+        sub_step,
+        private_state,
+        role_roster,
+        tool_registry,
+        llm_adapter,
+        plan_id,
+        step,
+        user_id,
+        tool_call_cache=None,
+        unresolvable_registry=None,
     ):
         captured_sub_steps.append(sub_step)
         return StateEntry(
@@ -500,7 +531,17 @@ async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
     captured_states: list[PlanExecutionState] = []
 
     async def fake_dispatch_nested_sub_step(
-        *, sub_step, private_state, role_roster, tool_registry, llm_adapter, plan_id, step, user_id, tool_call_cache=None
+        *,
+        sub_step,
+        private_state,
+        role_roster,
+        tool_registry,
+        llm_adapter,
+        plan_id,
+        step,
+        user_id,
+        tool_call_cache=None,
+        unresolvable_registry=None,
     ):
         captured_states.append(private_state)
         return StateEntry(
@@ -580,6 +621,7 @@ async def test_dispatch_single_specialist_routes_calculation_validation_role_to_
 
     result = await task_handler_module._dispatch_single_specialist(
         step=step,
+        step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["calculation_validation"],
         state=state,
         tool_registry=TOOL_REGISTRY,
@@ -600,7 +642,9 @@ async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_blo
     `run_retrieval_subagent`, never the generic `run_subagent`."""
     calls = {"retrieval": 0, "generic": 0}
 
-    async def fake_retrieval_subagent(*, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None):
+    async def fake_retrieval_subagent(
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None
+    ):
         calls["retrieval"] += 1
         return _subagent_result(status="succeeded", data={"facts": {"foo": "bar"}})
 
@@ -619,6 +663,7 @@ async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_blo
 
     result = await task_handler_module._dispatch_single_specialist(
         step=step,
+        step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["retrieval"],
         state=state,
         tool_registry=TOOL_REGISTRY,
@@ -639,7 +684,9 @@ async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicate
     `run_interpretation_subagent`, never the generic `run_subagent`."""
     calls = {"interpretation": 0, "generic": 0}
 
-    async def fake_interpretation_subagent(*, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None):
+    async def fake_interpretation_subagent(
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None
+    ):
         calls["interpretation"] += 1
         return _subagent_result(status="succeeded", data={"answer": "Up to 2 retakes allowed."})
 
@@ -658,6 +705,7 @@ async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicate
 
     result = await task_handler_module._dispatch_single_specialist(
         step=step,
+        step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["interpretation"],
         state=state,
         tool_registry=TOOL_REGISTRY,
@@ -679,7 +727,7 @@ async def test_dispatch_single_specialist_routes_simulation_planning_role_to_ded
     calls = {"simulation_planning": 0, "generic": 0}
 
     async def fake_simulation_planning_subagent(
-        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None
     ):
         calls["simulation_planning"] += 1
         return _subagent_result(status="succeeded", data={"outcome": {"semestersUsed": 1}})
@@ -699,6 +747,7 @@ async def test_dispatch_single_specialist_routes_simulation_planning_role_to_ded
 
     result = await task_handler_module._dispatch_single_specialist(
         step=step,
+        step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["simulation_planning"],
         state=state,
         tool_registry=TOOL_REGISTRY,
@@ -738,6 +787,7 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
 
     result = await task_handler_module._dispatch_single_specialist(
         step=step,
+        step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["composition"],
         state=state,
         tool_registry=TOOL_REGISTRY,

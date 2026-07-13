@@ -21,6 +21,7 @@ from app.agent_core.request_understanding.schemas import RequestUnderstandingRea
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 
 async def run_agent_turn(
@@ -58,6 +59,11 @@ async def run_agent_turn(
     # value -- created fresh here so concurrent turns/requests can never
     # see each other's cached tool results.
     tool_call_cache = ToolCallCache()
+    # One registry per turn -- when a get_entity/search_knowledge call
+    # comes back conclusively empty, the term is recorded as a dead end
+    # and surfaced as a structured field on PlannerInvocationInput so the
+    # Planner never re-schedules the same search.
+    unresolvable_registry = UnresolvableEntityRegistry()
     state, final_entry, clarification_question = await run_plan_to_completion(
         user_goal=understanding.user_goal or original_user_message,
         original_user_message=original_user_message,
@@ -73,6 +79,7 @@ async def run_agent_turn(
         implies_action_request=understanding.implies_action_request,
         streaming_queue=streaming_queue,
         tool_call_cache=tool_call_cache,
+        unresolvable_registry=unresolvable_registry,
     )
     return understanding, state, final_entry, clarification_question
 
