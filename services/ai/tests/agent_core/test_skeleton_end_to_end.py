@@ -37,6 +37,13 @@ _RESPONSES = [
         "plan_summary": "Step 1: fetch course record.",
         "clarification_question": None,
     },
+    # 1a-c. Planner council: the drafted plan (above) is valid and non-empty,
+    # so its three critics (coverage, grounding, criteria) each review it in
+    # parallel. All find nothing, so the draft stands and no synthesizer call
+    # is made -- see planner_council.py.
+    {"issues": []},
+    {"issues": []},
+    {"issues": []},
     # 2. Task handler's merged classify_and_prep for step 1 -- atomic, retrieval role + prep details.
     {
         "atomic": True,
@@ -90,6 +97,10 @@ _RESPONSES = [
         "plan_summary": "Step 2: compose the final answer.",
         "clarification_question": None,
     },
+    # NB: no critic responses here. Invocation 2 is a routine continuation
+    # (invocation > 1, the prior step succeeded so no replan flags), which the
+    # council's adaptive-depth gate runs as drafter-only -- critics/synth are
+    # skipped, so only the one planner draft call above is made.
     # 5a. Task handler's merged classify_and_prep for step 2 -- atomic, composition role + prep details.
     {
         "atomic": True,

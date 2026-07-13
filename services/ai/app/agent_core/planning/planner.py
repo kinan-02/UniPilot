@@ -32,7 +32,7 @@ from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
-from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, LLMCallParameters
+from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput
 
 logger = logging.getLogger(__name__)
 
@@ -80,18 +80,6 @@ _FALLBACK_CLARIFICATION = (
 )
 
 _MAX_SCHEMA_REPAIR_ATTEMPTS = 2
-
-# The Planner's own request-level bound (LLMCallParameters.timeout/
-# max_retries, threaded through BaseReasoningBlock -> build_chat_llm's
-# now-widened client cache key) -- set here, on this component's own input,
-# never globally, so it can never affect Request Understanding's or any
-# other component's calls. 60s gives real headroom over what
-# thinking_enabled=True + reasoning_effort="medium" calls have actually
-# taken in live-eval runs so far (observed well under 30s per call) while
-# still bounding a genuine hang; max_retries=2 makes explicit what the
-# underlying SDK already defaults to, rather than leaving it implicit.
-_TIMEOUT_SECONDS = 60.0
-_MAX_RETRIES = 2
 
 
 def _planner_contract() -> PromptContract:
@@ -479,31 +467,26 @@ async def build_next_plan_steps(
     reasoning_effort: str | None = None,
     timeout: float | None = None,
 ) -> PlannerInvocationOutput:
-    block = PlannerReasoningBlock(llm_adapter=llm_adapter)
-    block_output = await block.run(
-        PlannerReasoningBlockInput(
-            block_id=block_id,
-            agent_name="planner",
-            objective=planner_input.user_goal,
-            output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
-            output_schema=PLANNER_OUTPUT_SCHEMA,
-            prompt_contract_name=prompt_contract_name,
-            planner_input=planner_input,
-            # Explicitly requested, unlike Request Understanding (which
-            # defers to the adapter's global default): dependency-
-            # completeness is real multi-step inference, not classification,
-            # and under-declaring a dependency is unrecoverable downstream.
-            # Set here on the input, not the contract -- PromptContract has
-            # no reasoning_effort/thinking_enabled field; only `temperature`
-            # has a contract-level default (see reasoning_blocks/base.py's
-            # `_resolve_llm_call_parameters`).
-            llm_call_parameters=LLMCallParameters(
-                thinking_enabled=thinking_enabled if thinking_enabled is not None else True,
-                reasoning_effort=reasoning_effort if reasoning_effort is not None else "medium",
-                timeout=timeout if timeout is not None else _TIMEOUT_SECONDS,
-                max_retries=_MAX_RETRIES,
-            ),
-        )
+    # Delegated to the council (draft -> parallel critics -> gated synthesis),
+    # which replaced the old single thinking-enabled call. That one call, on a
+    # high-complexity request, could exceed its 60s timeout, retry, time out
+    # again, and leave the whole turn with no plan at all -- one slow call =
+    # total loss. The council is a handful of fast, no-thinking, individually
+    # reliable calls with a guaranteed floor. Lazy import breaks the module
+    # cycle (planner_council imports names from this module). The
+    # thinking_enabled/reasoning_effort/timeout knobs are intentionally no
+    # longer forwarded: the council fixes each member's own fast params, and
+    # a per-tier "think harder" lever is exactly what was failing.
+    from app.agent_core.planning.planner_council import run_planner_council
+
+    block_output = await run_planner_council(
+        planner_input=planner_input,
+        llm_adapter=llm_adapter,
+        block_id=block_id,
+        invocation=invocation,
+        prompt_contract_name=prompt_contract_name,
+        output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
+        output_schema=PLANNER_OUTPUT_SCHEMA,
     )
 
     next_steps = rewrite_step_ids(

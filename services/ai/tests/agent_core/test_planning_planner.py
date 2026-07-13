@@ -53,16 +53,21 @@ async def test_happy_path_rewrites_ids_and_computes_graph(fake_llm_adapter_facto
     assert output.plan_graph.execution_layers == [["1a"]]
 
 
-async def test_sets_its_own_timeout_and_max_retries(fake_llm_adapter_factory):
-    # Regression guard: the Planner sets its own request-level timeout/
-    # max_retries (planner.py's _TIMEOUT_SECONDS/_MAX_RETRIES) -- must land
-    # on the actual complete_json call, not silently stay None.
+async def test_drafter_runs_fast_and_without_thinking(fake_llm_adapter_factory):
+    # Regression guard for the council architecture: the FIRST call is the
+    # drafter, and it must be a FAST, no-thinking call -- the whole reason
+    # the council replaced the single thinking-enabled call is that a slow
+    # thinking call could time out and leave the turn with no plan. (The
+    # critics fire after the draft too, but with only one queued response
+    # they exhaust the adapter and fail closed to no findings, so the draft
+    # flows straight through -- exactly the intended degradation.)
     adapter = fake_llm_adapter_factory([_response()])
 
     await build_next_plan_steps(planner_input=_INPUT, llm_adapter=adapter, block_id="blk-1", invocation=1)
 
-    assert adapter.calls[0]["timeout"] == 60.0
-    assert adapter.calls[0]["max_retries"] == 2
+    assert adapter.calls[0]["thinking_enabled"] is False
+    assert adapter.calls[0]["timeout"] == 30.0
+    assert adapter.calls[0]["max_retries"] == 1
 
 
 async def test_two_dependent_steps_resolve_local_labels(fake_llm_adapter_factory):
@@ -100,7 +105,10 @@ async def test_falls_back_closed_when_llm_adapter_raises():
 
 
 async def test_falls_back_closed_when_repair_is_exhausted(fake_llm_adapter_factory):
-    # Two malformed responses: the first pass plus every repair attempt.
+    # Drafter pass + its two schema-repair attempts, all malformed. Because
+    # the drafter fails schema validation outright, the council gate returns
+    # its fail-closed output immediately -- the critics/synth never run, so
+    # the whole flow is exactly these 3 drafter calls.
     adapter = fake_llm_adapter_factory([{"plan_status": "not_a_real_status"}] * 3)
 
     output = await build_next_plan_steps(
@@ -110,12 +118,12 @@ async def test_falls_back_closed_when_repair_is_exhausted(fake_llm_adapter_facto
     assert output.plan_status == "blocked_needs_clarification"
     assert output.clarification_question
     assert output.next_steps == []
-    # Regression guard: schema-repair attempts must inherit the ORIGINAL
-    # request's timeout/max_retries too, not just the first pass -- a fresh,
-    # empty LLMCallParameters() would silently drop them for every repair
-    # call (reasoning_blocks/base.py's _repair_schema).
+    # Regression guard: schema-repair attempts must inherit the drafter's own
+    # fast request params too, not just the first pass -- a fresh, empty
+    # LLMCallParameters() would silently drop them for every repair call
+    # (reasoning_blocks/base.py's _repair_schema).
     assert len(adapter.calls) == 3
-    assert all(call["timeout"] == 60.0 and call["max_retries"] == 2 for call in adapter.calls)
+    assert all(call["timeout"] == 30.0 and call["max_retries"] == 1 for call in adapter.calls)
 
 
 async def test_falls_back_closed_when_next_steps_has_wrong_shape(fake_llm_adapter_factory):
