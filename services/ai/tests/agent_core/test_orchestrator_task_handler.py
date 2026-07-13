@@ -127,6 +127,7 @@ async def _run(
         streaming_queue=None,
         tool_call_cache=None,
         unresolvable_registry=None,
+        reasoning_config=None,
     ):
         if step.step_id == top_step_id and not top_calls_used["dispatch"]:
             top_calls_used["dispatch"] = True
@@ -139,7 +140,7 @@ async def _run(
             return top_check
         return sub_check[step.step_id].pop(0)
 
-    async def fake_build_next_plan_steps(*, planner_input, llm_adapter, block_id, invocation, prompt_contract_name):
+    async def fake_build_next_plan_steps(*, planner_input, llm_adapter, block_id, invocation, prompt_contract_name, thinking_enabled=None, reasoning_effort=None, timeout=None):
         planner_inputs.append(planner_input)
         return planner_queue.pop(0)
 
@@ -451,6 +452,7 @@ async def test_known_global_ids_seeding_preserves_parent_dependency_reference(mo
         user_id,
         tool_call_cache=None,
         unresolvable_registry=None,
+        reasoning_config=None,
     ):
         captured_sub_steps.append(sub_step)
         return StateEntry(
@@ -542,6 +544,7 @@ async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
         user_id,
         tool_call_cache=None,
         unresolvable_registry=None,
+        reasoning_config=None,
     ):
         captured_states.append(private_state)
         return StateEntry(
@@ -602,7 +605,7 @@ async def test_dispatch_single_specialist_routes_calculation_validation_role_to_
     `run_calculation_validation_subagent`, never the generic `run_subagent`."""
     calls = {"calculation_validation": 0, "generic": 0}
 
-    async def fake_calculation_validation_subagent(*, context_package, tool_registry, llm_adapter, block_id):
+    async def fake_calculation_validation_subagent(*, context_package, tool_registry, llm_adapter, block_id, llm_call_params=None):
         calls["calculation_validation"] += 1
         return _subagent_result(status="succeeded", data={"type": "expression", "result": 5})
 
@@ -643,7 +646,7 @@ async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_blo
     calls = {"retrieval": 0, "generic": 0}
 
     async def fake_retrieval_subagent(
-        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None, llm_call_params=None
     ):
         calls["retrieval"] += 1
         return _subagent_result(status="succeeded", data={"facts": {"foo": "bar"}})
@@ -685,7 +688,7 @@ async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicate
     calls = {"interpretation": 0, "generic": 0}
 
     async def fake_interpretation_subagent(
-        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None, llm_call_params=None
     ):
         calls["interpretation"] += 1
         return _subagent_result(status="succeeded", data={"answer": "Up to 2 retakes allowed."})
@@ -727,7 +730,7 @@ async def test_dispatch_single_specialist_routes_simulation_planning_role_to_ded
     calls = {"simulation_planning": 0, "generic": 0}
 
     async def fake_simulation_planning_subagent(
-        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None
+        *, context_package, tool_registry, llm_adapter, block_id, tool_call_cache=None, unresolvable_registry=None, llm_call_params=None
     ):
         calls["simulation_planning"] += 1
         return _subagent_result(status="succeeded", data={"outcome": {"semestersUsed": 1}})
@@ -768,7 +771,7 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
     `run_composition_subagent`, never the generic `run_subagent`."""
     calls = {"composition": 0, "generic": 0}
 
-    async def fake_composition_subagent(*, context_package, llm_adapter, block_id, streaming_queue=None):
+    async def fake_composition_subagent(*, context_package, llm_adapter, block_id, streaming_queue=None, llm_call_params=None):
         calls["composition"] += 1
         return _subagent_result(status="succeeded", data={"answer_text": "done"})
 

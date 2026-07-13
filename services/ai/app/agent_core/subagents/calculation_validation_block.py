@@ -39,7 +39,7 @@ from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
-from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput
+from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
 from app.agent_core.tools.primitives.expression_tree import ExpressionNode, validate_expression_tree
 from app.agent_core.tools.registry import ToolNotFoundError, ToolRegistry
@@ -326,6 +326,7 @@ async def run_calculation_validation_subagent(
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
     block_id: str,
+    llm_call_params: LLMCallParameters | None = None,
 ) -> SubagentResult:
     """Same signature/return type as `subagents.run.run_subagent` -- a
     drop-in alternate dispatch target, not a parallel result type."""
@@ -365,6 +366,7 @@ async def run_calculation_validation_subagent(
         output_schema=_EXPRESSION_TREE_SCHEMA,
         facts=facts,
         tool_grant=list(context_package.tool_grant),
+        **({"llm_call_parameters": llm_call_params} if llm_call_params else {}),
     )
     block = CalculationValidationReasoningBlock(llm_adapter=llm_adapter, tool_registry=tool_registry)
     output = await block.run(block_input)

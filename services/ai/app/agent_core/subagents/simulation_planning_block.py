@@ -33,7 +33,7 @@ from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
-from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput
+from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
 from app.agent_core.subagents.tool_round import execute_tool_round
 from app.agent_core.tools.call_cache import ToolCallCache
@@ -333,6 +333,7 @@ async def run_simulation_planning_subagent(
     block_id: str,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
+    llm_call_params: LLMCallParameters | None = None,
 ) -> SubagentResult:
     block_input = _SimulationPlanningBlockInput(
         block_id=block_id,
@@ -346,6 +347,7 @@ async def run_simulation_planning_subagent(
         output_schema_name=_SIMULATION_PLANNING_OUTPUT_SCHEMA_NAME,
         output_schema=_SIMULATION_PLANNING_OUTPUT_SCHEMA,
         tool_grant=list(context_package.tool_grant),
+        **({"llm_call_parameters": llm_call_params} if llm_call_params else {}),
     )
     block = SimulationPlanningReasoningBlock(
         llm_adapter=llm_adapter, tool_registry=tool_registry, tool_call_cache=tool_call_cache,

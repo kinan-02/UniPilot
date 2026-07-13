@@ -24,6 +24,8 @@ from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 from app.agent_core.boundary_handler.boundary_handler import run_boundary_handler
+from app.agent_core.complexity_classifier.complexity_classifier import classify_complexity
+from app.agent_core.reasoning_effort import build_reasoning_config
 
 
 async def run_agent_turn(
@@ -71,6 +73,21 @@ async def run_agent_turn(
         )
         return understanding, PlanExecutionState(plan_id=plan_id), final_entry, None
 
+    # ── Complexity Classification ──────────────────────────────────────
+    # Lightweight LLM call (~1-1.5s) that maps the structured RU output
+    # into a cognitive_complexity tier, which drives how much thinking
+    # the Planner and select subagents get for this turn.
+    cognitive_complexity = await classify_complexity(
+        sub_asks=understanding.sub_asks,
+        constraints=understanding.constraints,
+        open_questions=understanding.open_questions,
+        implies_action_request=understanding.implies_action_request,
+        confidence=understanding.confidence,
+        llm_adapter=llm_adapter,
+        block_id=f"{plan_id}-complexity-classifier",
+    )
+    reasoning_config = build_reasoning_config(cognitive_complexity)
+
     # One cache per turn, never a module-level global or caller-supplied
     # value -- created fresh here so concurrent turns/requests can never
     # see each other's cached tool results.
@@ -89,6 +106,7 @@ async def run_agent_turn(
         tool_registry=tool_registry,
         plan_id=plan_id,
         max_planner_invocations=max_planner_invocations,
+        reasoning_config=reasoning_config,
         sub_asks=understanding.sub_asks,
         constraints=understanding.constraints,
         open_questions=understanding.open_questions,

@@ -439,6 +439,9 @@ async def build_next_plan_steps(
     block_id: str,
     invocation: int,
     prompt_contract_name: str = PLANNER_V1,
+    thinking_enabled: bool | None = None,
+    reasoning_effort: str | None = None,
+    timeout: float | None = None,
 ) -> PlannerInvocationOutput:
     block = PlannerReasoningBlock(llm_adapter=llm_adapter)
     block_output = await block.run(
@@ -459,9 +462,9 @@ async def build_next_plan_steps(
             # has a contract-level default (see reasoning_blocks/base.py's
             # `_resolve_llm_call_parameters`).
             llm_call_parameters=LLMCallParameters(
-                thinking_enabled=True,
-                reasoning_effort="medium",
-                timeout=_TIMEOUT_SECONDS,
+                thinking_enabled=thinking_enabled if thinking_enabled is not None else True,
+                reasoning_effort=reasoning_effort if reasoning_effort is not None else "medium",
+                timeout=timeout if timeout is not None else _TIMEOUT_SECONDS,
                 max_retries=_MAX_RETRIES,
             ),
         )

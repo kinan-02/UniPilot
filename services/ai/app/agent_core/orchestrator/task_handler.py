@@ -32,6 +32,8 @@ from app.agent_core.orchestrator.state_index import build_state_index
 from app.agent_core.orchestrator.task_handler_classify_and_prep import classify_and_prep_step
 from app.agent_core.orchestrator.task_handler_success_check import check_success_criteria
 from app.agent_core.planning.planner import NESTED_PLANNER_V1, build_next_plan_steps
+from app.agent_core.reasoning_effort import TurnReasoningConfig
+from app.agent_core.reasoning_blocks.schemas import LLMCallParameters
 from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName
 from app.agent_core.planning.state import (
     CertaintyTag,
@@ -71,6 +73,7 @@ async def run_task_handler(
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
+    reasoning_config: TurnReasoningConfig | None = None,
 ) -> StateEntry:
     """Never appends to `state` itself -- the caller still owns
     `state.append(entry)`, unchanged from today's `loop.py` behavior."""
@@ -97,6 +100,7 @@ async def run_task_handler(
             streaming_queue=streaming_queue,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
+            reasoning_config=reasoning_config,
         )
         criteria_met = result.status == "succeeded" and await check_success_criteria(
             step=step,
@@ -122,6 +126,7 @@ async def run_task_handler(
         max_rounds=max_rounds,
         tool_call_cache=tool_call_cache,
         unresolvable_registry=unresolvable_registry,
+        reasoning_config=reasoning_config,
     )
     return _entry_from_nested_subplan(
         step=step,
@@ -147,6 +152,7 @@ async def _dispatch_single_specialist(
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
+    reasoning_config: TurnReasoningConfig | None = None,
 ) -> SubagentResult:
     """The existing context_builder -> run_subagent chain,
     wrapped as one non-recursive helper -- used by BOTH the atomic fast path
@@ -160,6 +166,7 @@ async def _dispatch_single_specialist(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=block_id,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout) if reasoning_config else None,
         )
     if role.name == "retrieval":
         return await run_retrieval_subagent(
@@ -169,6 +176,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
+            llm_call_params=LLMCallParameters(timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
         )
     if role.name == "interpretation":
         return await run_interpretation_subagent(
@@ -178,6 +186,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout) if reasoning_config else None,
         )
     if role.name == "simulation_planning":
         return await run_simulation_planning_subagent(
@@ -187,6 +196,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout) if reasoning_config else None,
         )
     if role.name == "composition":
         return await run_composition_subagent(
@@ -194,6 +204,7 @@ async def _dispatch_single_specialist(
             llm_adapter=llm_adapter,
             block_id=block_id,
             streaming_queue=streaming_queue,
+            llm_call_params=LLMCallParameters(timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
         )
     return await run_subagent(
         role=role,
@@ -237,6 +248,7 @@ async def _run_nested_subplan(
     max_rounds: int,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
+    reasoning_config: TurnReasoningConfig | None = None,
 ) -> tuple[PlanExecutionState, str | None, int, bool]:
     """The task handler's own private mini-orchestrator: mirrors
     `orchestrator/loop.py::run_plan_to_completion`'s own invoke-repeatedly
@@ -311,6 +323,7 @@ async def _run_nested_subplan(
                 user_id=user_id,
                 tool_call_cache=tool_call_cache,
                 unresolvable_registry=unresolvable_registry,
+                reasoning_config=reasoning_config,
             )
 
         round_monitor_flags = []
@@ -348,6 +361,7 @@ async def _dispatch_nested_sub_step(
     user_id: str,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
+    reasoning_config: TurnReasoningConfig | None = None,
 ) -> StateEntry:
     """One sub-step of the private sub-plan. Calls the classifier for ROLE
     ASSIGNMENT ONLY -- it does not re-decide whether to recurse. If this
@@ -380,6 +394,7 @@ async def _dispatch_nested_sub_step(
         user_id=user_id,
         tool_call_cache=tool_call_cache,
         unresolvable_registry=unresolvable_registry,
+        reasoning_config=reasoning_config,
     )
     criteria_met = result.status == "succeeded" and await check_success_criteria(
         step=sub_step,

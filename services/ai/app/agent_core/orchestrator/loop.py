@@ -18,6 +18,7 @@ from app.agent_core.planning.planner import build_next_plan_steps
 from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
+from app.agent_core.reasoning_effort import TurnReasoningConfig
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.synthesis.synthesis import compose_answer
 from app.agent_core.tools.call_cache import ToolCallCache
@@ -37,6 +38,7 @@ async def run_plan_to_completion(
     tool_registry: ToolRegistry,
     plan_id: str,
     max_planner_invocations: int = DEFAULT_MAX_PLANNER_INVOCATIONS,
+    reasoning_config: TurnReasoningConfig | None = None,
     sub_asks: list[str] | None = None,
     constraints: list[str] | None = None,
     open_questions: list[str] | None = None,
@@ -62,7 +64,8 @@ async def run_plan_to_completion(
     plan_status = "in_progress"
     clarification_question: str | None = None
 
-    for invocation in range(1, max_planner_invocations + 1):
+    _max_invocations = reasoning_config.max_planner_invocations if reasoning_config else max_planner_invocations
+    for invocation in range(1, _max_invocations + 1):
         planner_input = PlannerInvocationInput(
             user_goal=user_goal,
             original_user_message=original_user_message,
@@ -81,6 +84,9 @@ async def run_plan_to_completion(
             llm_adapter=llm_adapter,
             block_id=f"{plan_id}-planner-{invocation}",
             invocation=invocation,
+            thinking_enabled=reasoning_config.planner_thinking_enabled if reasoning_config else None,
+            reasoning_effort=reasoning_config.planner_reasoning_effort if reasoning_config else None,
+            timeout=reasoning_config.planner_timeout if reasoning_config else None,
         )
         plan_status = planner_output.plan_status
         state.merge_plan_graph(planner_output.plan_graph)
@@ -107,6 +113,7 @@ async def run_plan_to_completion(
                 streaming_queue=streaming_queue,
                 tool_call_cache=tool_call_cache,
                 unresolvable_registry=unresolvable_registry,
+                reasoning_config=reasoning_config,
             )
 
         # Dispatch one execution layer at a time -- steps within a layer are

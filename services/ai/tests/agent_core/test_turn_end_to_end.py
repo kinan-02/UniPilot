@@ -42,9 +42,13 @@ _BOUNDARY_HANDLER_RESPONSE = {
     "confidence": 0.95,
 }
 
+_COMPLEXITY_CLASSIFIER_RESPONSE = {
+    "cognitive_complexity": "low",
+}
+
 
 async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([_REQUEST_UNDERSTANDING_RESPONSE, *_RESPONSES])
+    adapter = fake_llm_adapter_factory([_REQUEST_UNDERSTANDING_RESPONSE, _COMPLEXITY_CLASSIFIER_RESPONSE, *_RESPONSES])
     role_roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()
 
@@ -62,10 +66,9 @@ async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_f
     assert understanding.sub_asks == ["Identify course 234218 and describe it."]
     assert understanding.user_goal == "Identify course 234218 and describe it."
 
-    # That derived goal is what actually reached the Planner: the very next
-    # call the fake adapter recorded is the planner's own call, and its
-    # user_prompt embeds task_context (which includes user_goal).
-    planner_call = adapter.calls[1]
+    # That derived goal is what actually reached the Planner: the call after
+    # the complexity classifier is the planner's own call.
+    planner_call = adapter.calls[2]
     assert "Identify course 234218 and describe it." in planner_call["user_prompt"]
 
     # The structured fields themselves reached the Planner too -- not just
