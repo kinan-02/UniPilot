@@ -42,7 +42,15 @@ async def execute_tool_round(
     audit_records: list[ToolInvocationRecord] = []
 
     for request in tool_requests:
-        tool_name = request.get("tool_name")
+        # `request.get("tool_name")` can be `None` if the LLM's tool request
+        # omits the key -- `ToolInvocationRecord.tool_name` is a non-optional
+        # `str`, so passing `None` through raises a pydantic `ValidationError`
+        # that escapes this function entirely, violating the "never raises"
+        # contract documented above (a real live-eval run reproduced this:
+        # it turned a single malformed tool request into a full reasoning-
+        # block failure instead of one recorded, gracefully-skipped audit
+        # entry). Fall back to a clearly-marked placeholder instead.
+        tool_name = request.get("tool_name") or "<missing_tool_name>"
         # Defensive: found via a live-eval run where the model emitted
         # {"tool_name": ..., "args": {...}} instead of the schema's own
         # "arguments" key (~15% of tool_requests in that run) -- every such

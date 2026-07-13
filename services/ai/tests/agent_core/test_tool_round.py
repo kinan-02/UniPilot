@@ -191,6 +191,46 @@ async def test_raising_tool_is_skipped_and_audited_ok_false():
     assert "simulated error" in merged[key]["error"]
 
 
+async def test_missing_tool_name_is_skipped_and_audited_ok_false_not_raised():
+    """A real live-eval run produced a tool request dict with no `tool_name`
+    key at all -- `ToolInvocationRecord.tool_name` is a non-optional `str`,
+    so passing the raw `None` through raised a pydantic `ValidationError`
+    that escaped `execute_tool_round` entirely, violating this module's own
+    "never raises" contract and turning one malformed tool request into a
+    full reasoning-block failure."""
+    registry = _CountingToolRegistry(_make_registry(ok=True))
+
+    merged, records = await execute_tool_round(
+        tool_requests=[{"arguments": {"entity_id": "1"}}],
+        tool_grant=["fake_tool"],
+        tool_registry=registry,
+        tool_results_so_far={},
+    )
+
+    assert registry.call_count == 0
+    assert len(records) == 1
+    assert records[0].tool_name  # never None/empty -- must be a valid str
+    assert records[0].output_ok is False
+    assert merged == {}
+
+
+async def test_null_tool_name_is_skipped_and_audited_ok_false_not_raised():
+    registry = _CountingToolRegistry(_make_registry(ok=True))
+
+    merged, records = await execute_tool_round(
+        tool_requests=[{"tool_name": None, "arguments": {}}],
+        tool_grant=["fake_tool"],
+        tool_registry=registry,
+        tool_results_so_far={},
+    )
+
+    assert registry.call_count == 0
+    assert len(records) == 1
+    assert records[0].tool_name
+    assert records[0].output_ok is False
+    assert merged == {}
+
+
 async def test_no_requests_returns_unchanged_copy_and_no_records():
     registry = _CountingToolRegistry(_make_registry(ok=True))
     original = {"a": 1}

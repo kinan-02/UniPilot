@@ -122,7 +122,7 @@ async def test_advise_route_happy_path(monkeypatch):
 
     async def fake_run_agent_turn(**_kwargs):
         return (
-            SimpleNamespace(in_scope=True, decline_message=None),
+            SimpleNamespace(in_scope=True, decline_reason=None),
             state,
             _fake_final_entry(answer_text="Course 234218 is Some Course.", confidence=0.85),
             None,
@@ -147,9 +147,9 @@ async def test_advise_route_happy_path(monkeypatch):
 async def test_advise_route_out_of_scope_decline(monkeypatch):
     async def fake_run_agent_turn(**_kwargs):
         return (
-            SimpleNamespace(in_scope=False, decline_message="I can only help with academic advising questions."),
+            SimpleNamespace(in_scope=False, decline_reason="I can only help with academic advising questions."),
             PlanExecutionState(plan_id="p1"),
-            None,
+            _fake_final_entry(answer_text="I can only help with academic advising questions.", confidence=0.95),
             None,
         )
 
@@ -167,7 +167,7 @@ async def test_advise_route_out_of_scope_decline(monkeypatch):
 async def test_advise_route_blocked_needs_clarification(monkeypatch):
     async def fake_run_agent_turn(**_kwargs):
         return (
-            SimpleNamespace(in_scope=True, decline_message=None),
+            SimpleNamespace(in_scope=True, decline_reason=None),
             PlanExecutionState(plan_id="p1"),
             None,
             "Which semester do you mean?",

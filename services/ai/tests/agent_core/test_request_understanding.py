@@ -154,8 +154,8 @@ async def test_falls_back_when_in_scope_true_but_sub_asks_empty(fake_llm_adapter
     assert output.schema_valid is False
 
 
-async def test_falls_back_when_in_scope_false_but_decline_message_missing(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([_response(in_scope=False, sub_asks=[], decline_message=None)])
+async def test_falls_back_when_in_scope_false_but_decline_reason_missing(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory([_response(in_scope=False, sub_asks=[], decline_reason=None)])
 
     output = await understand_request(original_user_message=_MESSAGE, llm_adapter=adapter, block_id="blk-1")
 
