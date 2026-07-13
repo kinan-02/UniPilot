@@ -28,7 +28,7 @@ class GraphRegistry:
         default_semester: str | None = None,
     ) -> AcademicGraphEngine:
         cfg = settings or get_settings()
-        wiki = (md_dir or cfg.academic_wiki_path or "").strip()
+        wiki = (md_dir or cfg.resolved_academic_wiki_path() or "").strip()
         raw = (technion_raw_dir or cfg.resolved_technion_raw_dir() or "").strip()
         semester = (
             default_semester

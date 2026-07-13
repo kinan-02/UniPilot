@@ -27,6 +27,19 @@ def _resolve_repo_root() -> Path:
 
 _REPO_ROOT = _resolve_repo_root()
 
+# Real, checked-out academic data lives in the sibling data-engineering
+# service, not under services/ai itself -- used as a local-dev fallback
+# below, the same way resolved_embedding_index_cache_path() already falls
+# back off its own /app/... default. Found necessary the hard way: every
+# live-eval run this session (executed directly via pytest, not through
+# Docker) silently had zero working academic_wiki_path/academic_technion_
+# raw_dir data, since those two Settings fields default to Docker-only
+# /app/... paths with no such fallback -- meaning every course/wiki lookup
+# failed with academic_graph_unavailable the entire time, not because the
+# referenced course/track genuinely couldn't be found.
+_LOCAL_ACADEMIC_WIKI_PATH = _REPO_ROOT / "services" / "data-engineering" / "data" / "catalog_valut" / "catalog_valut" / "wiki"
+_LOCAL_ACADEMIC_TECHNION_RAW_DIR = _REPO_ROOT / "services" / "data-engineering" / "data" / "raw" / "technion"
+
 
 def _settings_env_files() -> tuple[str, ...]:
     paths: list[str] = []
@@ -109,8 +122,16 @@ class Settings(BaseSettings):
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()
 
+    def resolved_academic_wiki_path(self) -> str:
+        configured = (self.academic_wiki_path or "").strip()
+        if configured and not Path(configured).exists() and _LOCAL_ACADEMIC_WIKI_PATH.is_dir():
+            return str(_LOCAL_ACADEMIC_WIKI_PATH)
+        return configured
+
     def resolved_technion_raw_dir(self) -> str:
         raw = (self.academic_technion_raw_dir or "").strip()
+        if raw and not Path(raw).exists() and _LOCAL_ACADEMIC_TECHNION_RAW_DIR.is_dir():
+            return str(_LOCAL_ACADEMIC_TECHNION_RAW_DIR)
         if raw:
             return raw
         catalog = Path(self.academic_catalog_json)

@@ -60,7 +60,7 @@ def main() -> None:
     reset_wiki_vector_index_runtime_cache()
 
     settings = get_settings()
-    wiki_root = resolve_wiki_root(str(args.wiki_root or settings.academic_wiki_path or "").strip())
+    wiki_root = resolve_wiki_root(str(args.wiki_root or settings.resolved_academic_wiki_path() or "").strip())
     if not wiki_root:
         raise SystemExit("Set ACADEMIC_WIKI_PATH or pass --wiki-root")
 

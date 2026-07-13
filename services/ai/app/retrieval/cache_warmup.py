@@ -23,7 +23,7 @@ def warmup_retrieval_caches(
     """
     _ = (load_vector_index, allow_index_build)
     cfg = settings or get_settings()
-    configured = (wiki_root or cfg.academic_wiki_path or "").strip()
+    configured = (wiki_root or cfg.resolved_academic_wiki_path() or "").strip()
     if not configured:
         return ""
     resolved = resolve_wiki_root(configured)

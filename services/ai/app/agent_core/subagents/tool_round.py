@@ -43,7 +43,12 @@ async def execute_tool_round(
 
     for request in tool_requests:
         tool_name = request.get("tool_name")
-        arguments = request.get("arguments") or {}
+        # Defensive: found via a live-eval run where the model emitted
+        # {"tool_name": ..., "args": {...}} instead of the schema's own
+        # "arguments" key (~15% of tool_requests in that run) -- every such
+        # call silently got {} and failed validation, wasting a whole round.
+        # Falling back to "args" costs nothing when the model gets it right.
+        arguments = request.get("arguments") or request.get("args") or {}
         result_key = f"{tool_name}:{json.dumps(arguments, sort_keys=True, default=str)}"
 
         if tool_name not in tool_grant:
