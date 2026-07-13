@@ -89,9 +89,10 @@ async def execute_tool_round(
             try:
                 tool_input = descriptor.input_model(**arguments)
                 envelope = await descriptor.callable(tool_input)
-            except Exception:  # noqa: BLE001 -- a tool bug must never crash the subagent
+            except Exception as e:  # noqa: BLE001 -- a tool bug must never crash the subagent
                 logger.exception("%s_tool_call_failed", log_prefix, extra={"toolName": tool_name})
                 audit_records.append(ToolInvocationRecord(tool_name=tool_name, arguments=arguments, output_ok=False))
+                merged_results[result_key] = {"ok": False, "error": f"Tool execution failed: {str(e)}", "data": {}}
                 return
 
             audit_records.append(
@@ -110,9 +111,9 @@ async def execute_tool_round(
                 envelope.error,
                 arguments,
             )
+            dumped = envelope.model_dump(mode="json")
+            merged_results[result_key] = dumped
             if envelope.ok:
-                dumped = envelope.model_dump(mode="json")
-                merged_results[result_key] = dumped
                 if tool_call_cache is not None:
                     tool_call_cache.set(result_key, {"envelope": dumped, "certainty": envelope.certainty})
                 # Detect search_knowledge zero-match results: ok=True but

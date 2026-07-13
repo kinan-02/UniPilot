@@ -23,7 +23,7 @@ def _response(**overrides):
         "constraints": [],
         "open_questions": [],
         "implies_action_request": False,
-        "decline_message": None,
+        "decline_reason": None,
         "confidence": 0.9,
     }
     base.update(overrides)
@@ -38,7 +38,7 @@ async def test_single_sub_ask_happy_path(fake_llm_adapter_factory):
     assert output.in_scope is True
     assert output.sub_asks == ["Determine remaining graduation requirements."]
     assert output.user_goal == "Determine remaining graduation requirements."
-    assert output.decline_message is None
+    assert output.decline_reason is None
     assert output.schema_valid is True
     # Regression guard: the Planner sets its own request-level timeout/
     # max_retries (planning/planner.py) -- RU must never inherit them. RU
@@ -100,7 +100,7 @@ async def test_out_of_scope_path(fake_llm_adapter_factory):
             _response(
                 in_scope=False,
                 sub_asks=[],
-                decline_message="I can only help with Technion academic advising questions.",
+                decline_reason="I can only help with Technion academic advising questions.",
             )
         ]
     )
@@ -110,7 +110,7 @@ async def test_out_of_scope_path(fake_llm_adapter_factory):
     assert output.in_scope is False
     assert output.user_goal is None
     assert output.sub_asks == []
-    assert output.decline_message == "I can only help with Technion academic advising questions."
+    assert output.decline_reason == "I can only help with Technion academic advising questions."
 
 
 async def test_falls_back_to_raw_message_when_llm_adapter_raises():
@@ -123,7 +123,7 @@ async def test_falls_back_to_raw_message_when_llm_adapter_raises():
     assert output.in_scope is True
     assert output.sub_asks == [_MESSAGE]
     assert output.user_goal == _MESSAGE
-    assert output.decline_message is None
+    assert output.decline_reason is None
     assert output.schema_valid is False
 
 

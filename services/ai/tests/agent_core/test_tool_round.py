@@ -108,7 +108,7 @@ async def test_two_calls_to_same_tool_with_different_arguments_do_not_clobber():
     assert len(fake_tool_keys) == 2
 
 
-async def test_failed_but_executed_call_is_audited_but_not_merged():
+async def test_failed_but_executed_call_is_audited_and_merged_as_error():
     registry = _CountingToolRegistry(_make_registry(ok=False))
 
     merged, records = await execute_tool_round(
@@ -121,7 +121,11 @@ async def test_failed_but_executed_call_is_audited_but_not_merged():
     assert registry.call_count == 1
     assert len(records) == 1
     assert records[0].output_ok is False
-    assert merged == {}
+    # Failed results are now merged so the LLM can see the error and avoid
+    # retrying the same call infinitely.
+    assert len(merged) == 1
+    key = list(merged.keys())[0]
+    assert merged[key]["ok"] is False
 
 
 async def test_tool_not_in_grant_is_skipped_and_audited_ok_false():
@@ -180,7 +184,11 @@ async def test_raising_tool_is_skipped_and_audited_ok_false():
 
     assert len(records) == 1
     assert records[0].output_ok is False
-    assert merged == {}
+    # Exception results are now merged so the LLM can see the error.
+    assert len(merged) == 1
+    key = list(merged.keys())[0]
+    assert merged[key]["ok"] is False
+    assert "simulated error" in merged[key]["error"]
 
 
 async def test_no_requests_returns_unchanged_copy_and_no_records():

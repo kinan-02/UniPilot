@@ -80,11 +80,12 @@ async def run_subagent_tool_loop(
             try:
                 tool_input = descriptor.input_model(**request.arguments)
                 envelope = await descriptor.callable(tool_input)
-            except Exception:  # noqa: BLE001 -- a tool bug must never crash the subagent
+            except Exception as e:  # noqa: BLE001 -- a tool bug must never crash the subagent
                 logger.exception("subagent_tool_call_failed", extra={"toolName": tool_name})
                 audit_trail.append(
                     ToolInvocationRecord(tool_name=tool_name, arguments=request.arguments, output_ok=False)
                 )
+                tool_results[result_key] = {"ok": False, "error": f"Tool execution failed: {str(e)}", "data": {}}
                 continue
 
             audit_trail.append(
@@ -108,8 +109,7 @@ async def run_subagent_tool_loop(
                 envelope.error,
                 request.arguments,
             )
-            if envelope.ok:
-                tool_results[result_key] = envelope.model_dump(mode="json")
+            tool_results[result_key] = envelope.model_dump(mode="json")
 
         current_input = current_input.model_copy(
             update={"task_context": {**current_input.task_context, "tool_results": tool_results}}
