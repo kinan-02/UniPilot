@@ -16,9 +16,11 @@ import pytest
 
 
 class FakeLLMAdapter:
-    def __init__(self, responses: list[dict[str, Any]]) -> None:
+    def __init__(self, responses: list[dict[str, Any]], text_responses: list[str] | None = None) -> None:
         self._responses = list(responses)
+        self._text_responses = list(text_responses or [])
         self.calls: list[dict[str, Any]] = []
+        self.text_calls: list[dict[str, Any]] = []
 
     async def complete_json(
         self,
@@ -55,10 +57,38 @@ class FakeLLMAdapter:
             raw_model_text_out.append(json.dumps(response))
         return response
 
+    async def complete_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> str:
+        self.text_calls.append(
+            {
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+                "temperature": temperature,
+                "model": model,
+                "thinking_enabled": thinking_enabled,
+                "reasoning_effort": reasoning_effort,
+                "timeout": timeout,
+                "max_retries": max_retries,
+            }
+        )
+        if not self._text_responses:
+            raise AssertionError("FakeLLMAdapter exhausted its queued text_responses")
+        return self._text_responses.pop(0)
+
 
 @pytest.fixture
 def fake_llm_adapter_factory():
-    def _build(responses: list[dict[str, Any]]) -> FakeLLMAdapter:
-        return FakeLLMAdapter(responses)
+    def _build(responses: list[dict[str, Any]], text_responses: list[str] | None = None) -> FakeLLMAdapter:
+        return FakeLLMAdapter(responses, text_responses=text_responses)
 
     return _build

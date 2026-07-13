@@ -182,3 +182,93 @@ async def test_llm_call_parameters_actually_reach_the_adapter(fake_llm_adapter_f
 
     assert adapter.calls[0]["model"] == "gpt-4o"
     assert adapter.calls[0]["temperature"] == 0.0
+
+
+_ROUND_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "enum": ["ready", "need_tools"]},
+        "tool_requests": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"tool_name": {"type": "string"}, "arguments": {"type": "object"}},
+                "required": ["tool_name", "arguments"],
+            },
+        },
+    },
+    "required": ["status"],
+}
+
+
+async def test_repair_tool_requests_returns_unchanged_when_already_valid(fake_llm_adapter_factory):
+    # No repair call should be spent when the round output is already
+    # well-formed -- `_repair_tool_requests_if_needed` must not add cost to
+    # the already-happy path.
+    adapter = fake_llm_adapter_factory([])
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+    parsed = {
+        "status": "need_tools",
+        "tool_requests": [{"tool_name": "get_entity", "arguments": {"entity_id": "1"}}],
+    }
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        parsed["tool_requests"],
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+    )
+
+    assert result == parsed["tool_requests"]
+    assert len(adapter.calls) == 0
+
+
+async def test_repair_tool_requests_fixes_wrong_keys_via_one_repair_call(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory(
+        [
+            {
+                "status": "need_tools",
+                "tool_requests": [{"tool_name": "get_entity", "arguments": {"entity_id": "1"}}],
+            }
+        ]
+    )
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+    parsed = {
+        "status": "need_tools",
+        "tool_requests": [{"name": "get_entity", "params": {"entity_id": "1"}}],
+    }
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        parsed["tool_requests"],
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+    )
+
+    assert result == [{"tool_name": "get_entity", "arguments": {"entity_id": "1"}}]
+    assert len(adapter.calls) == 1
+
+
+async def test_repair_tool_requests_falls_back_to_original_when_repair_fails():
+    # Never worse than the old behavior: if the repair attempt itself
+    # doesn't produce a valid result, the original (still-malformed)
+    # requests are returned unchanged rather than raising or losing data.
+    class _NeverRepairsAdapter:
+        async def complete_json(self, **_kwargs: Any) -> dict[str, Any]:
+            return {}  # missing required "status" -> stays invalid
+
+    block = _EchoReasoningBlock(llm_adapter=_NeverRepairsAdapter())
+    original_requests = [{"name": "get_entity", "params": {"entity_id": "1"}}]
+    parsed = {"status": "need_tools", "tool_requests": original_requests}
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        original_requests,
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+    )
+
+    assert result == original_requests

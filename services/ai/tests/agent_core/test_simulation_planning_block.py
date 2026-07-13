@@ -184,6 +184,46 @@ async def test_reflect_and_revise_after_a_failed_candidate_is_just_the_ordinary_
     assert len(adapter.calls) == 3
 
 
+async def test_malformed_tool_requests_repaired_before_execution(fake_llm_adapter_factory):
+    # Same fix as retrieval_block's/interpretation_block's -- a round's
+    # tool_requests previously went straight to execute_tool_round
+    # unvalidated, so wrong keys (e.g. "name"/"params" instead of
+    # "tool_name"/"arguments") silently wasted the whole round. Now it's
+    # repaired first via the shared `_repair_tool_requests_if_needed` helper.
+    adapter = fake_llm_adapter_factory(
+        [
+            {
+                "status": "need_tools",
+                "tool_requests": [
+                    {"name": "search_over_state", "params": {"state": {}, "constraints": [], "objective": "minimize_semesters"}}
+                ],
+            },
+            {
+                "status": "need_tools",
+                "tool_requests": [
+                    {"tool_name": "search_over_state", "arguments": {"state": {}, "constraints": [], "objective": "minimize_semesters"}}
+                ],
+            },
+            _ready_result(),
+        ]
+    )
+    registry = _CountingToolRegistry(_make_registry())
+
+    result = await run_simulation_planning_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert registry.call_count == 1
+    assert len(result.tool_audit_trail) == 1
+    assert result.tool_audit_trail[0].tool_name == "search_over_state"
+    # round1 (malformed) + repair + round2 (finalize) = 3 LLM calls.
+    assert len(adapter.calls) == 3
+
+
 async def test_tool_not_in_grant_skipped_without_aborting_round(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory(
         [

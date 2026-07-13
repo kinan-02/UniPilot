@@ -249,6 +249,9 @@ class InterpretationReasoningBlock(BaseReasoningBlock):
 
             if status == "need_tools" and not is_final_round:
                 requests = parsed.get("tool_requests") or []
+                requests = await self._repair_tool_requests_if_needed(
+                    parsed, requests, round_schema=round_schema, block_input=block_input, telemetry=telemetry
+                )
                 tool_results_so_far, new_records = await execute_tool_round(
                     tool_requests=requests,
                     tool_grant=block_input.tool_grant,

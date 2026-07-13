@@ -89,9 +89,15 @@ async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_f
 
 
 async def test_out_of_scope_request_never_reaches_the_planner(fake_llm_adapter_factory):
-    # Two responses queued: Request Understanding (fails scope), then Boundary Handler.
-    # If the Planner were invoked, the adapter would raise on the third call.
-    adapter = fake_llm_adapter_factory([_OUT_OF_SCOPE_RESPONSE, _BOUNDARY_HANDLER_RESPONSE])
+    # Request Understanding (fails scope) via complete_json, then the Boundary
+    # Handler's own two-stage flow: a complete_text call (stage 1, generates
+    # the raw decline content) followed by a complete_json call (stage 2,
+    # structures it into BOUNDARY_HANDLER_OUTPUT_SCHEMA). If the Planner were
+    # invoked, the adapter would raise on exhausting these queues.
+    adapter = fake_llm_adapter_factory(
+        [_OUT_OF_SCOPE_RESPONSE, _BOUNDARY_HANDLER_RESPONSE],
+        text_responses=[_BOUNDARY_HANDLER_RESPONSE["answer_text"]],
+    )
     role_roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()
 

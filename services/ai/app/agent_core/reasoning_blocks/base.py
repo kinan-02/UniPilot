@@ -233,6 +233,44 @@ class BaseReasoningBlock(ABC):
             raise
         return LlmCallResult(parsed=parsed, raw_text=raw_text)
 
+    async def _invoke_llm_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        params: LLMCallParameters,
+        phase: str,
+        block_input: BaseReasoningBlockInput,
+        telemetry: RunTelemetry,
+    ) -> str:
+        """Freeform-text sibling of `_invoke_llm`: calls `complete_text`
+        instead of `complete_json`, so there is no schema and no JSON-parse
+        gate -- this call cannot fail on formatting, only on the LLM call
+        itself (unavailable client, provider error). For a shape's first
+        stage that generates raw content, paired with a later `_invoke_llm`
+        call that structures that content into a schema. Never raises for
+        formatting reasons; still re-raises `LLMAdapterError` on a genuine
+        call failure, exactly like `_invoke_llm`.
+        """
+        telemetry.call_count += 1
+        try:
+            return await self._llm_adapter.complete_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=params.temperature,
+                model=params.model,
+                thinking_enabled=params.thinking_enabled,
+                reasoning_effort=params.reasoning_effort,
+                timeout=params.timeout,
+                max_retries=params.max_retries,
+            )
+        except LLMAdapterError:
+            logger.warning(
+                "reasoning_block_llm_call_failed",
+                extra={"block_id": block_input.block_id, "phase": phase},
+            )
+            raise
+
     def _validate_schema(self, result: Any, schema: dict[str, Any]) -> SchemaValidationResult:
         return validate_against_schema(result, schema)
 
@@ -307,6 +345,49 @@ class BaseReasoningBlock(ABC):
                 )
 
         return SchemaRepairOutcome(result=current_result, valid=False, errors=errors, attempts_used=attempts_used)
+
+    async def _repair_tool_requests_if_needed(
+        self,
+        parsed: dict[str, Any],
+        requests: list[Any],
+        *,
+        round_schema: dict[str, Any],
+        block_input: BaseReasoningBlockInput,
+        telemetry: RunTelemetry,
+    ) -> list[Any]:
+        """Best-effort repair for a tool-round's `tool_requests` list.
+
+        `_invoke_llm`'s `response_schema` only shapes the prompt -- it never
+        validates or repairs the parsed result against it (that's what
+        `_validate_schema`/`_repair_schema` are for, and every caller so far
+        only runs those on a block's FINAL result, not on an intermediate
+        `need_tools` round). A malformed tool request (wrong keys, e.g.
+        `name`/`params` instead of `tool_name`/`arguments`) previously sailed
+        straight through to `execute_tool_round`, which skips it gracefully
+        -- but "gracefully skipped" means the whole round was wasted: no
+        tool actually ran, so the step likely fails its success-check and
+        bounces back to the Planner for a full re-plan, costing far more
+        LLM calls than one bounded repair attempt here. Never worse than the
+        old behavior: returns the original `requests` unchanged if nothing
+        needed repair, or if the repair attempt itself didn't produce a
+        valid result.
+        """
+        normalized = self._normalize_result(parsed, output_schema=round_schema)
+        validation = self._validate_schema(normalized, round_schema)
+        if validation.valid:
+            return requests
+
+        repair_outcome = await self._repair_schema(
+            initial_result=normalized,
+            initial_errors=validation.errors,
+            output_schema=round_schema,
+            max_attempts=1,
+            block_input=block_input,
+            telemetry=telemetry,
+        )
+        if repair_outcome.valid and repair_outcome.result is not None:
+            return repair_outcome.result.get("tool_requests") or requests
+        return requests
 
     def _emit_debug_observer(
         self,

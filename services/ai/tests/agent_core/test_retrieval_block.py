@@ -126,6 +126,45 @@ async def test_tool_called_twice_in_same_round_with_different_arguments_does_not
     assert any(a.get("entity_id") == "111" for a in args)
     assert any(a.get("entity_id") == "222" for a in args)
 
+async def test_malformed_tool_requests_repaired_before_execution(fake_llm_adapter_factory):
+    # A live-eval run found the model routinely emitting tool_requests with
+    # the wrong keys (e.g. "name"/"params" instead of "tool_name"/
+    # "arguments"). Previously that request just silently failed inside
+    # execute_tool_round, wasting the whole round. Now the round output goes
+    # through the same validate/repair loop the final result already gets.
+    adapter = fake_llm_adapter_factory([
+        {
+            "status": "need_tools",
+            "tool_requests": [{"name": "get_entity", "params": {"entity_id": "111", "entity_type": "course"}}],
+        },
+        # Repair call: the model is re-prompted with the schema + errors and
+        # fixes the key names.
+        {
+            "status": "need_tools",
+            "tool_requests": [{"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}}],
+        },
+        _ready_result(),
+    ])
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    # The repaired request reached the real tool call (registry.call_count
+    # only increments on an actual invocation) instead of being skipped as
+    # unresolvable, which is what happened before this fix.
+    assert registry.call_count == 1
+    assert len(result.tool_audit_trail) == 1
+    assert result.tool_audit_trail[0].tool_name == "get_entity"
+    # round1 (malformed) + repair + finalize ready = 3 LLM calls.
+    assert len(adapter.calls) == 3
+
+
 async def test_tool_not_in_grant_skipped_without_aborting_round(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([
         {

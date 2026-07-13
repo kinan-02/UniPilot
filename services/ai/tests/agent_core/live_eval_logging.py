@@ -35,9 +35,14 @@ class _RecordedCall:
     reasoning_effort: str | None
     response_schema: dict[str, Any] | None
     raw_response_text: str
-    parsed_response: dict[str, Any]
+    parsed_response: dict[str, Any] | None
     timeout: float | None
     max_retries: int | None
+    # "json" for a `complete_json` call, "text" for a `complete_text` call --
+    # kept in one ordered list (rather than two separate lists) so a
+    # two-stage flow's stage1/stage2 calls stay in their real call order in
+    # the written log.
+    kind: str = "json"
 
 
 class LoggingLLMAdapter:
@@ -95,6 +100,46 @@ class LoggingLLMAdapter:
         )
         return result
 
+    async def complete_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> str:
+        result = await self._adapter.complete_text(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            model=model,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        self.calls.append(
+            _RecordedCall(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                model=model,
+                thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
+                response_schema=None,
+                raw_response_text=result,
+                parsed_response=None,
+                timeout=timeout,
+                max_retries=max_retries,
+                kind="text",
+            )
+        )
+        return result
+
 
 def _to_jsonable(value: Any) -> Any:
     return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
@@ -116,6 +161,7 @@ class LiveEvalLog:
                 "case": case_name,
                 "calls": [
                     {
+                        "kind": call.kind,
                         "system_prompt": call.system_prompt,
                         "user_prompt": call.user_prompt,
                         "params": {

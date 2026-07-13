@@ -51,6 +51,20 @@ class LLMAdapter(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    async def complete_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> str:
+        ...
+
 
 def _response_text_content(response: Any) -> str:
     content = getattr(response, "content", "")
@@ -160,6 +174,55 @@ class ChatLLMAdapter:
         if outcome.payload is None:
             raise LLMAdapterError(outcome.failure_code or "invalid_json_response")
         return outcome.payload
+
+    async def complete_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float | None = None,
+        model: str | None = None,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> str:
+        """Freeform completion with no JSON-parse gate.
+
+        Unlike `complete_json`, a call here cannot fail with a
+        `json_parse_failed`-style error -- there is no `parse_llm_json_detailed`
+        step at all, so whatever the model returns is returned as-is. For a
+        first-stage "generate the actual content" call in a two-stage
+        generate-then-structure flow, where a later `complete_json` call
+        structures this raw text into a schema.
+        """
+        cfg = self._settings or get_settings()
+        llm = build_chat_llm(
+            settings=cfg,
+            temperature=temperature if temperature is not None else 0.0,
+            model=model,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        if llm is None:
+            raise LLMAdapterError("llm_unavailable")
+
+        try:
+            from langchain_core.messages import HumanMessage, SystemMessage
+        except ImportError as exc:
+            logger.warning("reasoning_llm_adapter_import_failed")
+            raise LLMAdapterError("llm_client_import_failed") from exc
+
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+        try:
+            response = await llm.ainvoke(messages)
+        except Exception as exc:
+            logger.exception("reasoning_llm_adapter_call_failed")
+            raise LLMAdapterError("llm_call_failed") from exc
+
+        return _response_text_content(response)
 
     async def _complete_with_structured_output(
         self,

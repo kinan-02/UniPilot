@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any
 
-from app.agent_core.reasoning.llm_adapter import LLMAdapter
+from app.agent_core.reasoning.llm_adapter import LLMAdapter, LLMAdapterError
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
@@ -19,6 +19,7 @@ from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, Bas
 logger = logging.getLogger(__name__)
 
 BOUNDARY_HANDLER_V1 = "boundary_handler_v1"
+BOUNDARY_HANDLER_STRUCTURING_V1 = "boundary_handler_structuring_v1"
 BOUNDARY_HANDLER_OUTPUT_SCHEMA_NAME = "boundary_handler_output_v1"
 
 BOUNDARY_HANDLER_OUTPUT_SCHEMA: dict[str, Any] = {
@@ -31,7 +32,13 @@ BOUNDARY_HANDLER_OUTPUT_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-_MAX_SCHEMA_REPAIR_ATTEMPTS = 2
+# Total attempts stage 2 (structuring) gets at turning stage 1's raw content
+# into valid `BOUNDARY_HANDLER_OUTPUT_SCHEMA` JSON, including the first
+# attempt. Deliberately not provider-native structured output (see
+# `llm_adapter.ChatLLMAdapter._complete_with_structured_output`) -- this
+# stays on the same free-text-JSON-parse mechanism used everywhere else in
+# this codebase so behavior doesn't vary by provider.
+_MAX_STRUCTURING_ATTEMPTS = 2
 _TIMEOUT_SECONDS = 30.0
 
 class BoundaryHandlerInput(BaseReasoningBlockInput):
@@ -77,9 +84,39 @@ def _boundary_handler_contract() -> PromptContract:
     )
 
 
+def _boundary_handler_structuring_contract() -> PromptContract:
+    return PromptContract(
+        name=BOUNDARY_HANDLER_STRUCTURING_V1,
+        version="1.0.0",
+        role_prompt=(
+            "You structure an already-written piece of response text into a fixed JSON "
+            "shape. You never change its meaning, tone, or content -- you only wrap it "
+            "into the required fields."
+        ),
+        instructions=[
+            "Take the provided raw_content verbatim as the answer_text value -- do not "
+            "rewrite, summarize, translate, or alter it in any way.",
+            "Estimate a confidence between 0.0 and 1.0 for how directly raw_content "
+            "addresses the user's request.",
+            "Return only valid JSON matching output_schema. No extra fields, no commentary, "
+            "no markdown code fences.",
+        ],
+        allowed_context_fields=None,
+        output_schema_name=BOUNDARY_HANDLER_OUTPUT_SCHEMA_NAME,
+        default_risk_level="low",
+        default_min_iterations=1,
+        default_max_iterations=1,
+        default_temperature=0.0,
+        safety_rules=[
+            "Do not expose chain-of-thought, hidden reasoning, or private notes.",
+        ],
+    )
+
+
 def build_boundary_handler_prompt_registry() -> PromptRegistry:
     registry = build_default_prompt_registry()
     registry.register(_boundary_handler_contract())
+    registry.register(_boundary_handler_structuring_contract())
     return registry
 
 
@@ -104,6 +141,18 @@ def _build_user_prompt(block_input: BoundaryHandlerInput) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
+def _build_structuring_user_prompt(
+    *, raw_content: str, output_schema: dict[str, Any], previous_errors: list[str]
+) -> str:
+    payload: dict[str, Any] = {
+        "raw_content": raw_content,
+        "output_schema": output_schema,
+    }
+    if previous_errors:
+        payload["previous_attempt_errors"] = previous_errors
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
 class BoundaryHandlingReasoningBlock(BaseReasoningBlock):
     def __init__(self, *, llm_adapter: LLMAdapter, prompt_registry: PromptRegistry | None = None, **kwargs: Any) -> None:
         super().__init__(
@@ -116,35 +165,74 @@ class BoundaryHandlingReasoningBlock(BaseReasoningBlock):
         self, block_input: BoundaryHandlerInput, telemetry: RunTelemetry
     ) -> BoundaryHandlerOutput:
         contract = self._resolve_prompt_contract(block_input.prompt_contract_name or BOUNDARY_HANDLER_V1)
-        params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, contract)
-        user_prompt = _build_user_prompt(block_input)
+        content_params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, contract)
 
-        call_result = await self._invoke_llm(
-            system_prompt=_build_system_prompt(contract),
-            user_prompt=user_prompt,
-            params=params,
-            response_schema=block_input.output_schema,
-            phase="pass1_of_1",
-            block_input=block_input,
-            telemetry=telemetry,
-        )
-
-        normalized = self._normalize_result(call_result.parsed, output_schema=block_input.output_schema)
-        validation = self._validate_schema(normalized, block_input.output_schema)
-        if not validation.valid:
-            repair_outcome = await self._repair_schema(
-                initial_result=normalized,
-                initial_errors=validation.errors,
-                output_schema=block_input.output_schema,
-                max_attempts=_MAX_SCHEMA_REPAIR_ATTEMPTS,
+        # Stage 1: generate the actual response content via `complete_text`
+        # -- no schema, no JSON-parse gate, so this call cannot fail on
+        # formatting. It can only fail if the LLM call itself fails (client
+        # unavailable, provider error); there's no content to structure in
+        # that case, so we fall back straight away.
+        try:
+            raw_content = await self._invoke_llm_text(
+                system_prompt=_build_system_prompt(contract),
+                user_prompt=_build_user_prompt(block_input),
+                params=content_params,
+                phase="stage1_generate",
                 block_input=block_input,
                 telemetry=telemetry,
             )
-            if not repair_outcome.valid:
-                return self._fallback_output(block_input, extra_warning="schema_validation_failed")
-            normalized = repair_outcome.result
+        except LLMAdapterError:
+            return self._fallback_output(block_input, extra_warning="stage1_generation_failed")
 
-        return self._to_output(normalized, block_input)
+        raw_content = raw_content.strip()
+        if not raw_content:
+            return self._fallback_output(block_input, extra_warning="stage1_empty_content")
+
+        # Stage 2: structure that raw content into `BOUNDARY_HANDLER_OUTPUT_SCHEMA`,
+        # up to `_MAX_STRUCTURING_ATTEMPTS` times. Every attempt re-supplies
+        # the full raw_content (not just the previous malformed JSON), so a
+        # retry regenerates the structured wrapper from the real content
+        # instead of drifting from whatever the last bad attempt produced.
+        structuring_contract = self._resolve_prompt_contract(BOUNDARY_HANDLER_STRUCTURING_V1)
+        structuring_params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, structuring_contract)
+        previous_errors: list[str] = []
+
+        for attempt in range(1, _MAX_STRUCTURING_ATTEMPTS + 1):
+            try:
+                call_result = await self._invoke_llm(
+                    system_prompt=_build_system_prompt(structuring_contract),
+                    user_prompt=_build_structuring_user_prompt(
+                        raw_content=raw_content,
+                        output_schema=block_input.output_schema,
+                        previous_errors=previous_errors,
+                    ),
+                    params=structuring_params,
+                    response_schema=block_input.output_schema,
+                    phase=f"stage2_structure_attempt{attempt}",
+                    block_input=block_input,
+                    telemetry=telemetry,
+                )
+            except LLMAdapterError:
+                previous_errors = ["structuring_call_failed"]
+                continue
+
+            normalized = self._normalize_result(call_result.parsed, output_schema=block_input.output_schema)
+            validation = self._validate_schema(normalized, block_input.output_schema)
+            if validation.valid:
+                return self._to_output(normalized, block_input)
+            previous_errors = validation.errors
+
+        # Structuring never produced valid JSON -- rather than losing stage
+        # 1's real, tailored content behind a generic canned message, serve
+        # it directly as plain text.
+        return BoundaryHandlerOutput(
+            status="completed",
+            schema_valid=False,
+            result=None,
+            confidence=0.5,
+            warnings=["structuring_failed_using_raw_stage1_content"],
+            answer_text=raw_content,
+        )
 
     def _to_output(
         self, normalized: dict[str, Any], block_input: BoundaryHandlerInput
