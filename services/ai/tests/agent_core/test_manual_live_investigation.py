@@ -9,12 +9,20 @@ one case at a time, watching `reasoning_block_trace` log lines (per-block
 for the full prompt/response trail. Each case also records its own
 wall-clock `elapsed_seconds` directly into the log entry.
 
-Seeds one throwaway, realistic CS student (real program: `023023-1-000`,
-"Computer Science" 4-year general track, wiki slug
-`track-computer-science-general-4year`; real completed courses including
-`02340218` "Data Structures 1") directly into the shared dev Mongo cluster,
-deleted again after each case -- same pattern as
+Seeds one throwaway CS student whose every completed course is a REAL
+catalog course with its exact name/code/credits (the General CS 4-year
+track's own Semester 1 + Semester 2 required set), having just failed
+Semester 3's Data Structures 1 -- see the `cs_student` fixture for the full
+rationale on why each curated case is genuinely answerable from the
+knowledge base rather than a data mismatch. Seeded into the shared dev
+Mongo cluster and deleted again after each case -- same pattern as
 `test_specialist_subagents_live_eval.py`.
+
+Every case's premise references only entities that actually exist in the
+source-of-truth KB (real course codes, the real Inter-Faculty Robotics
+Minor rather than the graduate-only "Autonomous Systems and Robotics"
+program, the real reserve-duty regulation page) -- so a failure is an agent
+bug, not the agent correctly failing to find something fictional.
 """
 
 from __future__ import annotations
@@ -70,10 +78,37 @@ def adapter() -> LoggingLLMAdapter:
 
 @pytest.fixture
 async def cs_student() -> AsyncIterator[str]:
-    """A real 3rd-semester CS student who just failed Data Structures 1
-    (course `02340218`, a real document in the dev cluster) -- the exact
-    setup the flagship "what happens if I fail X" scenario needs, plus two
-    of DS1's own real prerequisite course numbers already passed."""
+    """A grounded 3rd-semester CS student on the General CS 4-year track
+    (`track-computer-science-general-4year`, track code 023023-1-000).
+
+    Every completed course below is a REAL course in the source-of-truth
+    knowledge base, with its EXACT catalog name, code, and credit value --
+    and the set is exactly the track's own Semester 1 + Semester 2 required
+    courses (verified against the track doc's semester-by-semester
+    schedule), so the profile is internally coherent, not a plausible-
+    looking invention. The student is now in Semester 3 (`2025-1`) and has
+    just FAILED that semester's Data Structures 1 (`02340218`, grade 45).
+
+    Why this exact shape makes the curated cases genuinely answerable from
+    the KB (not a data mismatch masquerading as an agent bug):
+    - Algorithms 1 (`02340247`) requires DS1 (`02340218`) AND Combinatorics
+      for CS (`02340141`). This student HAS Combinatorics but FAILED DS1 --
+      so "can I take Algorithms next semester?" has one crisp correct
+      answer: no, DS1 is an unmet prerequisite (case 04).
+    - DS1/Algorithms are offered Winter+Spring but NOT Summer in the real
+      offering catalog (`courses_2025_{200,201}` vs `..._202`), so "when
+      will DS1 run again?" is a real, checkable answer (case 06).
+    - The Inter-Faculty Robotics Minor (`minor-robotics`) needs GPA >= 87
+      and >= 60 accrued credits; this student's credit-weighted average is
+      ~80.7 over ~39.5 credits, so the minor-feasibility answer is a
+      grounded "not yet eligible", not a guess (case 07).
+
+    grade is the Technion 0-100 score (creditsEarned=0 on the failed
+    course); gradePoints stays None because the Technion GPA is the
+    credit-weighted average of the 0-100 grade, not a US 4.0 scale (the old
+    fixture's 3.7-style gradePoints were both wrong for the schema, which
+    bounds gradePoints to 0-100, and misleading to the agent).
+    """
     database = await get_database()
     user_id = ObjectId()
     now = datetime.now(timezone.utc)
@@ -93,85 +128,40 @@ async def cs_student() -> AsyncIterator[str]:
         "createdAt": now,
         "updatedAt": now,
     }
+
+    def _completed(semester: str, number: str, name: str, credits: float, grade: int) -> dict:
+        return {
+            "userId": user_id,
+            "courseId": ObjectId(),
+            "courseOfferingId": None,
+            "semesterCode": semester,
+            "grade": grade,
+            "gradePoints": None,
+            "creditsEarned": credits,
+            "attempt": 1,
+            "source": "manual",
+            "metadata": {"courseNumber": number, "courseName": name},
+            "recordedAt": now,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+
     completed_course_documents = [
-        {
-            "userId": user_id,
-            "courseId": ObjectId(),
-            "courseOfferingId": None,
-            "semesterCode": "2024-1",
-            "grade": 88,
-            "gradePoints": 3.7,
-            "creditsEarned": 3.5,
-            "attempt": 1,
-            "source": "manual",
-            "metadata": {"courseNumber": "02340114", "courseName": "Introduction to Computer Science"},
-            "recordedAt": now,
-            "createdAt": now,
-            "updatedAt": now,
-        },
-        {
-            "userId": user_id,
-            "courseId": ObjectId(),
-            "courseOfferingId": None,
-            "semesterCode": "2024-1",
-            "grade": 85,
-            "gradePoints": 3.7,
-            "creditsEarned": 3.5,
-            "attempt": 1,
-            "source": "manual",
-            "metadata": {"courseNumber": "02340118", "courseName": "Computer Organization and Programming"},
-            "recordedAt": now,
-            "createdAt": now,
-            "updatedAt": now,
-        },
-        {
-            "userId": user_id,
-            "courseId": ObjectId(),
-            "courseOfferingId": None,
-            "semesterCode": "2024-2",
-            "grade": 79,
-            "gradePoints": 3.0,
-            "creditsEarned": 5.0,
-            "attempt": 1,
-            "source": "manual",
-            "metadata": {"courseNumber": "02340141", "courseName": "Infinitesimal Calculus"},
-            "recordedAt": now,
-            "createdAt": now,
-            "updatedAt": now,
-        },
-        {
-            "userId": user_id,
-            "courseId": ObjectId(),
-            "courseOfferingId": None,
-            "semesterCode": "2024-2",
-            "grade": 81,
-            "gradePoints": 3.3,
-            "creditsEarned": 3.5,
-            "attempt": 1,
-            "source": "manual",
-            "metadata": {"courseNumber": "02340124", "courseName": "Discrete Mathematics"},
-            "recordedAt": now,
-            "createdAt": now,
-            "updatedAt": now,
-        },
-        {
-            # The failure the flagship scenario (case 5) is built around --
-            # a real, currently-offered course (02340218, "Data Structures
-            # 1", semestersOffered=[200, 201] per the real dev-cluster doc).
-            "userId": user_id,
-            "courseId": ObjectId(),
-            "courseOfferingId": None,
-            "semesterCode": "2025-1",
-            "grade": 45,
-            "gradePoints": 0.0,
-            "creditsEarned": 0.0,
-            "attempt": 1,
-            "source": "manual",
-            "metadata": {"courseNumber": "02340218", "courseName": "Data Structures 1"},
-            "recordedAt": now,
-            "createdAt": now,
-            "updatedAt": now,
-        },
+        # Semester 1 (2024-1) -- the track's own required Semester 1 set.
+        _completed("2024-1", "01040031", "Infinitesimal Calculus 1M", 5.5, 74),
+        _completed("2024-1", "01040166", "Algebra AM", 5.5, 81),
+        _completed("2024-1", "02340114", "Introduction to Computer Science M", 4.0, 92),
+        _completed("2024-1", "02340129", "Intro to Set Theory and Automata for CS", 3.0, 85),
+        _completed("2024-1", "03240033", "Technical English Advanced B", 3.0, 90),
+        # Semester 2 (2024-2) -- the track's own required Semester 2 set.
+        _completed("2024-2", "01040032", "Infinitesimal Calculus 2M", 5.0, 68),
+        _completed("2024-2", "01140071", "Physics 1M", 3.5, 77),
+        _completed("2024-2", "02340124", "Introduction to Systems Programming", 4.0, 83),
+        _completed("2024-2", "02340125", "Numerical Algorithms", 3.0, 88),
+        _completed("2024-2", "02340141", "Combinatorics for Computer Science", 3.0, 79),
+        # Semester 3 (2025-1, current) -- FAILED. The flagship "what if I
+        # fail X" scenario, and the unmet Algorithms prerequisite.
+        _completed("2025-1", "02340218", "Data Structures 1", 0.0, 45),
     ]
 
     await database["student_profiles"].insert_one(profile_document)
@@ -335,8 +325,15 @@ async def test_case_07_minor_feasibility(cs_student, adapter, live_eval_log) -> 
     await _run_and_record(
         "case_07_minor_feasibility",
         (
-            "I'm a CS student and I want to also complete the Autonomous Systems and "
-            "Robotics minor -- is that realistic at this point in my degree?"
+            # The Inter-Faculty Robotics Minor is the real undergraduate minor
+            # (minor-robotics: GPA >= 87 and >= 60 credits to be admitted).
+            # The "Autonomous Systems and Robotics" program in the KB is a
+            # graduate MSc/ME/PhD program, NOT an undergrad minor -- asking
+            # about it sent the agent hunting for a nonexistent undergrad
+            # minor and looping. This student (~80.7 GPA, ~39.5 credits) is
+            # not yet eligible, which is the grounded, checkable answer.
+            "I'm a CS student and I want to also complete the Robotics minor -- "
+            "is that realistic at this point in my degree?"
         ),
         user_id=cs_student,
         adapter=adapter,
@@ -371,8 +368,10 @@ async def test_case_10_multi_concern_stress(cs_student, adapter, live_eval_log) 
     await _run_and_record(
         "case_10_multi_concern_stress",
         (
+            # Robotics minor = the real Inter-Faculty Robotics Minor (see case 07);
+            # all three concerns here reference real KB entities.
             "I'm a CS student who just failed Data Structures 1, and I'm also considering the "
-            "Autonomous Systems and Robotics minor, and I might have a month of reserve duty next "
+            "Robotics minor, and I might have a month of reserve duty next "
             "semester -- how does all of this affect my graduation timeline?"
         ),
         user_id=cs_student,

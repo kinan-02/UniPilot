@@ -43,6 +43,14 @@ class _RecordedCall:
     # two-stage flow's stage1/stage2 calls stay in their real call order in
     # the written log.
     kind: str = "json"
+    # A call that raised (e.g. hit its own `timeout`) used to leave NO
+    # record at all -- found the hard way while investigating a case that
+    # "passed" in 75s with only 2 recorded calls: the Planner's first call
+    # had actually timed out and BaseReasoningBlock.run()'s catch-all
+    # swallowed it into a generic fallback, but the log looked like the
+    # Planner was simply never invoked. Recording the exception here closes
+    # that blind spot for future live-eval investigations.
+    error: str | None = None
 
 
 class LoggingLLMAdapter:
@@ -68,19 +76,38 @@ class LoggingLLMAdapter:
         streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         local_raw: list[str] = []
-        result = await self._adapter.complete_json(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=temperature,
-            model=model,
-            thinking_enabled=thinking_enabled,
-            reasoning_effort=reasoning_effort,
-            response_schema=response_schema,
-            raw_model_text_out=local_raw,
-            timeout=timeout,
-            max_retries=max_retries,
-            streaming_queue=streaming_queue,
-        )
+        try:
+            result = await self._adapter.complete_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                model=model,
+                thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
+                response_schema=response_schema,
+                raw_model_text_out=local_raw,
+                timeout=timeout,
+                max_retries=max_retries,
+                streaming_queue=streaming_queue,
+            )
+        except Exception as exc:
+            self.calls.append(
+                _RecordedCall(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    model=model,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort,
+                    response_schema=response_schema,
+                    raw_response_text=local_raw[0] if local_raw else "",
+                    parsed_response=None,
+                    timeout=timeout,
+                    max_retries=max_retries,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            raise
         if raw_model_text_out is not None and local_raw:
             raw_model_text_out.append(local_raw[0])
         self.calls.append(
@@ -112,16 +139,36 @@ class LoggingLLMAdapter:
         timeout: float | None = None,
         max_retries: int | None = None,
     ) -> str:
-        result = await self._adapter.complete_text(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            temperature=temperature,
-            model=model,
-            thinking_enabled=thinking_enabled,
-            reasoning_effort=reasoning_effort,
-            timeout=timeout,
-            max_retries=max_retries,
-        )
+        try:
+            result = await self._adapter.complete_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                model=model,
+                thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
+                timeout=timeout,
+                max_retries=max_retries,
+            )
+        except Exception as exc:
+            self.calls.append(
+                _RecordedCall(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    model=model,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort,
+                    response_schema=None,
+                    raw_response_text="",
+                    parsed_response=None,
+                    timeout=timeout,
+                    max_retries=max_retries,
+                    kind="text",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            raise
         self.calls.append(
             _RecordedCall(
                 system_prompt=system_prompt,
@@ -147,13 +194,21 @@ def _to_jsonable(value: Any) -> Any:
 
 class LiveEvalLog:
     """Accumulates one entry per test case across a whole test-file run,
-    written to one timestamped JSON file when `write()` is called (a
-    module-scoped fixture calls this once, on teardown, after every case in
-    the file has run)."""
+    written to one timestamped JSON file (path fixed at construction, not
+    recomputed per write) that is now rewritten after EVERY `record_case`
+    call, not just once at teardown. A run that times out case-by-case can
+    take 25+ minutes; needing the whole run to finish before a single
+    case's own call trace could be inspected made every mid-run
+    investigation this session slower than it needed to be -- an
+    in-progress run's log is now readable the moment each case finishes,
+    and a run killed partway through (or one that crashes) still leaves
+    every case recorded so far on disk instead of nothing."""
 
     def __init__(self, suite_name: str) -> None:
         self._suite_name = suite_name
         self._cases: list[dict[str, Any]] = []
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        self._path = _LOG_DIR / f"{suite_name}-{timestamp}.json"
 
     def record_case(self, case_name: str, adapter: LoggingLLMAdapter, **extra: Any) -> None:
         self._cases.append(
@@ -174,23 +229,23 @@ class LiveEvalLog:
                         },
                         "raw_response_text": call.raw_response_text,
                         "parsed_response": call.parsed_response,
+                        "error": call.error,
                     }
                     for call in adapter.calls
                 ],
                 **{key: _to_jsonable(value) for key, value in extra.items()},
             }
         )
+        self.write()
 
     def write(self) -> Path:
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        path = _LOG_DIR / f"{self._suite_name}-{timestamp}.json"
         # `default=str` is a defensive fallback, not the primary path: a
         # live-eval file passing a raw (non-`mode="json"`) `.model_dump()`
         # can still leak a `datetime`/`ObjectId` into `self._cases`. Without
-        # this, that one bad value crashes the whole `write()` at teardown
-        # -- discarding every case's log from a real, expensive (LLM + Mongo)
+        # this, that one bad value crashes the whole `write()` call --
+        # discarding every case's log from a real, expensive (LLM + Mongo)
         # run, found the hard way when a 47-minute run's entire log was lost
         # to exactly this.
-        path.write_text(json.dumps(self._cases, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
-        return path
+        self._path.write_text(json.dumps(self._cases, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        return self._path
