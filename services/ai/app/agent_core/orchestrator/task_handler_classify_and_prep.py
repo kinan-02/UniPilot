@@ -52,7 +52,14 @@ _OUTPUT_SCHEMA: dict[str, Any] = {
         "description": {"type": ["string", "null"]},
         "specific_instructions": {"type": ["array", "null"], "items": {"type": "string"}},
         "tone_language_notes": {"type": ["string", "null"]},
-        "context_requirements": {"type": ["array", "null"], "items": {"type": "string"}},
+        "context_requirements": {
+            "type": ["array", "null"],
+            "items": {"type": "string"},
+            "description": (
+                "Exact step_id strings copied verbatim from this step's own depends_on "
+                "(e.g. ['1a', '1c']) -- never a prose description of what the step needs."
+            ),
+        },
         "tool_grant_override": {"type": ["array", "null"], "items": {"type": "string"}},
     },
     "required": ["atomic", "role_if_atomic"],
@@ -87,11 +94,24 @@ def _classify_and_prep_contract() -> PromptContract:
             "step needs in order to run (goal, description, specific_instructions, etc)."
         ),
         instructions=[
-            "EXCEPTION to the non-atomic rules: The system provides high-level composite tools that can handle complex multi-step logic in one shot. If a step's objective naturally maps to one of these (e.g. 'audit graduation progress', 'check eligibility', 'simulate course disruption', 'compare plans', 'find requirement substitutes'), treat the step AS ATOMIC (`atomic=True`) and assign `role_if_atomic='simulation_planning'`, rather than defaulting to `atomic=False` and decomposing it.",
+            "EXCEPTION to the non-atomic rules -- CHECK THIS FIRST, before the 'several distinct "
+            "facts' rule below: The system provides high-level composite tools that can handle "
+            "complex multi-step logic in one shot. If a step's objective naturally maps to one of "
+            "these (e.g. 'audit graduation progress', 'check eligibility' -- including any "
+            "'can I take X' / 'am I eligible for X' / prerequisite-plus-corequisite-plus-"
+            "restriction determination, even when its success_criteria lists several sub-facts "
+            "like prerequisites AND corequisites AND restrictions -- 'simulate course "
+            "disruption', 'compare plans', 'find requirement substitutes'), treat the step AS "
+            "ATOMIC (`atomic=True`) and assign `role_if_atomic='simulation_planning'`, rather "
+            "than defaulting to `atomic=False` and decomposing it. This exception WINS over the "
+            "'several distinct facts' rule below whenever a matching composite tool exists -- a "
+            "multi-part success_criteria is exactly what these composites are built to satisfy in "
+            "one call, not a sign the step needs manual decomposition.",
             "If success_criteria describes several distinct facts, computations, or labeled "
             "sub-parts (e.g. 'cumulative GPA AND semester GPAs for the last two semesters AND "
-            "course/credit details, labeled by semester'), treat the step as NOT atomic -- one "
-            "specialist call is unlikely to reliably cover all of it.",
+            "course/credit details, labeled by semester') and NO composite tool from the "
+            "exception above covers it, treat the step as NOT atomic -- one specialist call is "
+            "unlikely to reliably cover all of it.",
             "role_if_atomic must be null whenever atomic is false -- a non-atomic step gets "
             "decomposed by the task handler's own nested planner, which decides roles for its own "
             "sub-steps separately; this call never assigns a role to a step it judged non-atomic.",
@@ -113,6 +133,13 @@ def _classify_and_prep_contract() -> PromptContract:
             "verdict risks silently returning an incomplete result.",
             "If atomic=false, the prep fields (goal, description, specific_instructions, etc.) "
             "are meaningless and should be null.",
+            "context_requirements must be a list of EXACT step_id strings copied verbatim from "
+            "the step's own depends_on -- e.g. [\"1a\", \"1c\"] -- never a prose description like "
+            "'the current semester from step 1a'. The subagent resolves this list by exact "
+            "string match against known step ids; a descriptive sentence will never match "
+            "anything and the subagent will silently receive none of the data it depends on. "
+            "Include every id from depends_on whose data this step actually needs (usually all "
+            "of them); omit only an id whose result is genuinely irrelevant to this step.",
         ],
         allowed_context_fields=None,
         output_schema_name=_OUTPUT_SCHEMA_NAME,
@@ -308,7 +335,21 @@ async def classify_and_prep_step(
             specific_instructions=specific_instructions,
             tone_language_notes=output.tone_language_notes or "",
         ),
-        context_requirements=output.context_requirements or list(step.depends_on),
+        # A live-eval run found the model reliably filling context_requirements
+        # with descriptive prose ("Current semester from step 1a.") instead of
+        # the exact step_id strings context_builder.py's `state.slice(...)`
+        # needs -- an exact-match lookup, so a prose "id" never matches
+        # anything and the subagent silently gets zero facts. Since the wrong
+        # value is non-empty, a plain `or` fallback never catches it. Every
+        # returned entry must be a real, known dependency id; anything else
+        # (prose, a hallucinated id) means the whole list is untrustworthy --
+        # step.depends_on it already declared correctly is always the safe,
+        # available ground truth to fall back to.
+        context_requirements=(
+            output.context_requirements
+            if output.context_requirements and set(output.context_requirements) <= set(step.depends_on)
+            else list(step.depends_on)
+        ),
         reasoning_params=ReasoningParamsOverride(),
         output_schema_name="generic_step_output_v1",
         output_schema={"type": "object"},

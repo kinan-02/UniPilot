@@ -46,7 +46,17 @@ class ExpressionNode(BaseModel):
     raw jsonschema output.
     """
 
-    const: float | int | None = None
+    # Widened from float|int only: a live-eval run found the Calculation
+    # role needing a plain equality comparison against a string constant
+    # (e.g. current_semester == "Spring 2025/2026") -- const's Pydantic
+    # type rejected the string outright, the repair loop then "fixed" it
+    # into a nonsensical `ref` (treating the literal string as a fact-name
+    # lookup), which failed too, and the SECOND repair attempt gave up by
+    # fabricating an always-true `{"const": 0} == {"const": 0}` placeholder
+    # -- silently producing a wrong answer rather than failing closed.
+    # `evaluate_expression`'s `==`/`!=` comparators already work generically
+    # on any comparable Python value; only this type annotation blocked it.
+    const: float | int | str | bool | None = None
     ref: str | None = None
     op: str | None = None
 

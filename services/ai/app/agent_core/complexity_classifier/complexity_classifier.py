@@ -76,6 +76,14 @@ def _complexity_classifier_contract() -> PromptContract:
             "or matching facts from different sources. "
             "Examples: 'am I eligible for course X', 'how am I progressing toward my "
             "requirements', 'what prerequisites am I missing'.",
+            "A request phrased as a single short question is not automatically 'low' -- "
+            "look at what actually has to be PRODUCED, not how tersely it's asked. A "
+            "temporal/scheduling-prediction question ('when will X be offered again', "
+            "'when can I take X next', 'what's the next semester X runs') is at least "
+            "'medium': it structurally requires determining today's date/current semester, "
+            "interpreting a course's offering-pattern text, AND computing forward from both "
+            "-- three dependent steps hiding behind one short sentence, not a single "
+            "lookup, even though no other data source or rule evaluation is mentioned.",
             "'high': The request involves hypothetical reasoning ('what if I fail X'), "
             "simulation of cascading effects, or comprehensive audit across many "
             "requirements. The answer requires projecting consequences, evaluating many "

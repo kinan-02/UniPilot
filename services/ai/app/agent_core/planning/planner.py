@@ -144,6 +144,12 @@ def _planner_contract() -> PromptContract:
             "batch, and do not include a step whose correct shape depends on a result you do not "
             "have yet. What must wait for a later round is only whatever step's SHAPE (not just its "
             "timing) genuinely depends on something that doesn't exist yet.",
+            "When a step needs 'the current semester', 'next semester', or any other fact "
+            "relative to today's date, scope it as a single Retrieval step calling the "
+            "get_current_semester tool directly -- never as a Retrieval step for 'today's "
+            "date' followed by a separate Calculation step to work out the semester from it. "
+            "apply_deterministic_rule has no date-range rule type, so a Calculation step given "
+            "only a raw date can never reliably determine which semester it falls into.",
             "A hypothetical or 'what if' framed request (e.g. 'what happens if I fail/drop X') "
             "almost always needs the student's own current academic state (completed courses, "
             "current plan, GPA, standing) fetched as one of the very first steps, in addition to "
@@ -236,7 +242,13 @@ def _planner_contract() -> PromptContract:
             "do not schedule another step that retries a cosmetically different phrasing of the same "
             "search or another approach to the same unperformable action -- that evidence should "
             "instead flow into the final answer (state what wasn't found, or that the action can't "
-            "be performed) or a clarification question, never a silent retry loop.",
+            "be performed) or a clarification question, never a silent retry loop. The same applies "
+            "when a prior search came back not empty but AMBIGUOUS -- several genuinely distinct "
+            "candidates with no clearly-dominant match (e.g. multiple same-named courses/tracks whose "
+            "relevance scores cluster close together) -- retrying with a rephrased query will not "
+            "resolve a genuine multi-way tie; set plan_status='blocked_needs_clarification' and ask "
+            "the student to disambiguate, listing the real candidates found, rather than spending "
+            "further steps trying different search phrasings against the same ambiguous result set.",
             "When implies_action_request=true, the step that proposes/declines the action for "
             "confirmation does not need to wait for every referenced entity to be fully resolved "
             "first -- if resolving a referenced entity (a course name, a degree program) is proving "

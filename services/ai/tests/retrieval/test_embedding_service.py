@@ -72,6 +72,36 @@ def test_cosine_similarity_identical_vectors():
     assert cosine_similarity([1.0, 0.0], [1.0, 0.0]) == pytest.approx(1.0)
 
 
+@patch("langchain_openai.OpenAIEmbeddings")
+def test_get_embeddings_client_sets_an_explicit_timeout(mock_cls, monkeypatch):
+    # Regression guard: `OpenAIEmbeddings` defaults `timeout` to `None`
+    # (unbounded). A live-eval run found this causing a turn's own
+    # asyncio.wait_for(300s) to elapse at 463s instead once embeddings were
+    # configured -- a stalled embeddings call has no timeout of its own to
+    # bound it.
+    monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
+    get_settings.cache_clear()
+    from app.retrieval.embedding_service import _EMBEDDING_TIMEOUT_SECONDS, get_embeddings_client
+
+    get_embeddings_client()
+
+    _, kwargs = mock_cls.call_args
+    assert kwargs["timeout"] == _EMBEDDING_TIMEOUT_SECONDS
+
+
+@patch("langchain_openai.OpenAIEmbeddings")
+def test_embed_query_cached_sets_an_explicit_timeout(mock_cls):
+    # Same regression guard as the `get_embeddings_client` version above,
+    # for the second (separately-constructed) OpenAIEmbeddings client this
+    # module builds.
+    from app.retrieval.embedding_service import _EMBEDDING_TIMEOUT_SECONDS, embed_query_cached
+
+    embed_query_cached("hello", "test-key", "https://example.com/v1", "test-model")
+
+    _, kwargs = mock_cls.call_args
+    assert kwargs["timeout"] == _EMBEDDING_TIMEOUT_SECONDS
+
+
 @patch("app.retrieval.embedding_service.get_embeddings_client")
 def test_build_semantic_score_map(mock_get_client, monkeypatch):
     monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")

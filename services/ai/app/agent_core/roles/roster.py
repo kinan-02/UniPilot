@@ -41,6 +41,13 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 # needs the current/next academic semester or another
                 # date-relative fact as its starting point.
                 "get_current_date",
+                # Bundles get_current_date with the academic calendar's own
+                # date ranges (interpret_text) into one call -- no other
+                # tool can compute "the current/next academic semester" at
+                # all (apply_deterministic_rule has no date-range rule
+                # type), which a live-eval run found causing a whole
+                # nested sub-plan to fail its success-check and give up.
+                "get_current_semester",
             ),
             default_reasoning_params=RoleReasoningDefaults(
                 risk_level="low", min_iterations=1, max_iterations=3, temperature=0.1, timeout=60.0

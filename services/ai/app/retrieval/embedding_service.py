@@ -14,6 +14,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# `OpenAIEmbeddings` defaults `request_timeout` (aliased `timeout`) to `None`
+# -- unbounded -- same gap `ChatLLMAdapter`'s own callers had (see
+# reasoning/llm_adapter.py, interpret_text.py, compose_answer.py). Found via
+# a live-eval run: once EMBEDDING_API_KEY was configured, a single stalled
+# embeddings call made a turn's own `asyncio.wait_for(..., timeout=300)`
+# elapse at 463s instead of cutting off at 300s -- because this call chain
+# is fully synchronous (see search_knowledge.py's `asyncio.to_thread` fix),
+# so the outer timeout can only fire once the blocking call itself finally
+# returns, however long that takes without a bound of its own.
+_EMBEDDING_TIMEOUT_SECONDS = 15.0
+
 
 @lru_cache(maxsize=1)
 def get_embeddings_client() -> OpenAIEmbeddings | None:
@@ -28,6 +39,7 @@ def get_embeddings_client() -> OpenAIEmbeddings | None:
         api_key=cfg.resolved_embedding_api_key(),
         base_url=cfg.resolved_embedding_base_url(),
         model=cfg.resolved_embedding_model(),
+        timeout=_EMBEDDING_TIMEOUT_SECONDS,
     )
 
 
@@ -52,6 +64,7 @@ def embed_query_cached(
         api_key=api_key,
         base_url=base_url,
         model=model,
+        timeout=_EMBEDDING_TIMEOUT_SECONDS,
     )
     try:
         vector = client.embed_query(query or "")

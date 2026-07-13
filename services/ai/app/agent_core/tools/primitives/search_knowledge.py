@@ -20,6 +20,7 @@ rather than invented fresh.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -59,7 +60,17 @@ async def run_search_knowledge(payload: SearchKnowledgeInput) -> ToolOutputEnvel
         return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
 
     try:
-        hits = engine.search_wiki(query, limit=limit)
+        # `search_wiki` (BM25 + optional embeddings via `embed_query_cached`)
+        # is fully synchronous all the way down to the blocking HTTP call an
+        # embeddings request makes -- called directly (no `to_thread`), it
+        # would freeze the entire asyncio event loop for as long as that
+        # call takes, and `asyncio.wait_for`'s cooperative cancellation
+        # can't interrupt a call that never yields control back to the loop
+        # (found live: a turn's own 300s timeout only fired at 463s, once
+        # the blocking call finally returned on its own). `to_thread` moves
+        # the whole synchronous chain off the event loop so a slow/stalled
+        # call blocks only its own thread, not every concurrent turn.
+        hits = await asyncio.to_thread(engine.search_wiki, query, limit=limit)
     except Exception as exc:  # noqa: BLE001 -- a tool must fail closed, never raise
         return ToolOutputEnvelope(ok=False, data=None, error=f"search_failed: {exc}")
 

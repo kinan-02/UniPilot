@@ -15,6 +15,11 @@ from typing import Any
 # same as "no usable answer," not as a genuine (if terse) response.
 GENERIC_BLANK_FIELD_PLACEHOLDER = "unknown"
 
+# A model asked for a numeric confidence very often gives a word instead
+# (e.g. top-level "confidence": "high" instead of 0.9) -- found alongside
+# the facts-list-vs-object mismatch this module also recovers from.
+_CONFIDENCE_WORD_MAP = {"high": 0.9, "medium": 0.6, "low": 0.3}
+
 
 def _strip_unknown_keys(value: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     if schema.get("additionalProperties") is not False:
@@ -42,6 +47,9 @@ def _coerce_type(value: Any, prop_schema: dict[str, Any]) -> Any:
         except ValueError:
             return value
     if prop_type == "number" and isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in _CONFIDENCE_WORD_MAP:
+            return _CONFIDENCE_WORD_MAP[lowered]
         try:
             return float(value.strip())
         except ValueError:
@@ -77,6 +85,106 @@ def _fuzzy_match_enum(value: Any, enum_values: list[Any]) -> Any:
     return value
 
 
+def _coerce_confidence_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in _CONFIDENCE_WORD_MAP:
+            return _CONFIDENCE_WORD_MAP[lowered]
+        try:
+            return max(0.0, min(1.0, float(lowered)))
+        except ValueError:
+            return None
+    return None
+
+
+def _flatten_fact_list_to_object(items: list[Any]) -> tuple[dict[str, Any], float | None, str | None]:
+    """A model asked for `facts` as a flat object plus a separate top-level
+    certainty_basis/confidence very often instead produces a LIST of
+    individually-confidence-tagged fact items (`{label, value, source,
+    confidence}` or `{fact, source, confidence}`, `confidence` sometimes a
+    word like "high" instead of a number, sometimes nested under a
+    `certainty` sub-object) -- a reasonable instinct when facts genuinely
+    carry different certainty levels, but not the shape the schema accepts.
+    Found via a live-eval run to be the single most common repair trigger:
+    53 of 96 schema-repair calls across every case that night were exactly
+    this one mismatch.
+
+    Converts the list into the required flat object, keyed by whatever
+    label-ish field each item has (never guessing which sub-field is "the"
+    value -- the whole item is preserved), and derives the missing
+    top-level certainty_basis/confidence from the items' own per-fact tags
+    via the same min-confidence-aggregation convention already used
+    elsewhere in this codebase (compose_answer.py's `_aggregate_certainty`).
+    """
+    flat: dict[str, Any] = {}
+    confidences: list[float] = []
+    bases: set[str] = set()
+
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            flat[f"fact_{index}"] = item
+            continue
+        key = item.get("label") or item.get("name") or item.get("fact") or f"fact_{index}"
+        flat[str(key)[:80]] = item
+
+        certainty = item.get("certainty") if isinstance(item.get("certainty"), dict) else {}
+        confidence = _coerce_confidence_value(item.get("confidence"))
+        if confidence is None:
+            confidence = _coerce_confidence_value(certainty.get("confidence"))
+        if confidence is not None:
+            confidences.append(confidence)
+
+        basis = item.get("basis") or certainty.get("basis")
+        if isinstance(basis, str) and basis:
+            bases.add(basis)
+
+    aggregate_confidence = min(confidences) if confidences else None
+    aggregate_basis = bases.pop() if len(bases) == 1 else ("llm_interpretation" if bases else None)
+    return flat, aggregate_confidence, aggregate_basis
+
+
+def _recover_facts_list_and_missing_certainty(
+    result: dict[str, Any], schema: dict[str, Any]
+) -> dict[str, Any]:
+    """Applies `_flatten_fact_list_to_object` to whichever object-typed
+    property received a list instead, and backfills top-level
+    certainty_basis/confidence from it when the model omitted those
+    required fields entirely (having pushed per-fact confidence into the
+    list items instead). Only touches keys the model left genuinely
+    absent -- never overwrites a certainty_basis/confidence the model did
+    provide, even if a facts-list is also present.
+    """
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+    required = set(schema.get("required") or [])
+    has_certainty_fields = "certainty_basis" in properties and "confidence" in properties
+
+    for key, prop_schema in properties.items():
+        if not isinstance(prop_schema, dict) or prop_schema.get("type") != "object":
+            continue
+        value = result.get(key)
+        if not isinstance(value, list):
+            continue
+        flat, agg_confidence, agg_basis = _flatten_fact_list_to_object(value)
+        result[key] = flat
+        if (
+            has_certainty_fields
+            and "certainty_basis" in required
+            and "confidence" in required
+            and "certainty_basis" not in result
+            and "confidence" not in result
+        ):
+            if agg_confidence is not None:
+                result["confidence"] = agg_confidence
+            if agg_basis is not None:
+                result["certainty_basis"] = agg_basis
+
+    return result
+
+
 def _normalize_generic_result(result: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """Schema-driven fallback normalizer for any `output_schema_name` without a
     bespoke `_normalize_*_result` function.
@@ -89,6 +197,7 @@ def _normalize_generic_result(result: dict[str, Any], schema: dict[str, Any]) ->
     normalizer function to get this baseline cleanup.
     """
     normalized = copy.deepcopy(result)
+    normalized = _recover_facts_list_and_missing_certainty(normalized, schema)
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
 
     for key, prop_schema in properties.items():

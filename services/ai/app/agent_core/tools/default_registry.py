@@ -14,6 +14,7 @@ from app.agent_core.tools.composites import (
     find_requirement_substitutes,
     get_course_profile,
     get_current_date,
+    get_current_semester,
     get_policy_answer,
     get_track_requirements,
     simulate_course_disruption,
@@ -55,6 +56,7 @@ _ALL_COMPOSITE_MODULES = (
     audit_graduation_progress,
     find_requirement_substitutes,
     get_current_date,
+    get_current_semester,
 )
 
 _ALL_DESCRIPTOR_MODULES = _ALL_PRIMITIVE_MODULES + _ALL_COMPOSITE_MODULES

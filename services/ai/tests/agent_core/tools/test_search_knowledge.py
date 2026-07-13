@@ -15,6 +15,9 @@ Query/behavior facts below were verified directly against
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 import pytest
 from pydantic import ValidationError
 
@@ -147,3 +150,43 @@ async def test_limit_is_clamped_to_hard_ceiling(use_real_academic_engine, monkey
     monkeypatch.setattr(use_real_academic_engine, "search_wiki", _spy)
     await run_search_knowledge(SearchKnowledgeInput(query="student rights", limit=999))
     assert captured["limit"] == 20
+
+
+async def test_search_wiki_does_not_block_the_event_loop(use_real_academic_engine, monkeypatch):
+    """`search_wiki` (BM25 + optional embeddings) is fully synchronous --
+    called directly rather than via `asyncio.to_thread`, a slow/blocking
+    call inside it would freeze the entire event loop, not just this one
+    coroutine. Found live: once embeddings were configured, a turn's own
+    300s `asyncio.wait_for` only fired at 463s, because a blocking call
+    never yields control back for the timeout to be observed. Proven here
+    by running a deliberately slow (blocking `time.sleep`, not
+    `asyncio.sleep`) `search_wiki` concurrently with a lightweight
+    coroutine that must still complete promptly if the slow call is
+    correctly off-loaded to a separate thread.
+    """
+
+    def _slow_blocking_search(*_args, **_kwargs):
+        time.sleep(0.3)
+        return []
+
+    monkeypatch.setattr(use_real_academic_engine, "search_wiki", _slow_blocking_search)
+
+    ticks: list[float] = []
+
+    async def _tick_every_50ms():
+        for _ in range(4):
+            await asyncio.sleep(0.05)
+            ticks.append(time.monotonic())
+
+    start = time.monotonic()
+    await asyncio.gather(
+        run_search_knowledge(SearchKnowledgeInput(query="student rights")),
+        _tick_every_50ms(),
+    )
+
+    # If search_wiki blocked the event loop, every tick would be delayed
+    # until after the 0.3s blocking call finished, landing all 4 ticks
+    # bunched up near the very end instead of spread every ~50ms.
+    assert len(ticks) == 4
+    assert ticks[0] - start < 0.2
+

@@ -16,6 +16,10 @@ _STEP = PlanStep(
 
 
 async def test_atomic_verdict_returns_the_role_and_prep(fake_llm_adapter_factory):
+    # context_requirements=["dep1"] is only trusted when "dep1" is actually
+    # one of the step's own declared depends_on -- see the dedicated
+    # context_requirements tests below for the mismatch/fallback cases.
+    step = _STEP.model_copy(update={"depends_on": ["dep1"]})
     adapter = fake_llm_adapter_factory([{
         "atomic": True,
         "role_if_atomic": "retrieval",
@@ -26,7 +30,7 @@ async def test_atomic_verdict_returns_the_role_and_prep(fake_llm_adapter_factory
     }])
 
     cls_out, prep_out = await classify_and_prep_step(
-        step=_STEP, dependency_context=[], llm_adapter=adapter, block_id="blk-1", user_id="u1"
+        step=step, dependency_context=[], llm_adapter=adapter, block_id="blk-1", user_id="u1"
     )
 
     assert cls_out.atomic is True
@@ -98,6 +102,62 @@ async def test_non_atomic_with_a_role_anyway_is_normalized_to_none(fake_llm_adap
 
     assert cls_out.atomic is False
     assert cls_out.role_if_atomic is None
+
+
+async def test_prose_context_requirements_falls_back_to_depends_on(fake_llm_adapter_factory):
+    # Regression guard for a live-eval-found bug: the model reliably filled
+    # context_requirements with a descriptive sentence ("Current semester
+    # from step 1a.") instead of the exact step_id "1a" -- context_builder.py
+    # resolves this list via an EXACT match against known step ids, so a
+    # prose "id" never matches anything and the subagent silently receives
+    # none of the data it depends on. Since the wrong value is non-empty, a
+    # plain `or` fallback never used to catch it; every returned entry must
+    # now be a real, known dependency id or the whole list is discarded in
+    # favor of the step's own already-correct depends_on.
+    step = _STEP.model_copy(update={"depends_on": ["1a", "1c"]})
+    adapter = fake_llm_adapter_factory([{
+        "atomic": True,
+        "role_if_atomic": "calculation_validation",
+        "context_requirements": ["Current semester label and year from step 1a."],
+    }])
+
+    _, prep_out = await classify_and_prep_step(
+        step=step, dependency_context=[], llm_adapter=adapter, block_id="blk-1", user_id="u1"
+    )
+
+    assert prep_out.context_requirements == ["1a", "1c"]
+
+
+async def test_context_requirements_subset_of_depends_on_is_trusted(fake_llm_adapter_factory):
+    # A step legitimately needing only SOME of its declared dependencies'
+    # data must not be forced back to the full depends_on list.
+    step = _STEP.model_copy(update={"depends_on": ["1a", "1c"]})
+    adapter = fake_llm_adapter_factory([{
+        "atomic": True,
+        "role_if_atomic": "calculation_validation",
+        "context_requirements": ["1c"],
+    }])
+
+    _, prep_out = await classify_and_prep_step(
+        step=step, dependency_context=[], llm_adapter=adapter, block_id="blk-1", user_id="u1"
+    )
+
+    assert prep_out.context_requirements == ["1c"]
+
+
+async def test_hallucinated_id_not_in_depends_on_falls_back(fake_llm_adapter_factory):
+    step = _STEP.model_copy(update={"depends_on": ["1a", "1c"]})
+    adapter = fake_llm_adapter_factory([{
+        "atomic": True,
+        "role_if_atomic": "calculation_validation",
+        "context_requirements": ["1a", "not_a_real_step_id"],
+    }])
+
+    _, prep_out = await classify_and_prep_step(
+        step=step, dependency_context=[], llm_adapter=adapter, block_id="blk-1", user_id="u1"
+    )
+
+    assert prep_out.context_requirements == ["1a", "1c"]
 
 
 async def test_uses_cheap_llm_call_parameters(fake_llm_adapter_factory):
