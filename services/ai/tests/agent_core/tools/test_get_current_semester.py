@@ -95,6 +95,12 @@ async def test_returns_both_current_and_next_semester_as_distinct_fields(use_rea
     assert result.data["today"] == today
     assert result.data["currentSemester"] == "Winter 2025/2026"
     assert result.data["nextSemester"] == "Spring 2025/2026"
+    # The machine YYYY-S codes are derived deterministically from the prose
+    # names (Winter=1, Spring=2, academic year = the first 4-digit year) --
+    # a live-eval run found the Planner otherwise adding an unsatisfiable
+    # "convert the name into a YYYY-S code" step and looping until timeout.
+    assert result.data["currentSemesterCode"] == "2025-1"
+    assert result.data["nextSemesterCode"] == "2025-2"
     assert result.certainty.basis == "llm_interpretation"
     # Today's actual date must have reached both interpretation prompts --
     # never a stale or fabricated one.
@@ -122,6 +128,9 @@ async def test_between_semesters_current_is_none_but_next_still_resolves(use_rea
     assert result.ok is True
     assert result.data["currentSemester"] == "none"
     assert result.data["nextSemester"] == "Spring 2025/2026"
+    # "none" has no season/year to parse -> code is None, not fabricated.
+    assert result.data["currentSemesterCode"] is None
+    assert result.data["nextSemesterCode"] == "2025-2"
 
 
 async def test_cannot_determine_either_fails_closed(use_real_academic_engine, monkeypatch):
@@ -136,3 +145,16 @@ async def test_cannot_determine_either_fails_closed(use_real_academic_engine, mo
 async def test_takes_no_arguments():
     schema = GetCurrentSemesterInput.model_json_schema()
     assert schema.get("required", []) == []
+
+
+def test_semester_name_to_code_parses_english_hebrew_and_all_three_terms():
+    from app.agent_core.tools.composites.get_current_semester import _semester_name_to_code
+
+    assert _semester_name_to_code("Winter 2025/2026") == "2025-1"
+    assert _semester_name_to_code("Spring Semester 2025/2026") == "2025-2"
+    assert _semester_name_to_code("Summer 2025/2026") == "2025-3"
+    assert _semester_name_to_code("סמסטר קיץ 2025/2026") == "2025-3"
+    # Unparseable / absent inputs never fabricate a code.
+    assert _semester_name_to_code("none") is None
+    assert _semester_name_to_code(None) is None
+    assert _semester_name_to_code("Spring") is None  # no year
