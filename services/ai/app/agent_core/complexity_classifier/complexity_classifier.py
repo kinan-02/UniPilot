@@ -76,6 +76,17 @@ def _complexity_classifier_contract() -> PromptContract:
             "or matching facts from different sources. "
             "Examples: 'am I eligible for course X', 'how am I progressing toward my "
             "requirements', 'what prerequisites am I missing'.",
+            "A policy/regulation question is 'low' ONLY when it asks for the policy's text or "
+            "rule in the general/abstract (e.g. 'what is the retake policy', 'how many retakes "
+            "are allowed') -- nothing about the student's own situation needs to be consulted "
+            "to answer it. The same kind of question is 'medium' the moment answering it USEFULLY "
+            "requires connecting that policy to the student's own specific circumstances (their "
+            "program, their semester, their situation) even if the request doesn't explicitly "
+            "say 'for me' -- e.g. 'what accommodations exist for reserve duty' implicitly needs "
+            "the accommodation policy cross-referenced against this student's own enrollment to "
+            "be a genuinely useful answer, not just a policy summary. When genuinely unsure "
+            "whether a policy question is purely general or implicitly student-specific, prefer "
+            "'medium' -- the earlier 'prefer the higher tier when in doubt' rule applies here too.",
             "A request phrased as a single short question is not automatically 'low' -- "
             "look at what actually has to be PRODUCED, not how tersely it's asked. A "
             "temporal/scheduling-prediction question ('when will X be offered again', "
