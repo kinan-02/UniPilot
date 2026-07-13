@@ -11,6 +11,7 @@ from app.agent_core.planning.state import (
     NestedStepTrace,
     PlanExecutionState,
     StateEntry,
+    ToolInvocationRecord,
 )
 
 
@@ -97,6 +98,71 @@ def test_merge_plan_graph_appends_execution_layers_across_invocations():
 
 def test_state_entry_nested_trace_defaults_to_none():
     assert _entry("s1").nested_trace is None
+
+
+def _entry_with_full_audit(step_id: str = "s1") -> StateEntry:
+    """A StateEntry carrying every observability/plumbing field populated --
+    a real result plus a tool audit trail and a nested sub-plan trace."""
+    return StateEntry(
+        entry_id=f"{step_id}-0",
+        step_id=step_id,
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        data={"facts": {"gpa": 3.4}},
+        certainty=CertaintyTag(basis="official_record", confidence=0.9),
+        assumptions=["assumed current term"],
+        warnings=["some_warning"],
+        tool_audit_trail=[
+            ToolInvocationRecord(tool_name="get_entity", arguments={"entity_type": "course"}, output_ok=True)
+        ],
+        produced_at=datetime.now(timezone.utc),
+        nested_trace=NestedExecutionTrace(
+            private_plan_id="p1:s1",
+            rounds_used=1,
+            entries=[
+                NestedStepTrace(
+                    entry_id="1a-0",
+                    step_id="1a",
+                    role="retrieval",
+                    status="succeeded",
+                    certainty=CertaintyTag(basis="official_record", confidence=0.9),
+                )
+            ],
+        ),
+    )
+
+
+def test_to_dependency_view_keeps_the_result_surface_a_dependent_actually_reads():
+    view = _entry_with_full_audit().to_dependency_view()
+    # The actual result surface downstream steps + Synthesis reason over.
+    assert view["step_id"] == "s1"
+    assert view["role"] == "retrieval"
+    assert view["status"] == "succeeded"
+    assert view["data"] == {"facts": {"gpa": 3.4}}
+    assert view["certainty"]["basis"] == "official_record"
+    assert view["certainty"]["confidence"] == 0.9
+    assert view["assumptions"] == ["assumed current term"]
+    assert view["warnings"] == ["some_warning"]
+
+
+def test_to_dependency_view_drops_observability_and_plumbing_never_consumed_downstream():
+    """`tool_audit_trail` and `nested_trace` are documented as observability-
+    only (never read by a downstream dependent's slicing); `entry_id`/
+    `produced_at`/`output_schema_name` are internal plumbing. None must reach
+    a dependent subagent's or the composer's prompt."""
+    view = _entry_with_full_audit().to_dependency_view()
+    for leaked in ("tool_audit_trail", "nested_trace", "entry_id", "produced_at", "output_schema_name"):
+        assert leaked not in view, f"{leaked} leaked into the downstream dependency view"
+
+
+def test_to_dependency_view_is_json_serializable():
+    """It feeds straight into a JSON prompt payload -- datetime/ObjectId-safe."""
+    import json
+
+    view = _entry_with_full_audit().to_dependency_view()
+    # Must not raise -- mode='json' guarantees a serializable projection.
+    json.dumps(view)
 
 
 def test_state_entry_nested_trace_round_trips_through_model_dump_and_validate():

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from app.agent_core.orchestrator.task_handler_classify_and_prep import classify_and_prep_step
+import logging
+
+from app.agent_core.orchestrator.task_handler_classify_and_prep import (
+    _resolve_context_requirements,
+    classify_and_prep_step,
+)
 from app.agent_core.planning.schemas import PlanStep
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 
@@ -143,6 +148,44 @@ async def test_context_requirements_subset_of_depends_on_is_trusted(fake_llm_ada
     )
 
     assert prep_out.context_requirements == ["1c"]
+
+
+def test_resolve_context_requirements_narrowing_is_honored_but_logged(caplog):
+    """The subset is still returned (behavior unchanged), but the previously
+    silent narrowing -- the one path that can starve a subagent of a declared
+    dependency -- now leaves a diagnosable trace naming exactly what it
+    dropped."""
+    step = _STEP.model_copy(update={"depends_on": ["1a", "1c"]})
+    with caplog.at_level(logging.DEBUG, logger="app.agent_core.orchestrator.task_handler_classify_and_prep"):
+        resolved = _resolve_context_requirements(["1c"], step)
+
+    assert resolved == ["1c"]
+    record = next(r for r in caplog.records if r.message == "classify_and_prep_context_narrowed_below_depends_on")
+    assert record.droppedContext == ["1a"]
+    assert record.keptContext == ["1c"]
+    assert record.stepId == "1a"
+
+
+def test_resolve_context_requirements_discard_falls_back_and_logs(caplog):
+    step = _STEP.model_copy(update={"depends_on": ["1a", "1c"]})
+    with caplog.at_level(logging.DEBUG, logger="app.agent_core.orchestrator.task_handler_classify_and_prep"):
+        resolved = _resolve_context_requirements(["prose that is not an id"], step)
+
+    assert resolved == ["1a", "1c"]
+    record = next(r for r in caplog.records if r.message == "classify_and_prep_context_discarded_using_depends_on")
+    assert record.rejectedContext == ["prose that is not an id"]
+    assert record.dependsOn == ["1a", "1c"]
+
+
+def test_resolve_context_requirements_full_depends_on_does_not_log_a_drop(caplog):
+    """Requesting exactly depends_on drops nothing, so it must NOT emit the
+    narrowing log -- the trace stays quiet on the common, correct path."""
+    step = _STEP.model_copy(update={"depends_on": ["1a", "1c"]})
+    with caplog.at_level(logging.DEBUG, logger="app.agent_core.orchestrator.task_handler_classify_and_prep"):
+        resolved = _resolve_context_requirements(["1a", "1c"], step)
+
+    assert resolved == ["1a", "1c"]
+    assert not [r for r in caplog.records if "narrowed" in r.message or "discarded" in r.message]
 
 
 async def test_hallucinated_id_not_in_depends_on_falls_back(fake_llm_adapter_factory):

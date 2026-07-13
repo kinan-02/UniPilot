@@ -274,6 +274,42 @@ def _user_id_instruction(user_id: str) -> str:
     )
 
 
+def _resolve_context_requirements(llm_context_requirements: list[str] | None, step: PlanStep) -> list[str]:
+    """Reconcile the prep LLM's requested context ids against the step's own
+    `depends_on` -- the authoritative dependency set the Planner produced.
+
+    Behavior (unchanged, kept identical to the former inline expression):
+    the LLM's list is honored ONLY when every id in it is a real `depends_on`
+    id; any prose/hallucinated id (a live-eval failure mode -- see the schema
+    field description) makes the whole list untrustworthy, so we fall back to
+    the full `depends_on`. A deliberate strict subset (the LLM dropping a
+    depends_on id it judged irrelevant) is allowed by design (the prompt
+    explicitly instructs it).
+
+    What's new is only observability: that strict-subset narrowing is the one
+    path that can legitimately starve a subagent of a declared dependency, and
+    the discard-and-fall-back path silently ignores what the model asked for.
+    Both were previously invisible; a `debug` log now makes either traceable
+    when a step's downstream result looks wrong, without changing any output.
+    """
+    depends_on = list(step.depends_on)
+    requested = list(llm_context_requirements or [])
+    if requested and set(requested) <= set(depends_on):
+        dropped = [dep for dep in depends_on if dep not in set(requested)]
+        if dropped:
+            logger.debug(
+                "classify_and_prep_context_narrowed_below_depends_on",
+                extra={"stepId": step.step_id, "keptContext": requested, "droppedContext": dropped},
+            )
+        return requested
+    if requested:
+        logger.debug(
+            "classify_and_prep_context_discarded_using_depends_on",
+            extra={"stepId": step.step_id, "rejectedContext": requested, "dependsOn": depends_on},
+        )
+    return depends_on
+
+
 def _deterministic_step_prep_fallback(step: PlanStep, *, user_id: str) -> StepPrepOutput:
     return StepPrepOutput(
         instruction_fields=StepInstructionFields(
@@ -344,12 +380,10 @@ async def classify_and_prep_step(
         # returned entry must be a real, known dependency id; anything else
         # (prose, a hallucinated id) means the whole list is untrustworthy --
         # step.depends_on it already declared correctly is always the safe,
-        # available ground truth to fall back to.
-        context_requirements=(
-            output.context_requirements
-            if output.context_requirements and set(output.context_requirements) <= set(step.depends_on)
-            else list(step.depends_on)
-        ),
+        # available ground truth to fall back to. `_resolve_context_requirements`
+        # keeps this exact behavior and additionally logs the two paths that
+        # used to reconcile silently (see its docstring).
+        context_requirements=_resolve_context_requirements(output.context_requirements, step),
         reasoning_params=ReasoningParamsOverride(),
         output_schema_name="generic_step_output_v1",
         output_schema={"type": "object"},

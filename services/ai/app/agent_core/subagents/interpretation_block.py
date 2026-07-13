@@ -359,7 +359,7 @@ async def run_interpretation_subagent(
         task_context={
             "rendered_prompt": context_package.rendered_prompt,
             "structured_fields": context_package.structured_fields.model_dump(),
-            "dependency_state": [entry.model_dump() for entry in context_package.dependency_state],
+            "dependency_state": [entry.to_dependency_view() for entry in context_package.dependency_state],
         },
         output_schema_name=_INTERPRETATION_OUTPUT_SCHEMA_NAME,
         output_schema=_INTERPRETATION_OUTPUT_SCHEMA,

@@ -40,7 +40,7 @@ def build_reasoning_block_input(
         task_context={
             "rendered_prompt": context_package.rendered_prompt,
             "structured_fields": context_package.structured_fields.model_dump(),
-            "dependency_state": [entry.model_dump(mode="json") for entry in context_package.dependency_state],
+            "dependency_state": [entry.to_dependency_view() for entry in context_package.dependency_state],
         },
         available_tools=_tool_specs(context_package.tool_grant, tool_registry),
         constraints=[*role.guardrails, *context_package.guardrails],

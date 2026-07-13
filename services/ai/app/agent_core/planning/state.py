@@ -78,6 +78,17 @@ class NestedExecutionTrace(BaseModel):
     tool_audit_trail: list[ToolInvocationRecord] = Field(default_factory=list)
 
 
+# Fields carried on a StateEntry purely for audit/observability
+# (`tool_audit_trail`, `nested_trace`) or internal plumbing (`entry_id`,
+# `output_schema_name`, `produced_at`) -- none is ever consumed by a
+# downstream dependent's slicing (see the `NestedStepTrace`/`nested_trace`
+# docstrings), so `to_dependency_view` strips them before an entry is
+# serialized into another step's or Synthesis's prompt.
+_DEPENDENCY_VIEW_EXCLUDED_FIELDS: frozenset[str] = frozenset(
+    {"entry_id", "output_schema_name", "produced_at", "tool_audit_trail", "nested_trace"}
+)
+
+
 class StateEntry(BaseModel):
     entry_id: str
     step_id: str
@@ -94,6 +105,22 @@ class StateEntry(BaseModel):
     # sub-plan rather than one direct specialist dispatch -- auxiliary
     # metadata, never read by any downstream step's own dependency slicing.
     nested_trace: NestedExecutionTrace | None = None
+
+    def to_dependency_view(self) -> dict[str, Any]:
+        """The bounded projection a downstream dependent step (or Synthesis)
+        actually receives in its prompt -- only the real result surface
+        (`step_id`, `role`, `status`, `data`, `certainty`, `assumptions`,
+        `warnings`), never this entry's own tool-call audit trail or private
+        nested sub-plan trace.
+
+        Those excluded fields are documented as observability-only and "never
+        consumed by downstream dependents"; a raw `model_dump()` was leaking
+        them into every dependent subagent's and the final composer's prompt,
+        bloating the heaviest per-turn payloads (worst at Synthesis, which
+        sees the whole state) with metadata nothing downstream reads. Uses
+        `mode="json"` so the projection drops straight into a JSON prompt
+        payload without any datetime/ObjectId serialization surprises."""
+        return self.model_dump(mode="json", exclude=set(_DEPENDENCY_VIEW_EXCLUDED_FIELDS))
 
 
 class PlanExecutionState(BaseModel):

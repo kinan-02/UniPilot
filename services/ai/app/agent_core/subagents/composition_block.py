@@ -135,7 +135,7 @@ async def run_composition_subagent(
         objective=context_package.structured_fields.goal,
         task_context={
             "instruction_fields": context_package.structured_fields.model_dump(),
-            "dependency_state": [entry.model_dump() for entry in context_package.dependency_state],
+            "dependency_state": [entry.to_dependency_view() for entry in context_package.dependency_state],
             "guardrails": context_package.guardrails,
             "rendered_prompt": context_package.rendered_prompt,
         },
