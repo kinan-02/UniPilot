@@ -152,6 +152,15 @@ def _planner_contract() -> PromptContract:
             "date' followed by a separate Calculation step to work out the semester from it. "
             "apply_deterministic_rule has no date-range rule type, so a Calculation step given "
             "only a raw date can never reliably determine which semester it falls into.",
+            "get_current_semester already returns BOTH the current AND the next semester, as "
+            "human names (currentSemester, nextSemester) AND machine YYYY-S codes "
+            "(currentSemesterCode, nextSemesterCode). So a request about 'next semester' needs "
+            "exactly ONE retrieval step calling get_current_semester -- never a second step to "
+            "'compute the next semester code' from the current one. There is no tool that can "
+            "turn a YYYY-S code into the following YYYY-S code (apply_deterministic_rule has no "
+            "such rule, and a Calculation step attempting the term-rollover/year-increment "
+            "arithmetic on the code string will fail its own check every round and loop). Take "
+            "nextSemesterCode straight from this one tool's output instead.",
             "A hypothetical or 'what if' framed request (e.g. 'what happens if I fail/drop X') "
             "almost always needs the student's own current academic state (completed courses, "
             "current plan, GPA, standing) fetched as one of the very first steps, in addition to "

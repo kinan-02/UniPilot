@@ -128,7 +128,23 @@ def _flatten_fact_list_to_object(items: list[Any]) -> tuple[dict[str, Any], floa
         if not isinstance(item, dict):
             flat[f"fact_{index}"] = item
             continue
-        key = item.get("label") or item.get("name") or item.get("fact") or f"fact_{index}"
+        # "key" belongs in this label-field list: the Retrieval agent
+        # routinely emits facts as [{key: "currentSemesterCode", value: ...}]
+        # (its own prompt tells it to label a fact by the tool's field name).
+        # Without recognizing "key", such an item fell through to a generic
+        # fact_N bucket -- a live-eval run showed a correct
+        # currentSemesterCode="2025-2" buried at facts.fact_0.value, which the
+        # downstream success-criteria check then could not recognize as
+        # satisfying "current semester code returned", false-negative-ing a
+        # correct result into an expensive replan loop. Ordered before "fact"
+        # because "fact" is often a whole sentence, "key" a clean short label.
+        key = (
+            item.get("label")
+            or item.get("name")
+            or item.get("key")
+            or item.get("fact")
+            or f"fact_{index}"
+        )
         flat[str(key)[:80]] = item
 
         certainty = item.get("certainty") if isinstance(item.get("certainty"), dict) else {}

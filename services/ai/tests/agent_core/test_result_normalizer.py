@@ -39,6 +39,23 @@ def test_flattens_label_value_fact_list_and_derives_confidence_via_min():
     assert normalized["facts"]["courseCode"]["value"] == "02340247"
 
 
+def test_flattens_items_keyed_by_their_key_field():
+    # The Retrieval agent routinely emits [{key: <field name>, value: ...}];
+    # a live-eval run showed a correct currentSemesterCode="2025-2" buried at
+    # facts.fact_0 because "key" wasn't recognized as the label field, which
+    # false-negatived the success-criteria check into an expensive replan.
+    result = {
+        "facts": [
+            {"key": "currentSemesterCode", "value": "2025-2", "source": "get_current_semester", "confidence": 1.0},
+        ]
+    }
+
+    normalized = normalize_structured_result(result, output_schema=_RETRIEVAL_LIKE_SCHEMA)
+
+    assert set(normalized["facts"].keys()) == {"currentSemesterCode"}
+    assert normalized["facts"]["currentSemesterCode"]["value"] == "2025-2"
+
+
 def test_flattens_fact_key_items_using_fact_text_as_the_dict_key():
     result = {
         "facts": [
