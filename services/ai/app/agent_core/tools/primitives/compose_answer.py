@@ -31,7 +31,7 @@ from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
-from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput
+from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor
 
@@ -40,6 +40,13 @@ TOOL_NAME = "compose_answer"
 COMPOSE_ANSWER_V1 = "compose_answer_v1"
 _OUTPUT_SCHEMA_NAME = "compose_answer_output_v1"
 _MAX_SCHEMA_REPAIR_ATTEMPTS = 2
+# Same fix as interpret_text.py's own _TIMEOUT_SECONDS: this primitive
+# builds its own `ChatLLMAdapter()` (see `run_compose_answer` below)
+# instead of receiving one threaded through from a caller, so nothing
+# bounds its LLM call unless set explicitly here -- see interpret_text.py
+# for the full root-cause explanation (a live-eval run found this exact gap
+# causing an unbounded hang).
+_TIMEOUT_SECONDS = 30.0
 
 _OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -252,6 +259,7 @@ async def run_compose_answer(payload: ComposeAnswerInput) -> ToolOutputEnvelope:
         output_schema_name=_OUTPUT_SCHEMA_NAME,
         output_schema=_OUTPUT_SCHEMA,
         prompt_contract_name=COMPOSE_ANSWER_V1,
+        llm_call_parameters=LLMCallParameters(timeout=_TIMEOUT_SECONDS),
     )
     output = await block.run(block_input)
 

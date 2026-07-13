@@ -36,6 +36,11 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 "get_course_profile",
                 "get_policy_answer",
                 "get_track_requirements",
+                # Pure, zero-cost utility (docs/agent/HIGHER_LEVEL_TOOLS.md)
+                # -- the only source of "today's date" for any step that
+                # needs the current/next academic semester or another
+                # date-relative fact as its starting point.
+                "get_current_date",
             ),
             default_reasoning_params=RoleReasoningDefaults(
                 risk_level="low", min_iterations=1, max_iterations=3, temperature=0.1, timeout=60.0

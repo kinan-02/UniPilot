@@ -32,6 +32,7 @@ _ALL_COMPOSITE_TOOL_NAMES = {
     "compare_plans",
     "audit_graduation_progress",
     "find_requirement_substitutes",
+    "get_current_date",
 }
 
 _ALL_TOOL_NAMES = _ALL_PRIMITIVE_TOOL_NAMES | _ALL_COMPOSITE_TOOL_NAMES

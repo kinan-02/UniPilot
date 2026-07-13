@@ -44,7 +44,7 @@ class _FakeLLMAdapter:
         max_retries: int | None = None,
         streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
-        self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt})
+        self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt, "timeout": timeout})
         if not self._responses:
             raise AssertionError("_FakeLLMAdapter exhausted its queued responses")
         response = self._responses.pop(0)
@@ -146,6 +146,23 @@ async def test_schema_invalid_then_repaired_succeeds(use_real_academic_engine, m
     assert result.ok is True
     assert result.data["answer"] == "repaired answer"
     assert len(fake.calls) == 2
+
+
+async def test_llm_call_is_bounded_by_an_explicit_timeout(use_real_academic_engine, monkeypatch):
+    # Regression guard: this primitive builds its own `ChatLLMAdapter()`
+    # rather than receiving one from a caller, so unlike every other
+    # reasoning-block call site in this codebase, nothing bounds its LLM
+    # call unless set explicitly on its own block_input. A live-eval run
+    # found this call hanging well past every other component's own
+    # timeout, invisible to logging, because no timeout was ever set here.
+    fake = _FakeLLMAdapter(
+        [{"status": "determined", "answer": "answer", "cited_section": "Intro", "confidence": 0.8}]
+    )
+    _patch_llm_adapter(monkeypatch, fake)
+
+    await run_interpret_text(InterpretTextInput(source="student-rights", question="anything"))
+
+    assert fake.calls[0]["timeout"] == 30.0
 
 
 async def test_schema_invalid_and_repair_exhausted_fails_closed(use_real_academic_engine, monkeypatch):

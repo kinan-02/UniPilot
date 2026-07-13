@@ -202,6 +202,19 @@ def _planner_contract() -> PromptContract:
             "Interpretation step to extract the program's total-credit requirement from its wiki "
             "page, and a Calculation step comparing the two -- never a single Retrieval step expected "
             "to return the remaining-credits count directly.",
+            "A single retrieval of one entity (e.g. get_entity on a student_profile, a course, a "
+            "program) returns that entity's ENTIRE record as one document -- every field on it "
+            "comes back together in one call. A student's degree program, year of study, academic "
+            "standing, and faculty are all fields on the ONE student_profile document, not separate "
+            "facts; a course's code, credit count, and prerequisite list are all fields on the ONE "
+            "course document. When this batch needs several such fields from the same entity, "
+            "produce exactly ONE retrieval step for that entity and let every downstream step that "
+            "needs one of its fields declare THAT single step as its dependency -- never a separate "
+            "step per field of the same record. (This does not apply to a field that is itself "
+            "DERIVED via interpretation or calculation, e.g. GPA/standing computed from raw grades, "
+            "or a requirement-fulfillment classification read from prose -- those still get their "
+            "own step per the instructions above; only genuinely structural fields of the same "
+            "record collapse into one step.)",
             "success_criteria and assumptions_to_verify must be concrete and checkable -- specific "
             "facts or conditions that can be verified true or false against the step's actual "
             "result, never a vague hedge like 'gather relevant information'.",

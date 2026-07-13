@@ -37,7 +37,7 @@ class _FakeLLMAdapter:
         max_retries: int | None = None,
         streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
-        self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt})
+        self.calls.append({"system_prompt": system_prompt, "user_prompt": user_prompt, "timeout": timeout})
         if not self._responses:
             raise AssertionError("_FakeLLMAdapter exhausted its queued responses")
         response = self._responses.pop(0)
@@ -211,3 +211,18 @@ async def test_facts_are_sent_to_the_llm(monkeypatch):
     sent_payload = json.loads(fake.calls[0]["user_prompt"])
     assert len(sent_payload["facts"]) == 2
     assert sent_payload["facts"][0]["data"]["courseNumber"] == "00440105"
+
+
+async def test_llm_call_is_bounded_by_an_explicit_timeout(monkeypatch):
+    # Regression guard: this primitive builds its own `ChatLLMAdapter()`
+    # rather than receiving one from a caller, so unlike every other
+    # reasoning-block call site in this codebase, nothing bounds its LLM
+    # call unless set explicitly on its own block_input. Same root cause as
+    # interpret_text.py's own version of this test (a live-eval run found
+    # this class of call hanging well past every other component's timeout).
+    fake = _FakeLLMAdapter([{"answer_text": "composed"}])
+    _patch_llm_adapter(monkeypatch, fake)
+
+    await run_compose_answer(ComposeAnswerInput(facts_with_certainty=[_OFFICIAL_FACT]))
+
+    assert fake.calls[0]["timeout"] == 30.0

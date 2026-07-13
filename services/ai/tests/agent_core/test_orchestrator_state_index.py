@@ -85,21 +85,63 @@ def test_build_state_index_includes_a_data_preview_when_data_is_non_empty():
 
 
 def test_build_state_index_truncates_an_oversized_data_preview():
+    # "x" * 500 was sized against the old 240-char cap -- bumped to exceed
+    # the current, deliberately larger _DATA_PREVIEW_MAX_CHARS (600, see
+    # state_index.py) so this still actually exercises truncation.
     entry = StateEntry(
         entry_id="s1-0",
         step_id="s1",
         role="retrieval",
         status="succeeded",
         output_schema_name="generic_step_output_v1",
-        data={"blob": "x" * 500},
+        data={"blob": "x" * 1000},
         certainty=CertaintyTag(basis="official_record", confidence=0.95),
         produced_at=datetime.now(timezone.utc),
     )
 
     summary = build_state_index([entry])[0].summary
 
-    assert len(summary) < 400
+    assert len(summary) < 700
     assert summary.endswith("...(truncated)")
+
+
+def test_build_state_index_never_truncates_away_a_field_name():
+    # Regression guard for a live-eval-found bug: a flat character-count
+    # truncation of the raw JSON dump silently dropped whichever fields
+    # sorted late alphabetically (e.g. "year_of_study" on a student profile
+    # whose earlier fields already filled the budget) -- the Planner could
+    # never tell that fact had already been fetched and kept re-scheduling
+    # it as a brand new step. Every key name must survive even when the
+    # overall preview is truncated.
+    entry = StateEntry(
+        entry_id="s1-0",
+        step_id="s1",
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        data={
+            "certainty_basis": "official_record",
+            "confidence": 1.0,
+            "facts": {
+                "catalog_year": 2025,
+                "current_semester": "2025-1",
+                "degree_id": "6a466a691f64e5fd20129474",
+                "faculty": "faculty-computer-science",
+                "institution": "technion",
+                "program_slug": "track-computer-science-general-4year",
+                "standing": "good",
+                "year_of_study": 2,
+            },
+        },
+        certainty=CertaintyTag(basis="official_record", confidence=1.0),
+        produced_at=datetime.now(timezone.utc),
+    )
+
+    summary = build_state_index([entry])[0].summary
+
+    assert "year_of_study" in summary
+    assert "program_slug" in summary
+    assert "catalog_year" in summary
 
 
 def test_build_state_index_includes_a_warnings_preview_when_failed():

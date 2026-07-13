@@ -29,7 +29,7 @@ from app.agent_core.planning.state import CertaintyTag, SourceRef
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
-from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput
+from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.primitives.get_entity import GetEntityInput, run_get_entity
 from app.agent_core.tools.registry import ToolDescriptor
@@ -40,6 +40,18 @@ INTERPRET_TEXT_V1 = "interpret_text_v1"
 _OUTPUT_SCHEMA_NAME = "interpret_text_output_v1"
 _MAX_SOURCE_CHARS = 6000
 _MAX_SCHEMA_REPAIR_ATTEMPTS = 2
+# This primitive builds its own `ChatLLMAdapter()` (see `run_interpret_text`
+# below) rather than receiving one threaded through from a caller-configured
+# `reasoning_config` -- so unlike every other reasoning-block call site in
+# this codebase (Boundary Handler, Planner, subagent roles), nothing bounds
+# its underlying LLM call unless set explicitly here. Without this, `timeout`
+# stays `None` all the way to the LangChain/OpenAI client, which falls back
+# to the SDK's own default -- long enough that a real network stall hangs
+# the entire turn well past any of this codebase's own per-component
+# timeouts, invisible to logging since it never goes through the caller's
+# adapter (found via a live-eval run: a 300s test-level cutoff was the only
+# thing that ever stopped a get_policy_answer call stuck in here).
+_TIMEOUT_SECONDS = 30.0
 
 _OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -249,6 +261,7 @@ async def run_interpret_text(payload: InterpretTextInput) -> ToolOutputEnvelope:
         output_schema_name=_OUTPUT_SCHEMA_NAME,
         output_schema=_OUTPUT_SCHEMA,
         prompt_contract_name=INTERPRET_TEXT_V1,
+        llm_call_parameters=LLMCallParameters(timeout=_TIMEOUT_SECONDS),
     )
     output = await block.run(block_input)
 
