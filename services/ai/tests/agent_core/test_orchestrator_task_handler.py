@@ -135,10 +135,14 @@ async def _run(
         return sub_dispatch[step.step_id].pop(0)
 
     async def fake_check(*, step, result, llm_adapter, block_id):
+        # check_success_criteria now returns SuccessCheckResult(bool,
+        # list[str]) -- tests here only care about the bool half, so wrap
+        # it with an empty unmet_criteria list rather than threading a
+        # third fixture arg through every call site.
         if step.step_id == top_step_id and not top_calls_used["check"]:
             top_calls_used["check"] = True
-            return top_check
-        return sub_check[step.step_id].pop(0)
+            return top_check, []
+        return sub_check[step.step_id].pop(0), []
 
     async def fake_build_next_plan_steps(*, planner_input, llm_adapter, block_id, invocation, prompt_contract_name, thinking_enabled=None, reasoning_effort=None, timeout=None):
         planner_inputs.append(planner_input)

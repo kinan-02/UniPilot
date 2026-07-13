@@ -24,7 +24,7 @@ async def test_no_llm_call_when_success_criteria_is_empty(fake_llm_adapter_facto
     step = PlanStep(step_id="1a", objective="do a thing", depends_on=[], success_criteria=[], assumptions_to_verify=[])
     adapter = fake_llm_adapter_factory([])  # exhausting would raise -- proves zero calls happen
 
-    met = await check_success_criteria(step=step, result=_result(), llm_adapter=adapter, block_id="blk-1")
+    met, _ = await check_success_criteria(step=step, result=_result(), llm_adapter=adapter, block_id="blk-1")
 
     assert met is True
     assert len(adapter.calls) == 0
@@ -37,7 +37,7 @@ async def test_criteria_met_returns_true(fake_llm_adapter_factory):
     )
     adapter = fake_llm_adapter_factory([{"criteria_met": True, "unmet_criteria": []}])
 
-    met = await check_success_criteria(step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1")
+    met, _ = await check_success_criteria(step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1")
 
     assert met is True
 
@@ -51,7 +51,7 @@ async def test_criteria_not_met_returns_false(fake_llm_adapter_factory):
         [{"criteria_met": False, "unmet_criteria": ["last two semester GPAs missing"]}]
     )
 
-    met = await check_success_criteria(step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1")
+    met, _ = await check_success_criteria(step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1")
 
     assert met is False
 
@@ -66,7 +66,7 @@ async def test_raising_adapter_fails_closed_to_false():
         async def complete_json(self, **kwargs):
             raise LLMAdapterError("boom")
 
-    met = await check_success_criteria(step=step, result=_result(), llm_adapter=RaisingAdapter(), block_id="blk-1")
+    met, _ = await check_success_criteria(step=step, result=_result(), llm_adapter=RaisingAdapter(), block_id="blk-1")
 
     assert met is False
 
@@ -80,6 +80,23 @@ async def test_hollow_criteria_met_true_with_unmet_listed_fails_closed(fake_llm_
         [{"criteria_met": True, "unmet_criteria": ["something still missing"]}] * 2
     )
 
-    met = await check_success_criteria(step=step, result=_result(), llm_adapter=adapter, block_id="blk-1")
+    met, _ = await check_success_criteria(step=step, result=_result(), llm_adapter=adapter, block_id="blk-1")
 
     assert met is False
+
+
+async def test_unmet_criteria_text_is_returned_alongside_the_verdict(fake_llm_adapter_factory):
+    step = PlanStep(
+        step_id="1a", objective="fetch GPA breakdown", depends_on=[],
+        success_criteria=["cumulative GPA AND last two semester GPAs"], assumptions_to_verify=[],
+    )
+    adapter = fake_llm_adapter_factory(
+        [{"criteria_met": False, "unmet_criteria": ["last two semester GPAs missing"]}]
+    )
+
+    met, unmet = await check_success_criteria(
+        step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1"
+    )
+
+    assert met is False
+    assert unmet == ["last two semester GPAs missing"]

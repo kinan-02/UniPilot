@@ -34,22 +34,25 @@ def _entry(status: str, **overrides) -> StateEntry:
 
 async def test_failed_status_triggers_replan(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([])
-    decision = await evaluate_step_result(_step(), _entry("failed"), llm_adapter=adapter, block_id="blk-1")
+    decision, unmet = await evaluate_step_result(_step(), _entry("failed"), llm_adapter=adapter, block_id="blk-1")
     assert decision == "replan"
+    assert unmet == []
     assert adapter.calls == []  # never reaches the success-criteria check at all
 
 
 async def test_partial_status_triggers_clarify(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([])
-    decision = await evaluate_step_result(_step(), _entry("partial"), llm_adapter=adapter, block_id="blk-1")
+    decision, unmet = await evaluate_step_result(_step(), _entry("partial"), llm_adapter=adapter, block_id="blk-1")
     assert decision == "clarify"
+    assert unmet == []
     assert adapter.calls == []  # never reaches the success-criteria check at all
 
 
 async def test_succeeded_status_with_no_success_criteria_continues_without_an_llm_call(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([])
-    decision = await evaluate_step_result(_step(), _entry("succeeded"), llm_adapter=adapter, block_id="blk-1")
+    decision, unmet = await evaluate_step_result(_step(), _entry("succeeded"), llm_adapter=adapter, block_id="blk-1")
     assert decision == "continue"
+    assert unmet == []
     assert adapter.calls == []
 
 
@@ -58,9 +61,10 @@ async def test_succeeded_status_continues_when_success_criteria_are_met(fake_llm
     step = _step(success_criteria=["a numeric GPA is returned"])
     entry = _entry("succeeded", data={"gpa": 3.5})
 
-    decision = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
+    decision, unmet = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
 
     assert decision == "continue"
+    assert unmet == []
 
 
 async def test_succeeded_status_downgrades_to_clarify_when_success_criteria_are_not_met(fake_llm_adapter_factory):
@@ -75,6 +79,7 @@ async def test_succeeded_status_downgrades_to_clarify_when_success_criteria_are_
     step = _step(success_criteria=["cumulative GPA and semester GPAs for the last two semesters"])
     entry = _entry("succeeded", data={"gpa": 3.5})
 
-    decision = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
+    decision, unmet = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
 
     assert decision == "clarify"
+    assert unmet == ["semester GPAs for the last two semesters"]

@@ -30,10 +30,46 @@ INSTITUTION CONTEXT:
 - Students may write in English or Hebrew; match their language unless they mix both (then prefer the dominant language).
 """.strip()
 
+# Found via live-eval: the Planner repeatedly wrote success_criteria for a
+# student_profile retrieval step naming plausible-sounding but nonexistent
+# fields (year_of_study, declared_tracks, degree_program,
+# cumulative_credits_earned) -- a criterion like that can NEVER be
+# satisfied no matter how many times the step is replanned, since the real
+# record simply has no such field. Same class of bug the
+# context_requirements prose-vs-step-id fix addressed: an unwinnable
+# criterion silently burns the whole replan budget instead of failing
+# fast. Keep this in sync with services/api/app/schemas/student_profile.py
+# and app/agent_core/tools/primitives/get_entity.py if either schema
+# changes.
+_ENTITY_SCHEMA_CONTEXT = """
+KNOWN MONGODB ENTITY SHAPES (get_entity) -- a step's success_criteria must name fields that
+actually exist on these shapes, not a plausible-sounding invented one; a criterion asking for a
+field that was never on the record can never be satisfied no matter how many times it's retried:
+- entity_type="student_profile" top-level fields: institutionId, facultyId, programType, degreeId,
+  catalogYear, currentSemesterCode, academicPath (nested: trackSlug, minors, specialPrograms,
+  graduatePrograms, specializations), preferences (nested: maxCreditsPerSemester).
+- entity_type="student_profile" does NOT have fields called year_of_study, declared_tracks,
+  degree_program, cumulative_credits_earned, or academic_standing -- those are either spelled
+  differently (a declared minor/track lives at academicPath.trackSlug / academicPath.minors, not
+  a top-level "declared_tracks") or are DERIVED values (year_of_study from catalogYear and
+  today's date, cumulative_credits_earned/academic_standing from summing completed_courses) that
+  require a separate calculation step, never a raw profile field.
+- entity_type="completed_courses" is a SEPARATE entity from student_profile, never embedded in
+  it -- fetch it as its own get_entity call, returned as {"completedCourses": [...]}. A step
+  needing both the student's declared program AND their completed-course history needs two
+  get_entity calls (or two facts merged from one retrieval round), not one.
+- Each item in completedCourses has: semesterCode, grade (Technion 0-100 numeric score, NOT a
+  letter grade), gradePoints (often null), creditsEarned (NOT "credits" or "credits_earned"),
+  attempt, source, and a nested metadata object holding metadata.courseNumber and
+  metadata.courseName. The real catalog course identity is metadata.courseNumber -- the
+  top-level courseId is an opaque internal id that does NOT join to the catalog, so cross-
+  reference a completed course to the catalog by metadata.courseNumber, never by courseId.
+""".strip()
+
 
 def build_shared_grounding_block() -> str:
     """Grounding + institution context every role's prompt contract inherits."""
-    return f"{_GROUNDING_RULES}\n\n{_TECHNION_CONTEXT}"
+    return f"{_GROUNDING_RULES}\n\n{_TECHNION_CONTEXT}\n\n{_ENTITY_SCHEMA_CONTEXT}"
 
 
 __all__ = ["build_shared_grounding_block"]

@@ -54,7 +54,17 @@ _MAX_REPAIR_ATTEMPTS = 2
 _TOOL_NAME = "apply_deterministic_rule"
 
 _OPERATOR_TABLE = """
-OPERATOR VOCABULARY (a leaf is either {"const": <number>} or {"ref": "<facts key>"}):
+OPERATOR VOCABULARY (a leaf is either {"const": <literal>} or {"ref": "<facts key>"}):
+- const is a LITERAL value you already know and are supplying yourself -- a number (3.5),
+  a string (e.g. "Spring Semester 2025/2026", a semester/status/category label you're comparing
+  against), or a boolean. Use const for any value that is NOT itself one of the keys in `facts`.
+- ref is the exact KEY NAME of an entry already present in `facts` -- never a literal value, and
+  never a value copied FROM inside a fact (e.g. if facts["current_semester"] holds the string
+  "Spring Semester 2025/2026", the literal "Spring Semester 2025/2026" itself is a const, not a
+  ref -- only "current_semester" is a valid ref).
+- A comparison like "is X equal to a specific known label/threshold" is {"op": "compare", "left":
+  {"ref": "X"}, "comparator": "==", "right": {"const": "the known label"}} -- the right side is
+  almost always a const, not a ref, unless you are comparing two DIFFERENT facts to each other.
 - sum:      {"op": "sum", "of": <node>, "field": "<name>", "filter": {<optional equality map>}}
 - count:    {"op": "count", "of": <node>, "filter": {<optional equality map>}}
 - average:  {"op": "average", "of": <node>, "field": "<name>", "filter": {<optional equality map>}}

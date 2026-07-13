@@ -20,7 +20,7 @@ CLOSED to `False` on any failure path.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import Field
 
@@ -30,6 +30,17 @@ from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegis
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.subagents.schemas import SubagentResult
+
+class SuccessCheckResult(NamedTuple):
+    """`unmet_criteria` is the LLM's own verbatim explanation of what's
+    missing -- callers must thread it into the next Planner invocation's
+    `monitor_flags`/`replan_reason` (or the nested Planner's `constraints`)
+    instead of discarding it, or a replan just repeats the same mistake
+    with no new information to act on."""
+
+    criteria_met: bool
+    unmet_criteria: list[str]
+
 
 TASK_HANDLER_SUCCESS_CHECK_V1 = "task_handler_success_check_v1"
 _OUTPUT_SCHEMA_NAME = "task_handler_success_check_output_v1"
@@ -211,9 +222,9 @@ async def check_success_criteria(
     result: SubagentResult,
     llm_adapter: LLMAdapter,
     block_id: str,
-) -> bool:
+) -> SuccessCheckResult:
     if not step.success_criteria:
-        return True  # nothing declared to check against -- no LLM call needed
+        return SuccessCheckResult(True, [])  # nothing declared to check against -- no LLM call needed
 
     block = SuccessCriteriaCheckReasoningBlock(llm_adapter=llm_adapter)
     output = await block.run(
@@ -234,11 +245,12 @@ async def check_success_criteria(
             ),
         )
     )
-    return bool(output.criteria_met)
+    return SuccessCheckResult(bool(output.criteria_met), list(output.unmet_criteria))
 
 
 __all__ = [
     "TASK_HANDLER_SUCCESS_CHECK_V1",
+    "SuccessCheckResult",
     "SuccessCriteriaCheckInput",
     "SuccessCriteriaCheckReasoningBlock",
     "build_task_handler_success_check_prompt_registry",

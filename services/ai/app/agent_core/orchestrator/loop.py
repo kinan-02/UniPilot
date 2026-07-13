@@ -129,7 +129,7 @@ async def run_plan_to_completion(
             for step_id, entry in zip(layer, entries):
                 state.append(entry)
                 step = steps_by_id[step_id]
-                decision = await evaluate_step_result(
+                decision, unmet_criteria = await evaluate_step_result(
                     step, entry, llm_adapter=llm_adapter, block_id=f"{plan_id}-{step.step_id}-monitor"
                 )
                 if decision == "replan":
@@ -137,7 +137,20 @@ async def run_plan_to_completion(
                     replan_reason = f"step {step.step_id} failed"
                     should_replan = True
                 if decision == "clarify":
-                    monitor_flags.append(f"step {step.step_id} partial or did not fully satisfy its success criteria")
+                    # Thread the success-check's own verbatim unmet_criteria
+                    # in, not just a generic phrase -- without this the
+                    # re-invoked Planner only knows SOMETHING was missing,
+                    # not WHAT, and tends to reissue an equivalent step that
+                    # fails the identical way (see task_handler_success_check
+                    # .py's SuccessCheckResult docstring).
+                    if unmet_criteria:
+                        detail = "; ".join(unmet_criteria)
+                        monitor_flags.append(f"step {step.step_id} did not fully satisfy its success criteria: {detail}")
+                        replan_reason = f"step {step.step_id} still needs: {detail}"
+                    else:
+                        monitor_flags.append(
+                            f"step {step.step_id} partial or did not fully satisfy its success criteria"
+                        )
             if should_replan:
                 # Let the whole in-flight layer finish (it already has, by
                 # the time we get here) but never start the NEXT layer once

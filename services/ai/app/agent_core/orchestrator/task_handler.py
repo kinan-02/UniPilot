@@ -102,17 +102,21 @@ async def run_task_handler(
             unresolvable_registry=unresolvable_registry,
             reasoning_config=reasoning_config,
         )
-        criteria_met = result.status == "succeeded" and await check_success_criteria(
-            step=step,
-            result=result,
-            llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-{step.step_id}-success-check",
-        )
+        unmet_criteria: list[str] = []
+        criteria_met = False
+        if result.status == "succeeded":
+            criteria_met, unmet_criteria = await check_success_criteria(
+                step=step,
+                result=result,
+                llm_adapter=llm_adapter,
+                block_id=f"{plan_id}-{step.step_id}-success-check",
+            )
         if criteria_met:
             return _entry_from_atomic_result(step=step, role=role_name, result=result, state=state)
         fallback_reason = "fast_path_inadequate"
     else:
         fallback_reason = "classified_non_atomic"
+        unmet_criteria = []
 
     private_state, clarification_question, rounds_used, rounds_exhausted = await _run_nested_subplan(
         step=step,
@@ -127,6 +131,7 @@ async def run_task_handler(
         tool_call_cache=tool_call_cache,
         unresolvable_registry=unresolvable_registry,
         reasoning_config=reasoning_config,
+        fast_path_unmet_criteria=unmet_criteria,
     )
     return _entry_from_nested_subplan(
         step=step,
@@ -249,6 +254,7 @@ async def _run_nested_subplan(
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
     reasoning_config: TurnReasoningConfig | None = None,
+    fast_path_unmet_criteria: list[str] | None = None,
 ) -> tuple[PlanExecutionState, str | None, int, bool]:
     """The task handler's own private mini-orchestrator: mirrors
     `orchestrator/loop.py::run_plan_to_completion`'s own invoke-repeatedly
@@ -257,7 +263,14 @@ async def _run_nested_subplan(
     sub-step that itself comes back non-atomic (or fails its own
     success-criteria check) becomes a failed `StateEntry`, which feeds
     `monitor_flags`/`replan_reason` into the NEXT round of this SAME
-    already-active nested Planner instead."""
+    already-active nested Planner instead.
+
+    `fast_path_unmet_criteria` is whatever the atomic fast-path's own
+    success-check found missing (empty if the step was classified
+    non-atomic outright, skipping the fast path entirely) -- surfaced to
+    round 1 of the nested Planner alongside `step.success_criteria` so it
+    starts by addressing the SPECIFIC known gap, not by re-deriving the
+    step from scratch and risking the identical omission."""
     private_state = PlanExecutionState(plan_id=f"{parent_state.plan_id}:{step.step_id}")
     # Pre-seed known_global_ids for rewrite_step_ids: a nested sub-step may
     # legitimately depend on one of the PARENT step's own dependencies (it's
@@ -285,6 +298,10 @@ async def _run_nested_subplan(
     rounds_used = 0
     round_monitor_flags: list[str] = []
     round_replan_reason: str | None = None
+    if fast_path_unmet_criteria:
+        detail = "; ".join(fast_path_unmet_criteria)
+        round_monitor_flags = [f"the atomic fast path already tried this and was missing: {detail}"]
+        round_replan_reason = f"still needs: {detail}"
 
     for invocation in range(1, max_rounds + 1):
         rounds_used = invocation
@@ -336,10 +353,24 @@ async def _run_nested_subplan(
                 private_state.append(entry)
                 if entry.status != "succeeded":
                     replan_needed = True
-                    round_monitor_flags.append(
-                        f"step {entry.step_id} could not be completed atomically or failed its success-criteria check"
-                    )
-                    round_replan_reason = f"step {entry.step_id} needs finer-grained decomposition"
+                    # entry.warnings carries the check's own verbatim
+                    # unmet_criteria right after the marker string, when
+                    # present -- surface that instead of a generic phrase
+                    # (see _dispatch_nested_sub_step).
+                    marker = "nested_sub_step_success_criteria_not_met"
+                    if marker in entry.warnings:
+                        unmet = entry.warnings[entry.warnings.index(marker) + 1 :]
+                    else:
+                        unmet = []
+                    if unmet:
+                        detail = "; ".join(unmet)
+                        round_monitor_flags.append(f"step {entry.step_id} still needs: {detail}")
+                        round_replan_reason = f"step {entry.step_id} still needs: {detail}"
+                    else:
+                        round_monitor_flags.append(
+                            f"step {entry.step_id} could not be completed atomically or failed its success-criteria check"
+                        )
+                        round_replan_reason = f"step {entry.step_id} needs finer-grained decomposition"
 
         if replan_needed:
             continue
@@ -396,14 +427,26 @@ async def _dispatch_nested_sub_step(
         unresolvable_registry=unresolvable_registry,
         reasoning_config=reasoning_config,
     )
-    criteria_met = result.status == "succeeded" and await check_success_criteria(
-        step=sub_step,
-        result=result,
-        llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}-success-check",
-    )
+    unmet_criteria: list[str] = []
+    criteria_met = False
+    if result.status == "succeeded":
+        criteria_met, unmet_criteria = await check_success_criteria(
+            step=sub_step,
+            result=result,
+            llm_adapter=llm_adapter,
+            block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}-success-check",
+        )
     status = result.status if criteria_met else "partial"
-    warnings = result.warnings if criteria_met else [*result.warnings, "nested_sub_step_success_criteria_not_met"]
+    # unmet_criteria (verbatim from the check) rides in warnings, not just
+    # the generic "not met" marker -- the round loop below surfaces it into
+    # round_replan_reason so the NEXT round of this same nested Planner
+    # knows exactly what was missing instead of reissuing an equivalent
+    # sub-step blind.
+    warnings = (
+        result.warnings
+        if criteria_met
+        else [*result.warnings, "nested_sub_step_success_criteria_not_met", *unmet_criteria]
+    )
     return StateEntry(
         entry_id=f"{sub_step.step_id}-{len(private_state.entries)}",
         step_id=sub_step.step_id,
@@ -448,11 +491,16 @@ def _nested_planner_input(
         user_goal=step.objective,
         original_user_message=original_user_message,
         sub_asks=[],
-        # Constraints stay empty: the top-level Planner already threads any
-        # constraint bearing on this step into the step's own `objective`
-        # text at plan-creation time (its own prompt contract's explicit
-        # instruction) -- no separate pass-through is needed here.
-        constraints=[],
+        # step.success_criteria (NOT the top-level Planner's own generic
+        # "thread constraints into objective text" convention -- see the
+        # main Planner prompt) is what orchestrator/monitor.py's OUTER
+        # check actually verifies the nested subplan's aggregated result
+        # against once this returns. Without it here, the nested Planner
+        # only sees step.objective/assumptions_to_verify and has no way to
+        # know it must produce sub-steps covering every part of
+        # success_criteria -- it was aiming at a criteria it invented
+        # itself, then failing the real one on the outside every time.
+        constraints=list(step.success_criteria),
         open_questions=list(step.assumptions_to_verify),
         implies_action_request=False,
         state_index=[*build_state_index(dependency_entries), *build_state_index(private_state.entries)],

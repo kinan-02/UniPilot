@@ -80,6 +80,16 @@ def _retrieval_round_contract() -> PromptContract:
             "computed or structural fact in your output without it coming from a tool call result "
             "already present in task_context or requested via tool_requests.",
             "Return facts with their source and confidence, never bare prose.",
+            "When a tool result already returns a clean, directly-usable value (a semester "
+            "identifier, a course code, a GPA, a date, an enum-like label), use that exact value "
+            "as the fact's value and a short semantic label matching the tool's own field name "
+            "(e.g. 'currentSemester', 'courseCode') as its key. Never paraphrase a clean "
+            "structured value into a full natural-language sentence, and never use the sentence "
+            "itself as the fact's key -- a downstream success-criteria check or calculation step "
+            "needs the exact raw value to match or compute against, and a prose rewrite (e.g. "
+            "turning currentSemester='Spring Semester 2025/2026' into 'The current academic "
+            "semester is Spring Semester 2025/2026.') silently discards that shape even though it "
+            "reads as a fully valid answer to a human.",
             "If a granted tool's own name/description already bundles the multi-step chain you'd "
             "otherwise assemble by hand (e.g. get_course_profile instead of get_entity followed by "
             "several traverse_relationship calls; get_track_requirements instead of get_entity "

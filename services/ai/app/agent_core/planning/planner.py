@@ -28,6 +28,7 @@ from app.agent_core.planning.schemas import (
     PlannerReasoningBlockOutput,
     PlanStepDraft,
 )
+from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
@@ -98,6 +99,7 @@ def _planner_contract() -> PromptContract:
         name=PLANNER_V1,
         version="1.0.0",
         role_prompt=(
+            f"{build_shared_grounding_block()}\n\n"
             "You are the Planner for the UniPilot Agent, a Technion academic advising assistant. "
             "You are invoked repeatedly over the course of one turn. Each time, given Request "
             "Understanding's structured breakdown of the student's request plus everything the plan "
