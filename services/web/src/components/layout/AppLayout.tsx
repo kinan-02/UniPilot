@@ -44,10 +44,10 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen lg:flex">
-      <aside className="border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-e">
+    <div className="agent-mesh-bg min-h-screen lg:flex text-[var(--color-text)]">
+      <aside className="agent-glass m-4 rounded-[var(--radius-2xl)] border border-[var(--color-border)] shadow-card lg:fixed lg:inset-y-4 lg:flex lg:w-64 lg:flex-col z-20">
         <div className="flex items-center gap-3 px-6 py-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-primary)] text-sm font-bold text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-xl)] bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-accent)] shadow-glow text-sm font-bold text-white transition-transform hover:scale-105">
             UP
           </div>
           <div className="min-w-0 flex-1">
@@ -73,10 +73,10 @@ export function AppLayout() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  'flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                  'flex shrink-0 items-center gap-2.5 rounded-[var(--radius-xl)] px-3 py-2.5 text-sm font-medium transition-all duration-300',
                   isActive
-                    ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                    : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]',
+                    ? 'bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary-light)] text-white shadow-glow translate-x-1'
+                    : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] hover:shadow-soft',
                 )
               }
             >
@@ -89,21 +89,21 @@ export function AppLayout() {
         <div className="hidden border-t border-[var(--color-border)] p-4 lg:block">
           <LanguageSwitcher className="mb-3" />
           <p className="truncate text-xs text-[var(--color-text-muted)]">{user?.email}</p>
-          <Button variant="ghost" size="sm" className="mt-2 w-full justify-start" onClick={handleLogout}>
+          <Button variant="ghost" size="sm" className="mt-2 w-full justify-start hover:bg-[var(--color-danger)] hover:text-white transition-colors" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
             {t('nav.signOut')}
           </Button>
         </div>
       </aside>
 
-      <main className="flex-1 lg:ps-64">
-        <div className="border-b border-[var(--color-border)] px-4 py-3 lg:hidden">
+      <main className="flex-1 lg:ps-[18rem] pt-4 lg:pt-0">
+        <div className="agent-glass m-4 rounded-[var(--radius-xl)] px-4 py-3 lg:hidden">
           <LanguageSwitcher />
         </div>
         <div
           className={cn(
-            'mx-auto px-3 py-6 sm:px-4 lg:px-6',
-            isPlannerWorkspace ? 'max-w-none' : 'max-w-6xl py-8 sm:px-6 lg:px-8',
+            'animate-fade-in mx-auto px-4 py-6 sm:px-6 lg:px-8',
+            isPlannerWorkspace ? 'max-w-none' : 'max-w-6xl py-8',
           )}
         >
           <Outlet />

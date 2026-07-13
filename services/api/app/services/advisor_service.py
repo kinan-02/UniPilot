@@ -6,7 +6,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.clients.ai_advisor_client import AiAdvisorClientError, ask_advisor
+from app.clients.ai_advisor_client import AiAdvisorClientError, ask_advisor, stream_advisor
 from app.config import Settings, get_settings
 
 
@@ -47,3 +47,18 @@ async def ask_advisor_for_user(
             "retrievalStatus": (raw.get("retrieval_agent") or {}).get("status"),
         },
     }
+
+async def stream_advisor_for_user(
+    user_id: str,
+    question: str,
+    *,
+    settings: Settings | None = None,
+) -> Any:
+    settings = settings or get_settings()
+    # We yield chunks directly from the client stream generator
+    async for chunk in stream_advisor(
+        question=question,
+        user_id=user_id,
+        settings=settings,
+    ):
+        yield chunk

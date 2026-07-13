@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "wikiRoot": "/Users/tymoribrahim/Desktop/UniPilot/services/data-engineering/data/catalog_valut/catalog_valut/wiki",
+  "model": "MB5R2CF-azure/text-embedding-3-small",
+  "entryCount": 12586,
+  "savedAt": "2026-07-12T15:04:22.151198+00:00",
+  "compactPath": "/Users/tymoribrahim/Desktop/UniPilot/data/cache/wiki_embedding_index.compact.pkl.gz",
+  "compactSizeBytes": 49477975,
+  "backupPath": null
+}

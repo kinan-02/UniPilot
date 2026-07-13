@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -60,3 +60,29 @@ async def ask_advisor(
         )
 
     return data
+
+async def stream_advisor(
+    *,
+    question: str,
+    user_id: str,
+    settings: Settings | None = None,
+) -> AsyncGenerator[str, None]:
+    settings = settings or get_settings()
+    url = f"{settings.resolved_ai_service_url()}/advise/stream"
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    token = settings.resolved_internal_service_token()
+    if token:
+        headers["X-Internal-Service-Token"] = token
+
+    timeout = httpx.Timeout(settings.ai_advisor_timeout_seconds)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST",
+            url,
+            headers=headers,
+            json={"question": question, "user_id": user_id},
+        ) as response:
+            if response.status_code >= 400:
+                raise AiAdvisorClientError(status_code=response.status_code, detail="Streaming request failed")
+            async for chunk in response.aiter_text():
+                yield chunk

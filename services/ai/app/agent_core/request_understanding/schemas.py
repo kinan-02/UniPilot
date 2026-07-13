@@ -37,8 +37,8 @@ class RequestUnderstandingReasoningBlockOutput(BaseReasoningBlockOutput):
     `True`: `sub_asks` (every distinct thing asked), `constraints` (boundary
     conditions on the answer), `open_questions` (genuine ambiguities noticed
     but not resolved -- RU still never asks the user directly), and
-    `implies_action_request` are populated; `decline_message` is `None`.
-    When `False`: only `decline_message` is populated, everything else
+    `implies_action_request` are populated; `decline_reason` is `None`.
+    When `False`: only `decline_reason` is populated, everything else
     resets to empty/`False`.
 
     `user_goal` is **not** LLM output -- it's deterministically rendered
@@ -51,7 +51,7 @@ class RequestUnderstandingReasoningBlockOutput(BaseReasoningBlockOutput):
 
     in_scope: bool
     user_goal: str | None = None
-    decline_message: str | None = None
+    decline_reason: str | None = None
     sub_asks: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)

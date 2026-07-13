@@ -38,7 +38,7 @@ REQUEST_UNDERSTANDING_OUTPUT_SCHEMA: dict[str, Any] = {
         "constraints": {"type": "array", "items": {"type": "string"}},
         "open_questions": {"type": "array", "items": {"type": "string"}},
         "implies_action_request": {"type": "boolean"},
-        "decline_message": {"type": ["string", "null"]},
+        "decline_reason": {"type": ["string", "null"]},
         "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
     },
     "required": [
@@ -47,7 +47,7 @@ REQUEST_UNDERSTANDING_OUTPUT_SCHEMA: dict[str, Any] = {
         "constraints",
         "open_questions",
         "implies_action_request",
-        "decline_message",
+        "decline_reason",
         "confidence",
     ],
     "additionalProperties": False,
@@ -93,9 +93,9 @@ def _request_understanding_contract() -> PromptContract:
             "clarifying question yourself, which this layer never does; clarification is "
             "only ever the Planner's job.",
             "When in_scope=true, sub_asks must list every distinct thing asked as its own "
-            "self-contained string, and decline_message must be null.",
+            "self-contained string, and decline_reason must be null.",
             "When in_scope=false, sub_asks/constraints/open_questions must be empty and "
-            "decline_message must be a short, polite, direct explanation.",
+            "decline_reason must be a short internal string summarizing why it was declined.",
             "constraints are boundary conditions that limit what a valid answer can look "
             "like (e.g. 'must graduate within one year', 'no summer courses') -- they are "
             "never just a rephrasing of a sub_ask. Example: sub_ask 'recommend courses "
@@ -120,6 +120,12 @@ def _request_understanding_contract() -> PromptContract:
             "-- is NOT an action request even though it's phrased as a request for help: "
             "set implies_action_request=false for these. Only set it true when the "
             "request itself names a concrete state-changing operation.",
+            "CAPABILITY CHECK: You must evaluate if an action requested by the user is actually within your capabilities. "
+            "You CAN: advise on courses, read academic policies, audit degree progress, check eligibility, and simulate course disruptions. "
+            "You CANNOT: perform administrative state changes in official university systems (e.g., you cannot register/enroll a student in a course, grant prerequisite waivers, approve exceptions, or process payments). "
+            "If the user asks you to perform an action you DO NOT have the capability to perform: "
+            "1. If it is the ONLY thing they asked for, set in_scope=false and provide a decline_reason explaining the limitation. "
+            "2. If it is a mixed request (e.g. 'am I eligible? if not, waive it'), set in_scope=true and include a sub_ask that explicitly instructs the planner to explain this limitation (e.g. 'Explain to the student that you do not have the administrative capability to grant prerequisite waivers'). Do NOT silently drop it, and do NOT pass it as a normal goal for the planner to solve.",
             "Confidence reflects how certain you are of BOTH the in_scope decision and the "
             "sub_asks/constraints breakdown. Reserve 0.9+ for genuinely unambiguous cases. "
             "A request that is academic-adjacent but asks for a non-advising service (e.g. "
@@ -255,7 +261,7 @@ class RequestUnderstandingReasoningBlock(BaseReasoningBlock):
         constraints = [str(item) for item in (normalized.get("constraints") or []) if str(item).strip()]
         open_questions = [str(item) for item in (normalized.get("open_questions") or []) if str(item).strip()]
         implies_action_request = bool(normalized.get("implies_action_request", False))
-        decline_message = normalized.get("decline_message")
+        decline_reason = normalized.get("decline_reason")
         try:
             confidence = float(normalized.get("confidence", 0.7))
         except (TypeError, ValueError):
@@ -268,8 +274,8 @@ class RequestUnderstandingReasoningBlock(BaseReasoningBlock):
         # usable-looking but empty result.
         if in_scope and not sub_asks:
             return self._fallback_output(block_input, extra_warning="in_scope_true_without_usable_sub_asks")
-        if not in_scope and not (isinstance(decline_message, str) and decline_message.strip()):
-            return self._fallback_output(block_input, extra_warning="in_scope_false_without_usable_decline_message")
+        if not in_scope and not (isinstance(decline_reason, str) and decline_reason.strip()):
+            return self._fallback_output(block_input, extra_warning="in_scope_false_without_usable_decline_reason")
 
         return RequestUnderstandingReasoningBlockOutput(
             status="completed",
@@ -278,7 +284,7 @@ class RequestUnderstandingReasoningBlock(BaseReasoningBlock):
             confidence=confidence,
             in_scope=in_scope,
             user_goal=_render_user_goal(sub_asks) if in_scope else None,
-            decline_message=decline_message if not in_scope else None,
+            decline_reason=decline_reason if not in_scope else None,
             sub_asks=sub_asks if in_scope else [],
             constraints=constraints if in_scope else [],
             open_questions=open_questions if in_scope else [],
@@ -305,7 +311,7 @@ class RequestUnderstandingReasoningBlock(BaseReasoningBlock):
             warnings=warnings,
             in_scope=True,
             user_goal=_render_user_goal(fallback_sub_asks),
-            decline_message=None,
+            decline_reason=None,
             sub_asks=fallback_sub_asks,
             constraints=[],
             open_questions=[],

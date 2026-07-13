@@ -23,7 +23,7 @@ _REQUEST_UNDERSTANDING_RESPONSE = {
     "constraints": [],
     "open_questions": [],
     "implies_action_request": False,
-    "decline_message": None,
+    "decline_reason": None,
     "confidence": 0.85,
 }
 
@@ -33,8 +33,13 @@ _OUT_OF_SCOPE_RESPONSE = {
     "constraints": [],
     "open_questions": [],
     "implies_action_request": False,
-    "decline_message": "I can only help with Technion academic advising questions.",
+    "decline_reason": "I can only help with Technion academic advising questions.",
     "confidence": 0.9,
+}
+
+_BOUNDARY_HANDLER_RESPONSE = {
+    "answer_text": "I can only help with Technion academic advising questions.",
+    "confidence": 0.95,
 }
 
 
@@ -81,9 +86,9 @@ async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_f
 
 
 async def test_out_of_scope_request_never_reaches_the_planner(fake_llm_adapter_factory):
-    # Only one response queued -- if the Planner were invoked, the fake
-    # adapter would raise on the second call, failing this test.
-    adapter = fake_llm_adapter_factory([_OUT_OF_SCOPE_RESPONSE])
+    # Two responses queued: Request Understanding (fails scope), then Boundary Handler.
+    # If the Planner were invoked, the adapter would raise on the third call.
+    adapter = fake_llm_adapter_factory([_OUT_OF_SCOPE_RESPONSE, _BOUNDARY_HANDLER_RESPONSE])
     role_roster = build_default_role_roster()
     tool_registry = build_default_tool_registry()
 
@@ -97,7 +102,8 @@ async def test_out_of_scope_request_never_reaches_the_planner(fake_llm_adapter_f
     )
 
     assert understanding.in_scope is False
-    assert understanding.decline_message == "I can only help with Technion academic advising questions."
+    assert understanding.decline_reason == "I can only help with Technion academic advising questions."
     assert state.entries == []
-    assert final_entry is None
-    assert len(adapter.calls) == 1
+    assert final_entry is not None
+    assert final_entry.data["answer_text"] == "I can only help with Technion academic advising questions."
+    assert len(adapter.calls) == 2

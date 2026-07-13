@@ -11,10 +11,11 @@ module rather than a function bolted onto `orchestrator.loop`.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.loop import DEFAULT_MAX_PLANNER_INVOCATIONS, run_plan_to_completion
 from app.agent_core.planning.schemas import RoleName
-from app.agent_core.planning.state import PlanExecutionState, StateEntry
+from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.request_understanding.request_understanding import understand_request
 from app.agent_core.request_understanding.schemas import RequestUnderstandingReasoningBlockOutput
@@ -22,6 +23,7 @@ from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
+from app.agent_core.boundary_handler.boundary_handler import run_boundary_handler
 
 
 async def run_agent_turn(
@@ -39,11 +41,9 @@ async def run_agent_turn(
 
     Returns `(understanding, state, final_entry, clarification_question)`.
     Callers must check `understanding.in_scope` first: when `False`, the
-    Planner never ran -- `state` is empty, `final_entry` and
-    `clarification_question` are both `None` -- and the answer is
-    `understanding.decline_message`, not anything else in the return value.
-    When `in_scope` is `True`, `final_entry`/`clarification_question` are
-    `None`/populated under the exact same conditions
+    Planner never ran, but `final_entry` contains the Boundary Handler's
+    polite rejection. When `in_scope` is `True`, `final_entry`/`clarification_question`
+    are populated under the exact same conditions
     `run_plan_to_completion` already documents (blocked on clarification, or
     the invocation budget ran out).
     """
@@ -53,7 +53,23 @@ async def run_agent_turn(
         block_id=f"{plan_id}-request-understanding",
     )
     if not understanding.in_scope:
-        return understanding, PlanExecutionState(plan_id=plan_id), None, None
+        boundary_output = await run_boundary_handler(
+            original_user_message=original_user_message,
+            decline_reason=understanding.decline_reason or "Out of scope",
+            llm_adapter=llm_adapter,
+            block_id=f"{plan_id}-boundary-handler",
+        )
+        final_entry = StateEntry(
+            entry_id=f"{plan_id}-boundary-entry",
+            step_id="boundary_handling",
+            role="composition",
+            status="succeeded",
+            output_schema_name="boundary_handler_output_v1",
+            data={"answer_text": boundary_output.answer_text},
+            certainty=CertaintyTag(basis="llm_interpretation", confidence=boundary_output.confidence),
+            produced_at=datetime.now(timezone.utc),
+        )
+        return understanding, PlanExecutionState(plan_id=plan_id), final_entry, None
 
     # One cache per turn, never a module-level global or caller-supplied
     # value -- created fresh here so concurrent turns/requests can never

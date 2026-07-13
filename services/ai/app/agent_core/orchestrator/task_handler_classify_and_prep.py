@@ -87,6 +87,7 @@ def _classify_and_prep_contract() -> PromptContract:
             "step needs in order to run (goal, description, specific_instructions, etc)."
         ),
         instructions=[
+            "EXCEPTION to the non-atomic rules: The system provides high-level composite tools that can handle complex multi-step logic in one shot. If a step's objective naturally maps to one of these (e.g. 'audit graduation progress', 'check eligibility', 'simulate course disruption', 'compare plans', 'find requirement substitutes'), treat the step AS ATOMIC (`atomic=True`) and assign `role_if_atomic='simulation_planning'`, rather than defaulting to `atomic=False` and decomposing it.",
             "If success_criteria describes several distinct facts, computations, or labeled "
             "sub-parts (e.g. 'cumulative GPA AND semester GPAs for the last two semesters AND "
             "course/credit details, labeled by semester'), treat the step as NOT atomic -- one "

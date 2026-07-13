@@ -120,8 +120,8 @@ def _build_advise_response(
 ) -> dict[str, Any]:
     if not understanding.in_scope:
         payload = _response_payload(
-            answer=understanding.decline_message or _FALLBACK_CLARIFICATION_MESSAGE,
-            confidence="low",
+            answer=final_entry.data.get("answer_text", "") if final_entry else _FALLBACK_CLARIFICATION_MESSAGE,
+            confidence=certainty_band(final_entry.certainty.confidence) if final_entry else "low",
             course_ids=[],
             retrieval_status="out_of_scope",
             sources=[],

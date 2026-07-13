@@ -294,6 +294,16 @@ export const advisorApi = {
       method: 'POST',
       body: { question },
     }),
+  askStream: (question: string) => {
+    return fetch(`${getApiBaseUrl()}/advisor/ask/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: JSON.stringify({ question }),
+    })
+  },
 }
 
 export const risksApi = {
