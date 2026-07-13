@@ -76,7 +76,11 @@ async def test_stage1_never_raises_json_parse_failure_even_on_non_json_text(fake
 async def test_structuring_retries_and_recovers_on_second_attempt(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory(
         responses=[
-            {"answer_text": "I'm unable to help with that."},  # missing required "confidence" -> invalid
+            # Missing required "answer_text" -> genuinely invalid. (A missing
+            # "confidence" would NOT trigger a retry anymore -- the normalizer
+            # backfills that metadata field's safe default; only a real content
+            # gap like the absent answer_text still exercises the retry path.)
+            {"confidence": 0.9},
             {"answer_text": "I'm unable to help with that.", "confidence": 0.9},
         ],
         text_responses=["I'm unable to help with that."],
@@ -98,8 +102,8 @@ async def test_structuring_retries_and_recovers_on_second_attempt(fake_llm_adapt
 async def test_structuring_exhausted_falls_back_to_raw_stage1_content(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory(
         responses=[
-            {"answer_text": "Some real, tailored decline message."},  # invalid: no confidence
-            {"answer_text": "Some real, tailored decline message."},  # invalid again
+            {"confidence": 0.9},  # invalid: no answer_text (a content gap the backfill won't fill)
+            {"confidence": 0.9},  # invalid again
         ],
         text_responses=["Some real, tailored decline message."],
     )

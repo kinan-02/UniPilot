@@ -132,8 +132,66 @@ def test_non_dict_list_items_are_preserved_positionally():
     normalized = normalize_structured_result(result, output_schema=_RETRIEVAL_LIKE_SCHEMA)
 
     assert normalized["facts"] == {"fact_0": "a bare string fact", "fact_1": 42}
-    # No confidence info available anywhere -- nothing invented.
-    assert "confidence" not in normalized
+    # The bare items carry no per-fact certainty to aggregate, so the required
+    # certainty metadata is instead filled with its safe conservative default
+    # (see _SAFE_REQUIRED_DEFAULTS) rather than left absent to cost an LLM
+    # schema-repair call.
+    assert normalized["confidence"] == 0.5
+    assert normalized["certainty_basis"] == "llm_interpretation"
+
+
+def test_absent_required_certainty_metadata_is_backfilled_not_repaired():
+    # The dominant schema-repair trigger found via live-eval: the subagent
+    # returns real facts but omits the required certainty_basis/confidence.
+    # Backfilling conservative defaults makes the result validate with no LLM
+    # round-trip.
+    result = {"facts": {"courseCode": "02340247"}}
+
+    normalized = normalize_structured_result(result, output_schema=_RETRIEVAL_LIKE_SCHEMA)
+
+    assert normalized["certainty_basis"] == "llm_interpretation"
+    assert normalized["confidence"] == 0.5
+    assert normalized["facts"] == {"courseCode": "02340247"}
+
+
+def test_backfill_never_overwrites_metadata_the_model_provided():
+    result = {"certainty_basis": "official_record", "confidence": 1.0, "facts": {"a": 1}}
+
+    normalized = normalize_structured_result(result, output_schema=_RETRIEVAL_LIKE_SCHEMA)
+
+    assert normalized["certainty_basis"] == "official_record"
+    assert normalized["confidence"] == 1.0
+
+
+def test_backfill_skips_certainty_basis_when_default_is_not_a_legal_enum_value():
+    # If the field constrains certainty_basis to an enum that excludes the
+    # default, injecting the default would itself fail validation -- so the
+    # field is left absent for the repair loop instead.
+    schema = {
+        "type": "object",
+        "properties": {
+            "certainty_basis": {"type": "string", "enum": ["official_record", "wiki_derived"]},
+            "confidence": {"type": "number"},
+            "facts": {"type": "object"},
+        },
+        "required": ["certainty_basis", "confidence", "facts"],
+    }
+    result = {"facts": {"a": 1}}
+
+    normalized = normalize_structured_result(result, output_schema=schema)
+
+    assert "certainty_basis" not in normalized  # not a legal enum value -> not injected
+    assert normalized["confidence"] == 0.5  # confidence has no enum -> still backfilled
+
+
+def test_absent_content_field_facts_is_not_backfilled():
+    # Certainty metadata has safe defaults; a missing content field (facts)
+    # is a real structural gap and must still surface, not be papered over.
+    result = {"certainty_basis": "official_record", "confidence": 0.9}
+
+    normalized = normalize_structured_result(result, output_schema=_RETRIEVAL_LIKE_SCHEMA)
+
+    assert "facts" not in normalized
 
 
 def test_top_level_word_confidence_coerced_to_a_number():

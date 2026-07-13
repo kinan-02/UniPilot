@@ -20,6 +20,22 @@ GENERIC_BLANK_FIELD_PLACEHOLDER = "unknown"
 # the facts-list-vs-object mismatch this module also recovers from.
 _CONFIDENCE_WORD_MAP = {"high": 0.9, "medium": 0.6, "low": 0.3}
 
+# Certainty-METADATA fields have safe, conservative defaults, so an absent
+# one should NOT cost an LLM schema-repair round-trip. A live-eval tally
+# found these two omissions triggered ~15% of ALL calls in a turn: the
+# subagent produced real content (facts) but left its own self-rating off,
+# and the required-field validation then bounced the whole result to the
+# repair loop. Defaulting certainty_basis to "llm_interpretation" (the most
+# conservative basis -- "this came from reasoning, not an authoritative
+# record") and confidence to a mid 0.5 UNDER-claims certainty rather than
+# over-claiming, which is the safe direction. Deliberately does NOT include
+# content fields like `facts`: an absent `facts` IS a real structural gap
+# worth surfacing to the repair loop, not something to paper over with {}.
+_SAFE_REQUIRED_DEFAULTS: dict[str, Any] = {
+    "certainty_basis": "llm_interpretation",
+    "confidence": 0.5,
+}
+
 
 def _strip_unknown_keys(value: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     if schema.get("additionalProperties") is not False:
@@ -201,6 +217,30 @@ def _recover_facts_list_and_missing_certainty(
     return result
 
 
+def _backfill_safe_required_defaults(result: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    """Fill a required-but-absent certainty-metadata field with its safe
+    conservative default (see `_SAFE_REQUIRED_DEFAULTS`), instead of letting
+    the absence trigger an LLM schema-repair call. Enum-aware: if the field
+    declares an enum and the default isn't a legal value there, the field is
+    left absent (never inject a value that would itself fail validation).
+    Runs AFTER `_recover_facts_list_and_missing_certainty`, so a value that
+    function already derived from a facts-list is never overwritten.
+    """
+    required = set(schema.get("required") or [])
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+    for field, default in _SAFE_REQUIRED_DEFAULTS.items():
+        if field not in required or field in result:
+            continue
+        prop_schema = properties.get(field)
+        if not isinstance(prop_schema, dict):
+            continue
+        enum_values = prop_schema.get("enum")
+        if isinstance(enum_values, list) and default not in enum_values:
+            continue
+        result[field] = default
+    return result
+
+
 def _normalize_generic_result(result: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """Schema-driven fallback normalizer for any `output_schema_name` without a
     bespoke `_normalize_*_result` function.
@@ -214,6 +254,7 @@ def _normalize_generic_result(result: dict[str, Any], schema: dict[str, Any]) ->
     """
     normalized = copy.deepcopy(result)
     normalized = _recover_facts_list_and_missing_certainty(normalized, schema)
+    normalized = _backfill_safe_required_defaults(normalized, schema)
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
 
     for key, prop_schema in properties.items():

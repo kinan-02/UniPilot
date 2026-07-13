@@ -123,6 +123,21 @@ def _wiki_page_meta(engine: AcademicGraphEngine, slug: str) -> dict[str, Any]:
 def _wiki_entity_result(engine: AcademicGraphEngine, entity_type: str, slug: str) -> ToolOutputEnvelope:
     page = engine.wiki_pages.get(slug)
     if page is None:
+        # Exact-slug miss. The model routinely guesses a plausible-but-wrong
+        # slug -- a live-eval case asked for 'robotics-minor' when the real
+        # page is 'minor-robotics', burning a whole retrieval round on a dead
+        # get_entity before search_knowledge eventually surfaced the right
+        # slug. Fall back to the alias index (title/aliases from wiki
+        # frontmatter, where 'robotics minor' IS a listed alias of
+        # minor-robotics): resolve the guessed slug, hyphens as spaces, into a
+        # real slug. Only a strict improvement over the previous dead end --
+        # still fails closed below if nothing resolves.
+        for candidate in engine.resolve_slugs_from_query(slug.replace("-", " ")):
+            candidate_page = engine.wiki_pages.get(candidate)
+            if candidate_page is not None:
+                page, slug = candidate_page, candidate
+                break
+    if page is None:
         return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: {entity_type}:{slug}")
 
     actual_kind = _classify_wiki_path(page.get("path", ""), slug)

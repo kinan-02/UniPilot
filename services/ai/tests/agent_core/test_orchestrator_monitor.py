@@ -8,13 +8,21 @@ import pytest
 
 from app.agent_core.orchestrator.monitor import evaluate_step_result
 from app.agent_core.planning.schemas import PlanStep
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.planning.state import CertaintyTag, NestedExecutionTrace, StateEntry
 
 
 def _step(**overrides) -> PlanStep:
     defaults = dict(step_id="s1", objective="o")
     defaults.update(overrides)
     return PlanStep(**defaults)
+
+
+# A minimal nested trace marks an entry as having come from the task
+# handler's nested-subplan path -- whose internal checks were against its own
+# sub-steps' criteria, so the monitor's outer check against the ORIGINAL
+# step's criteria is NOT redundant there (unlike an atomic entry, which the
+# task handler already verified against this step's own criteria).
+_NESTED = NestedExecutionTrace(private_plan_id="p:s1", rounds_used=1)
 
 
 def _entry(status: str, **overrides) -> StateEntry:
@@ -56,10 +64,25 @@ async def test_succeeded_status_with_no_success_criteria_continues_without_an_ll
     assert adapter.calls == []
 
 
-async def test_succeeded_status_continues_when_success_criteria_are_met(fake_llm_adapter_factory):
+async def test_atomic_succeeded_step_skips_the_redundant_recheck(fake_llm_adapter_factory):
+    # An atomic entry (nested_trace is None) was already verified against this
+    # step's own success_criteria in the task handler before it could return
+    # "succeeded" -- the monitor must NOT spend a second identical check call.
+    adapter = fake_llm_adapter_factory([])  # any call would exhaust and raise
+    step = _step(success_criteria=["a numeric GPA is returned"])
+    entry = _entry("succeeded", data={"gpa": 3.5})  # nested_trace defaults to None -> atomic
+
+    decision, unmet = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
+
+    assert decision == "continue"
+    assert unmet == []
+    assert adapter.calls == []  # no redundant re-check
+
+
+async def test_nested_succeeded_status_continues_when_success_criteria_are_met(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([{"criteria_met": True, "unmet_criteria": []}])
     step = _step(success_criteria=["a numeric GPA is returned"])
-    entry = _entry("succeeded", data={"gpa": 3.5})
+    entry = _entry("succeeded", data={"gpa": 3.5}, nested_trace=_NESTED)
 
     decision, unmet = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
 
@@ -67,17 +90,17 @@ async def test_succeeded_status_continues_when_success_criteria_are_met(fake_llm
     assert unmet == []
 
 
-async def test_succeeded_status_downgrades_to_clarify_when_success_criteria_are_not_met(fake_llm_adapter_factory):
-    # The specialist self-reported "succeeded", but the aggregated result
-    # doesn't actually cover the step's own declared success_criteria -- this
-    # is exactly the gap the task handler's internal checks can't catch,
-    # since they only verify sub-steps against criteria THEY were given, not
-    # the original top-level step's own criteria (see monitor.py's docstring).
+async def test_nested_succeeded_status_downgrades_to_clarify_when_success_criteria_are_not_met(fake_llm_adapter_factory):
+    # A NESTED entry self-reported "succeeded", but the aggregated result
+    # doesn't actually cover the ORIGINAL step's declared success_criteria --
+    # exactly the gap the task handler's internal checks can't catch, since
+    # they only verify sub-steps against criteria THEY were given (see
+    # monitor.py's docstring). This is the case the outer check still exists for.
     adapter = fake_llm_adapter_factory(
         [{"criteria_met": False, "unmet_criteria": ["semester GPAs for the last two semesters"]}]
     )
     step = _step(success_criteria=["cumulative GPA and semester GPAs for the last two semesters"])
-    entry = _entry("succeeded", data={"gpa": 3.5})
+    entry = _entry("succeeded", data={"gpa": 3.5}, nested_trace=_NESTED)
 
     decision, unmet = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
 

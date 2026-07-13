@@ -224,6 +224,31 @@ async def test_repair_tool_requests_returns_unchanged_when_already_valid(fake_ll
     assert len(adapter.calls) == 0
 
 
+async def test_repair_tool_requests_backfills_missing_arguments_without_an_llm_call(fake_llm_adapter_factory):
+    # A request that names a tool but omits `arguments` (the common shape for
+    # zero-arg tools) is fixed deterministically to {} -- no repair call.
+    adapter = fake_llm_adapter_factory([])
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+    parsed = {
+        "status": "need_tools",
+        "tool_requests": [{"tool_name": "get_current_semester"}, {"tool_name": "get_entity", "arguments": None}],
+    }
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        parsed["tool_requests"],
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+    )
+
+    assert result == [
+        {"tool_name": "get_current_semester", "arguments": {}},
+        {"tool_name": "get_entity", "arguments": {}},
+    ]
+    assert len(adapter.calls) == 0
+
+
 async def test_repair_tool_requests_fixes_wrong_keys_via_one_repair_call(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory(
         [

@@ -18,6 +18,13 @@ primitive the task handler already relies on, applied one level up, and
 returns its `unmet_criteria` back to the caller so a `clarify` verdict
 carries actionable detail into the next Planner invocation instead of a
 bare status.
+
+Scope: this outer check runs ONLY for a nested-subplan entry
+(`nested_trace is not None`). An atomic entry was already verified against
+this same step's own success_criteria inside the task handler before it
+could return "succeeded", so re-checking it here would be an identical,
+wasted LLM call -- the outer check exists specifically to close the
+nested-path gap described above, nothing more.
 """
 
 from __future__ import annotations
@@ -53,11 +60,18 @@ async def evaluate_step_result(
     if entry.status == "partial":
         return MonitorEvaluation("clarify", [])
 
-    # status == "succeeded": still confirm this against the ORIGINAL step's
-    # own success_criteria -- see module docstring for why this is not
-    # redundant with the task handler's own internal checks. Skips the LLM
-    # call entirely (via check_success_criteria's own short-circuit) when
-    # the step declared no success_criteria at all.
+    # status == "succeeded". An ATOMIC step (nested_trace is None) already had
+    # its result verified against THIS step's own success_criteria inside the
+    # task handler -- an atomic step is only allowed to return "succeeded"
+    # AFTER passing that exact check -- so re-running the identical check here
+    # is pure duplication (a live-eval tally showed the success-check bucket
+    # was ~1 redundant call per atomic step). The outer check earns its keep
+    # only for a nested subplan, whose internal checks were against its OWN
+    # sub-steps' criteria, never the original top-level step's -- that is the
+    # gap this monitor exists to close (see module docstring).
+    if entry.nested_trace is None:
+        return MonitorEvaluation("continue", [])
+
     criteria_met, unmet_criteria = await check_success_criteria(
         step=step,
         result=SubagentResult(

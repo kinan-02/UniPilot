@@ -77,10 +77,10 @@ _RESPONSES = [
     },
     # 4a. Task handler's success-criteria check for step 1 -- met.
     {"criteria_met": True, "unmet_criteria": []},
-    # 4b. Monitor's own OUTER success-criteria check for step 1 (against the
-    # original top-level step's own success_criteria, separate from the task
-    # handler's internal check above) -- met.
-    {"criteria_met": True, "unmet_criteria": []},
+    # NB: no monitor OUTER success-criteria check here. Step 1 is ATOMIC
+    # (nested_trace is None), and the task handler already verified it against
+    # this step's own success_criteria above -- so the monitor skips the
+    # identical re-check (see orchestrator/monitor.py).
     # 5. Planner invocation 2 -- one step: composition, plan complete. Flat,
     # same reason as invocation 1's response above.
     {
@@ -118,8 +118,8 @@ _RESPONSES = [
     },
     # 8a. Task handler's success-criteria check for step 2 -- met.
     {"criteria_met": True, "unmet_criteria": []},
-    # 8b. Monitor's own OUTER success-criteria check for step 2 -- met.
-    {"criteria_met": True, "unmet_criteria": []},
+    # NB: no monitor OUTER check here either -- step 2 is atomic, already
+    # verified by 8a (see orchestrator/monitor.py).
 ]
 
 

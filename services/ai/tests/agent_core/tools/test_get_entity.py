@@ -181,6 +181,16 @@ async def test_unknown_wiki_slug_fails_closed(use_real_academic_engine):
     assert "entity_not_found" in result.error
 
 
+async def test_wrong_order_slug_resolves_via_the_alias_index(use_real_academic_engine):
+    # The model guessed 'robotics-minor'; the real page is 'minor-robotics'
+    # (which lists 'robotics minor' among its frontmatter aliases). On the
+    # exact-slug miss, get_entity resolves it via the alias index rather than
+    # dead-ending, so the retrieval agent doesn't burn a round on a wrong guess.
+    result = await run_get_entity(GetEntityInput(entity_type="wiki_page", entity_id="robotics-minor"))
+    assert result.ok is True
+    assert result.data["slug"] == "minor-robotics"
+
+
 async def test_graph_not_configured_fails_closed(monkeypatch):
     from app.retrieval.graph_engine.graph_registry import graph_registry
 

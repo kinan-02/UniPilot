@@ -372,6 +372,20 @@ class BaseReasoningBlock(ABC):
         needed repair, or if the repair attempt itself didn't produce a
         valid result.
         """
+        # Deterministic pre-pass before spending any LLM repair call: the
+        # single most common tool-request malformation (a live-eval tally put
+        # it among the top schema-repair triggers) is a request that names a
+        # tool but omits `arguments` entirely -- overwhelmingly for the
+        # zero-argument tools (get_current_date, get_current_semester). An
+        # empty arguments object is the correct, unambiguous fix, so backfill
+        # it in code; only a genuinely ambiguous malformation should reach the
+        # LLM repair below. Mutates the request dicts in place (they are the
+        # same objects referenced by `parsed["tool_requests"]`, so the
+        # re-validation below sees the fix).
+        for request in requests:
+            if isinstance(request, dict) and isinstance(request.get("tool_name"), str) and request.get("arguments") is None:
+                request["arguments"] = {}
+
         normalized = self._normalize_result(parsed, output_schema=round_schema)
         validation = self._validate_schema(normalized, round_schema)
         if validation.valid:
