@@ -57,9 +57,9 @@ def _system_prompts(adapter) -> list[str]:
 
 
 async def test_clean_draft_with_no_findings_returns_draft_and_skips_synth(fake_llm_adapter_factory):
-    # Draft is valid; all three critics find nothing -> the draft stands and
+    # Draft is valid; all four critics find nothing -> the draft stands and
     # the synthesizer is never called (the gate saves that call).
-    adapter = fake_llm_adapter_factory([_plan(), _critic([]), _critic([]), _critic([])])
+    adapter = fake_llm_adapter_factory([_plan(), _critic([]), _critic([]), _critic([]), _critic([])])
 
     output = await _run(adapter)
 
@@ -73,7 +73,7 @@ async def test_critic_findings_trigger_synthesis(fake_llm_adapter_factory):
     # One critic flags an issue -> the synthesizer runs and its revised plan
     # is returned (not the draft).
     revised = _plan(step_id="A", objective="Retrieve completed courses AND current standing.")
-    adapter = fake_llm_adapter_factory([_plan(), _critic(["step A is missing the standing lookup"]), _critic([]), _critic([]), revised])
+    adapter = fake_llm_adapter_factory([_plan(), _critic(["step A is missing the standing lookup"]), _critic([]), _critic([]), _critic([]), revised])
 
     output = await _run(adapter)
 
@@ -99,7 +99,7 @@ async def test_synthesizer_failure_falls_back_to_the_vetted_draft(fake_llm_adapt
     # output is malformed (pass + its one repair) -> the already-valid draft
     # is returned rather than a clarification block.
     adapter = fake_llm_adapter_factory(
-        [_plan(), _critic(["needs a standing lookup"]), _critic([]), _critic([]),
+        [_plan(), _critic(["needs a standing lookup"]), _critic([]), _critic([]), _critic([]),
          {"plan_status": "not_a_real_status"}, {"plan_status": "not_a_real_status"}]
     )
 
@@ -111,7 +111,7 @@ async def test_synthesizer_failure_falls_back_to_the_vetted_draft(fake_llm_adapt
 
 
 async def test_all_critics_failing_degrades_to_the_draft(fake_llm_adapter_factory):
-    # Only the draft response is queued; all three critics exhaust the
+    # Only the draft response is queued; all four critics exhaust the
     # adapter and fail closed to no findings -> the draft stands, no synth.
     adapter = fake_llm_adapter_factory([_plan()])
 
@@ -119,8 +119,8 @@ async def test_all_critics_failing_degrades_to_the_draft(fake_llm_adapter_factor
 
     assert [s.step_id for s in output.next_steps] == ["A"]
     assert not any("Synthesizer" in sp for sp in _system_prompts(adapter))
-    # draft + three attempted (exhausted) critic calls were recorded.
-    assert len(adapter.calls) == 4
+    # draft + four attempted (exhausted) critic calls were recorded.
+    assert len(adapter.calls) == 5
 
 
 async def test_routine_continuation_skips_the_council(fake_llm_adapter_factory):
@@ -149,7 +149,7 @@ async def test_replan_on_a_later_invocation_still_runs_the_full_council(fake_llm
     replan_input = _INPUT.model_copy(
         update={"monitor_flags": ["step 1a failed"], "replan_reason": "step 1a failed"}
     )
-    adapter = fake_llm_adapter_factory([_plan(), _critic([]), _critic([]), _critic([])])
+    adapter = fake_llm_adapter_factory([_plan(), _critic([]), _critic([]), _critic([]), _critic([])])
 
     output = await run_planner_council(
         planner_input=replan_input,
@@ -162,54 +162,6 @@ async def test_replan_on_a_later_invocation_still_runs_the_full_council(fake_llm
 
     assert any("Critic" in sp for sp in _system_prompts(adapter))
     assert "planner_council_draft_only" not in output.warnings
-
-
-async def test_council_disabled_forces_drafter_only_even_on_first_invocation(fake_llm_adapter_factory):
-    # council_enabled=False (nested sub-plans use this): the drafter alone
-    # runs, no critics/synth, even on invocation 1 WITH replan flags set --
-    # the two conditions that would otherwise force the full council. A nested
-    # sub-plan's output is re-verified by the outer Monitor + success-check, so
-    # the critics are redundant there and were the dominant call cost on hard
-    # cases (a live-eval turn spent ~71 of 128 calls on nested-round critics).
-    replan_input = _INPUT.model_copy(
-        update={"monitor_flags": ["step X failed"], "replan_reason": "step X failed"}
-    )
-    adapter = fake_llm_adapter_factory([_plan()])
-
-    output = await run_planner_council(
-        planner_input=replan_input,
-        llm_adapter=adapter,
-        block_id="blk-1",
-        invocation=1,
-        council_enabled=False,
-        output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
-        output_schema=PLANNER_OUTPUT_SCHEMA,
-    )
-
-    assert [s.step_id for s in output.next_steps] == ["A"]
-    assert "planner_council_draft_only" in output.warnings
-    assert len(adapter.calls) == 1  # drafter only
-    assert not any("Critic" in sp for sp in _system_prompts(adapter))
-
-
-async def test_council_disabled_still_returns_drafter_fail_closed_output(fake_llm_adapter_factory):
-    # Even drafter-only, a malformed draft fails closed (no steps dispatched)
-    # -- disabling the council must not turn a failed draft into a usable one.
-    adapter = fake_llm_adapter_factory([{"plan_status": "not_a_real_status"}] * 3)
-
-    output = await run_planner_council(
-        planner_input=_INPUT,
-        llm_adapter=adapter,
-        block_id="blk-1",
-        invocation=1,
-        council_enabled=False,
-        output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
-        output_schema=PLANNER_OUTPUT_SCHEMA,
-    )
-
-    assert output.plan_status == "blocked_needs_clarification"
-    assert output.next_steps == []
-    assert not any("Critic" in sp for sp in _system_prompts(adapter))
 
 
 async def test_drafter_raising_adapter_fails_closed():

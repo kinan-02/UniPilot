@@ -76,6 +76,7 @@ _MAX_SCHEMA_REPAIR_ATTEMPTS = 1
 COVERAGE_CRITIC_V1 = "planner_coverage_critic_v1"
 GROUNDING_CRITIC_V1 = "planner_grounding_critic_v1"
 CRITERIA_CRITIC_V1 = "planner_criteria_critic_v1"
+PARSIMONY_CRITIC_V1 = "planner_parsimony_critic_v1"
 SYNTHESIZER_V1 = "planner_synthesizer_v1"
 
 _CRITIC_OUTPUT_SCHEMA_NAME = "planner_critic_output_v1"
@@ -90,7 +91,12 @@ _CRITIC_OUTPUT_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-_DEFAULT_CRITICS: tuple[str, ...] = (COVERAGE_CRITIC_V1, GROUNDING_CRITIC_V1, CRITERIA_CRITIC_V1)
+_DEFAULT_CRITICS: tuple[str, ...] = (
+    COVERAGE_CRITIC_V1,
+    GROUNDING_CRITIC_V1,
+    CRITERIA_CRITIC_V1,
+    PARSIMONY_CRITIC_V1,
+)
 
 
 # ── Contracts ──────────────────────────────────────────────────────────────
@@ -192,6 +198,45 @@ def _criteria_critic_contract() -> PromptContract:
     )
 
 
+def _parsimony_critic_contract() -> PromptContract:
+    return PromptContract(
+        name=PARSIMONY_CRITIC_V1,
+        version="1.0.0",
+        role_prompt=(
+            "You are the Parsimony Critic on the UniPilot Planner's review council. You are given "
+            "the student's structured request and a DRAFT batch of plan steps. Your ONE job: catch "
+            "REDUNDANCY and OVER-DECOMPOSITION -- steps that should be merged, removed, or made to "
+            "depend on an existing result instead of redoing it -- nothing else. A tight plan runs "
+            "far cheaper: every extra step becomes its own dispatch + verification downstream."
+        ),
+        instructions=[
+            "Report only concrete, actionable issues, each naming the step_ids involved and the "
+            "merge/removal. If the plan is already tight, return an empty list.",
+            "Flag two or more steps that fetch or produce the SAME fact (e.g. two steps that both "
+            "retrieve the student's profile, or both look up the same course) -- there must be "
+            "exactly ONE step per fact, with everything else depending on it.",
+            "Flag over-decomposition of one entity's structural fields: a student_profile's degree "
+            "program, year, standing, and faculty all come back in ONE get_entity call, and a "
+            "course's code, credits, and prerequisites in one -- splitting those across separate "
+            "retrieval steps is waste; merge them into a single step the others depend on. (A "
+            "DERIVED value like GPA/standing, or a requirement-fulfillment classification read from "
+            "prose, legitimately gets its own step -- never flag those.)",
+            "Flag any step that redoes work already present in plan_graph_so_far or state_index -- "
+            "it should reference that existing id as a dependency, not recompute the result.",
+            "Do NOT remove coverage. When unsure whether two steps are genuinely the same, leave "
+            "them -- merging away a needed step is worse than an extra one. Never propose a merge "
+            "that would combine two DIFFERENT kinds of work (a fetch and a derivation) into one step.",
+        ],
+        allowed_context_fields=None,
+        output_schema_name=_CRITIC_OUTPUT_SCHEMA_NAME,
+        default_risk_level="low",
+        default_min_iterations=1,
+        default_max_iterations=1,
+        default_temperature=0.0,
+        safety_rules=["Do not expose chain-of-thought, hidden reasoning, or private notes."],
+    )
+
+
 def _synthesizer_contract() -> PromptContract:
     return PromptContract(
         name=SYNTHESIZER_V1,
@@ -231,6 +276,7 @@ def build_council_prompt_registry() -> PromptRegistry:
     registry.register(_coverage_critic_contract())
     registry.register(_grounding_critic_contract())
     registry.register(_criteria_critic_contract())
+    registry.register(_parsimony_critic_contract())
     registry.register(_synthesizer_contract())
     return registry
 
@@ -421,7 +467,6 @@ async def run_planner_council(
     prompt_contract_name: str = PLANNER_V1,
     output_schema_name: str,
     output_schema: dict[str, Any],
-    council_enabled: bool = True,
     critics: tuple[str, ...] = _DEFAULT_CRITICS,
     drafter_timeout: float = _DRAFTER_TIMEOUT,
     critic_timeout: float = _CRITIC_TIMEOUT,
@@ -433,19 +478,9 @@ async def run_planner_council(
 
     `invocation` drives the adaptive-depth gate (`_should_run_full_council`):
     a routine continuation runs the fast drafter alone; the first invocation
-    and Monitor-flagged replans run the full council.
-
-    `council_enabled=False` forces drafter-only unconditionally -- used by the
-    task handler's private NESTED sub-plans. There, every replan round
-    inherently carries a `replan_reason` (a round only repeats because the
-    prior one fell short), so the adaptive gate above would fire the full
-    council on EVERY nested round: a live-eval turn spent ~71 of its 128 calls
-    on nested-round critics for a single question. A nested sub-plan is the
-    bounded fallback for one already-classified step and its aggregated result
-    is re-verified by the outer Monitor + success-check, so the critics'
-    coverage/grounding/criteria review (a top-level-plan concern) is redundant
-    there -- the drafter, which already carries the full planner instructions
-    and grounding block, stands on its own."""
+    and Monitor-flagged replans run the full council. The council is only ever
+    used by the TOP-LEVEL planner now -- nested step decomposition moved to the
+    Specialist Router, which is a single fast call and never runs critics."""
     registry = build_council_prompt_registry()
 
     # 1. DRAFT -- the existing planner block, fast (no thinking).
@@ -472,9 +507,8 @@ async def run_planner_council(
 
     # Adaptive depth: a routine continuation (not the first invocation, no
     # replan flags) trusts the fast draft as-is and skips the critic+synth
-    # calls entirely -- see _should_run_full_council. A nested sub-plan
-    # (`council_enabled=False`) always takes this drafter-only path.
-    if not council_enabled or not _should_run_full_council(invocation, planner_input):
+    # calls entirely -- see _should_run_full_council.
+    if not _should_run_full_council(invocation, planner_input):
         return draft_output.model_copy(
             update={"warnings": [*draft_output.warnings, "planner_council_draft_only"]}
         )
@@ -545,6 +579,7 @@ __all__ = [
     "COVERAGE_CRITIC_V1",
     "GROUNDING_CRITIC_V1",
     "CRITERIA_CRITIC_V1",
+    "PARSIMONY_CRITIC_V1",
     "SYNTHESIZER_V1",
     "build_council_prompt_registry",
     "run_planner_council",

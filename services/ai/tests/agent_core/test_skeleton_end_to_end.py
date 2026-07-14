@@ -37,23 +37,27 @@ _RESPONSES = [
         "plan_summary": "Step 1: fetch course record.",
         "clarification_question": None,
     },
-    # 1a-c. Planner council: the drafted plan (above) is valid and non-empty,
-    # so its three critics (coverage, grounding, criteria) each review it in
-    # parallel. All find nothing, so the draft stands and no synthesizer call
-    # is made -- see planner_council.py.
+    # 1a-d. Planner council: the drafted plan (above) is valid and non-empty,
+    # so its four critics (coverage, grounding, criteria, parsimony) each review
+    # it in parallel. All find nothing, so the draft stands and no synthesizer
+    # call is made -- see planner_council.py.
     {"issues": []},
     {"issues": []},
     {"issues": []},
-    # 2. Task handler's merged classify_and_prep for step 1 -- atomic, retrieval role + prep details.
+    {"issues": []},
+    # 2. Task handler's Specialist Router for step 1 -- a length-1 pipeline
+    # (one retrieval specialist), i.e. an atomic step.
     {
-        "atomic": True,
-        "role_if_atomic": "retrieval",
-        "goal": "Fetch course record",
-        "description": "Fetch the record for course 234218.",
-        "specific_instructions": ["Use get_entity to fetch the course."],
-        "tone_language_notes": "",
-        "context_requirements": [],
-        "tool_grant_override": None,
+        "pipeline": [
+            {
+                "sub_step_id": "s1",
+                "specialist": "retrieval",
+                "objective": "Fetch the record for course 234218.",
+                "depends_on": [],
+                "success_criteria": ["course record fetched"],
+                "specific_instructions": ["Use get_entity to fetch the course."],
+            }
+        ]
     },
     # 3. Step 1 subagent (retrieval), round 1 -- RetrievalReasoningBlock's own
     # per-round schema (status: "ready" | "need_tools"), requests a tool.
@@ -101,16 +105,19 @@ _RESPONSES = [
     # (invocation > 1, the prior step succeeded so no replan flags), which the
     # council's adaptive-depth gate runs as drafter-only -- critics/synth are
     # skipped, so only the one planner draft call above is made.
-    # 5a. Task handler's merged classify_and_prep for step 2 -- atomic, composition role + prep details.
+    # 5a. Task handler's Specialist Router for step 2 -- a length-1 pipeline
+    # (one composition specialist), i.e. an atomic step.
     {
-        "atomic": True,
-        "role_if_atomic": "composition",
-        "goal": "Compose final answer",
-        "description": "Compose the final answer using step 1's result.",
-        "specific_instructions": [],
-        "tone_language_notes": "",
-        "context_requirements": ["1a"],
-        "tool_grant_override": None,
+        "pipeline": [
+            {
+                "sub_step_id": "s1",
+                "specialist": "composition",
+                "objective": "Compose the final answer using step 1's result.",
+                "depends_on": ["1a"],
+                "success_criteria": ["answer composed"],
+                "context_requirements": ["1a"],
+            }
+        ]
     },
     # 7. Step 2 subagent (composition) -- single-shot.
     {

@@ -10,7 +10,7 @@ envelope to unwrap, unlike the old `ReasoningBlock`.
 
 from __future__ import annotations
 
-from app.agent_core.planning.planner import NESTED_PLANNER_V1, build_next_plan_steps
+from app.agent_core.planning.planner import build_next_plan_steps
 from app.agent_core.planning.schemas import PlanGraph, PlannerInvocationInput
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 
@@ -211,17 +211,3 @@ async def test_default_prompt_contract_frames_this_as_the_students_request(fake_
     assert "the student's request" in adapter.calls[0]["system_prompt"]
 
 
-async def test_nested_prompt_contract_produces_a_genuinely_different_system_prompt(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([_response()])
-
-    await build_next_plan_steps(
-        planner_input=_INPUT,
-        llm_adapter=adapter,
-        block_id="blk-1",
-        invocation=1,
-        prompt_contract_name=NESTED_PLANNER_V1,
-    )
-
-    system_prompt = adapter.calls[0]["system_prompt"]
-    assert "internal step of a larger plan" in system_prompt
-    assert "the student's request" not in system_prompt

@@ -84,9 +84,6 @@ async def run_plan_to_completion(
             llm_adapter=llm_adapter,
             block_id=f"{plan_id}-planner-{invocation}",
             invocation=invocation,
-            thinking_enabled=reasoning_config.planner_thinking_enabled if reasoning_config else None,
-            reasoning_effort=reasoning_config.planner_reasoning_effort if reasoning_config else None,
-            timeout=reasoning_config.planner_timeout if reasoning_config else None,
         )
         plan_status = planner_output.plan_status
         state.merge_plan_graph(planner_output.plan_graph)
@@ -121,7 +118,7 @@ async def run_plan_to_completion(
         # and run concurrently; each layer fully completes and gets appended
         # to `state` before the next layer starts, so a later layer's steps
         # can rely on an earlier layer's results being present. Mirrors
-        # `task_handler.py::_run_nested_subplan`'s identical layer-by-layer
+        # `task_handler.py::_execute_pipeline_once`'s identical layer-by-layer
         # pattern, so both nesting levels of this orchestrator share one
         # mental model instead of two.
         for layer in planner_output.plan_graph.execution_layers:

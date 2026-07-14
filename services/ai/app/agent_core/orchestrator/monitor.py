@@ -6,25 +6,22 @@ Status-based decisions (`failed`->replan, `partial`->clarify) were the
 original skeleton's whole story -- a `succeeded` status alone was trusted at
 face value. That was never actually redundant with the task handler's own
 internal `check_success_criteria` calls: those only verify a SUB-step (an
-atomic dispatch's own step, or one of the nested planner's own
-self-authored sub-steps) against ITS OWN criteria. `task_handler.py`'s
-`_nested_planner_input` now threads `step.success_criteria` in too (as
-`constraints`), so the nested Planner is at least aiming at the real
-target from round 1 -- but this outer check still matters as the final
-verdict: a sub-step's own criteria can be satisfied while the aggregated
-result still misses something the ORIGINAL step asked for. This is that
-outer, final check -- reuses the same fail-closed `check_success_criteria`
-primitive the task handler already relies on, applied one level up, and
-returns its `unmet_criteria` back to the caller so a `clarify` verdict
-carries actionable detail into the next Planner invocation instead of a
-bare status.
+atomic dispatch's own step, or one specialist sub-step of a routed pipeline)
+against ITS OWN criteria. This outer check still matters as the final
+verdict: a pipeline's individual sub-steps can each satisfy their own
+criteria while the AGGREGATED result still misses something the ORIGINAL
+step asked for. This is that outer, final check -- reuses the same
+fail-closed `check_success_criteria` primitive the task handler already
+relies on, applied one level up, and returns its `unmet_criteria` back to
+the caller so a `clarify` verdict carries actionable detail into the next
+Planner invocation instead of a bare status.
 
-Scope: this outer check runs ONLY for a nested-subplan entry
+Scope: this outer check runs ONLY for a routed-pipeline entry
 (`nested_trace is not None`). An atomic entry was already verified against
 this same step's own success_criteria inside the task handler before it
 could return "succeeded", so re-checking it here would be an identical,
 wasted LLM call -- the outer check exists specifically to close the
-nested-path gap described above, nothing more.
+aggregation gap described above, nothing more.
 """
 
 from __future__ import annotations

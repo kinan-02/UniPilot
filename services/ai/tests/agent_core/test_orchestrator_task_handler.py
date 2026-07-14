@@ -1,29 +1,33 @@
-"""Tests for `app.agent_core.orchestrator.task_handler`.
+"""Tests for `app.agent_core.orchestrator.task_handler`
+(docs/planning/SPECIALIST_ROUTER_PLANNER_SPLIT_PLAN.md).
 
-Isolates `task_handler.py`'s own orchestration logic (classify -> dispatch ->
-check -> aggregate; the private mini-orchestrator's round loop; the
-depth-cap invariant) by monkeypatching its own module-level references to
-`classify_step`, `check_success_criteria`, `_dispatch_single_specialist`, and
-`build_next_plan_steps` -- the underlying specialist-dispatch chain
-(step_prep -> context_builder -> run_subagent) is already covered end-to-end
-by `test_skeleton_end_to_end.py`, and the classifier/success-check
-primitives have their own dedicated test files. Duplicating that whole
-canned-multi-pass-LLM-response choreography here would test the same thing
-twice for no added confidence.
+Isolates `task_handler.py`'s own orchestration logic (route -> atomic fast
+path OR pipeline execution -> success-check -> aggregate; the bounded repair
+round loop; the depth-cap invariant) by monkeypatching its own module-level
+references to `route_step`, `check_success_criteria`, and
+`_dispatch_single_specialist`. The specialist-dispatch chain
+(context_builder -> run_subagent) is covered end-to-end by
+`test_skeleton_end_to_end.py`; the router and success-check primitives have
+their own dedicated test files.
 """
 
 from __future__ import annotations
 
 import inspect
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 from app.agent_core.orchestrator import task_handler as task_handler_module
+from app.agent_core.orchestrator.specialist_router import RoutedSubStep, SpecialistRouterOutput
 from app.agent_core.orchestrator.task_handler import run_task_handler
-from app.agent_core.planning.schemas import PlanGraph, PlannerInvocationOutput, PlanStep
+from app.agent_core.planning.schemas import PlanStep
 from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
 from app.agent_core.roles.roster import build_default_role_roster
-from app.agent_core.subagents.schemas import SubagentResult, StepPrepOutput, StepInstructionFields, ReasoningParamsOverride
+from app.agent_core.subagents.schemas import (
+    ReasoningParamsOverride,
+    StepInstructionFields,
+    StepPrepOutput,
+    SubagentResult,
+)
 from app.agent_core.tools.default_registry import build_default_tool_registry
 
 ROLE_ROSTER = build_default_role_roster()
@@ -53,21 +57,18 @@ def _entry(step_id: str, confidence: float = 0.9) -> StateEntry:
     )
 
 
-def _classifier(atomic: bool, role: str | None):
-    return SimpleNamespace(atomic=atomic, role_if_atomic=role)
-
-def _dummy_step_prep_output():
+def _dummy_step_prep_output() -> StepPrepOutput:
     return StepPrepOutput(
         instruction_fields=StepInstructionFields(goal="g", description="d", specific_instructions=[]),
         context_requirements=[],
         reasoning_params=ReasoningParamsOverride(),
         output_schema_name="generic_step_output_v1",
         output_schema={"type": "object"},
-        tool_grant_override=None
+        tool_grant_override=None,
     )
 
 
-def _subagent_result(status="succeeded", data=None, confidence=0.9, basis="wiki_derived", warnings=None):
+def _subagent_result(status="succeeded", data=None, confidence=0.9, basis="wiki_derived", warnings=None) -> SubagentResult:
     return SubagentResult(
         status=status,
         result=data or {},
@@ -78,87 +79,47 @@ def _subagent_result(status="succeeded", data=None, confidence=0.9, basis="wiki_
     )
 
 
-async def _run(
-    monkeypatch,
-    step,
-    *,
-    state=None,
-    top_classify=None,
-    top_dispatch=None,
-    top_check=None,
-    sub_classify=None,
-    sub_dispatch=None,
-    sub_check=None,
-    planner_queue=None,
-    max_rounds=None,
-):
-    """Drives `run_task_handler`, faking its four collaborators. The TOP-level
-    step's own classify/dispatch/check are answered from the `top_*` args
-    (exactly one call each, unambiguous); any NESTED sub-step's calls are
-    answered by step-id lookup in the `sub_*` dicts, so concurrent dispatch
-    within one execution layer never depends on call ordering."""
+def _sub(sub_step_id, specialist="retrieval", *, depends_on=None, objective="do it") -> dict:
+    return {
+        "sub_step_id": sub_step_id,
+        "specialist": specialist,
+        "objective": objective,
+        "depends_on": depends_on or [],
+        "success_criteria": ["done"],
+    }
+
+
+async def _run(monkeypatch, step, *, state=None, route, dispatch=None, check=None):
+    """Drives `run_task_handler`, faking its three collaborators.
+
+    - `route`: the pipeline (a list of `_sub(...)` dicts) the router returns.
+      The task handler routes exactly once per step (no repair loop).
+    - `dispatch`: dict step_id -> [SubagentResult] popped per call (keyed by the
+      PARENT step_id for the atomic path, by sub_step_ids in a pipeline).
+    - `check`: dict step_id -> [bool] popped per success-check call.
+
+    Returns `(entry, route_dependency_contexts)`.
+    """
     state = state if state is not None else PlanExecutionState(plan_id="p1")
-    sub_classify = sub_classify or {}
-    sub_dispatch = {k: list(v) for k, v in (sub_dispatch or {}).items()}
-    sub_check = {k: list(v) for k, v in (sub_check or {}).items()}
-    planner_queue = list(planner_queue or [])
-    planner_inputs: list = []
-    top_step_id = step.step_id
-    top_classify_dependency_contexts: list = []
-    top_calls_used = {"classify": False, "dispatch": False, "check": False}
+    dispatch = {k: list(v) for k, v in (dispatch or {}).items()}
+    check = {k: list(v) for k, v in (check or {}).items()}
+    route_dependency_contexts: list = []
 
-    async def fake_classify_and_prep(*, step, dependency_context, llm_adapter, block_id, user_id):
-        if step.step_id == top_step_id and not top_calls_used["classify"]:
-            top_calls_used["classify"] = True
-            top_classify_dependency_contexts.append(dependency_context)
-            return top_classify, "dummy_prep"
-        return sub_classify[step.step_id], "dummy_prep"
+    async def fake_route_step(*, step, dependency_context, llm_adapter, block_id, user_id, role_roster=None, failure_context=None):
+        route_dependency_contexts.append(dependency_context)
+        pipeline = [RoutedSubStep.model_validate(item) for item in route]
+        return SpecialistRouterOutput(status="completed", schema_valid=True, result={}, confidence=1.0, pipeline=pipeline)
 
-    async def fake_dispatch(
-        *,
-        step,
-        step_prep_output,
-        role,
-        state,
-        tool_registry,
-        llm_adapter,
-        block_id,
-        user_id,
-        streaming_queue=None,
-        tool_call_cache=None,
-        unresolvable_registry=None,
-        reasoning_config=None,
-    ):
-        if step.step_id == top_step_id and not top_calls_used["dispatch"]:
-            top_calls_used["dispatch"] = True
-            return top_dispatch
-        return sub_dispatch[step.step_id].pop(0)
+    async def fake_dispatch(*, step, **_kwargs):
+        return dispatch[step.step_id].pop(0)
 
-    async def fake_check(*, step, result, llm_adapter, block_id):
-        # check_success_criteria now returns SuccessCheckResult(bool,
-        # list[str]) -- tests here only care about the bool half, so wrap
-        # it with an empty unmet_criteria list rather than threading a
-        # third fixture arg through every call site.
-        if step.step_id == top_step_id and not top_calls_used["check"]:
-            top_calls_used["check"] = True
-            return top_check, []
-        return sub_check[step.step_id].pop(0), []
+    async def fake_check(*, step, **_kwargs):
+        met = check[step.step_id].pop(0)
+        return met, ([] if met else [f"{step.step_id} unmet"])
 
-    async def fake_build_next_plan_steps(
-        *, planner_input, llm_adapter, block_id, invocation, prompt_contract_name,
-        council_enabled=True, thinking_enabled=None, reasoning_effort=None, timeout=None,
-    ):
-        planner_inputs.append(planner_input)
-        return planner_queue.pop(0)
-
-    monkeypatch.setattr(task_handler_module, "classify_and_prep_step", fake_classify_and_prep)
-    monkeypatch.setattr(task_handler_module, "check_success_criteria", fake_check)
+    monkeypatch.setattr(task_handler_module, "route_step", fake_route_step)
     monkeypatch.setattr(task_handler_module, "_dispatch_single_specialist", fake_dispatch)
-    monkeypatch.setattr(task_handler_module, "build_next_plan_steps", fake_build_next_plan_steps)
-
-    kwargs = {}
-    if max_rounds is not None:
-        kwargs["max_rounds"] = max_rounds
+    monkeypatch.setattr(task_handler_module, "check_success_criteria", fake_check)
 
     entry = await run_task_handler(
         step=step,
@@ -169,20 +130,17 @@ async def _run(
         original_user_message="hello",
         user_id="test-user-1",
         plan_id="p1",
-        **kwargs,
     )
-    return entry, planner_inputs, top_classify_dependency_contexts
+    return entry, route_dependency_contexts
 
 
 async def test_atomic_fast_path_succeeds(monkeypatch):
-    step = _step()
-
-    entry, _, _ = await _run(
+    entry, _ = await _run(
         monkeypatch,
-        step,
-        top_classify=_classifier(True, "retrieval"),
-        top_dispatch=_subagent_result(data={"answer": 42}, confidence=0.85, basis="official_record"),
-        top_check=True,
+        _step(),
+        route=[_sub("s1", "retrieval")],
+        dispatch={"1a": [_subagent_result(data={"answer": 42}, confidence=0.85, basis="official_record")]},
+        check={"1a": [True]},
     )
 
     assert entry.nested_trace is None
@@ -192,119 +150,59 @@ async def test_atomic_fast_path_succeeds(monkeypatch):
     assert entry.data == {"answer": 42}
 
 
-async def test_fast_path_inadequate_triggers_fallback(monkeypatch):
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="complete",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-
-    entry, _, _ = await _run(
+async def test_atomic_fast_path_inadequate_returns_partial_without_rerouting(monkeypatch):
+    # A length-1 route whose specialist succeeds but fails the step's own
+    # success-check returns a PARTIAL atomic entry (nested_trace None) -- it does
+    # NOT re-route locally; the Monitor replans one level up.
+    entry, deps = await _run(
         monkeypatch,
-        step,
-        top_classify=_classifier(True, "retrieval"),
-        top_dispatch=_subagent_result(status="succeeded"),
-        top_check=False,  # fast path is inadequate -- must fall back
-        sub_classify={"1a1": _classifier(True, "retrieval")},
-        sub_dispatch={"1a1": [_subagent_result(data={"x": 1})]},
-        sub_check={"1a1": [True]},
-        planner_queue=[plan_output],
+        _step(),
+        route=[_sub("s1", "retrieval")],
+        dispatch={"1a": [_subagent_result(data={"x": 1})]},
+        check={"1a": [False]},
     )
 
-    assert entry.nested_trace is not None
-    assert "fast_path_inadequate" in entry.warnings
-    assert entry.status == "succeeded"
+    assert entry.nested_trace is None
+    assert entry.status == "partial"
+    assert "atomic_success_criteria_not_met" in entry.warnings
+    assert len(deps) == 1  # routed exactly once, no repair re-route
 
 
-async def test_classified_non_atomic_skips_atomic_attempt_entirely(monkeypatch):
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="complete",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-
-    # top_dispatch/top_check are left None -- if the atomic path were ever
-    # attempted for the top-level step, fake_dispatch/fake_check would fall
-    # through to a dict lookup keyed by "1a" in sub_dispatch/sub_check,
-    # which isn't populated, raising KeyError and failing the test loudly.
-    entry, _, _ = await _run(
+async def test_multi_specialist_pipeline_executes_without_atomic_attempt(monkeypatch):
+    # A length>1 route is complex from the start -- no atomic dispatch is
+    # attempted (no "1a" dispatch key exists, so an attempt would KeyError).
+    entry, _ = await _run(
         monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(True, "composition")},
-        sub_dispatch={"1a1": [_subagent_result(data={"answer_text": "done"})]},
-        sub_check={"1a1": [True]},
-        planner_queue=[plan_output],
+        _step(),
+        route=[_sub("s1", "retrieval"), _sub("s2", "composition", depends_on=["s1"])],
+        dispatch={"s1": [_subagent_result(data={"facts": {}})], "s2": [_subagent_result(data={"answer_text": "done"})]},
+        check={"s1": [True], "s2": [True]},
     )
 
     assert entry.status == "succeeded"
     assert entry.role == "composition"
-    # Regression guard: routes/advise.py's final-answer extraction and
-    # loop.py's own composition short-circuit both do a flat
-    # `data.get("answer_text")` on any StateEntry whose role is
-    # "composition" -- wrapping it under `sub_results` (every other role's
-    # shape) silently produced a blank final answer even though the agent
-    # composed a correct one internally (found live: the real answer ended
-    # up at data["sub_results"]["1a1"]["answer_text"] instead of
-    # data["answer_text"]).
+    # Regression guard: routes/advise.py + loop.py do a flat
+    # `data.get("answer_text")` on any composition entry, so a pipeline ending
+    # in composition must surface that sub-step's data FLAT, not wrapped under
+    # sub_results (found live: the answer got buried at
+    # data["sub_results"][...]["answer_text"]).
     assert entry.data == {"answer_text": "done"}
 
 
-async def test_round_cap_exhaustion_never_fabricates_success(monkeypatch):
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="in_progress",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-
-    entry, planner_inputs, _ = await _run(
+async def test_pipeline_failure_yields_partial_for_the_monitor(monkeypatch):
+    # A sub-step that fails its success-check makes the whole step partial/failed
+    # (no local repair) -- the Monitor replans one level up.
+    entry, deps = await _run(
         monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(True, "retrieval")},
-        sub_dispatch={"1a1": [_subagent_result(status="succeeded")] * 2},
-        sub_check={"1a1": [False, False]},  # never satisfies criteria -- keeps failing every round
-        planner_queue=[plan_output, plan_output],
-        max_rounds=2,
-    )
+        _step(),
+        route=[_sub("s1", "retrieval"), _sub("s2", "calculation_validation", depends_on=["s1"])],
+        dispatch={"s1": [_subagent_result(data={"facts": {}})]},
+        check={"s1": [False]},  # s1 fails -> s2's layer never runs
+        )
 
-    assert len(planner_inputs) == 2
-    assert "task_handler_round_budget_exhausted" in entry.warnings
     assert entry.status in ("partial", "failed")
-    assert entry.status != "succeeded"
-
-
-async def test_blocked_needs_clarification_translates_upward_not_dropped(monkeypatch):
-    step = _step()
-    plan_output = PlannerInvocationOutput(
-        plan_status="blocked_needs_clarification",
-        next_steps=[],
-        plan_summary="",
-        clarification_question="Which semester do you mean?",
-        plan_graph=PlanGraph(),
-    )
-
-    entry, _, _ = await _run(
-        monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        planner_queue=[plan_output],
-    )
-
-    assert entry.status == "partial"
-    assert any("Which semester do you mean?" in warning for warning in entry.warnings)
+    assert "task_handler_pipeline_incomplete" in entry.warnings
+    assert len(deps) == 1  # routed exactly once, no repair re-route
 
 
 def test_depth_cap_is_structurally_impossible_to_violate():
@@ -312,141 +210,37 @@ def test_depth_cap_is_structurally_impossible_to_violate():
     assert source.count("run_task_handler(") == 1
 
 
-async def test_monitor_flags_thread_a_round_1_failure_into_round_2(monkeypatch):
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="in_progress",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-
-    _, planner_inputs, _ = await _run(
-        monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(True, "retrieval")},
-        sub_dispatch={"1a1": [_subagent_result(status="succeeded")] * 2},
-        sub_check={"1a1": [False, True]},  # fails round 1, then succeeds round 2
-        planner_queue=[plan_output, plan_output],
-        max_rounds=2,
-    )
-
-    assert planner_inputs[0].monitor_flags == []
-    assert planner_inputs[0].replan_reason is None
-    assert any("1a1" in flag for flag in planner_inputs[1].monitor_flags)
-    assert planner_inputs[1].replan_reason is not None
-    assert "1a1" in planner_inputs[1].replan_reason
-
-
-async def test_nested_planner_runs_drafter_only_council_disabled(monkeypatch):
-    """The task handler's private nested sub-plan must invoke the Planner with
-    council_enabled=False -- every nested replan round carries a replan_reason,
-    which would otherwise fire the full critic council each round (the dominant
-    call cost on hard turns). The nested result is re-verified by the outer
-    Monitor + success-check, so the critics are redundant there."""
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="complete",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-    council_flags: list[bool] = []
-
-    async def capturing_build_next_plan_steps(*, planner_input, llm_adapter, block_id, invocation, prompt_contract_name, council_enabled=True, **_ignored):
-        council_flags.append(council_enabled)
-        return plan_output
-
-    async def fake_classify_and_prep(*, step, dependency_context, llm_adapter, block_id, user_id):
-        return _classifier(step.step_id != "1a", "retrieval" if step.step_id != "1a" else None), "dummy_prep"
-
-    async def fake_dispatch(**_kwargs):
-        return _subagent_result(status="succeeded")
-
-    async def fake_check(**_kwargs):
-        return True, []
-
-    monkeypatch.setattr(task_handler_module, "build_next_plan_steps", capturing_build_next_plan_steps)
-    monkeypatch.setattr(task_handler_module, "classify_and_prep_step", fake_classify_and_prep)
-    monkeypatch.setattr(task_handler_module, "_dispatch_single_specialist", fake_dispatch)
-    monkeypatch.setattr(task_handler_module, "check_success_criteria", fake_check)
-
-    await run_task_handler(
-        step=step,
-        state=PlanExecutionState(plan_id="p1"),
-        role_roster=ROLE_ROSTER,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=object(),
-        original_user_message="hello",
-        user_id="test-user-1",
-        plan_id="p1",
-    )
-
-    assert council_flags, "the nested planner was never invoked"
-    assert all(flag is False for flag in council_flags)
-
-
 async def test_certainty_aggregates_via_min_confidence_across_sub_steps(monkeypatch):
-    step = _step()
-    sub1 = _step(step_id="1a1")
-    sub2 = _step(step_id="1a2")
-    plan_output = PlannerInvocationOutput(
-        plan_status="complete",
-        next_steps=[sub1, sub2],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": [], "1a2": []}, dependents={}, execution_layers=[["1a1", "1a2"]]),
-    )
-
-    entry, _, _ = await _run(
+    entry, _ = await _run(
         monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(True, "retrieval"), "1a2": _classifier(True, "interpretation")},
-        sub_dispatch={
-            "1a1": [_subagent_result(confidence=0.9, basis="official_record")],
-            "1a2": [_subagent_result(confidence=0.6, basis="wiki_derived")],
+        _step(),
+        route=[_sub("s1", "retrieval"), _sub("s2", "interpretation")],
+        dispatch={
+            "s1": [_subagent_result(confidence=0.9, basis="official_record")],
+            "s2": [_subagent_result(confidence=0.6, basis="wiki_derived")],
         },
-        sub_check={"1a1": [True], "1a2": [True]},
-        planner_queue=[plan_output],
+        check={"s1": [True], "s2": [True]},
     )
 
     assert entry.certainty.confidence == 0.6
     assert entry.certainty.basis == "wiki_derived"
     # Both sub-steps' entries land in the nested trace -- proves the
-    # execution-layer parallel dispatch wiring actually ran both, not just one.
-    assert {trace.step_id for trace in entry.nested_trace.entries} == {"1a1", "1a2"}
+    # execution-layer parallel dispatch actually ran both (they share a layer).
+    assert {trace.step_id for trace in entry.nested_trace.entries} == {"s1", "s2"}
 
 
-async def test_nested_audit_trail_stays_auxiliary_only(monkeypatch):
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="complete",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-
-    entry, _, _ = await _run(
+async def test_pipeline_wraps_non_composition_results_and_tags_private_plan_id(monkeypatch):
+    entry, _ = await _run(
         monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(True, "retrieval")},
-        sub_dispatch={"1a1": [_subagent_result(data={"fact": "value"})]},
-        sub_check={"1a1": [True]},
-        planner_queue=[plan_output],
+        _step(),
+        route=[_sub("s1", "retrieval"), _sub("s2", "retrieval")],
+        dispatch={"s1": [_subagent_result(data={"fact": "a"})], "s2": [_subagent_result(data={"fact": "b"})]},
+        check={"s1": [True], "s2": [True]},
     )
 
-    assert entry.data == {"sub_results": {"1a1": {"fact": "value"}}}
-    assert entry.nested_trace.entries[0].step_id == "1a1"
+    assert entry.data == {"sub_results": {"s1": {"fact": "a"}, "s2": {"fact": "b"}}}
     assert entry.nested_trace.private_plan_id == "p1:1a"
+    assert {trace.step_id for trace in entry.nested_trace.entries} == {"s1", "s2"}
 
 
 async def test_dependency_slice_scoping_excludes_unrelated_entries(monkeypatch):
@@ -455,16 +249,18 @@ async def test_dependency_slice_scoping_excludes_unrelated_entries(monkeypatch):
     state.append(_entry("unrelated"))
     step = _step(depends_on=["dep1"])
 
-    _, _, top_classify_dependency_contexts = await _run(
+    _, route_contexts = await _run(
         monkeypatch,
         step,
         state=state,
-        top_classify=_classifier(True, "retrieval"),
-        top_dispatch=_subagent_result(),
-        top_check=True,
+        route=[_sub("s1", "retrieval")],
+        dispatch={"1a": [_subagent_result()]},
+        check={"1a": [True]},
     )
 
-    assert [entry.step_id for entry in top_classify_dependency_contexts[0]] == ["dep1"]
+    # The router only ever sees the step's own declared dependency, never
+    # unrelated accumulated state.
+    assert [entry.step_id for entry in route_contexts[0]] == ["dep1"]
 
 
 async def test_run_task_handler_never_mutates_parent_state_directly(monkeypatch):
@@ -476,102 +272,24 @@ async def test_run_task_handler_never_mutates_parent_state_directly(monkeypatch)
         monkeypatch,
         step,
         state=state,
-        top_classify=_classifier(True, "retrieval"),
-        top_dispatch=_subagent_result(),
-        top_check=True,
+        route=[_sub("s1", "retrieval")],
+        dispatch={"1a": [_subagent_result()]},
+        check={"1a": [True]},
     )
 
-    # Only the pre-existing dependency entry -- run_task_handler must never
-    # append to the shared state itself; that's still the caller's job.
+    # run_task_handler must never append to the shared state itself; that's
+    # still the caller's job.
     assert len(state.entries) == 1
     assert state.entries[0].step_id == "dep1"
 
 
-async def test_known_global_ids_seeding_preserves_parent_dependency_reference(monkeypatch, fake_llm_adapter_factory):
-    """A real regression guard for the pre-seeding fix in `_run_nested_subplan`:
-    uses the REAL `build_next_plan_steps` (not faked) so `rewrite_step_ids`'s
-    actual dangling-dependency-stripping logic runs for real."""
-    step = _step(step_id="1a", depends_on=["s1"])
-    parent_state = PlanExecutionState(plan_id="p1")
-    parent_state.append(_entry("s1"))
-
-    captured_sub_steps: list[PlanStep] = []
-
-    async def fake_dispatch_nested_sub_step(
-        *,
-        sub_step,
-        private_state,
-        role_roster,
-        tool_registry,
-        llm_adapter,
-        plan_id,
-        step,
-        user_id,
-        tool_call_cache=None,
-        unresolvable_registry=None,
-        reasoning_config=None,
-    ):
-        captured_sub_steps.append(sub_step)
-        return StateEntry(
-            entry_id=f"{sub_step.step_id}-0",
-            step_id=sub_step.step_id,
-            role="retrieval",
-            status="succeeded",
-            output_schema_name="generic_step_output_v1",
-            data={},
-            certainty=CertaintyTag(basis="wiki_derived", confidence=0.9),
-            produced_at=datetime.now(timezone.utc),
-        )
-
-    monkeypatch.setattr(task_handler_module, "_dispatch_nested_sub_step", fake_dispatch_nested_sub_step)
-
-    adapter = fake_llm_adapter_factory(
-        [
-            {
-                "plan_status": "complete",
-                "next_steps": [
-                    {
-                        "step_id": "A",
-                        "objective": "use s1's result",
-                        "depends_on": ["s1"],
-                        "success_criteria": [],
-                        "assumptions_to_verify": [],
-                    }
-                ],
-                "plan_summary": "",
-                "clarification_question": None,
-            }
-        ]
-    )
-
-    await task_handler_module._run_nested_subplan(
-        step=step,
-        parent_state=parent_state,
-        role_roster=ROLE_ROSTER,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
-        original_user_message="hello",
-        user_id="test-user-1",
-        plan_id="p1",
-        max_rounds=1,
-    )
-
-    assert len(captured_sub_steps) == 1
-    assert captured_sub_steps[0].depends_on == ["s1"]
-
-
-async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
-    monkeypatch, fake_llm_adapter_factory
-):
-    """Regression guard: `_run_nested_subplan` used to pre-seed only
-    `plan_graph.forward` for a parent dependency (enough to stop
-    `rewrite_step_ids` stripping it as dangling) without copying the actual
-    parent `StateEntry` -- so a nested sub-step depending on a parent id got
-    an EMPTY `private_state.slice(...)`, and e.g. `calculation_validation`
-    failed with "ref not found in facts (available: [])" no matter how many
-    rounds it got (found via a live-eval run against an undeclared-major
-    student). Confirms the parent's real data is now visible to the nested
-    sub-plan from the start."""
+async def test_pipeline_pre_seeds_parent_dependency_data_not_just_graph_shape(monkeypatch):
+    """Regression guard: the pipeline executor must copy the parent
+    dependency's real `StateEntry` into the private state, not just its
+    graph-shape id -- otherwise a sub-step whose context_requirements names a
+    parent id gets an EMPTY slice and e.g. calculation_validation fails with
+    "ref not found in facts (available: [])" (found via a live-eval run against
+    an undeclared-major student)."""
     step = _step(step_id="1a", depends_on=["s1"])
     parent_state = PlanExecutionState(plan_id="p1")
     parent_state.append(
@@ -589,24 +307,11 @@ async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
 
     captured_states: list[PlanExecutionState] = []
 
-    async def fake_dispatch_nested_sub_step(
-        *,
-        sub_step,
-        private_state,
-        role_roster,
-        tool_registry,
-        llm_adapter,
-        plan_id,
-        step,
-        user_id,
-        tool_call_cache=None,
-        unresolvable_registry=None,
-        reasoning_config=None,
-    ):
+    async def fake_dispatch_pipeline_sub_step(*, sub, private_state, **_kwargs):
         captured_states.append(private_state)
         return StateEntry(
-            entry_id=f"{sub_step.step_id}-0",
-            step_id=sub_step.step_id,
+            entry_id=f"{sub.sub_step_id}-0",
+            step_id=sub.sub_step_id,
             role="retrieval",
             status="succeeded",
             output_schema_name="generic_step_output_v1",
@@ -615,43 +320,51 @@ async def test_nested_subplan_seeds_parent_dependency_data_not_just_graph_shape(
             produced_at=datetime.now(timezone.utc),
         )
 
-    monkeypatch.setattr(task_handler_module, "_dispatch_nested_sub_step", fake_dispatch_nested_sub_step)
+    monkeypatch.setattr(task_handler_module, "_dispatch_pipeline_sub_step", fake_dispatch_pipeline_sub_step)
 
-    adapter = fake_llm_adapter_factory(
-        [
-            {
-                "plan_status": "complete",
-                "next_steps": [
-                    {
-                        "step_id": "A",
-                        "objective": "use s1's result",
-                        "depends_on": ["s1"],
-                        "success_criteria": [],
-                        "assumptions_to_verify": [],
-                    }
-                ],
-                "plan_summary": "",
-                "clarification_question": None,
-            }
-        ]
-    )
-
-    await task_handler_module._run_nested_subplan(
+    private_state = task_handler_module._new_private_state(step=step, parent_state=parent_state)
+    await task_handler_module._execute_pipeline_once(
         step=step,
-        parent_state=parent_state,
+        pipeline=[
+            RoutedSubStep(sub_step_id="s2", specialist="retrieval", objective="use s1", depends_on=["s1"], success_criteria=[])
+        ],
+        private_state=private_state,
         role_roster=ROLE_ROSTER,
         tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
-        original_user_message="hello",
-        user_id="test-user-1",
+        llm_adapter=object(),
         plan_id="p1",
-        max_rounds=1,
+        user_id="test-user-1",
     )
 
     assert len(captured_states) == 1
     sliced = captured_states[0].slice(["s1"])
     assert len(sliced) == 1
     assert sliced[0].data == {"completed_courses": [{"courseNumber": "104166", "grade": 78}]}
+
+
+async def test_role_aggregation_uses_last_successful_entrys_role(monkeypatch):
+    entry, _ = await _run(
+        monkeypatch,
+        _step(),
+        route=[_sub("s1", "retrieval"), _sub("s2", "composition", depends_on=["s1"])],
+        dispatch={"s1": [_subagent_result()], "s2": [_subagent_result(data={"answer_text": "done"})]},
+        check={"s1": [True], "s2": [True]},
+    )
+
+    assert entry.role == "composition"
+
+
+async def test_role_aggregation_falls_back_to_retrieval_when_nothing_succeeded(monkeypatch):
+    entry, _ = await _run(
+        monkeypatch,
+        _step(),
+        route=[_sub("s1", "interpretation"), _sub("s2", "interpretation", depends_on=["s1"])],
+        dispatch={"s1": [_subagent_result()]},
+        check={"s1": [False]},  # nothing succeeds -> s2's layer never runs
+    )
+
+    assert entry.role == "retrieval"
+    assert entry.status == "failed"
 
 
 async def test_dispatch_single_specialist_routes_calculation_validation_role_to_dedicated_block(
@@ -712,9 +425,7 @@ async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_blo
         calls["generic"] += 1
         return _subagent_result(status="succeeded")
 
-    monkeypatch.setattr(
-        task_handler_module, "run_retrieval_subagent", fake_retrieval_subagent
-    )
+    monkeypatch.setattr(task_handler_module, "run_retrieval_subagent", fake_retrieval_subagent)
     monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
 
     step = _step(step_id="1a")
@@ -754,9 +465,7 @@ async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicate
         calls["generic"] += 1
         return _subagent_result(status="succeeded")
 
-    monkeypatch.setattr(
-        task_handler_module, "run_interpretation_subagent", fake_interpretation_subagent
-    )
+    monkeypatch.setattr(task_handler_module, "run_interpretation_subagent", fake_interpretation_subagent)
     monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
 
     step = _step(step_id="1a")
@@ -796,9 +505,7 @@ async def test_dispatch_single_specialist_routes_simulation_planning_role_to_ded
         calls["generic"] += 1
         return _subagent_result(status="succeeded")
 
-    monkeypatch.setattr(
-        task_handler_module, "run_simulation_planning_subagent", fake_simulation_planning_subagent
-    )
+    monkeypatch.setattr(task_handler_module, "run_simulation_planning_subagent", fake_simulation_planning_subagent)
     monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
 
     step = _step(step_id="1a")
@@ -836,9 +543,7 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
         calls["generic"] += 1
         return _subagent_result(status="succeeded")
 
-    monkeypatch.setattr(
-        task_handler_module, "run_composition_subagent", fake_composition_subagent
-    )
+    monkeypatch.setattr(task_handler_module, "run_composition_subagent", fake_composition_subagent)
     monkeypatch.setattr(task_handler_module, "run_subagent", fake_run_subagent)
 
     step = _step(step_id="1a")
@@ -858,54 +563,3 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
 
     assert calls == {"composition": 1, "generic": 0}
     assert result.status == "succeeded"
-
-
-async def test_role_aggregation_uses_last_successful_entrys_role(monkeypatch):
-    step = _step()
-    sub1 = _step(step_id="1a1")
-    sub2 = _step(step_id="1a2")
-    plan_output = PlannerInvocationOutput(
-        plan_status="complete",
-        next_steps=[sub1, sub2],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(
-            forward={"1a1": [], "1a2": ["1a1"]}, dependents={"1a1": ["1a2"]}, execution_layers=[["1a1"], ["1a2"]]
-        ),
-    )
-
-    entry, _, _ = await _run(
-        monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(True, "retrieval"), "1a2": _classifier(True, "composition")},
-        sub_dispatch={"1a1": [_subagent_result()], "1a2": [_subagent_result(data={"answer_text": "done"})]},
-        sub_check={"1a1": [True], "1a2": [True]},
-        planner_queue=[plan_output],
-    )
-
-    assert entry.role == "composition"
-
-
-async def test_role_aggregation_falls_back_to_retrieval_when_nothing_succeeded(monkeypatch):
-    step = _step()
-    sub_step = _step(step_id="1a1")
-    plan_output = PlannerInvocationOutput(
-        plan_status="in_progress",
-        next_steps=[sub_step],
-        plan_summary="",
-        clarification_question=None,
-        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
-    )
-
-    entry, _, _ = await _run(
-        monkeypatch,
-        step,
-        top_classify=_classifier(False, None),
-        sub_classify={"1a1": _classifier(False, None)},
-        planner_queue=[plan_output],
-        max_rounds=1,
-    )
-
-    assert entry.role == "retrieval"
-    assert entry.status == "failed"

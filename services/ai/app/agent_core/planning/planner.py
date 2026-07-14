@@ -38,16 +38,6 @@ logger = logging.getLogger(__name__)
 
 PLANNER_V1 = "planner_v1"
 
-# A distinct contract, not a distinct code path -- registered alongside
-# planner_v1 in the same registry and run through the exact same
-# PlannerReasoningBlock. Used by orchestrator/task_handler.py when it
-# recursively decomposes a single, too-complex PlanStep into its own
-# private sub-plan: the role_prompt below frames that context correctly
-# ("decomposing one internal step of a larger plan") instead of planner_v1's
-# own framing ("the student's request"), which would otherwise be actively
-# misleading for a nested invocation.
-NESTED_PLANNER_V1 = "planner_nested_v1"
-
 PLANNER_OUTPUT_SCHEMA_NAME = "planner_invocation_output_v1"
 
 _PLAN_STEP_SCHEMA: dict[str, Any] = {
@@ -222,7 +212,10 @@ def _planner_contract() -> PromptContract:
             "record collapse into one step.)",
             "success_criteria and assumptions_to_verify must be concrete and checkable -- specific "
             "facts or conditions that can be verified true or false against the step's actual "
-            "result, never a vague hedge like 'gather relevant information'.",
+            "result, never a vague hedge like 'gather relevant information'. State each as a plain "
+            "OUTCOME (what fact the step must establish), never a data shape or exact field list "
+            "('includes degreeId, trackSlug, minors, and specializations') -- a shape-based "
+            "criterion fails the downstream check even when the answer is substantively correct.",
             "plan_status is always explicit: 'in_progress' when there is more work after this "
             "batch, 'complete' when this batch is the last one needed to answer the request, "
             "'blocked_needs_clarification' when a genuine ambiguity blocks proceeding. Never leave "
@@ -277,37 +270,11 @@ def _planner_contract() -> PromptContract:
     )
 
 
-def _planner_nested_contract() -> PromptContract:
-    """Same instructions/safety_rules/schema as planner_v1, verbatim --
-    only `name` and `role_prompt` differ. One structured decision (the
-    Planner's own instructions for depends_on completeness, batching,
-    open_questions handling, etc.) should never fork into two independently
-    drifting copies; `.model_copy` guarantees that."""
-    base = _planner_contract()
-    return base.model_copy(
-        update={
-            "name": NESTED_PLANNER_V1,
-            "role_prompt": (
-                "You are the Planner for the UniPilot Agent, a Technion academic advising assistant. "
-                "You are being invoked by a task handler to decompose ONE internal step of a larger "
-                "plan -- not a fresh user turn. `user_goal` here is that one step's own objective, "
-                "not the student's original request; `original_user_message` is passed through only "
-                "for tone/language grounding. You are invoked repeatedly over the course of resolving "
-                "this one step. Each time, given that step's objective plus everything this private "
-                "sub-plan has accumulated so far, your one job is to produce the NEXT batch of "
-                "runnable work steps needed to fully resolve it -- never a full upfront plan, and "
-                "never more than what is genuinely fully knowable right now."
-            ),
-        }
-    )
-
-
 def build_planner_prompt_registry() -> PromptRegistry:
     """The two generic contracts plus this layer's own -- mirrors
     `request_understanding.build_request_understanding_prompt_registry()`'s pattern."""
     registry = build_default_prompt_registry()
     registry.register(_planner_contract())
-    registry.register(_planner_nested_contract())
     return registry
 
 
@@ -463,10 +430,6 @@ async def build_next_plan_steps(
     block_id: str,
     invocation: int,
     prompt_contract_name: str = PLANNER_V1,
-    council_enabled: bool = True,
-    thinking_enabled: bool | None = None,
-    reasoning_effort: str | None = None,
-    timeout: float | None = None,
 ) -> PlannerInvocationOutput:
     # Delegated to the council (draft -> parallel critics -> gated synthesis),
     # which replaced the old single thinking-enabled call. That one call, on a
@@ -474,10 +437,7 @@ async def build_next_plan_steps(
     # again, and leave the whole turn with no plan at all -- one slow call =
     # total loss. The council is a handful of fast, no-thinking, individually
     # reliable calls with a guaranteed floor. Lazy import breaks the module
-    # cycle (planner_council imports names from this module). The
-    # thinking_enabled/reasoning_effort/timeout knobs are intentionally no
-    # longer forwarded: the council fixes each member's own fast params, and
-    # a per-tier "think harder" lever is exactly what was failing.
+    # cycle (planner_council imports names from this module).
     from app.agent_core.planning.planner_council import run_planner_council
 
     block_output = await run_planner_council(
@@ -486,7 +446,6 @@ async def build_next_plan_steps(
         block_id=block_id,
         invocation=invocation,
         prompt_contract_name=prompt_contract_name,
-        council_enabled=council_enabled,
         output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
         output_schema=PLANNER_OUTPUT_SCHEMA,
     )
@@ -508,7 +467,6 @@ async def build_next_plan_steps(
 
 __all__ = [
     "PLANNER_V1",
-    "NESTED_PLANNER_V1",
     "PLANNER_OUTPUT_SCHEMA_NAME",
     "PLANNER_OUTPUT_SCHEMA",
     "PlannerReasoningBlock",

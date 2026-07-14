@@ -11,12 +11,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TurnReasoningConfig:
-    """Pre-computed reasoning parameters for the current turn."""
+    """Pre-computed reasoning parameters for the current turn.
+
+    The Planner no longer takes per-tier thinking/effort/timeout knobs: it runs
+    through the fixed-fast Planner Council (see planner_council.py), which sets
+    each member's own params. Only its per-tier invocation budget survives here.
+    """
 
     # Planner
-    planner_thinking_enabled: bool
-    planner_reasoning_effort: str | None
-    planner_timeout: float
     max_planner_invocations: int
     # Dynamic subagents (Interpretation, Calculation, Simulation)
     subagent_thinking_enabled: bool
@@ -28,9 +30,6 @@ class TurnReasoningConfig:
 
 _CONFIGS: dict[str, TurnReasoningConfig] = {
     "low": TurnReasoningConfig(
-        planner_thinking_enabled=False,
-        planner_reasoning_effort=None,
-        planner_timeout=30.0,
         max_planner_invocations=2,
         subagent_thinking_enabled=False,
         subagent_reasoning_effort=None,
@@ -38,9 +37,6 @@ _CONFIGS: dict[str, TurnReasoningConfig] = {
         static_subagent_timeout=20.0,
     ),
     "medium": TurnReasoningConfig(
-        planner_thinking_enabled=True,
-        planner_reasoning_effort="low",
-        planner_timeout=60.0,
         max_planner_invocations=3,
         subagent_thinking_enabled=False,
         subagent_reasoning_effort=None,
@@ -48,9 +44,6 @@ _CONFIGS: dict[str, TurnReasoningConfig] = {
         static_subagent_timeout=20.0,
     ),
     "high": TurnReasoningConfig(
-        planner_thinking_enabled=True,
-        planner_reasoning_effort="medium",
-        planner_timeout=60.0,
         max_planner_invocations=4,
         subagent_thinking_enabled=True,
         subagent_reasoning_effort="low",
@@ -58,9 +51,6 @@ _CONFIGS: dict[str, TurnReasoningConfig] = {
         static_subagent_timeout=20.0,
     ),
     "max": TurnReasoningConfig(
-        planner_thinking_enabled=True,
-        planner_reasoning_effort="high",
-        planner_timeout=90.0,
         max_planner_invocations=5,
         subagent_thinking_enabled=True,
         subagent_reasoning_effort="medium",

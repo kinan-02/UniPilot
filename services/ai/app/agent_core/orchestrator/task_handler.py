@@ -1,24 +1,25 @@
-"""The task handler (docs/agent/AGENT_VISION.md §7, task-handler follow-up):
-absorbs the case where a single `PlanStep` is itself too complex for one
-specialist-subagent call.
+"""The task handler (docs/agent/AGENT_VISION.md §7;
+docs/planning/SPECIALIST_ROUTER_PLANNER_SPLIT_PLAN.md): a mini-orchestrator of
+specialists, not a doer. It never uses tools itself -- the specialists own the
+tools. Its job is to decide WHICH specialist type(s) execute a step and how
+their outputs chain, then oversee that execution.
 
 `run_task_handler` is the ONE entry point `orchestrator/loop.py` calls per
-top-level step, replacing the old inline `_stopgap_role_for_step` +
-`run_step_prep` + `build_subagent_context_package` + `run_subagent` +
-`StateEntry`-construction block. It cheaply classifies the step
-(`task_handler_classifier.classify_step`): atomic steps get dispatched
-directly to one specialist, same as today, just with a real role decision
-instead of keyword-matching; non-atomic steps (or an atomic dispatch whose
-result fails its own `success_criteria` check -- a second-line safety net,
-not the primary mechanism) get resolved via a private, bounded sub-plan.
+top-level step. It routes the step to a specialist PIPELINE via the Specialist
+Router (`specialist_router.route_step`): "atomic vs complex" is a cardinality
+question about specialist TYPES, so a one-specialist step is a length-1
+pipeline (the atomic fast path) and a multi-specialist step is a pipeline with
+data handoff between its sub-steps. The pipeline runs ONCE; a step that falls
+short returns partial/failed and the outer Monitor replans one level up (it
+sees the whole plan and has the criteria critic). There is deliberately no
+per-step repair/re-route loop -- a live measurement showed one thrashing (8
+steps -> 18 routes) because a failing atomic step just re-produced the same
+single specialist.
 
 Depth-cap invariant: `run_task_handler` is the ONLY function that runs the
-classifier to decide *whether to recurse*, and the ONLY function that ever
-invokes the nested Planner as part of that decision. Nothing it calls,
-directly or transitively, calls it again -- there is no second call site in
-this module for its own name, enforced structurally, not by a runtime
-counter (see `tests/agent_core/test_orchestrator_task_handler.py`'s
-`inspect.getsource` regression guard).
+router to decide a step's pipeline, and nothing it calls re-enters it -- there
+is no second call site for its own name (enforced structurally; see
+`tests/agent_core/test_orchestrator_task_handler.py`).
 """
 
 from __future__ import annotations
@@ -28,13 +29,13 @@ from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.context_builder import build_subagent_context_package
 from app.agent_core.orchestrator.parallel_dispatch import dispatch_layer_concurrently
+from app.agent_core.orchestrator.specialist_router import RoutedSubStep, route_step
 from app.agent_core.orchestrator.state_index import build_state_index
-from app.agent_core.orchestrator.task_handler_classify_and_prep import classify_and_prep_step
 from app.agent_core.orchestrator.task_handler_success_check import check_success_criteria
-from app.agent_core.planning.planner import NESTED_PLANNER_V1, build_next_plan_steps
+from app.agent_core.planning.rewrite import compute_plan_graph
 from app.agent_core.reasoning_effort import TurnReasoningConfig
 from app.agent_core.reasoning_blocks.schemas import LLMCallParameters
-from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName
+from app.agent_core.planning.schemas import PlanStep, RoleName
 from app.agent_core.planning.state import (
     CertaintyTag,
     NestedExecutionTrace,
@@ -50,13 +51,26 @@ from app.agent_core.subagents.interpretation_block import run_interpretation_sub
 from app.agent_core.subagents.retrieval_block import run_retrieval_subagent
 from app.agent_core.subagents.simulation_planning_block import run_simulation_planning_subagent
 from app.agent_core.subagents.run import run_subagent
-from app.agent_core.subagents.schemas import SubagentResult
+from app.agent_core.subagents.schemas import (
+    ReasoningParamsOverride,
+    StepInstructionFields,
+    StepPrepOutput,
+    SubagentResult,
+)
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
 from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
-DEFAULT_MAX_TASK_HANDLER_ROUNDS = 3
-_ROUND_BUDGET_EXHAUSTED_WARNING = "task_handler_round_budget_exhausted"
+_PIPELINE_INCOMPLETE_WARNING = "task_handler_pipeline_incomplete"
+_SUB_STEP_UNMET_MARKER = "pipeline_sub_step_success_criteria_not_met"
+_ATOMIC_UNMET_MARKER = "atomic_success_criteria_not_met"
+
+
+def _user_id_instruction(user_id: str) -> str:
+    return (
+        f"The current student's own user_id (for get_entity with entity_type="
+        f"'student_profile'/'completed_courses'/'semester_plan') is: {user_id}"
+    )
 
 
 async def run_task_handler(
@@ -69,29 +83,40 @@ async def run_task_handler(
     original_user_message: str,
     user_id: str,
     plan_id: str,
-    max_rounds: int = DEFAULT_MAX_TASK_HANDLER_ROUNDS,
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
     reasoning_config: TurnReasoningConfig | None = None,
 ) -> StateEntry:
-    """Never appends to `state` itself -- the caller still owns
-    `state.append(entry)`, unchanged from today's `loop.py` behavior."""
-    classifier_output, step_prep_output = await classify_and_prep_step(
+    """Routes the step to a specialist pipeline and executes it ONCE. It never
+    re-routes/repairs locally: a live measurement showed a per-step repair loop
+    thrashing (8 steps -> 18 routes) because a failing atomic step just
+    re-produced the same single specialist. Recovery belongs to the Monitor,
+    which sees the whole plan and can replan (with the criteria critic to relax
+    an over-strict criterion) -- so a step that falls short returns
+    partial/failed here and the Monitor handles it one level up.
+
+    Never appends to `state` itself -- the caller still owns
+    `state.append(entry)`."""
+    route = await route_step(
         step=step,
         dependency_context=build_state_index(state.slice(step.depends_on)),
         llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-classify_and_prep",
+        block_id=f"{plan_id}-{step.step_id}-router",
         user_id=user_id,
+        role_roster=role_roster,
     )
 
-    fallback_reason: str | None = None
-    if classifier_output.atomic and classifier_output.role_if_atomic is not None:
-        role_name = classifier_output.role_if_atomic
+    # Atomic route: one specialist, verified against THIS step's own
+    # success_criteria (no nested_trace, so the Monitor skips the outer
+    # re-check). A failed check returns a partial/failed atomic entry rather
+    # than re-routing the identical single specialist.
+    if route.is_atomic:
+        sub = route.pipeline[0]
         result = await _dispatch_single_specialist(
             step=step,
-            step_prep_output=step_prep_output,
-            role=role_roster[role_name],
+            step_prep_output=_sub_step_prep(sub, user_id=user_id),
+            role=role_roster[sub.specialist],
             state=state,
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
@@ -102,45 +127,45 @@ async def run_task_handler(
             unresolvable_registry=unresolvable_registry,
             reasoning_config=reasoning_config,
         )
-        unmet_criteria: list[str] = []
-        criteria_met = False
+        status = result.status
+        warnings = list(result.warnings)
         if result.status == "succeeded":
-            criteria_met, unmet_criteria = await check_success_criteria(
+            criteria_met, unmet = await check_success_criteria(
                 step=step,
                 result=result,
                 llm_adapter=llm_adapter,
                 block_id=f"{plan_id}-{step.step_id}-success-check",
             )
-        if criteria_met:
-            return _entry_from_atomic_result(step=step, role=role_name, result=result, state=state)
-        fallback_reason = "fast_path_inadequate"
-    else:
-        fallback_reason = "classified_non_atomic"
-        unmet_criteria = []
+            if not criteria_met:
+                status = "partial"
+                warnings = [*warnings, _ATOMIC_UNMET_MARKER, *unmet]
+        return _entry_from_atomic_result(
+            step=step, role=sub.specialist, result=result, state=state, status=status, warnings=warnings
+        )
 
-    private_state, clarification_question, rounds_used, rounds_exhausted = await _run_nested_subplan(
+    # Multi-specialist route: execute the pipeline once (layer by layer, with
+    # data handoff between sub-steps). A sub-step that falls short yields a
+    # partial/failed aggregate for the Monitor to replan.
+    private_state = _new_private_state(step=step, parent_state=state)
+    pipeline_succeeded = await _execute_pipeline_once(
         step=step,
-        parent_state=state,
+        pipeline=list(route.pipeline),
+        private_state=private_state,
         role_roster=role_roster,
         tool_registry=tool_registry,
         llm_adapter=llm_adapter,
-        original_user_message=original_user_message,
-        user_id=user_id,
         plan_id=plan_id,
-        max_rounds=max_rounds,
+        user_id=user_id,
         tool_call_cache=tool_call_cache,
         unresolvable_registry=unresolvable_registry,
         reasoning_config=reasoning_config,
-        fast_path_unmet_criteria=unmet_criteria,
     )
-    return _entry_from_nested_subplan(
+    return _entry_from_pipeline(
         step=step,
         state=state,
         private_state=private_state,
-        clarification_question=clarification_question,
-        rounds_used=rounds_used,
-        rounds_exhausted=rounds_exhausted,
-        fallback_reason=fallback_reason,
+        pipeline_succeeded=pipeline_succeeded,
+        fallback_reason="routed_multi_specialist_pipeline",
     )
 
 
@@ -159,11 +184,10 @@ async def _dispatch_single_specialist(
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
     reasoning_config: TurnReasoningConfig | None = None,
 ) -> SubagentResult:
-    """The existing context_builder -> run_subagent chain,
-    wrapped as one non-recursive helper -- used by BOTH the atomic fast path
-    above and every nested sub-step below. Generic over whichever
-    `PlanExecutionState` it's given (the shared top-level `state`, or a
-    task handler's own private one)."""
+    """The context_builder -> run_subagent chain, wrapped as one non-recursive
+    helper -- used by BOTH the atomic fast path and every pipeline sub-step.
+    Generic over whichever `PlanExecutionState` it's given (the shared
+    top-level `state`, or a task handler's own private one)."""
     context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
     if role.name == "calculation_validation":
         return await run_calculation_validation_subagent(
@@ -220,175 +244,136 @@ async def _dispatch_single_specialist(
     )
 
 
+def _sub_step_plan_step(sub: RoutedSubStep) -> PlanStep:
+    """A pipeline sub-step as a `PlanStep`, only so `compute_plan_graph` can
+    layer siblings and `check_success_criteria` can verify it. `depends_on`
+    entries that name a sibling gate layering; entries that name a parent
+    dependency are ignored for layering (that data is already present) but
+    still reach the specialist via context_requirements."""
+    return PlanStep(
+        step_id=sub.sub_step_id,
+        objective=sub.objective,
+        depends_on=list(sub.depends_on),
+        success_criteria=list(sub.success_criteria),
+        assumptions_to_verify=[],
+    )
+
+
+def _sub_step_prep(sub: RoutedSubStep, *, user_id: str) -> StepPrepOutput:
+    specific_instructions = [*sub.specific_instructions, _user_id_instruction(user_id)]
+    # The router emits structured ids (sibling sub_step_ids / parent-dep ids),
+    # so unlike the old prose-prone classifier this needs no id-vs-prose
+    # reconciliation; an id that matches nothing simply yields no data, exactly
+    # as a missing dependency does elsewhere. Fall back to depends_on when the
+    # router left context_requirements empty.
+    context_requirements = list(sub.context_requirements) or list(sub.depends_on)
+    return StepPrepOutput(
+        instruction_fields=StepInstructionFields(
+            goal=sub.objective,
+            description=sub.objective,
+            specific_instructions=specific_instructions,
+        ),
+        context_requirements=context_requirements,
+        reasoning_params=ReasoningParamsOverride(),
+        output_schema_name="generic_step_output_v1",
+        output_schema={"type": "object"},
+        tool_grant_override=None,
+    )
+
+
 def _entry_from_atomic_result(
-    *, step: PlanStep, role: RoleName, result: SubagentResult, state: PlanExecutionState
+    *,
+    step: PlanStep,
+    role: RoleName,
+    result: SubagentResult,
+    state: PlanExecutionState,
+    status: str | None = None,
+    warnings: list[str] | None = None,
 ) -> StateEntry:
-    """Atomic path: certainty is exactly whatever the one specialist
-    returned, unchanged -- no nested_trace."""
+    """Atomic path: certainty is exactly whatever the one specialist returned,
+    unchanged -- no nested_trace. `status`/`warnings` override the raw
+    specialist result so a `succeeded` dispatch that failed the step's own
+    success-check is recorded as `partial` (with the unmet criteria) for the
+    Monitor to replan."""
     return StateEntry(
         entry_id=f"{step.step_id}-{len(state.entries)}",
         step_id=step.step_id,
         role=role,
-        status=result.status,
+        status=status or result.status,
         output_schema_name="generic_step_output_v1",
         data=result.result or {},
         certainty=result.certainty,
         assumptions=result.assumptions,
-        warnings=result.warnings,
+        warnings=warnings if warnings is not None else result.warnings,
         tool_audit_trail=result.tool_audit_trail,
         produced_at=datetime.now(timezone.utc),
     )
 
 
-async def _run_nested_subplan(
+def _new_private_state(*, step: PlanStep, parent_state: PlanExecutionState) -> PlanExecutionState:
+    """A fresh private state for one step's pipeline, pre-seeded with the parent
+    step's own dependencies -- both the graph-shape ids AND the real entries, so
+    a sub-step whose context_requirements names a parent id gets its data, not
+    an empty slice."""
+    private_state = PlanExecutionState(plan_id=f"{parent_state.plan_id}:{step.step_id}")
+    private_state.plan_graph.forward.update({dep_id: [] for dep_id in step.depends_on})
+    for parent_entry in parent_state.slice(step.depends_on):
+        private_state.append(parent_entry)
+    return private_state
+
+
+async def _execute_pipeline_once(
     *,
     step: PlanStep,
-    parent_state: PlanExecutionState,
+    pipeline: list[RoutedSubStep],
+    private_state: PlanExecutionState,
     role_roster: dict[RoleName, RoleDefinition],
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
-    original_user_message: str,
-    user_id: str,
     plan_id: str,
-    max_rounds: int,
+    user_id: str,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
     reasoning_config: TurnReasoningConfig | None = None,
-    fast_path_unmet_criteria: list[str] | None = None,
-) -> tuple[PlanExecutionState, str | None, int, bool]:
-    """The task handler's own private mini-orchestrator: mirrors
-    `orchestrator/loop.py::run_plan_to_completion`'s own invoke-repeatedly
-    rhythm, scoped privately. Never spawns a second `run_task_handler` /
-    classifier-decides-recursion instance for its own sub-steps -- a
-    sub-step that itself comes back non-atomic (or fails its own
-    success-criteria check) becomes a failed `StateEntry`, which feeds
-    `monitor_flags`/`replan_reason` into the NEXT round of this SAME
-    already-active nested Planner instead.
+) -> bool:
+    """Dispatches one pipeline layer-by-layer (siblings within a layer run
+    concurrently), appending each sub-step's entry to `private_state`. Returns
+    whether every sub-step succeeded. Stops starting further layers once a
+    sub-step falls short -- there is no downstream value in running a layer that
+    depends on a failed one, and the partial aggregate goes to the Monitor."""
+    sub_by_id = {sub.sub_step_id: sub for sub in pipeline}
+    graph = compute_plan_graph([_sub_step_plan_step(sub) for sub in pipeline])
 
-    `fast_path_unmet_criteria` is whatever the atomic fast-path's own
-    success-check found missing (empty if the step was classified
-    non-atomic outright, skipping the fast path entirely) -- surfaced to
-    round 1 of the nested Planner alongside `step.success_criteria` so it
-    starts by addressing the SPECIFIC known gap, not by re-deriving the
-    step from scratch and risking the identical omission."""
-    private_state = PlanExecutionState(plan_id=f"{parent_state.plan_id}:{step.step_id}")
-    # Pre-seed known_global_ids for rewrite_step_ids: a nested sub-step may
-    # legitimately depend on one of the PARENT step's own dependencies (it's
-    # shown those ids via state_index below, and the Planner's own existing
-    # instructions tell it to reference an already-known id directly when
-    # relevant). Without this, a brand-new private plan's
-    # plan_graph_so_far.forward starts with none of the parent's ids, and
-    # rewrite.py would silently strip such a reference as a "dangling"
-    # dependency.
-    private_state.plan_graph.forward.update({dep_id: [] for dep_id in step.depends_on})
-    # The graph-shape pre-seed above only stops rewrite.py from stripping the
-    # reference as dangling -- it does NOT make the parent's actual data
-    # available. Without copying the real entries too, a nested sub-step
-    # whose `context_requirements` names one of these parent dependency ids
-    # gets back an EMPTY `state.slice(...)` (the data lives in `parent_state.
-    # entries`, never in `private_state.entries`), so `context_builder.py`
-    # hands it an empty `dependency_state` and e.g. `calculation_validation`
-    # fails with "ref '<name>' not found in facts (available: [])" no matter
-    # how many rounds it gets -- a structurally impossible-to-satisfy retry,
-    # not a genuine transient failure.
-    for parent_entry in parent_state.slice(step.depends_on):
-        private_state.append(parent_entry)
-
-    clarification_question: str | None = None
-    rounds_used = 0
-    round_monitor_flags: list[str] = []
-    round_replan_reason: str | None = None
-    if fast_path_unmet_criteria:
-        detail = "; ".join(fast_path_unmet_criteria)
-        round_monitor_flags = [f"the atomic fast path already tried this and was missing: {detail}"]
-        round_replan_reason = f"still needs: {detail}"
-
-    for invocation in range(1, max_rounds + 1):
-        rounds_used = invocation
-        planner_input = _nested_planner_input(
-            step=step,
-            parent_state=parent_state,
+    async def _dispatch_one(sub_step_id: str) -> StateEntry:
+        return await _dispatch_pipeline_sub_step(
+            sub=sub_by_id[sub_step_id],
             private_state=private_state,
-            original_user_message=original_user_message,
-            monitor_flags=round_monitor_flags,
-            replan_reason=round_replan_reason,
-            unresolvable_registry=unresolvable_registry,
-        )
-        planner_output = await build_next_plan_steps(
-            planner_input=planner_input,
+            role_roster=role_roster,
+            tool_registry=tool_registry,
             llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-{step.step_id}-nested-planner-{invocation}",
-            invocation=invocation,
-            prompt_contract_name=NESTED_PLANNER_V1,
-            # Drafter-only: a nested sub-plan's every replan round carries a
-            # replan_reason, which would otherwise fire the full critic council
-            # on each round (the dominant call cost on hard turns -- see
-            # run_planner_council). Its aggregated result is re-verified by the
-            # outer Monitor + success-check, so the critics are redundant here.
-            council_enabled=False,
+            plan_id=plan_id,
+            step=step,
+            user_id=user_id,
+            tool_call_cache=tool_call_cache,
+            unresolvable_registry=unresolvable_registry,
+            reasoning_config=reasoning_config,
         )
-        private_state.merge_plan_graph(planner_output.plan_graph)
 
-        if planner_output.plan_status == "blocked_needs_clarification":
-            return private_state, planner_output.clarification_question, rounds_used, False
-
-        steps_by_id = {sub_step.step_id: sub_step for sub_step in planner_output.next_steps}
-
-        async def _dispatch_one(step_id: str, _steps_by_id: dict[str, PlanStep] = steps_by_id) -> StateEntry:
-            return await _dispatch_nested_sub_step(
-                sub_step=_steps_by_id[step_id],
-                private_state=private_state,
-                role_roster=role_roster,
-                tool_registry=tool_registry,
-                llm_adapter=llm_adapter,
-                plan_id=plan_id,
-                step=step,
-                user_id=user_id,
-                tool_call_cache=tool_call_cache,
-                unresolvable_registry=unresolvable_registry,
-                reasoning_config=reasoning_config,
-            )
-
-        round_monitor_flags = []
-        round_replan_reason = None
-        replan_needed = False
-
-        for layer in planner_output.plan_graph.execution_layers:
-            entries = await dispatch_layer_concurrently(layer, _dispatch_one)
-            for entry in entries:
-                private_state.append(entry)
-                if entry.status != "succeeded":
-                    replan_needed = True
-                    # entry.warnings carries the check's own verbatim
-                    # unmet_criteria right after the marker string, when
-                    # present -- surface that instead of a generic phrase
-                    # (see _dispatch_nested_sub_step).
-                    marker = "nested_sub_step_success_criteria_not_met"
-                    if marker in entry.warnings:
-                        unmet = entry.warnings[entry.warnings.index(marker) + 1 :]
-                    else:
-                        unmet = []
-                    if unmet:
-                        detail = "; ".join(unmet)
-                        round_monitor_flags.append(f"step {entry.step_id} still needs: {detail}")
-                        round_replan_reason = f"step {entry.step_id} still needs: {detail}"
-                    else:
-                        round_monitor_flags.append(
-                            f"step {entry.step_id} could not be completed atomically or failed its success-criteria check"
-                        )
-                        round_replan_reason = f"step {entry.step_id} needs finer-grained decomposition"
-
-        if replan_needed:
-            continue
-        if planner_output.plan_status == "complete":
-            return private_state, None, rounds_used, False
-
-    return private_state, None, rounds_used, True  # rounds exhausted
+    all_succeeded = True
+    for layer in graph.execution_layers:
+        entries = await dispatch_layer_concurrently(layer, _dispatch_one)
+        for entry in entries:
+            private_state.append(entry)
+            if entry.status != "succeeded":
+                all_succeeded = False
+        if not all_succeeded:
+            break
+    return all_succeeded
 
 
-async def _dispatch_nested_sub_step(
+async def _dispatch_pipeline_sub_step(
     *,
-    sub_step: PlanStep,
+    sub: RoutedSubStep,
     private_state: PlanExecutionState,
     role_roster: dict[RoleName, RoleDefinition],
     tool_registry: ToolRegistry,
@@ -400,34 +385,18 @@ async def _dispatch_nested_sub_step(
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
     reasoning_config: TurnReasoningConfig | None = None,
 ) -> StateEntry:
-    """One sub-step of the private sub-plan. Calls the classifier for ROLE
-    ASSIGNMENT ONLY -- it does not re-decide whether to recurse. If this
-    sub-step also comes back non-atomic (or fails its own success-criteria
-    check), that's surfaced as a failed/partial `StateEntry` so
-    `_run_nested_subplan`'s own `replan_needed` flag triggers ANOTHER round
-    of the SAME already-active nested Planner, never a second task-handler
-    instance."""
-    classifier_output, step_prep_output = await classify_and_prep_step(
-        step=sub_step,
-        dependency_context=build_state_index(private_state.entries),
-        llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}-classify_and_prep",
-        user_id=user_id,
-    )
-    if not (classifier_output.atomic and classifier_output.role_if_atomic is not None):
-        return _failed_entry(
-            sub_step=sub_step, private_state=private_state, warning="nested_sub_step_classified_non_atomic"
-        )
-
-    role_name = classifier_output.role_if_atomic
+    """One specialist sub-step. Its specialist type is ALREADY decided by the
+    router, so -- unlike the old nested path -- there is no per-sub-step
+    re-classification call here; we dispatch the named specialist directly."""
+    sub_plan_step = _sub_step_plan_step(sub)
     result = await _dispatch_single_specialist(
-        step=sub_step,
-        step_prep_output=step_prep_output,
-        role=role_roster[role_name],
+        step=sub_plan_step,
+        step_prep_output=_sub_step_prep(sub, user_id=user_id),
+        role=role_roster[sub.specialist],
         state=private_state,
         tool_registry=tool_registry,
         llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}",
+        block_id=f"{plan_id}-{step.step_id}-{sub.sub_step_id}",
         user_id=user_id,
         tool_call_cache=tool_call_cache,
         unresolvable_registry=unresolvable_registry,
@@ -437,26 +406,21 @@ async def _dispatch_nested_sub_step(
     criteria_met = False
     if result.status == "succeeded":
         criteria_met, unmet_criteria = await check_success_criteria(
-            step=sub_step,
+            step=sub_plan_step,
             result=result,
             llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-{step.step_id}-{sub_step.step_id}-success-check",
+            block_id=f"{plan_id}-{step.step_id}-{sub.sub_step_id}-success-check",
         )
     status = result.status if criteria_met else "partial"
-    # unmet_criteria (verbatim from the check) rides in warnings, not just
-    # the generic "not met" marker -- the round loop below surfaces it into
-    # round_replan_reason so the NEXT round of this same nested Planner
-    # knows exactly what was missing instead of reissuing an equivalent
-    # sub-step blind.
     warnings = (
         result.warnings
         if criteria_met
-        else [*result.warnings, "nested_sub_step_success_criteria_not_met", *unmet_criteria]
+        else [*result.warnings, _SUB_STEP_UNMET_MARKER, *unmet_criteria]
     )
     return StateEntry(
-        entry_id=f"{sub_step.step_id}-{len(private_state.entries)}",
-        step_id=sub_step.step_id,
-        role=role_name,
+        entry_id=f"{sub.sub_step_id}-{len(private_state.entries)}",
+        step_id=sub.sub_step_id,
+        role=sub.specialist,
         status=status,
         output_schema_name="generic_step_output_v1",
         data=result.result or {},
@@ -468,84 +432,27 @@ async def _dispatch_nested_sub_step(
     )
 
 
-def _failed_entry(*, sub_step: PlanStep, private_state: PlanExecutionState, warning: str) -> StateEntry:
-    return StateEntry(
-        entry_id=f"{sub_step.step_id}-{len(private_state.entries)}",
-        step_id=sub_step.step_id,
-        role="retrieval",
-        status="failed",
-        output_schema_name="generic_step_output_v1",
-        data={},
-        certainty=CertaintyTag(basis="llm_interpretation", confidence=0.0),
-        warnings=[warning],
-        produced_at=datetime.now(timezone.utc),
-    )
-
-
-def _nested_planner_input(
-    *,
-    step: PlanStep,
-    parent_state: PlanExecutionState,
-    private_state: PlanExecutionState,
-    original_user_message: str,
-    monitor_flags: list[str],
-    replan_reason: str | None,
-    unresolvable_registry: UnresolvableEntityRegistry | None = None,
-) -> PlannerInvocationInput:
-    dependency_entries = parent_state.slice(step.depends_on)
-    return PlannerInvocationInput(
-        user_goal=step.objective,
-        original_user_message=original_user_message,
-        sub_asks=[],
-        # step.success_criteria (NOT the top-level Planner's own generic
-        # "thread constraints into objective text" convention -- see the
-        # main Planner prompt) is what orchestrator/monitor.py's OUTER
-        # check actually verifies the nested subplan's aggregated result
-        # against once this returns. Without it here, the nested Planner
-        # only sees step.objective/assumptions_to_verify and has no way to
-        # know it must produce sub-steps covering every part of
-        # success_criteria -- it was aiming at a criteria it invented
-        # itself, then failing the real one on the outside every time.
-        constraints=list(step.success_criteria),
-        open_questions=list(step.assumptions_to_verify),
-        implies_action_request=False,
-        state_index=[*build_state_index(dependency_entries), *build_state_index(private_state.entries)],
-        plan_graph_so_far=private_state.plan_graph,
-        monitor_flags=monitor_flags,
-        replan_reason=replan_reason,
-        unresolvable_entities=unresolvable_registry.snapshot() if unresolvable_registry else [],
-    )
-
-
-def _entry_from_nested_subplan(
+def _entry_from_pipeline(
     *,
     step: PlanStep,
     state: PlanExecutionState,
     private_state: PlanExecutionState,
-    clarification_question: str | None,
-    rounds_used: int,
-    rounds_exhausted: bool,
+    pipeline_succeeded: bool,
     fallback_reason: str | None,
 ) -> StateEntry:
-    """Translates the private sub-plan's outcome into the ONE `StateEntry`
-    the parent plan sees. `blocked_needs_clarification` is never surfaced to
-    the user directly here (the task handler has no interrupt authority) --
-    its exact question text is preserved verbatim in `warnings` so whichever
-    component DOES have that authority can act on it. Certainty aggregates
-    via the same min-confidence-across-facts convention used elsewhere in
-    this codebase (`compose_answer.py`, `search_over_state.py`)."""
+    """Translates the private pipeline's outcome into the ONE `StateEntry` the
+    parent plan sees, with a `nested_trace` (so the Monitor knows to run its
+    outer success-criteria re-check). Certainty aggregates via the same
+    min-confidence-across-facts convention used elsewhere in this codebase.
+    When `pipeline_succeeded` is False, the aggregate is partial/failed and the
+    Monitor replans one level up."""
     warnings: list[str] = [fallback_reason] if fallback_reason else []
     succeeded_entries = [entry for entry in private_state.entries if entry.status == "succeeded"]
 
-    if clarification_question:
-        warnings.append(f"nested_planner_blocked_needs_clarification: {clarification_question}")
-        status = "partial"
-    elif rounds_exhausted:
-        warnings.append(_ROUND_BUDGET_EXHAUSTED_WARNING)
-        status = "partial" if succeeded_entries else "failed"
-    elif private_state.entries and len(succeeded_entries) == len(private_state.entries):
+    if pipeline_succeeded:
         status = "succeeded"
     else:
+        warnings.append(_PIPELINE_INCOMPLETE_WARNING)
         status = "partial" if succeeded_entries else "failed"
 
     if succeeded_entries:
@@ -554,33 +461,24 @@ def _entry_from_nested_subplan(
     else:
         certainty = CertaintyTag(basis="llm_interpretation", confidence=0.0)
 
-    # Resolved (not left open): loop.py's own composition short-circuit
-    # checks `state.entries[-1].role == "composition"`, so this isn't
-    # cosmetic. The last SUCCESSFUL entry's role (in the private plan's own
-    # append order) correctly propagates "composition" when the sub-plan
-    # genuinely ended with a composition-shaped step; falls back to
-    # "retrieval" only when nothing succeeded at all.
+    # loop.py's composition short-circuit + routes/advise.py's final-answer
+    # extraction both do a flat `data.get("answer_text")` on any composition
+    # entry, so when the pipeline genuinely ended in a composition sub-step,
+    # surface that sub-step's own data flat; otherwise wrap sub-results.
     role: RoleName = succeeded_entries[-1].role if succeeded_entries else "retrieval"
-
     if succeeded_entries and role == "composition":
-        # `routes/advise.py`'s final-answer extraction and loop.py's own
-        # composition short-circuit both do a flat `data.get("answer_text")`
-        # on any StateEntry whose role is "composition" -- wrapping it under
-        # `sub_results` like every other role silently produces a blank
-        # final answer even though the agent composed a correct one
-        # internally (found via a live-eval run: the composed answer was
-        # buried at data["sub_results"]["1a"]["answer_text"]).
         data = succeeded_entries[-1].data
     else:
         data = {"sub_results": {entry.step_id: entry.data for entry in succeeded_entries}}
+
     all_warnings = [*warnings, *(w for entry in private_state.entries for w in entry.warnings)]
     all_assumptions = [a for entry in private_state.entries for a in entry.assumptions]
     all_tool_audit = [record for entry in private_state.entries for record in entry.tool_audit_trail]
 
     nested_trace = NestedExecutionTrace(
         private_plan_id=private_state.plan_id,
-        rounds_used=rounds_used,
-        rounds_exhausted=rounds_exhausted,
+        rounds_used=1,
+        rounds_exhausted=not pipeline_succeeded,
         entries=[
             NestedStepTrace(
                 entry_id=entry.entry_id,
@@ -611,4 +509,4 @@ def _entry_from_nested_subplan(
     )
 
 
-__all__ = ["DEFAULT_MAX_TASK_HANDLER_ROUNDS", "run_task_handler"]
+__all__ = ["run_task_handler"]

@@ -80,12 +80,22 @@ def _task_handler_success_check_contract() -> PromptContract:
             "Check each success criterion independently -- a result can satisfy some criteria and "
             "not others; list every criterion NOT satisfied in unmet_criteria, verbatim.",
             "criteria_met is true only when unmet_criteria is empty.",
+            "Judge SUBSTANCE, not shape. A criterion is MET when the result substantively contains "
+            "the fact or outcome it asks for, even if the data uses different field names, nesting, "
+            "ordering, units, or wording than the criterion does. Do NOT mark a criterion unmet "
+            "merely because it named specific fields or a specific format (e.g. 'returned as a list "
+            "where each item has metadata.courseNumber, grade, and creditsEarned', or 'includes "
+            "degreeId, trackSlug, minors, and specializations') that the result expresses "
+            "differently, or because a named optional field is simply absent for this student -- the "
+            "specialist owns the data shape. Only mark a criterion unmet when the substantive "
+            "information it asks for is genuinely missing or wrong.",
             "Do not reward a plausible-looking but incomplete result -- if a criterion asks for "
-            "multiple labeled parts (e.g. 'semester GPAs for the last two semesters') and only one "
-            "part is present, that criterion is NOT met.",
-            "When genuinely uncertain whether a criterion is met, prefer NOT met -- a false negative "
-            "here only costs one extra bounded planning round; a false positive silently ships an "
-            "incomplete result to the rest of the plan.",
+            "multiple distinct FACTS (e.g. 'semester GPAs for the last two semesters') and one is "
+            "substantively missing, that criterion is NOT met. (This is about missing facts, not "
+            "about cosmetic shape/format differences -- see the substance rule above.)",
+            "When genuinely uncertain whether the substantive information is present, prefer NOT met "
+            "-- but never manufacture uncertainty over a shape, field-name, or format difference "
+            "when the underlying fact is clearly there.",
             "Exception to the above: if the specialist_result explicitly and authoritatively confirms "
             "a fact is absent (e.g. a student profile field is present but null/unset, or a lookup "
             "returned a definitive 'not found' rather than an error), and the criterion only asked to "
