@@ -75,11 +75,12 @@ def _derive_sources(state: PlanExecutionState) -> list[str]:
                     if entity_id:
                         sources.add(str(entity_id))
             elif record.tool_name == "search_knowledge" and record.output_ok:
-                matches = record.output_data.get("matches", []) if isinstance(record.output_data, dict) else []
-                for match in matches:
-                    slug = match.get("slug")
-                    if slug:
-                        sources.add(str(slug))
+                # ToolInvocationRecord only records arguments + status, not the
+                # output payload itself — so we surface the query term as a
+                # provenance hint rather than individual result slugs.
+                query = record.arguments.get("query") or record.arguments.get("search_query")
+                if query:
+                    sources.add(f"search: {query}")
     return sorted(sources)
 
 
