@@ -25,6 +25,7 @@ which every existing replan/exhaustion loop already handles safely.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.agent_core.reasoning.llm_adapter import LLMAdapter, LLMAdapterError
@@ -54,6 +55,7 @@ class BudgetedLLMAdapter:
         raw_model_text_out: list[str] | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         if self.calls_made >= self._max_calls:
             raise LLMAdapterError(
@@ -71,6 +73,7 @@ class BudgetedLLMAdapter:
             raw_model_text_out=raw_model_text_out,
             timeout=timeout,
             max_retries=max_retries,
+            streaming_queue=streaming_queue,
         )
 
 
