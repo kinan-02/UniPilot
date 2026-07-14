@@ -96,6 +96,15 @@ def _retrieval_round_contract() -> PromptContract:
             "followed by traverse_relationship; get_policy_answer instead of search_knowledge "
             "followed by an interpretation step), call that one tool instead -- it does the same "
             "work in one round instead of several.",
+            "Courses are keyed by their numeric code (use it directly), but a track, program, or "
+            "faculty is keyed by a catalog SLUG (e.g. 'track-electrical-engineering') that is NOT "
+            "the same as a student's programSlug or a plain program name -- slug formats vary (some "
+            "carry a 'track-' prefix, some do not; a bare programSlug can even resolve to a faculty, "
+            "not the track). When a step needs a track/program/faculty entity and you have only a "
+            "name or a profile's programSlug, resolve the exact slug with a SINGLE search_knowledge "
+            "call first, then get_entity (or get_track_requirements) on the slug it returns. Never "
+            "guess or transform a name/programSlug into an entity id and retry get_entity with "
+            "variant after variant -- one search resolves it; retried guesses only burn rounds.",
             "If a search is ambiguous, request another tool call round rather than guessing.",
             "A record that was fetched successfully but has a field that is null/unset (e.g. a "
             "student profile with no declared program) is a CONFIDENT, fully resolved fact -- 'this "
