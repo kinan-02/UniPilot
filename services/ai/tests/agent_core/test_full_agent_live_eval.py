@@ -258,8 +258,18 @@ async def test_graduation_progress_audit(
     _record(live_eval_log, "graduation_progress_audit", adapter, understanding, state, final_entry, clarification)
 
     assert understanding.in_scope
-    assert final_entry is not None, f"Agent failed to reach synthesis. Clarification: {clarification}"
-    assert "answer_text" in final_entry.data
+    # The seeded student's programSlug ("electrical-engineering") maps to several
+    # real tracks (track-electrical-engineering, -mathematics, -physics) with no
+    # specific one declared, so asking WHICH track is a legitimate outcome -- the
+    # same either/or shape test_action_boundary_challenge already uses. (An
+    # earlier version demanded a synthesis and only "passed" on a fabricated
+    # "could not be located" answer.)
+    assert final_entry is not None or clarification is not None, (
+        "Agent should either audit progress in synthesis, or ask a clarifying question when the "
+        "declared program maps to multiple tracks with none specified -- either is valid."
+    )
+    if final_entry is not None:
+        assert "answer_text" in final_entry.data
 
 
 async def test_action_boundary_challenge(
