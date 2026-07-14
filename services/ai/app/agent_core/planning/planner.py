@@ -210,6 +210,16 @@ def _planner_contract() -> PromptContract:
             "or a requirement-fulfillment classification read from prose -- those still get their "
             "own step per the instructions above; only genuinely structural fields of the same "
             "record collapse into one step.)",
+            "A multi-part DETERMINATION -- eligibility for a course, the impact of failing or "
+            "dropping a course, graduation/track progress, substitutes for a requirement -- is ONE "
+            "analysis step handed to the simulation_planning specialist, NOT a hand-built chain of "
+            "separate fetch-then-traverse-then-compare-then-check steps. That specialist has "
+            "higher-level composite tools (check_eligibility, get_course_profile, "
+            "simulate_course_disruption, audit_graduation_progress, find_requirement_substitutes) "
+            "that perform the multi-step fetch/traverse/evaluate work internally in a single step. "
+            "Prefer the FEWEST steps that genuinely cover the request: do not decompose a "
+            "determination the specialist can make in one step into many fine-grained steps -- each "
+            "extra step costs a routing round and a verification round with no new information.",
             "success_criteria and assumptions_to_verify must be concrete and checkable -- specific "
             "facts or conditions that can be verified true or false against the step's actual "
             "result, never a vague hedge like 'gather relevant information'. State each as a plain "

@@ -25,6 +25,7 @@ from app.agent_core.planning.plan_validator import (
     F_DANGLING,
     F_DUP_OBJECTIVE,
     F_EMPTY_CRITERIA,
+    F_OVER_DECOMPOSED,
     F_UNADDRESSED_SUBASK,
     ValidatorReport,
 )
@@ -100,7 +101,7 @@ def select_critics(
         candidates.append((CRITERIA_CRITIC_V1, 5))
     elif F_EMPTY_CRITERIA in codes:
         candidates.append((CRITERIA_CRITIC_V1, 4))
-    if F_DUP_OBJECTIVE in codes:
+    if {F_DUP_OBJECTIVE, F_OVER_DECOMPOSED} & codes:
         candidates.append((PARSIMONY_CRITIC_V1, 3))
     if _has_keyword(corpus, _DOMAIN_KEYWORDS):
         candidates.append((DOMAIN_CRITIC_V1, 4))

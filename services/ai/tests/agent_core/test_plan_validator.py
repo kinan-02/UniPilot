@@ -44,6 +44,32 @@ def test_clean_draft_has_no_findings() -> None:
     assert report.codes() == set()
 
 
+_DISTINCT_OBJECTIVES = [
+    "retrieve the student profile",
+    "fetch the list of completed courses",
+    "look up the target course entity",
+    "traverse the prerequisite edges of the course",
+    "extract the offering pattern from the catalog",
+    "summarize the eligibility outcome for the student",
+    "compare earned credits against the requirement",
+]
+
+
+def test_over_decomposed_batch_flagged() -> None:
+    # Six genuinely distinct (non-duplicate) objectives -- isolates
+    # F_OVER_DECOMPOSED from F_DUP_OBJECTIVE, which only catches near-identical.
+    drafts = [_draft(f"S{i}", obj) for i, obj in enumerate(_DISTINCT_OBJECTIVES[:6])]
+    report = validate_plan_draft(drafts, known_global_ids=set(), planner_input=_pi())
+    assert "F_OVER_DECOMPOSED" in report.codes()
+    assert "F_DUP_OBJECTIVE" not in report.codes()
+
+
+def test_small_batch_not_over_decomposed() -> None:
+    drafts = [_draft(f"S{i}", obj) for i, obj in enumerate(_DISTINCT_OBJECTIVES[:5])]
+    report = validate_plan_draft(drafts, known_global_ids=set(), planner_input=_pi())
+    assert "F_OVER_DECOMPOSED" not in report.codes()
+
+
 def test_dangling_dependency_flagged() -> None:
     drafts = [_draft("A", depends_on=["Z"])]  # Z is neither a sibling nor a known global id
     report = validate_plan_draft(drafts, known_global_ids=set(), planner_input=_pi())

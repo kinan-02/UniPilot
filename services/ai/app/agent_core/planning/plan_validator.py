@@ -34,11 +34,17 @@ F_CYCLE = "F_CYCLE"
 F_DUP_OBJECTIVE = "F_DUP_OBJECTIVE"
 F_EMPTY_CRITERIA = "F_EMPTY_CRITERIA"
 F_UNADDRESSED_SUBASK = "F_UNADDRESSED_SUBASK"
+F_OVER_DECOMPOSED = "F_OVER_DECOMPOSED"
 
 # Two objectives this lexically similar are treated as the same fact.
 _DUP_OBJECTIVE_JACCARD = 0.8
 # Tokens shorter than this are dropped as non-content (articles, "of", "to").
 _MIN_CONTENT_TOKEN_LEN = 3
+# A single draft batch with at least this many steps is a parsimony smell:
+# several may collapse into one specialist step, or a granted composite tool
+# may do in one step what the draft spread across many. Advisory only -- it
+# activates the parsimony critic to judge whether a collapse is warranted.
+_OVER_DECOMPOSED_STEP_COUNT = 6
 
 
 class ValidatorFinding(BaseModel):
@@ -154,6 +160,31 @@ def _find_empty_criteria(drafts: list[PlanStepDraft]) -> list[ValidatorFinding]:
     ]
 
 
+def _find_over_decomposed(drafts: list[PlanStepDraft]) -> list[ValidatorFinding]:
+    """A single draft batch carrying many fine-grained steps is a parsimony
+    smell -- observed live: an eligibility question decomposed into ~10 fetch-
+    then-compare steps, each paying a routing + verification round, when a
+    single simulation_planning step (with composite tools like check_eligibility
+    / get_course_profile) makes the whole determination in one. Plan-wide and
+    advisory: it activates the parsimony critic to judge WHETHER a collapse is
+    warranted; it never blocks, and near-identical objectives are already
+    covered by F_DUP_OBJECTIVE, so this catches many *distinct-but-collapsible*
+    steps that duplicate-detection misses."""
+    if len(drafts) < _OVER_DECOMPOSED_STEP_COUNT:
+        return []
+    return [
+        ValidatorFinding(
+            code=F_OVER_DECOMPOSED,
+            severity="efficiency",
+            step_ids=[draft.step_id for draft in drafts],
+            detail=(
+                f"draft batch has {len(drafts)} steps; check whether a single specialist step "
+                "(with its composite tools) or one merged retrieval collapses several of them"
+            ),
+        )
+    ]
+
+
 def _find_unaddressed_subasks(drafts: list[PlanStepDraft], planner_input: PlannerInvocationInput) -> list[ValidatorFinding]:
     """A sub_ask that shares ZERO content tokens with any step objective --
     deliberately a strict, zero-overlap signal (a weak coverage smell), so it
@@ -191,6 +222,7 @@ def validate_plan_draft(
     findings.extend(_find_dangling(drafts, local_ids=local_ids, known_global_ids=known_global_ids))
     findings.extend(_find_cycles(drafts, local_ids=local_ids))
     findings.extend(_find_duplicate_objectives(drafts))
+    findings.extend(_find_over_decomposed(drafts))
     findings.extend(_find_empty_criteria(drafts))
     findings.extend(_find_unaddressed_subasks(drafts, planner_input))
     return ValidatorReport(findings=findings)
@@ -202,6 +234,7 @@ __all__ = [
     "F_DUP_OBJECTIVE",
     "F_EMPTY_CRITERIA",
     "F_UNADDRESSED_SUBASK",
+    "F_OVER_DECOMPOSED",
     "Severity",
     "ValidatorFinding",
     "ValidatorReport",

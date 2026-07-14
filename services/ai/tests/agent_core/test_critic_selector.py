@@ -21,6 +21,7 @@ from app.agent_core.planning.plan_validator import (
     F_DANGLING,
     F_DUP_OBJECTIVE,
     F_EMPTY_CRITERIA,
+    F_OVER_DECOMPOSED,
     ValidatorFinding,
     ValidatorReport,
 )
@@ -65,6 +66,12 @@ def test_replan_reason_mentioning_unmet_selects_criteria() -> None:
 
 def test_duplicate_objective_selects_parsimony() -> None:
     assert PARSIMONY_CRITIC_V1 in _select(_report(F_DUP_OBJECTIVE))
+
+
+def test_over_decomposed_selects_parsimony() -> None:
+    # A many-step (distinct-but-collapsible) draft activates the same
+    # collapse-the-plan critic that near-identical objectives do.
+    assert PARSIMONY_CRITIC_V1 in _select(_report(F_OVER_DECOMPOSED))
 
 
 def test_domain_keyword_selects_domain_critic() -> None:
