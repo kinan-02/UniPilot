@@ -17,7 +17,7 @@ from __future__ import annotations
 import app.agent_core.planning.planner_council as pc
 from app.agent_core.planning.planner import PLANNER_OUTPUT_SCHEMA, PLANNER_OUTPUT_SCHEMA_NAME
 from app.agent_core.planning.planner_council import COVERAGE_CRITIC_V1, run_planner_council
-from app.agent_core.planning.schemas import PlannerInvocationInput
+from app.agent_core.planning.schemas import PlannerInvocationInput, StateEntrySummary
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 
 _INPUT = PlannerInvocationInput(
@@ -25,6 +25,51 @@ _INPUT = PlannerInvocationInput(
     original_user_message="What happens if I fail Data Structures this semester?",
     sub_asks=["What happens if I fail Data Structures this semester?"],
 )
+
+
+def test_council_prompts_include_within_turn_memory():
+    """Fix B regression: the synthesizer (which revises the draft into the
+    FINAL plan) and the critics historically saw only the request -- not the
+    accumulated state -- so a refinement pass re-scheduled retrieval for data
+    already in state_index, and the efficiency critic could not see the
+    completed work it is told to flag. Both prompts must now carry the same
+    within-turn memory the main planner already gets."""
+    memory = StateEntrySummary(
+        entry_id="1a-0",
+        step_id="1a",
+        role="retrieval",
+        summary="succeeded: completedCourses already fetched",
+        certainty_band="high",
+    )
+    planner_input = PlannerInvocationInput(
+        user_goal="List completed courses.",
+        original_user_message="List completed courses.",
+        sub_asks=["List completed courses."],
+        state_index=[memory],
+        exhausted_steps=["some-dead-end-objective"],
+        unresolvable_entities=["Nonexistent Course"],
+    )
+    base = dict(
+        block_id="b",
+        agent_name="council",
+        objective="o",
+        output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
+        output_schema=PLANNER_OUTPUT_SCHEMA,
+    )
+    critic_prompt = pc._critic_user_prompt(
+        pc._CriticInput(planner_input=planner_input, draft_steps=[], plan_summary="", **base)
+    )
+    synth_prompt = pc._synth_user_prompt(
+        pc._SynthesizerInput(
+            planner_input=planner_input, draft_steps=[], draft_plan_status="in_progress", issues=[], **base
+        )
+    )
+
+    for prompt in (critic_prompt, synth_prompt):
+        assert "state_index" in prompt
+        assert "completedCourses already fetched" in prompt
+        assert "exhausted_steps" in prompt
+        assert "Nonexistent Course" in prompt
 
 
 def _force_selection(monkeypatch, critics: list[str]) -> None:

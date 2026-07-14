@@ -85,16 +85,15 @@ def test_build_state_index_includes_a_data_preview_when_data_is_non_empty():
 
 
 def test_build_state_index_truncates_an_oversized_data_preview():
-    # "x" * 500 was sized against the old 240-char cap -- bumped to exceed
-    # the current, deliberately larger _DATA_PREVIEW_MAX_CHARS (600, see
-    # state_index.py) so this still actually exercises truncation.
+    # Sized to exceed the current, deliberately larger _DATA_PREVIEW_MAX_CHARS
+    # (1200, see state_index.py) so this still actually exercises truncation.
     entry = StateEntry(
         entry_id="s1-0",
         step_id="s1",
         role="retrieval",
         status="succeeded",
         output_schema_name="generic_step_output_v1",
-        data={"blob": "x" * 1000},
+        data={"blob": "x" * 2000},
         certainty=CertaintyTag(basis="official_record", confidence=0.95),
         produced_at=datetime.now(timezone.utc),
     )
@@ -163,3 +162,46 @@ def test_build_state_index_includes_a_warnings_preview_when_failed():
     assert "No course named 'Machine Learning' found" in summary
     assert "warnings" in summary
     assert len(summary) < 500
+
+
+def test_build_state_index_keeps_small_deep_values_but_collapses_large_ones():
+    """Fix A regression: with facts wrapped as {key,value,source,confidence}
+    (the real retrieval-block shape), the actual value sits one level past the
+    shape-summary depth cap. A small value (a program slug) must survive so the
+    Planner can see the fact is already in hand and not re-retrieve it; a
+    genuinely large value (a long completed-courses list) still collapses to a
+    count hint rather than being dumped in full."""
+    big_courses = [{"courseNumber": f"00{i:04d}", "grade": 90} for i in range(50)]
+    entry = StateEntry(
+        entry_id="s1-0",
+        step_id="s1",
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        data={
+            "facts": {
+                "programSlug": {
+                    "key": "programSlug",
+                    "value": "electrical-engineering",
+                    "source": "get_entity",
+                    "confidence": 1.0,
+                },
+                "completedCourses": {
+                    "key": "completedCourses",
+                    "value": big_courses,
+                    "source": "get_entity",
+                    "confidence": 1.0,
+                },
+            },
+        },
+        certainty=CertaintyTag(basis="official_record", confidence=1.0),
+        produced_at=datetime.now(timezone.utc),
+    )
+
+    summary = build_state_index([entry])[0].summary
+
+    # The small deep value survives verbatim -- the Planner can see the program.
+    assert "electrical-engineering" in summary
+    # The large deep list collapses to a count hint, not the full payload.
+    assert "items" in summary
+    assert summary.count("courseNumber") < 50

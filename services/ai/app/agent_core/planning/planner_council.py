@@ -380,6 +380,24 @@ def _fast_params(timeout: float) -> LLMCallParameters:
     return LLMCallParameters(thinking_enabled=False, reasoning_effort="low", timeout=timeout, max_retries=1)
 
 
+def _planner_memory_context(planner_input: PlannerInvocationInput) -> dict[str, Any]:
+    """The within-turn memory the main planner always sees (it dumps its whole
+    `planner_input`) but which the council's critic/synthesizer prompts
+    historically dropped -- picking only user_goal/sub_asks/constraints/
+    open_questions. That blinded the synthesizer to already-completed work, so
+    a refinement pass re-scheduled retrieval for facts already in `state_index`
+    (observed live: 1a/1b re-authored as a fresh retrieve step after they had
+    already succeeded), and left the efficiency critic unable to see the
+    completed work it is explicitly told to flag as redundant. Surface the same
+    completed-step memory to both passes."""
+    return {
+        "state_index": [summary.model_dump() for summary in planner_input.state_index],
+        "plan_graph_so_far": planner_input.plan_graph_so_far.model_dump(),
+        "exhausted_steps": planner_input.exhausted_steps,
+        "unresolvable_entities": planner_input.unresolvable_entities,
+    }
+
+
 def _critic_user_prompt(block_input: _CriticInput) -> str:
     payload = {
         "request": {
@@ -388,6 +406,7 @@ def _critic_user_prompt(block_input: _CriticInput) -> str:
             "constraints": block_input.planner_input.constraints,
             "open_questions": block_input.planner_input.open_questions,
         },
+        **_planner_memory_context(block_input.planner_input),
         "draft_plan_summary": block_input.plan_summary,
         "draft_steps": block_input.draft_steps,
         "output_schema_name": block_input.output_schema_name,
@@ -457,6 +476,7 @@ def _synth_user_prompt(block_input: _SynthesizerInput) -> str:
             "constraints": block_input.planner_input.constraints,
             "open_questions": block_input.planner_input.open_questions,
         },
+        **_planner_memory_context(block_input.planner_input),
         "draft_plan_status": block_input.draft_plan_status,
         "draft_steps": block_input.draft_steps,
         "critic_issues": block_input.issues,

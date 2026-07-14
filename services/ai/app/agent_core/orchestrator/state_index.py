@@ -20,8 +20,12 @@ from app.agent_core.planning.state import StateEntry
 # context per entry -- enough to see e.g. "programSlug: null" (the concrete
 # fact that lets the Planner's own instructions recognize an already-
 # conclusively-resolved-absent value and stop re-scheduling steps to
-# re-derive it), never the raw, unbounded tool payload.
-_DATA_PREVIEW_MAX_CHARS = 600
+# re-derive it), never the raw, unbounded tool payload. Sized so a typical
+# retrieval entry whose facts are wrapped in a {key,value,source,confidence}
+# envelope (the real retrieval-block shape) fits WITHOUT summarization, so the
+# Planner sees the actual fetched values -- not just that a fact "exists" --
+# and can tell a positive fact is already in hand rather than re-retrieving it.
+_DATA_PREVIEW_MAX_CHARS = 1200
 
 # How deep _shape_summary preserves every key name before giving up and
 # collapsing the rest of a subtree -- 3 covers the shapes actually seen
@@ -29,6 +33,10 @@ _DATA_PREVIEW_MAX_CHARS = 600
 _SHAPE_SUMMARY_MAX_DEPTH = 3
 _SHAPE_SUMMARY_MAX_STRING_LEN = 40
 _SHAPE_SUMMARY_MAX_LIST_ITEMS = 5
+# At/below the depth cap, a value this small is kept verbatim rather than
+# elided to "…": a program slug, a catalog year, a short already-fetched list
+# is exactly the memory the Planner needs to see to avoid re-scheduling work.
+_DEEP_LEAF_MAX_CHARS = 160
 
 
 def certainty_band(confidence: float) -> Literal["high", "medium", "low"]:
@@ -37,6 +45,30 @@ def certainty_band(confidence: float) -> Literal["high", "medium", "low"]:
     if confidence >= 0.5:
         return "medium"
     return "low"
+
+
+def _bounded_leaf(value: Any) -> Any:
+    """A value sitting at the shape-summary depth cap. The cap keeps deep
+    nested payloads out of the Planner's context -- but blanket-eliding every
+    deep value to "…" also erases a small positive fact whose value IS the
+    memory the Planner needs (a program slug, a catalog year, a short
+    already-fetched completed-courses list). Found via a live-eval run: with
+    facts wrapped as {key,value,source,confidence}, the actual value sits one
+    level past the cap, so the Planner saw only "value: …" and re-retrieved
+    data it already had. Keep small values verbatim; collapse only genuinely
+    large subtrees, with a count hint for lists so the Planner can still tell
+    how much was retrieved."""
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return "…"
+    if len(text) <= _DEEP_LEAF_MAX_CHARS:
+        return value
+    if isinstance(value, str):
+        return f"{value[:_SHAPE_SUMMARY_MAX_STRING_LEN]}…"
+    if isinstance(value, list):
+        return f"…(+{len(value)} items)"
+    return "…"
 
 
 def _shape_summary(value: Any, *, depth: int = 0) -> Any:
@@ -53,7 +85,7 @@ def _shape_summary(value: Any, *, depth: int = 0) -> Any:
     names are never sacrificed to make room for another field's full value.
     """
     if depth >= _SHAPE_SUMMARY_MAX_DEPTH:
-        return "…"
+        return _bounded_leaf(value)
     if isinstance(value, dict):
         return {key: _shape_summary(val, depth=depth + 1) for key, val in sorted(value.items())}
     if isinstance(value, list):
