@@ -57,10 +57,10 @@ def _entry(step_id: str, confidence: float = 0.9) -> StateEntry:
     )
 
 
-def _dummy_step_prep_output() -> StepPrepOutput:
+def _dummy_step_prep_output(context_requirements: list[str] | None = None) -> StepPrepOutput:
     return StepPrepOutput(
         instruction_fields=StepInstructionFields(goal="g", description="d", specific_instructions=[]),
-        context_requirements=[],
+        context_requirements=context_requirements or [],
         reasoning_params=ReasoningParamsOverride(),
         output_schema_name="generic_step_output_v1",
         output_schema={"type": "object"},
@@ -548,11 +548,15 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
 
     step = _step(step_id="1a")
     state = PlanExecutionState(plan_id="p1")
+    # Composition has zero tool access, so it must be handed upstream data --
+    # seed a dependency the step_prep references, otherwise the empty-context
+    # safety net short-circuits before routing is even exercised.
+    state.append(_entry("dep1"))
     adapter = fake_llm_adapter_factory([])
 
     result = await task_handler_module._dispatch_single_specialist(
         step=step,
-        step_prep_output=_dummy_step_prep_output(),
+        step_prep_output=_dummy_step_prep_output(context_requirements=["dep1"]),
         role=ROLE_ROSTER["composition"],
         state=state,
         tool_registry=TOOL_REGISTRY,
@@ -563,3 +567,103 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
 
     assert calls == {"composition": 1, "generic": 0}
     assert result.status == "succeeded"
+
+
+def _routed_sub(sub_step_id="s1", specialist="composition", depends_on=None, context_requirements=None) -> RoutedSubStep:
+    return RoutedSubStep(
+        sub_step_id=sub_step_id,
+        specialist=specialist,
+        objective="do the thing",
+        depends_on=depends_on or [],
+        success_criteria=["done"],
+        specific_instructions=[],
+        context_requirements=context_requirements or [],
+    )
+
+
+def test_resolve_sub_step_context_requirements_keeps_exact_matches():
+    """A well-formed dependency id that names a real state entry is kept verbatim."""
+    state = PlanExecutionState(plan_id="p1")
+    state.append(_entry("21a"))
+    sub = _routed_sub(context_requirements=["21a"])
+    step = _step(step_id="22", depends_on=["21a"])
+
+    resolved = task_handler_module._resolve_sub_step_context_requirements(sub=sub, state=state, step=step)
+
+    assert resolved == ["21a"]
+
+
+def test_resolve_sub_step_context_requirements_strips_spurious_sub_step_suffix():
+    """The live fabrication bug: the router emitted "21a-2" for the seeded
+    parent entry "21a". Suffix-tolerant resolution recovers the real id so the
+    data reaches the specialist instead of an empty slice."""
+    state = PlanExecutionState(plan_id="p1")
+    state.append(_entry("21a"))
+    state.append(_entry("21b"))
+    sub = _routed_sub(context_requirements=["21a-2", "21b-2"])
+    step = _step(step_id="22", depends_on=["21a", "21b"])
+
+    resolved = task_handler_module._resolve_sub_step_context_requirements(sub=sub, state=state, step=step)
+
+    assert resolved == ["21a", "21b"]
+
+
+def test_resolve_sub_step_context_requirements_falls_back_to_parent_depends_on():
+    """When no declared id resolves at all, fall back to the parent step's
+    authoritative depends_on -- always seeded into the private state -- so a
+    fully mis-wired dep list still reaches the specialist with real data."""
+    state = PlanExecutionState(plan_id="p1")
+    state.append(_entry("21a"))
+    sub = _routed_sub(context_requirements=["totally-wrong-id"])
+    step = _step(step_id="22", depends_on=["21a"])
+
+    resolved = task_handler_module._resolve_sub_step_context_requirements(sub=sub, state=state, step=step)
+
+    assert resolved == ["21a"]
+
+
+def test_resolve_sub_step_context_requirements_uses_depends_on_when_context_requirements_empty():
+    """The router may leave context_requirements empty and express the data
+    handoff only via depends_on; that list is used and resolved the same way."""
+    state = PlanExecutionState(plan_id="p1")
+    state.append(_entry("21a"))
+    sub = _routed_sub(depends_on=["21a-2"], context_requirements=[])
+    step = _step(step_id="22", depends_on=["21a"])
+
+    resolved = task_handler_module._resolve_sub_step_context_requirements(sub=sub, state=state, step=step)
+
+    assert resolved == ["21a"]
+
+
+async def test_dispatch_single_specialist_composition_with_empty_context_returns_partial(
+    monkeypatch, fake_llm_adapter_factory
+):
+    """Safety net: a zero-tool composition handed no upstream data must NOT be
+    dispatched (it could only fabricate) -- it returns partial with the marker
+    so the Monitor replans, and the composition subagent is never called."""
+    called = {"composition": 0}
+
+    async def fake_composition_subagent(*, context_package, llm_adapter, block_id, streaming_queue=None, llm_call_params=None):
+        called["composition"] += 1
+        return _subagent_result(status="succeeded", data={"answer_text": "fabricated"})
+
+    monkeypatch.setattr(task_handler_module, "run_composition_subagent", fake_composition_subagent)
+
+    step = _step(step_id="1a")
+    state = PlanExecutionState(plan_id="p1")  # no entries -> empty dependency_state
+    adapter = fake_llm_adapter_factory([])
+
+    result = await task_handler_module._dispatch_single_specialist(
+        step=step,
+        step_prep_output=_dummy_step_prep_output(context_requirements=["missing"]),
+        role=ROLE_ROSTER["composition"],
+        state=state,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=adapter,
+        block_id="p1-1a",
+        user_id="test-user-1",
+    )
+
+    assert called["composition"] == 0
+    assert result.status == "partial"
+    assert task_handler_module._COMPOSITION_EMPTY_CONTEXT_MARKER in result.warnings

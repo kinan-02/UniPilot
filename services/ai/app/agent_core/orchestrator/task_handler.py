@@ -64,6 +64,7 @@ from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistr
 _PIPELINE_INCOMPLETE_WARNING = "task_handler_pipeline_incomplete"
 _SUB_STEP_UNMET_MARKER = "pipeline_sub_step_success_criteria_not_met"
 _ATOMIC_UNMET_MARKER = "atomic_success_criteria_not_met"
+_COMPOSITION_EMPTY_CONTEXT_MARKER = "composition_empty_dependency_context"
 
 
 def _user_id_instruction(user_id: str) -> str:
@@ -115,7 +116,11 @@ async def run_task_handler(
         sub = route.pipeline[0]
         result = await _dispatch_single_specialist(
             step=step,
-            step_prep_output=_sub_step_prep(sub, user_id=user_id),
+            step_prep_output=_sub_step_prep(
+                sub,
+                user_id=user_id,
+                context_requirements=_resolve_sub_step_context_requirements(sub=sub, state=state, step=step),
+            ),
             role=role_roster[sub.specialist],
             state=state,
             tool_registry=tool_registry,
@@ -189,6 +194,19 @@ async def _dispatch_single_specialist(
     Generic over whichever `PlanExecutionState` it's given (the shared
     top-level `state`, or a task handler's own private one)."""
     context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
+    # Safety net: a composition specialist has zero tool access -- it works ONLY
+    # from the upstream results it is handed. If dependency resolution yielded
+    # nothing (a mis-wired dependency id that survived even the parent-fallback,
+    # or a genuinely dependency-less composition step), composing anyway means
+    # fabricating from thin air. Fail loud/partial instead so the Monitor
+    # replans, rather than emitting a confident wrong answer.
+    if role.name == "composition" and not context_package.dependency_state:
+        return SubagentResult(
+            status="partial",
+            result={},
+            certainty=CertaintyTag(basis="llm_interpretation", confidence=0.0),
+            warnings=[_COMPOSITION_EMPTY_CONTEXT_MARKER],
+        )
     if role.name == "calculation_validation":
         return await run_calculation_validation_subagent(
             context_package=context_package,
@@ -259,14 +277,40 @@ def _sub_step_plan_step(sub: RoutedSubStep) -> PlanStep:
     )
 
 
-def _sub_step_prep(sub: RoutedSubStep, *, user_id: str) -> StepPrepOutput:
+def _resolve_sub_step_context_requirements(
+    *, sub: RoutedSubStep, state: PlanExecutionState, step: PlanStep
+) -> list[str]:
+    """Resolve a router-authored sub-step's declared dependency ids against the
+    ids actually present in the state it will be dispatched against.
+
+    The router's LLM occasionally emits a parent-dependency id carrying a
+    spurious sub-step suffix (observed live: "21a-2" for the seeded parent
+    entry "21a"), which a strict `state.slice` equality match silently drops --
+    starving a zero-tool composition sub-step so it fabricates an answer.
+    Match exactly first (well-formed sibling + parent refs), then
+    suffix-tolerantly (strip a trailing "-<n>" and retry), and finally fall
+    back to the parent step's authoritative `depends_on` -- whose entries are
+    always seeded into the private state by `_new_private_state`, so an
+    all-malformed dep list still reaches the specialist with real data rather
+    than nothing."""
+    raw = list(sub.context_requirements) or list(sub.depends_on)
+    available = {entry.step_id for entry in state.entries}
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for dep_id in raw:
+        match = dep_id if dep_id in available else None
+        if match is None:
+            base = dep_id.rsplit("-", 1)[0]
+            if base != dep_id and base in available:
+                match = base
+        if match is not None and match not in seen:
+            seen.add(match)
+            resolved.append(match)
+    return resolved or list(step.depends_on)
+
+
+def _sub_step_prep(sub: RoutedSubStep, *, user_id: str, context_requirements: list[str]) -> StepPrepOutput:
     specific_instructions = [*sub.specific_instructions, _user_id_instruction(user_id)]
-    # The router emits structured ids (sibling sub_step_ids / parent-dep ids),
-    # so unlike the old prose-prone classifier this needs no id-vs-prose
-    # reconciliation; an id that matches nothing simply yields no data, exactly
-    # as a missing dependency does elsewhere. Fall back to depends_on when the
-    # router left context_requirements empty.
-    context_requirements = list(sub.context_requirements) or list(sub.depends_on)
     return StepPrepOutput(
         instruction_fields=StepInstructionFields(
             goal=sub.objective,
@@ -391,7 +435,13 @@ async def _dispatch_pipeline_sub_step(
     sub_plan_step = _sub_step_plan_step(sub)
     result = await _dispatch_single_specialist(
         step=sub_plan_step,
-        step_prep_output=_sub_step_prep(sub, user_id=user_id),
+        step_prep_output=_sub_step_prep(
+            sub,
+            user_id=user_id,
+            context_requirements=_resolve_sub_step_context_requirements(
+                sub=sub, state=private_state, step=step
+            ),
+        ),
         role=role_roster[sub.specialist],
         state=private_state,
         tool_registry=tool_registry,
