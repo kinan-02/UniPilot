@@ -191,6 +191,30 @@ async def advise_route(payload: AdviseRequest) -> dict[str, Any]:
         )
     )
 
+def _to_frontend_advisor_shape(raw: dict[str, Any]) -> dict[str, Any]:
+    """Transform the internal AI response shape into the `advisor` shape that
+    the frontend's SSE handler (`data.data.advisor`) expects.
+
+    The non-streaming path runs through `services/api`'s `advisor_service.py`
+    which does this same mapping -- the streaming path bypasses that service,
+    so we apply the equivalent transform here."""
+    response = raw.get("response") if isinstance(raw.get("response"), dict) else {}
+    return {
+        "advisor": {
+            "question": raw.get("question", ""),
+            "answer": response.get("answer", ""),
+            "confidence": response.get("confidence", "medium"),
+            "courseIds": response.get("course_ids", []),
+            "wikiSlugs": response.get("wiki_slugs", []),
+            "sources": response.get("sources", []),
+            "contacts": response.get("contacts", []),
+            "eligibility": response.get("eligibility"),
+            "semesterResolution": raw.get("semester_resolution"),
+            "retrievalStatus": (raw.get("retrieval_agent") or {}).get("status"),
+        },
+    }
+
+
 @router.post("/advise/stream")
 async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
     plan_id = str(uuid4())
@@ -222,7 +246,7 @@ async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
                 clarification_question=clarification_question,
             )
             # Signal completion and push the final payload
-            await streaming_queue.put(json.dumps({"type": "final", "data": final_payload}))
+            await streaming_queue.put(json.dumps({"type": "final", "data": _to_frontend_advisor_shape(final_payload)}))
         except asyncio.TimeoutError:
             final_payload = {
                 "question": payload.question,
@@ -234,7 +258,7 @@ async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
                     sources=[],
                 ),
             }
-            await streaming_queue.put(json.dumps({"type": "final", "data": final_payload}))
+            await streaming_queue.put(json.dumps({"type": "final", "data": _to_frontend_advisor_shape(final_payload)}))
         except Exception as e:
             await streaming_queue.put(json.dumps({"type": "error", "error": str(e)}))
         finally:

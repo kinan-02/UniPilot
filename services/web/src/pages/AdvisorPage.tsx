@@ -98,9 +98,17 @@ export function AdvisorPage() {
                   )
                 )
               } else if (data.type === 'final') {
+                const advisor = data.data?.advisor
                 setMessages((current) => 
                   current.map(m => m.id === assistantMessageId 
-                    ? { ...m, reply: data.data.advisor } 
+                    ? { 
+                        ...m, 
+                        reply: advisor,
+                        // Backfill content from the final answer if no text
+                        // chunks were streamed (e.g. out-of-scope, boundary,
+                        // or clarification responses).
+                        content: m.content || advisor?.answer || '',
+                      } 
                     : m
                   )
                 )
