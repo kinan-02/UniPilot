@@ -55,7 +55,11 @@ class _FakeCollection:
 
     def _matches(self, query: dict[str, Any]) -> list[dict[str, Any]]:
         if "_id" in query:
-            return [doc for doc in self._docs if doc.get("_id") == query["_id"]]
+            id_query = query["_id"]
+            if isinstance(id_query, dict) and "$in" in id_query:
+                wanted = set(id_query["$in"])
+                return [doc for doc in self._docs if doc.get("_id") in wanted]
+            return [doc for doc in self._docs if doc.get("_id") == id_query]
         user_id = query.get("userId")
         return [doc for doc in self._docs if doc.get("userId") == user_id]
 
@@ -63,7 +67,7 @@ class _FakeCollection:
         matches = self._matches(query)
         return matches[0] if matches else None
 
-    def find(self, query: dict[str, Any]) -> _FakeCursor:
+    def find(self, query: dict[str, Any], projection: dict[str, Any] | None = None) -> _FakeCursor:
         return _FakeCursor(self._matches(query))
 
     async def count_documents(self, query: dict[str, Any]) -> int:

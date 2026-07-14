@@ -243,6 +243,27 @@ async def test_completed_courses_returns_sanitized_docs(fake_database_factory):
     assert isinstance(result.data["completedCourses"][0]["_id"], str)
 
 
+async def test_completed_courses_resolves_course_number_from_course_id(fake_database_factory):
+    # Real records reference a course by courseId with an EMPTY metadata block
+    # and no top-level courseNumber -- the number must be resolved from the
+    # courses collection, else prerequisite matching sees only opaque ids.
+    user_id = str(ObjectId())
+    course_object_id = ObjectId()
+    record = {"_id": ObjectId(), "userId": ObjectId(user_id), "courseId": course_object_id, "metadata": {}, "grade": 85}
+    set_test_database(
+        fake_database_factory(
+            {
+                "completed_courses": [record],
+                "courses": [{"_id": course_object_id, "courseNumber": "01040031"}],
+            }
+        )
+    )
+
+    result = await run_get_entity(GetEntityInput(entity_type="completed_courses", entity_id=user_id))
+    assert result.ok is True
+    assert result.data["completedCourses"][0]["courseNumber"] == "01040031"
+
+
 async def test_semester_plan_returns_plans_and_total(fake_database_factory):
     user_id = str(ObjectId())
     plan = {"_id": ObjectId(), "userId": ObjectId(user_id), "semesterCode": "2025-2"}

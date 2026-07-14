@@ -81,6 +81,7 @@ class Settings(BaseSettings):
 
     mongo_uri: str | None = None
     completed_courses_collection: str = "completed_courses"
+    courses_collection: str = "courses"
     semester_plans_collection: str = "semester_plans"
 
     api_service_url: str | None = None

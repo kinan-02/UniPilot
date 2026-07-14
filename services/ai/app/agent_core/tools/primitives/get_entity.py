@@ -32,6 +32,7 @@ from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor
 from app.db.mongo import get_database
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
+from app.repositories.course_repository import find_course_numbers_by_ids
 from app.repositories.semester_plan_repository import find_semester_plans_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
 from app.retrieval.graph_engine.academic_graph_engine import AcademicGraphEngine
@@ -232,9 +233,26 @@ async def _mongo_entity_result(entity_type: str, user_id: str) -> ToolOutputEnve
 
     if entity_type == "completed_courses":
         courses = await find_all_completed_courses_by_user_id(database, user_id)
+        # Real records reference a course by `courseId` with an empty metadata
+        # block, so the course NUMBER (what every downstream prerequisite/
+        # requirement match keys on) isn't present on the raw doc. Resolve each
+        # id -> number and surface it as a top-level `courseNumber`; without
+        # this the agent sees only opaque ids and reports every prereq unmet.
+        number_by_id = await find_course_numbers_by_ids(
+            database, [course.get("courseId") for course in courses if course.get("courseId")]
+        )
+        completed: list[dict[str, Any]] = []
+        for course in courses:
+            doc = _sanitize_mongo_doc(course)
+            course_id = str(course.get("courseId")) if course.get("courseId") else None
+            metadata = doc.get("metadata") or {}
+            course_number = metadata.get("courseNumber") or (number_by_id.get(course_id) if course_id else None)
+            if course_number is not None:
+                doc["courseNumber"] = str(course_number)
+            completed.append(doc)
         return ToolOutputEnvelope(
             ok=True,
-            data={"completedCourses": [_sanitize_mongo_doc(course) for course in courses]},
+            data={"completedCourses": completed},
             certainty=CertaintyTag(basis="official_record", confidence=1.0),
         )
 
