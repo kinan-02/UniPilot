@@ -66,6 +66,12 @@ async def run_plan_to_completion(
 
     _max_invocations = reasoning_config.max_planner_invocations if reasoning_config else max_planner_invocations
     for invocation in range(1, _max_invocations + 1):
+        # On the last available round, tell the Planner to conclude (compose or
+        # clarify) rather than schedule more exploration -- otherwise a turn
+        # that keeps re-trying an unresolvable/ambiguous entity simply exhausts
+        # the budget and returns nothing. Carried on its own `final_round`
+        # field, NOT in monitor_flags, so the council's adaptive-depth gate
+        # doesn't misread a wrap-up as a replan (see planner schema).
         planner_input = PlannerInvocationInput(
             user_goal=user_goal,
             original_user_message=original_user_message,
@@ -78,6 +84,7 @@ async def run_plan_to_completion(
             monitor_flags=monitor_flags,
             replan_reason=replan_reason,
             unresolvable_entities=unresolvable_registry.snapshot() if unresolvable_registry else [],
+            final_round=(invocation == _max_invocations),
         )
         planner_output = await build_next_plan_steps(
             planner_input=planner_input,
@@ -162,16 +169,25 @@ async def run_plan_to_completion(
         if plan_status == "complete":
             break
 
-    if plan_status != "complete":
+    # A genuine clarification block is the ONLY path that returns without an
+    # answer. Budget exhaustion (the plan never reached "complete" but the
+    # Planner never asked to clarify either) must NOT return an empty turn --
+    # it falls through to compose a best-effort answer from whatever the plan
+    # established, honestly reflecting what could not be determined. (A live
+    # run found a turn silently exhausting the invocation budget while
+    # re-resolving an ambiguous entity, returning nothing to the student.)
+    if clarification_question is not None:
         return state, None, clarification_question
+    if not state.entries:
+        return state, None, None
 
     # The vision's own worked example (§7) dispatches Composition as just
     # another plan step, through the same generic path as every other role
     # -- if the Planner already ended the plan that way, its own StateEntry
-    # *is* the final answer. `synthesis.compose_answer` is the safety net
-    # for a plan that reached "complete" without ever assigning a
-    # composition step.
-    if state.entries and state.entries[-1].role == "composition":
+    # *is* the final answer. `synthesis.compose_answer` is the safety net for
+    # a plan that reached "complete" (or ran out of rounds) without ever
+    # assigning a composition step.
+    if state.entries[-1].role == "composition":
         return state, state.entries[-1], None
 
     composed = await compose_answer(

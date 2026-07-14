@@ -220,6 +220,14 @@ def _planner_contract() -> PromptContract:
             "batch, 'complete' when this batch is the last one needed to answer the request, "
             "'blocked_needs_clarification' when a genuine ambiguity blocks proceeding. Never leave "
             "it to be inferred from next_steps being empty.",
+            "If `final_round` is true in your input, this is the LAST planning round -- you MUST "
+            "conclude now. Either set plan_status='complete' with a composition step that answers "
+            "the student from whatever has already been established (honestly stating anything that "
+            "could not be determined), OR set plan_status='blocked_needs_clarification' with one "
+            "specific question. Do NOT schedule more retrieval/resolution/analysis steps: no round "
+            "remains to run them, so another exploratory step just wastes the turn. In particular, "
+            "if an entity could not be resolved after prior attempts (see state_index / "
+            "unresolvable_entities), ask the student to disambiguate it rather than searching again.",
             "If state_index/plan_graph_so_far already shows a fact was fetched and came back "
             "explicitly null/absent from an authoritative source (e.g. the student's own profile has "
             "no declared degree program or track), that fact is CONCLUSIVELY known to be absent, not "

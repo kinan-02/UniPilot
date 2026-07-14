@@ -135,6 +135,12 @@ class PlannerInvocationInput(BaseModel):
     monitor_flags: list[str] = Field(default_factory=list)
     replan_reason: str | None = None
     unresolvable_entities: list[str] = Field(default_factory=list)
+    # True only on the LAST available planning round: the Planner must conclude
+    # (compose or clarify), never schedule more exploration. Deliberately a
+    # separate field, NOT a monitor_flag -- routing it through monitor_flags
+    # would make the council's adaptive-depth gate misread a routine wrap-up as
+    # a replan and fire the full critic pass on every turn's final round.
+    final_round: bool = False
 
 
 def planner_input_from_understanding(
