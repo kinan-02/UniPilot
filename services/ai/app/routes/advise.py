@@ -267,15 +267,41 @@ async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
 
     async def _event_generator():
         task = asyncio.create_task(_run_agent_and_close_queue())
+        streamed_text_parts: list[str] = []
         while True:
             chunk = await streaming_queue.get()
             if chunk is None:
                 break
-            # Langchain's astream gives text chunks for the answer.
-            # We differentiate raw text chunks vs final JSON dump string
+            # Differentiate raw text chunks vs structured JSON events.
             if chunk.startswith('{"type":'):
+                # Before yielding the final event, backfill the answer from
+                # accumulated streamed text when the composition block
+                # streamed a plain-text answer but failed to parse it as
+                # JSON (final_entry.data is {} → answer is "").
+                if streamed_text_parts and '"type": "final"' in chunk:
+                    try:
+                        event = json.loads(chunk)
+                        advisor = (event.get("data") or {}).get("advisor") or {}
+                        if not advisor.get("answer"):
+                            streamed_answer = "".join(streamed_text_parts).strip()
+                            # The streamed output may be a JSON envelope;
+                            # try to unwrap {"answer_text": "..."}.
+                            try:
+                                parsed = json.loads(streamed_answer)
+                                if isinstance(parsed, dict) and "answer_text" in parsed:
+                                    streamed_answer = parsed["answer_text"]
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                            advisor["answer"] = streamed_answer
+                            advisor["confidence"] = advisor.get("confidence") or "medium"
+                            if advisor.get("retrievalStatus") == "failed":
+                                advisor["retrievalStatus"] = "succeeded"
+                            chunk = json.dumps(event)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 yield f"data: {chunk}\n\n"
             else:
+                streamed_text_parts.append(chunk)
                 yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
         await task
 
