@@ -30,6 +30,16 @@ class RoleDefinition(BaseModel):
     tool_grant_ceiling: tuple[str, ...] = ()  # subset of ToolRegistry names; () for composition
     default_reasoning_params: RoleReasoningDefaults
     guardrails: tuple[str, ...] = ()
+    # A concise, routing-facing statement of what this specialist DOES and,
+    # crucially, what it CANNOT do (and which specialist it hands off to). The
+    # Specialist Router's capability catalog is rendered from this field + the
+    # tool grant above, so the router's model of the roster is structurally
+    # incapable of drifting from the roster itself (see roles/catalog.py). Kept
+    # here, on the single source of truth, rather than in a hand-maintained
+    # prompt paragraph. Defaults to empty so ad-hoc RoleDefinitions in tests
+    # need not supply it; the real roster fills every role (guarded by
+    # tests/agent_core/test_roles.py).
+    routing_capability: str = ""
 
     @model_validator(mode="after")
     def _composition_has_no_tools(self) -> "RoleDefinition":

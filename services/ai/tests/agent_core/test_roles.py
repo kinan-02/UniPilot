@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.agent_core.roles.catalog import render_specialist_catalog
 from app.agent_core.roles.prompts import build_prompt_registry_with_roles
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.roles.schemas import RoleDefinition, RoleReasoningDefaults
@@ -80,3 +81,37 @@ def test_every_role_prompt_contract_resolves_from_the_roster():
     for role in roster.values():
         contract = registry.get(role.prompt_contract_name)
         assert contract.name == role.prompt_contract_name
+
+
+def test_every_role_has_a_nonempty_routing_capability():
+    """The Specialist Router's capability catalog is rendered from these, so a
+    missing statement would silently hand the router a blank line for a real
+    specialist."""
+    roster = build_default_role_roster()
+    for role in roster.values():
+        assert role.routing_capability.strip(), f"{role.name} has no routing_capability"
+
+
+def test_render_specialist_catalog_names_every_role_its_capability_and_tools():
+    roster = build_default_role_roster()
+    catalog = render_specialist_catalog(roster)
+    # Every specialist name + its full routing_capability sentence is rendered
+    # verbatim (roster-derived, so it can never drift from the definitions).
+    for role in roster.values():
+        assert role.name in catalog
+        assert role.routing_capability in catalog
+    # Tool-bearing roles surface their actual grants as evidence of what they
+    # operate on; the tool-less composition role still appears.
+    assert "get_entity" in catalog  # retrieval
+    assert "apply_deterministic_rule" in catalog  # calculation_validation
+    assert "interpret_text" in catalog  # interpretation
+    assert "composition" in catalog
+
+
+def test_render_specialist_catalog_marks_the_tool_less_composition_role():
+    roster = build_default_role_roster()
+    catalog = render_specialist_catalog(roster)
+    # A role with an empty tool_grant_ceiling must render an explicit
+    # "no tools" marker, never a dangling empty "Tools:" line.
+    composition_line = next(line for line in catalog.splitlines() if line.startswith("- composition"))
+    assert "no tools" in composition_line.lower()

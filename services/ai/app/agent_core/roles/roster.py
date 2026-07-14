@@ -53,6 +53,13 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 risk_level="low", min_iterations=1, max_iterations=3, temperature=0.1, timeout=60.0
             ),
             guardrails=("Return facts + source + confidence, never commentary.",),
+            routing_capability=(
+                "Fetches existing records and searches the knowledge base -- course/track/"
+                "program/profile documents, policy pages as raw text, and the current/next "
+                "academic semester. CANNOT derive or compute values (GPA, standing, credit "
+                "totals) and CANNOT interpret the meaning of prose; hand those to "
+                "calculation_validation and interpretation respectively."
+            ),
         ),
         "interpretation": RoleDefinition(
             name="interpretation",
@@ -71,6 +78,13 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 risk_level="medium", min_iterations=2, max_iterations=3, temperature=0.2, timeout=60.0
             ),
             guardrails=("Must cite the exact wiki page/section read.",),
+            routing_capability=(
+                "Reads and explains the MEANING of prose -- policy/regulation implications, "
+                "and a course's or program's requirement-fulfillment status (mandatory/"
+                "elective/which requirement it satisfies) that lives in requirement text. "
+                "CANNOT compute numeric/boolean results; hand those to calculation_validation. "
+                "Use it whenever a step needs interpretation of fetched text, not just the text."
+            ),
         ),
         "calculation_validation": RoleDefinition(
             name="calculation_validation",
@@ -80,6 +94,13 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 risk_level="low", min_iterations=1, max_iterations=1, temperature=0.0, timeout=60.0
             ),
             guardrails=("Never assert a number without the tool call backing it.",),
+            routing_capability=(
+                "DERIVES numeric or boolean results by applying deterministic rules to "
+                "already-fetched facts -- cumulative/semester GPA from raw grades, "
+                "academic-standing/probation status, credit totals, threshold comparisons. "
+                "CANNOT fetch records or read prose; it operates only on facts a prior "
+                "retrieval step handed it, so it almost always depends on a retrieval sub-step."
+            ),
         ),
         "simulation_planning": RoleDefinition(
             name="simulation_planning",
@@ -104,6 +125,13 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 risk_level="medium", min_iterations=2, max_iterations=4, temperature=0.2, timeout=60.0
             ),
             guardrails=("Never present a simulated outcome as an official record.",),
+            routing_capability=(
+                "Runs what-if / eligibility / audit reasoning over the student's academic "
+                "state via one-call composites -- fail-course-X impact, 'can I take X' "
+                "prerequisite+corequisite+restriction eligibility, graduation-progress audit, "
+                "plan comparison, requirement substitutes. A step that maps to one of these "
+                "composites is atomic (this single specialist), not a multi-specialist pipeline."
+            ),
         ),
         "composition": RoleDefinition(
             name="composition",
@@ -113,6 +141,12 @@ def build_default_role_roster() -> dict[RoleName, RoleDefinition]:
                 risk_level="low", min_iterations=1, max_iterations=2, temperature=0.4, timeout=60.0
             ),
             guardrails=("Zero tool access -- works only from what it's handed.",),
+            routing_capability=(
+                "Writes the user-facing answer from facts handed to it by earlier sub-steps. "
+                "Zero tools -- it never fetches, computes, or interprets; it only phrases what "
+                "it is given. Include it as the final sub-step only when a step must itself "
+                "produce prose for the student rather than a fact for a later step to use."
+            ),
         ),
     }
 
