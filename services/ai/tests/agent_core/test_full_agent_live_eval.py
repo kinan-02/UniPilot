@@ -86,7 +86,11 @@ async def live_test_student() -> AsyncIterator[str]:
         "facultyId": None,
         "programType": "BSc",
         "degreeId": None,
-        "programSlug": "electrical-engineering",
+        # A specific, unambiguous track slug (not the bare "electrical-engineering",
+        # which maps to several real tracks) so the graduation-audit scenario can
+        # actually synthesise a progress report instead of stopping to ask which
+        # track applies. The other scenarios key off course codes, not the track.
+        "programSlug": "track-electrical-engineering",
         "catalogYear": 2025,
         "currentSemesterCode": "2025-1",
         "academicPath": {},
