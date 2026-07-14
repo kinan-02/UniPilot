@@ -264,7 +264,10 @@ excluding the live investigation file.
 - **Phase 3 — W3a escalation guard.** Thread `ReplanLedger` through
   `turn.py`/`loop.py`; populate `exhausted_steps`; planner instruction. Tests:
   a step failing K times appears in `exhausted_steps`; planner is told to
-  conclude/clarify; no leak into `monitor_flags`.
+  conclude/clarify; no leak into `monitor_flags`. **Done** — 595 passed.
+  Note: keyed by the step's normalized objective text (like the unresolvable
+  registry); a heavily-reworded re-attempt can dodge the match -- fuzzy keying
+  is a possible follow-up.
 - **Phase 4 — W3b scoped replan.** Populate `replan_focus` in `loop.py`;
   planner instruction. Tests: failed + protected ids computed correctly;
   instruction present only on a focused replan.

@@ -48,12 +48,12 @@ def _fake_composed(answer: str = "best-effort answer from partial state") -> Sub
     )
 
 
-def _entry(step_id: str, *, role: RoleName = "retrieval") -> StateEntry:
+def _entry(step_id: str, *, role: RoleName = "retrieval", status: str = "succeeded") -> StateEntry:
     return StateEntry(
         entry_id=f"{step_id}-0",
         step_id=step_id,
         role=role,
-        status="succeeded",
+        status=status,
         output_schema_name="generic_step_output_v1",
         data={},
         certainty=CertaintyTag(basis="official_record", confidence=0.9),
@@ -180,3 +180,50 @@ async def test_final_round_flag_only_on_the_last_invocation(monkeypatch: pytest.
     assert captured_final_round == [False, False, True]
     # And it never leaks into monitor_flags (which would trip the council gate).
     assert all(flag == [] for flag in captured_flags)
+
+
+@pytest.mark.asyncio
+async def test_repeatedly_failing_step_becomes_an_exhausted_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W3a escalation guard: a step whose objective keeps failing is recorded
+    in the ReplanLedger; once it has been re-attempted to the threshold, its
+    objective is surfaced to the Planner as an `exhausted_step` -- and never
+    leaks into `monitor_flags` (which would trip the council gate)."""
+    from app.agent_core.orchestrator.replan_ledger import ReplanLedger
+
+    captured_exhausted: list[list[str]] = []
+    captured_flags: list[list[str]] = []
+
+    async def fake_build_next_plan_steps(*, planner_input, **_kwargs: object) -> PlannerInvocationOutput:
+        captured_exhausted.append(list(planner_input.exhausted_steps))
+        captured_flags.append(list(planner_input.monitor_flags))
+        return _never_completes()  # re-emits objective "resolve X" every round
+
+    async def fake_run_task_handler(*, step: PlanStep, **_kwargs: object) -> StateEntry:
+        return _entry(step.step_id, role="retrieval", status="failed")  # forces a replan each round
+
+    async def fake_compose_answer(**_kwargs: object) -> SubagentResult:
+        return _fake_composed()
+
+    monkeypatch.setattr(loop_module, "build_next_plan_steps", fake_build_next_plan_steps)
+    monkeypatch.setattr(loop_module, "run_task_handler", fake_run_task_handler)
+    monkeypatch.setattr(loop_module, "compose_answer", fake_compose_answer)
+
+    ledger = ReplanLedger()
+    await loop_module.run_plan_to_completion(
+        user_goal="g",
+        original_user_message="m",
+        user_id="u",
+        llm_adapter=None,
+        role_roster={"composition": object()},
+        tool_registry=None,
+        plan_id="p",
+        max_planner_invocations=4,
+        replan_ledger=ledger,
+    )
+
+    # Rounds 1 and 2 build the count; by round 3 the objective is exhausted.
+    assert captured_exhausted[0] == []
+    assert captured_exhausted[1] == []
+    assert captured_exhausted[2] == ["resolve X"]
+    # The exhausted objective never appears in monitor_flags.
+    assert all("resolve X" not in flag for flags in captured_flags for flag in flags)

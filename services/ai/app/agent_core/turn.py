@@ -22,6 +22,7 @@ from app.agent_core.request_understanding.schemas import RequestUnderstandingRea
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+from app.agent_core.orchestrator.replan_ledger import ReplanLedger
 from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 from app.agent_core.boundary_handler.boundary_handler import run_boundary_handler
 from app.agent_core.complexity_classifier.complexity_classifier import classify_complexity
@@ -97,6 +98,10 @@ async def run_agent_turn(
     # and surfaced as a structured field on PlannerInvocationInput so the
     # Planner never re-schedules the same search.
     unresolvable_registry = UnresolvableEntityRegistry()
+    # One ledger per turn -- counts how many times each step objective has been
+    # flagged for replan, so a repeatedly-failing region is surfaced to the
+    # Planner as an `exhausted_step` (conclude/clarify) instead of thrashing.
+    replan_ledger = ReplanLedger()
     state, final_entry, clarification_question = await run_plan_to_completion(
         user_goal=understanding.user_goal or original_user_message,
         original_user_message=original_user_message,
@@ -114,6 +119,7 @@ async def run_agent_turn(
         streaming_queue=streaming_queue,
         tool_call_cache=tool_call_cache,
         unresolvable_registry=unresolvable_registry,
+        replan_ledger=replan_ledger,
     )
     return understanding, state, final_entry, clarification_question
 

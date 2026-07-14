@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.monitor import evaluate_step_result
 from app.agent_core.orchestrator.parallel_dispatch import dispatch_layer_concurrently
+from app.agent_core.orchestrator.replan_ledger import ReplanLedger
 from app.agent_core.orchestrator.state_index import build_state_index
 from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.planner import build_next_plan_steps
@@ -46,6 +47,7 @@ async def run_plan_to_completion(
     streaming_queue: asyncio.Queue[str] | None = None,
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
+    replan_ledger: ReplanLedger | None = None,
 ) -> tuple[PlanExecutionState, StateEntry | None, str | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
 
@@ -85,6 +87,11 @@ async def run_plan_to_completion(
             replan_reason=replan_reason,
             unresolvable_entities=unresolvable_registry.snapshot() if unresolvable_registry else [],
             final_round=(invocation == _max_invocations),
+            # Objectives re-attempted past the replan threshold and still
+            # failing -- the Planner is told not to reschedule equivalent work
+            # for these (§4.1). Kept off monitor_flags for the same council-gate
+            # reason as final_round.
+            exhausted_steps=replan_ledger.exhausted() if replan_ledger else [],
         )
         planner_output = await build_next_plan_steps(
             planner_input=planner_input,
@@ -140,6 +147,8 @@ async def run_plan_to_completion(
                     monitor_flags.append(f"step {step.step_id} failed")
                     replan_reason = f"step {step.step_id} failed"
                     should_replan = True
+                    if replan_ledger is not None:
+                        replan_ledger.record(step.objective, replan_reason)
                 if decision == "clarify":
                     # Thread the success-check's own verbatim unmet_criteria
                     # in, not just a generic phrase -- without this the
@@ -155,6 +164,8 @@ async def run_plan_to_completion(
                         monitor_flags.append(
                             f"step {step.step_id} partial or did not fully satisfy its success criteria"
                         )
+                    if replan_ledger is not None:
+                        replan_ledger.record(step.objective, replan_reason or "unmet success criteria")
             if should_replan:
                 # Let the whole in-flight layer finish (it already has, by
                 # the time we get here) but never start the NEXT layer once

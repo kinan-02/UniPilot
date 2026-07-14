@@ -263,6 +263,13 @@ def _planner_contract() -> PromptContract:
             "absence itself as a known fact (e.g. state that the entity could not be found in the "
             "catalog), or, only if the missing entity is genuinely required and cannot be "
             "substituted, set plan_status='blocked_needs_clarification'.",
+            "If `exhausted_steps` in your input lists a step objective, that objective has already "
+            "been attempted repeatedly across prior rounds and still failed -- do NOT schedule "
+            "another step that repeats it or a trivially reworded equivalent; it will fail the same "
+            "way and only burns the remaining budget. Conclude instead: set plan_status='complete' "
+            "with a composition step that answers from what IS established (honestly noting what "
+            "could not be determined), or, only if that objective is genuinely essential and cannot "
+            "be worked around, set plan_status='blocked_needs_clarification' and ask the student.",
         ],
         allowed_context_fields=None,
         output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
