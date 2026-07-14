@@ -277,6 +277,31 @@ excluding the live investigation file.
   (b) replan rounds on the hard case (expect ↓), (c) no correctness regression.
   Record outcomes in §6.
 
+## 6a. Phase 5 live re-check outcomes (2026-07-14)
+
+Two-case live re-check (real API; wall times throttle-inflated, so call counts
+and structure are the reliable signals, not seconds):
+
+- **case_01** ("prerequisites for Data Structures 1?") — 18 calls, correct
+  answer. Critic selection fired **2** critics (Domain + Strategy), not the old
+  4 → ~50% fewer critic calls on the turn.
+- **case_04** ("Can I take Algorithms next semester?") — completed in **3
+  planner invocations** with a correct composed answer (course 234218 not in
+  catalog); no empty turn. **Scoped replan (W3b) engaged** (`replan_focus`
+  populated on both replan rounds). **Escalation guard (W3a) correctly did not
+  fire** — each replan targeted different steps (1e/1i/1h, then 2a/2d), so
+  there was no repeated dead-end to escalate. **8** critic calls across the 3
+  review-eligible invocations vs the old always-4 → **12**, ~33% fewer. The 79
+  total calls are execution-dominated (47 success-checks + 15 router), not
+  planner churn, and within this case's historically noisy 47–128 range.
+
+Confirmed working: conditional critic selection (fewer critics/pass on both
+cases) and scoped replan (engaged live). Open: `exhausted_steps` never
+populated (no repeated-objective dead-end this run) — the objective-text keying
+means a reworded re-attempt still dodges the guard; fuzzy keying is the
+follow-up. Not investigated here: the high success-check count is pre-existing
+execution cost, outside these three workstreams.
+
 ## 6. Validation & rollout
 
 - Non-live gate each phase; live measurement only at Phase 5 (and rested
