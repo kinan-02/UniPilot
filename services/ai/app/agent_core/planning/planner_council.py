@@ -77,6 +77,8 @@ COVERAGE_CRITIC_V1 = "planner_coverage_critic_v1"
 GROUNDING_CRITIC_V1 = "planner_grounding_critic_v1"
 CRITERIA_CRITIC_V1 = "planner_criteria_critic_v1"
 PARSIMONY_CRITIC_V1 = "planner_parsimony_critic_v1"
+STRATEGY_CRITIC_V1 = "planner_strategy_critic_v1"
+DOMAIN_CRITIC_V1 = "planner_domain_critic_v1"
 SYNTHESIZER_V1 = "planner_synthesizer_v1"
 
 _CRITIC_OUTPUT_SCHEMA_NAME = "planner_critic_output_v1"
@@ -237,6 +239,72 @@ def _parsimony_critic_contract() -> PromptContract:
     )
 
 
+def _strategy_critic_contract() -> PromptContract:
+    return PromptContract(
+        name=STRATEGY_CRITIC_V1,
+        version="1.0.0",
+        role_prompt=(
+            "You are the Strategy Critic on the UniPilot Planner's review council. You are given the "
+            "student's structured request and a DRAFT batch of plan steps. Your ONE job: challenge the "
+            "high-level APPROACH -- is there a materially simpler or more direct way to answer the actual "
+            "question, or is the plan solving the wrong subproblem? -- nothing else. The critics are "
+            "anchored to the drafter's first idea; you are the deliberate counterweight to that anchoring."
+        ),
+        instructions=[
+            "Report only concrete, actionable issues, each naming the step_ids and the simpler/different "
+            "approach. If the strategy is already the most direct one that answers the request, return an "
+            "empty list.",
+            "Flag over-planning: a multi-step retrieval-and-analysis chain where the question could be "
+            "answered by one or two steps. Name the steps that collapse and what replaces them.",
+            "Flag solving the wrong subproblem: steps that answer a related-but-different question than the "
+            "student actually asked, or that chase detail the request never needed.",
+            "Do NOT propose ADDING work to look thorough, and do NOT rewrite a sound plan for style. A "
+            "different approach is an issue only when it is genuinely simpler or more correct, not merely "
+            "another way to do the same thing.",
+        ],
+        allowed_context_fields=None,
+        output_schema_name=_CRITIC_OUTPUT_SCHEMA_NAME,
+        default_risk_level="low",
+        default_min_iterations=1,
+        default_max_iterations=1,
+        default_temperature=0.0,
+        safety_rules=["Do not expose chain-of-thought, hidden reasoning, or private notes."],
+    )
+
+
+def _domain_critic_contract() -> PromptContract:
+    return PromptContract(
+        name=DOMAIN_CRITIC_V1,
+        version="1.0.0",
+        role_prompt=(
+            f"{build_shared_grounding_block()}\n\n"
+            "You are the Domain Critic on the UniPilot Planner's review council. You are given the "
+            "student's structured request and a DRAFT batch of plan steps. Your ONE job: catch plans that "
+            "get Technion ACADEMIC REASONING wrong -- prerequisite, credit, degree-rule, and semester "
+            "semantics -- nothing else."
+        ),
+        instructions=[
+            "Report only concrete, actionable issues, each naming the step_id and the academic-reasoning "
+            "mistake. If the plan is academically sound, return an empty list.",
+            "Flag eligibility/prerequisite checks that do not evaluate the target course's ACTUAL "
+            "prerequisite rules against the student's ACTUAL completed courses -- e.g. a plan that judges "
+            "eligibility without retrieving one of those two, or that assumes a prerequisite is met.",
+            "Flag credit / degree-rule reasoning that ignores requirement buckets or catalog-version "
+            "consistency (a rule must come from the same catalog the student is bound to), and "
+            "semester-availability claims not grounded in when the course is actually offered.",
+            "Do NOT invent extra academic checks the question does not need, and do not flag a correct "
+            "simplification. Flag only reasoning that would produce a wrong or unsafe academic answer.",
+        ],
+        allowed_context_fields=None,
+        output_schema_name=_CRITIC_OUTPUT_SCHEMA_NAME,
+        default_risk_level="low",
+        default_min_iterations=1,
+        default_max_iterations=1,
+        default_temperature=0.0,
+        safety_rules=["Do not expose chain-of-thought, hidden reasoning, or private notes."],
+    )
+
+
 def _synthesizer_contract() -> PromptContract:
     return PromptContract(
         name=SYNTHESIZER_V1,
@@ -277,6 +345,8 @@ def build_council_prompt_registry() -> PromptRegistry:
     registry.register(_grounding_critic_contract())
     registry.register(_criteria_critic_contract())
     registry.register(_parsimony_critic_contract())
+    registry.register(_strategy_critic_contract())
+    registry.register(_domain_critic_contract())
     registry.register(_synthesizer_contract())
     return registry
 
@@ -580,6 +650,8 @@ __all__ = [
     "GROUNDING_CRITIC_V1",
     "CRITERIA_CRITIC_V1",
     "PARSIMONY_CRITIC_V1",
+    "STRATEGY_CRITIC_V1",
+    "DOMAIN_CRITIC_V1",
     "SYNTHESIZER_V1",
     "build_council_prompt_registry",
     "run_planner_council",

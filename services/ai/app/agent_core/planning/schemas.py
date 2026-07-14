@@ -109,6 +109,20 @@ class StateEntrySummary(BaseModel):
     certainty_band: Literal["high", "medium", "low"]
 
 
+class ReplanFocus(BaseModel):
+    """Scopes a replan to the failed region (ADAPTIVE_PLANNING_EXTRACTION_PLAN.md
+    §4.2). Populated by code in `orchestrator/loop.py` from the Monitor's
+    verdict: the step(s) that fell short (`failed_step_ids`), the validated
+    completed steps to keep as-is (`protected_step_ids`), and the verbatim
+    unmet criteria driving the repair. Lets the Planner fix ONLY the failed
+    region and its dependents instead of re-deriving the whole plan -- a
+    subgraph replan with protected regions, never a global rewrite."""
+
+    failed_step_ids: list[str] = Field(default_factory=list)
+    protected_step_ids: list[str] = Field(default_factory=list)
+    unmet_criteria: list[str] = Field(default_factory=list)
+
+
 class PlannerInvocationInput(BaseModel):
     """Everything one Planner invocation needs.
 
@@ -141,6 +155,16 @@ class PlannerInvocationInput(BaseModel):
     # would make the council's adaptive-depth gate misread a routine wrap-up as
     # a replan and fire the full critic pass on every turn's final round.
     final_round: bool = False
+    # Step objectives re-attempted past the replan threshold and still failing
+    # (ADAPTIVE_PLANNING_EXTRACTION_PLAN.md §4.1). Sourced from `ReplanLedger`;
+    # the Planner is told not to reschedule equivalent work for these -- either
+    # conclude with what's known or ask the student to clarify. Separate from
+    # monitor_flags for the same council-gate reason as `final_round`.
+    exhausted_steps: list[str] = Field(default_factory=list)
+    # Present only on a scoped (subgraph) replan (§4.2): fix the failed region,
+    # keep protected steps as-is. Separate from monitor_flags; a scoped replan
+    # is a replan and correctly takes the full-council path on its own.
+    replan_focus: ReplanFocus | None = None
 
 
 def planner_input_from_understanding(
@@ -230,6 +254,7 @@ __all__ = [
     "PlanStep",
     "PlanGraph",
     "StateEntrySummary",
+    "ReplanFocus",
     "PlannerInvocationInput",
     "planner_input_from_understanding",
     "PlannerReasoningBlockInput",
