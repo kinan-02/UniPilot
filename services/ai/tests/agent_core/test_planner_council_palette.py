@@ -1,12 +1,12 @@
-"""Phase 0: the critic palette grows (strategy + domain) but nothing about
-what actually RUNS changes yet. These tests pin (a) the two new contracts are
-defined and registered, and (b) `_DEFAULT_CRITICS` is unchanged -- so Phase 0
-is provably a no-behavior-change scaffolding step. Conditional SELECTION from
-the enlarged palette lands in Phase 2.
+"""The critic palette: six narrowly-specialized critics, of which the selector
+activates a subset per invocation (selection itself is tested in
+`test_critic_selector.py`). These tests pin that all six contracts are defined
+and registered and that the palette lists them all.
 """
 
 from __future__ import annotations
 
+from app.agent_core.planning.critic_selector import CRITIC_PALETTE
 from app.agent_core.planning.planner_council import (
     COVERAGE_CRITIC_V1,
     CRITERIA_CRITIC_V1,
@@ -14,7 +14,6 @@ from app.agent_core.planning.planner_council import (
     GROUNDING_CRITIC_V1,
     PARSIMONY_CRITIC_V1,
     STRATEGY_CRITIC_V1,
-    _DEFAULT_CRITICS,
     build_council_prompt_registry,
 )
 
@@ -36,14 +35,12 @@ def test_new_contracts_have_narrow_single_job_role_prompts() -> None:
     assert domain.output_schema_name == "planner_critic_output_v1"
 
 
-def test_default_critics_unchanged_in_phase_0() -> None:
-    # The palette grew, but the DEFAULT set the council runs today has not --
-    # this is the guarantee that Phase 0 changes no runtime behavior.
-    assert _DEFAULT_CRITICS == (
+def test_palette_lists_all_six_critics() -> None:
+    assert set(CRITIC_PALETTE) == {
         COVERAGE_CRITIC_V1,
         GROUNDING_CRITIC_V1,
         CRITERIA_CRITIC_V1,
         PARSIMONY_CRITIC_V1,
-    )
-    assert STRATEGY_CRITIC_V1 not in _DEFAULT_CRITICS
-    assert DOMAIN_CRITIC_V1 not in _DEFAULT_CRITICS
+        STRATEGY_CRITIC_V1,
+        DOMAIN_CRITIC_V1,
+    }

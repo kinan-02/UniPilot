@@ -37,12 +37,12 @@ _RESPONSES = [
         "plan_summary": "Step 1: fetch course record.",
         "clarification_question": None,
     },
-    # 1a-d. Planner council: the drafted plan (above) is valid and non-empty,
-    # so its four critics (coverage, grounding, criteria, parsimony) each review
-    # it in parallel. All find nothing, so the draft stands and no synthesizer
-    # call is made -- see planner_council.py.
-    {"issues": []},
-    {"issues": []},
+    # 1a-b. Planner council: the drafted plan is valid, so the validator runs
+    # and the selector picks the critics its signals point at -- here the goal
+    # carries a course code (grounding) and the invocation's default confidence
+    # is below the strategy threshold (strategy), so TWO critics review it in
+    # parallel, not all six. Both find nothing, so the draft stands and no
+    # synthesizer call is made -- see planner_council.py / critic_selector.py.
     {"issues": []},
     {"issues": []},
     # 2. Task handler's Specialist Router for step 1 -- a length-1 pipeline

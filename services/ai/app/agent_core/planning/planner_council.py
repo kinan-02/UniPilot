@@ -11,17 +11,20 @@ that worse under a hard 300s turn budget.
 The council trades that one fragile call for a small pipeline of FAST,
 no-thinking calls, each individually reliable:
 
-    draft ─┬─ coverage critic ─┐
-           ├─ grounding critic ─┼─→ synthesize → revised plan
-           └─ criteria  critic ─┘   (only if critics found issues)
+    draft ─ validate ─ select ─┬─ critic ─┐
+                               └─ critic ─┴─→ synthesize → revised plan
+                                              (only if critics found issues)
 
 - Drafter: the existing `PlannerReasoningBlock` run with fast params
   (no thinking, low effort) -- produces a candidate batch quickly.
-- Critics: run IN PARALLEL (same wall-clock as one call), each checking the
-  draft against ONE failure mode we actually observed live -- missing
-  coverage, hallucinated/ungrounded references, and gold-plated or
-  unsatisfiable success_criteria. A critic that fails or times out simply
-  contributes no findings (degrade, never block).
+- Validator (`plan_validator`): deterministic, no-LLM structural/heuristic
+  check on the draft -- its findings decide which critics are worth running.
+- Critics: a SELECTED subset of a six-critic palette (coverage, grounding,
+  criteria, parsimony, strategy, domain), run IN PARALLEL (same wall-clock as
+  one call), each checking the draft against ONE class of defect. Selection
+  (`critic_selector`) usually fires one or two, so per-turn cost fell even as
+  the palette grew. A critic that fails or times out contributes no findings
+  (degrade, never block).
 - Synthesizer: only runs if some critic flagged a real issue; revises the
   draft to fix them. If it fails, the already-valid draft is returned.
 
@@ -49,6 +52,17 @@ from app.agent_core.planning.planner import (
     PlannerReasoningBlockOutput,
     _build_system_prompt,
 )
+from app.agent_core.planning.critic_selector import (
+    COVERAGE_CRITIC_V1,
+    CRITERIA_CRITIC_V1,
+    CRITIC_PALETTE,
+    DOMAIN_CRITIC_V1,
+    GROUNDING_CRITIC_V1,
+    PARSIMONY_CRITIC_V1,
+    STRATEGY_CRITIC_V1,
+    select_critics,
+)
+from app.agent_core.planning.plan_validator import validate_plan_draft
 from app.agent_core.planning.rewrite import check_hollow_result
 from app.agent_core.planning.schemas import (
     PlannerInvocationInput,
@@ -73,12 +87,9 @@ _CRITIC_TIMEOUT = 25.0
 _SYNTH_TIMEOUT = 30.0
 _MAX_SCHEMA_REPAIR_ATTEMPTS = 1
 
-COVERAGE_CRITIC_V1 = "planner_coverage_critic_v1"
-GROUNDING_CRITIC_V1 = "planner_grounding_critic_v1"
-CRITERIA_CRITIC_V1 = "planner_criteria_critic_v1"
-PARSIMONY_CRITIC_V1 = "planner_parsimony_critic_v1"
-STRATEGY_CRITIC_V1 = "planner_strategy_critic_v1"
-DOMAIN_CRITIC_V1 = "planner_domain_critic_v1"
+# Critic name constants + palette live in `critic_selector` (single owner of
+# the critic vocabulary + selection policy); imported above and re-exported for
+# back-compat. Only the synthesizer name is defined here.
 SYNTHESIZER_V1 = "planner_synthesizer_v1"
 
 _CRITIC_OUTPUT_SCHEMA_NAME = "planner_critic_output_v1"
@@ -92,14 +103,6 @@ _CRITIC_OUTPUT_SCHEMA: dict[str, Any] = {
     "required": ["issues"],
     "additionalProperties": False,
 }
-
-_DEFAULT_CRITICS: tuple[str, ...] = (
-    COVERAGE_CRITIC_V1,
-    GROUNDING_CRITIC_V1,
-    CRITERIA_CRITIC_V1,
-    PARSIMONY_CRITIC_V1,
-)
-
 
 # ── Contracts ──────────────────────────────────────────────────────────────
 
@@ -537,20 +540,27 @@ async def run_planner_council(
     prompt_contract_name: str = PLANNER_V1,
     output_schema_name: str,
     output_schema: dict[str, Any],
-    critics: tuple[str, ...] = _DEFAULT_CRITICS,
+    palette: tuple[str, ...] = CRITIC_PALETTE,
     drafter_timeout: float = _DRAFTER_TIMEOUT,
     critic_timeout: float = _CRITIC_TIMEOUT,
     synthesizer_timeout: float = _SYNTH_TIMEOUT,
 ) -> PlannerReasoningBlockOutput:
-    """Draft -> (adaptively) parallel critics -> gated synthesis. Returns the
-    same `PlannerReasoningBlockOutput` a single `PlannerReasoningBlock.run()`
-    would, so it drops straight into `build_next_plan_steps`.
+    """Draft -> deterministic validator -> selected parallel critics -> gated
+    synthesis. Returns the same `PlannerReasoningBlockOutput` a single
+    `PlannerReasoningBlock.run()` would, so it drops straight into
+    `build_next_plan_steps`.
 
-    `invocation` drives the adaptive-depth gate (`_should_run_full_council`):
-    a routine continuation runs the fast drafter alone; the first invocation
-    and Monitor-flagged replans run the full council. The council is only ever
-    used by the TOP-LEVEL planner now -- nested step decomposition moved to the
-    Specialist Router, which is a single fast call and never runs critics."""
+    Two gates, in order:
+    - `invocation` drives the adaptive-depth gate (`_should_run_full_council`):
+      a routine continuation runs the fast drafter alone; the first invocation
+      and Monitor-flagged replans go on to review.
+    - when reviewing, `validate_plan_draft` + `select_critics` pick WHICH of the
+      six-critic `palette` to run (usually one or two, driven by the validator's
+      findings and the invocation's signals) rather than running all of them.
+
+    The council is only ever used by the TOP-LEVEL planner now -- nested step
+    decomposition moved to the Specialist Router, a single fast call that never
+    runs critics."""
     registry = build_council_prompt_registry()
 
     # 1. DRAFT -- the existing planner block, fast (no thinking).
@@ -585,7 +595,29 @@ async def run_planner_council(
 
     draft_steps = _draft_steps_as_dicts(draft_output)
 
-    # 2. CRITICS -- in parallel; a failed/slow critic contributes nothing.
+    # W1+W2: deterministic validator on the draft (read-only -- rewrite.py stays
+    # the authoritative repairer), then a deterministic selection of WHICH
+    # critics to run from the palette. The palette grew to six, but we run only
+    # the one or two the findings/signals point at -- so per-turn critic cost
+    # drops even though coverage of failure modes rose. An empty selection means
+    # the validator found nothing worth a critic: the draft already stands.
+    report = validate_plan_draft(
+        draft_output.next_steps,
+        known_global_ids=set(planner_input.plan_graph_so_far.forward.keys()),
+        planner_input=planner_input,
+    )
+    selected = select_critics(
+        invocation=invocation,
+        planner_input=planner_input,
+        report=report,
+        draft_objectives=[step.objective for step in draft_output.next_steps],
+        palette=palette,
+    )
+    if not selected:
+        return draft_output.model_copy(update={"warnings": [*draft_output.warnings, "planner_council_no_critics_selected"]})
+
+    # 2. CRITICS -- selected subset, in parallel; a failed/slow critic
+    # contributes nothing.
     async def _run_critic(contract_name: str) -> list[str]:
         block = _CriticReasoningBlock(
             llm_adapter=llm_adapter, prompt_registry=registry, contract_name=contract_name
@@ -606,7 +638,7 @@ async def run_planner_council(
         )
         return list(out.issues)
 
-    critic_results = await asyncio.gather(*(_run_critic(name) for name in critics), return_exceptions=True)
+    critic_results = await asyncio.gather(*(_run_critic(name) for name in selected), return_exceptions=True)
     issues: list[str] = []
     for result in critic_results:
         if isinstance(result, BaseException):

@@ -252,13 +252,15 @@ excluding the live investigation file.
   (types + `validate_plan_draft`), `ReplanLedger`, new `PlannerInvocationInput`
   fields (`exhausted_steps`, `replan_focus`), strategy + domain critic
   contracts registered. Unit tests for each new unit in isolation.
-- **Phase 1 — W1 validator gate.** Wire `validate_plan_draft` into the council
-  before critics (read-only); extract shared edge-analysis so it agrees with
-  `rewrite.py`. Tests: each finding code fires on a crafted draft; clean draft
-  → empty report.
-- **Phase 2 — W2 conditional selection.** Add `select_critics`; replace the
-  run-all branch. Tests: signal→critic mapping, cap (2 default / 3 on replan),
-  first-invocation floor, deterministic (no LLM), draft-only path unchanged.
+- **Phase 1+2 — W1 validator gate + W2 conditional selection (shipped
+  together).** W1 alone has no behavioral effect (the validator's only consumer
+  is the selector), so they are one feature. `plan_validator.validate_plan_draft`
+  (read-only) + `critic_selector.select_critics` wired into the council's
+  review branch, replacing run-all. Validator/rewrite agreement is guarded by
+  matching detection rules + tests rather than a risky extraction from rewrite's
+  repair-coupled code. Tests: each finding code; signal→critic mapping; cap (2
+  default / 3 on replan); first-invocation floor; draft-only path unchanged;
+  two real-selector e2e council tests. **Done** — 594 passed, 1 skipped.
 - **Phase 3 — W3a escalation guard.** Thread `ReplanLedger` through
   `turn.py`/`loop.py`; populate `exhausted_steps`; planner instruction. Tests:
   a step failing K times appears in `exhausted_steps`; planner is told to
