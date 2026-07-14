@@ -320,6 +320,12 @@ async def _run_nested_subplan(
             block_id=f"{plan_id}-{step.step_id}-nested-planner-{invocation}",
             invocation=invocation,
             prompt_contract_name=NESTED_PLANNER_V1,
+            # Drafter-only: a nested sub-plan's every replan round carries a
+            # replan_reason, which would otherwise fire the full critic council
+            # on each round (the dominant call cost on hard turns -- see
+            # run_planner_council). Its aggregated result is re-verified by the
+            # outer Monitor + success-check, so the critics are redundant here.
+            council_enabled=False,
         )
         private_state.merge_plan_graph(planner_output.plan_graph)
 

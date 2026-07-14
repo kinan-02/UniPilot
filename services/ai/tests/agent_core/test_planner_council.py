@@ -164,6 +164,54 @@ async def test_replan_on_a_later_invocation_still_runs_the_full_council(fake_llm
     assert "planner_council_draft_only" not in output.warnings
 
 
+async def test_council_disabled_forces_drafter_only_even_on_first_invocation(fake_llm_adapter_factory):
+    # council_enabled=False (nested sub-plans use this): the drafter alone
+    # runs, no critics/synth, even on invocation 1 WITH replan flags set --
+    # the two conditions that would otherwise force the full council. A nested
+    # sub-plan's output is re-verified by the outer Monitor + success-check, so
+    # the critics are redundant there and were the dominant call cost on hard
+    # cases (a live-eval turn spent ~71 of 128 calls on nested-round critics).
+    replan_input = _INPUT.model_copy(
+        update={"monitor_flags": ["step X failed"], "replan_reason": "step X failed"}
+    )
+    adapter = fake_llm_adapter_factory([_plan()])
+
+    output = await run_planner_council(
+        planner_input=replan_input,
+        llm_adapter=adapter,
+        block_id="blk-1",
+        invocation=1,
+        council_enabled=False,
+        output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
+        output_schema=PLANNER_OUTPUT_SCHEMA,
+    )
+
+    assert [s.step_id for s in output.next_steps] == ["A"]
+    assert "planner_council_draft_only" in output.warnings
+    assert len(adapter.calls) == 1  # drafter only
+    assert not any("Critic" in sp for sp in _system_prompts(adapter))
+
+
+async def test_council_disabled_still_returns_drafter_fail_closed_output(fake_llm_adapter_factory):
+    # Even drafter-only, a malformed draft fails closed (no steps dispatched)
+    # -- disabling the council must not turn a failed draft into a usable one.
+    adapter = fake_llm_adapter_factory([{"plan_status": "not_a_real_status"}] * 3)
+
+    output = await run_planner_council(
+        planner_input=_INPUT,
+        llm_adapter=adapter,
+        block_id="blk-1",
+        invocation=1,
+        council_enabled=False,
+        output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
+        output_schema=PLANNER_OUTPUT_SCHEMA,
+    )
+
+    assert output.plan_status == "blocked_needs_clarification"
+    assert output.next_steps == []
+    assert not any("Critic" in sp for sp in _system_prompts(adapter))
+
+
 async def test_drafter_raising_adapter_fails_closed():
     class RaisingAdapter:
         async def complete_json(self, **kwargs):

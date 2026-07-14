@@ -144,7 +144,10 @@ async def _run(
             return top_check, []
         return sub_check[step.step_id].pop(0), []
 
-    async def fake_build_next_plan_steps(*, planner_input, llm_adapter, block_id, invocation, prompt_contract_name, thinking_enabled=None, reasoning_effort=None, timeout=None):
+    async def fake_build_next_plan_steps(
+        *, planner_input, llm_adapter, block_id, invocation, prompt_contract_name,
+        council_enabled=True, thinking_enabled=None, reasoning_effort=None, timeout=None,
+    ):
         planner_inputs.append(planner_input)
         return planner_queue.pop(0)
 
@@ -336,6 +339,56 @@ async def test_monitor_flags_thread_a_round_1_failure_into_round_2(monkeypatch):
     assert any("1a1" in flag for flag in planner_inputs[1].monitor_flags)
     assert planner_inputs[1].replan_reason is not None
     assert "1a1" in planner_inputs[1].replan_reason
+
+
+async def test_nested_planner_runs_drafter_only_council_disabled(monkeypatch):
+    """The task handler's private nested sub-plan must invoke the Planner with
+    council_enabled=False -- every nested replan round carries a replan_reason,
+    which would otherwise fire the full critic council each round (the dominant
+    call cost on hard turns). The nested result is re-verified by the outer
+    Monitor + success-check, so the critics are redundant there."""
+    step = _step()
+    sub_step = _step(step_id="1a1")
+    plan_output = PlannerInvocationOutput(
+        plan_status="complete",
+        next_steps=[sub_step],
+        plan_summary="",
+        clarification_question=None,
+        plan_graph=PlanGraph(forward={"1a1": []}, dependents={}, execution_layers=[["1a1"]]),
+    )
+    council_flags: list[bool] = []
+
+    async def capturing_build_next_plan_steps(*, planner_input, llm_adapter, block_id, invocation, prompt_contract_name, council_enabled=True, **_ignored):
+        council_flags.append(council_enabled)
+        return plan_output
+
+    async def fake_classify_and_prep(*, step, dependency_context, llm_adapter, block_id, user_id):
+        return _classifier(step.step_id != "1a", "retrieval" if step.step_id != "1a" else None), "dummy_prep"
+
+    async def fake_dispatch(**_kwargs):
+        return _subagent_result(status="succeeded")
+
+    async def fake_check(**_kwargs):
+        return True, []
+
+    monkeypatch.setattr(task_handler_module, "build_next_plan_steps", capturing_build_next_plan_steps)
+    monkeypatch.setattr(task_handler_module, "classify_and_prep_step", fake_classify_and_prep)
+    monkeypatch.setattr(task_handler_module, "_dispatch_single_specialist", fake_dispatch)
+    monkeypatch.setattr(task_handler_module, "check_success_criteria", fake_check)
+
+    await run_task_handler(
+        step=step,
+        state=PlanExecutionState(plan_id="p1"),
+        role_roster=ROLE_ROSTER,
+        tool_registry=TOOL_REGISTRY,
+        llm_adapter=object(),
+        original_user_message="hello",
+        user_id="test-user-1",
+        plan_id="p1",
+    )
+
+    assert council_flags, "the nested planner was never invoked"
+    assert all(flag is False for flag in council_flags)
 
 
 async def test_certainty_aggregates_via_min_confidence_across_sub_steps(monkeypatch):

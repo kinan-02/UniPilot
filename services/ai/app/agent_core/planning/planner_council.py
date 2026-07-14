@@ -421,6 +421,7 @@ async def run_planner_council(
     prompt_contract_name: str = PLANNER_V1,
     output_schema_name: str,
     output_schema: dict[str, Any],
+    council_enabled: bool = True,
     critics: tuple[str, ...] = _DEFAULT_CRITICS,
     drafter_timeout: float = _DRAFTER_TIMEOUT,
     critic_timeout: float = _CRITIC_TIMEOUT,
@@ -432,7 +433,19 @@ async def run_planner_council(
 
     `invocation` drives the adaptive-depth gate (`_should_run_full_council`):
     a routine continuation runs the fast drafter alone; the first invocation
-    and Monitor-flagged replans run the full council."""
+    and Monitor-flagged replans run the full council.
+
+    `council_enabled=False` forces drafter-only unconditionally -- used by the
+    task handler's private NESTED sub-plans. There, every replan round
+    inherently carries a `replan_reason` (a round only repeats because the
+    prior one fell short), so the adaptive gate above would fire the full
+    council on EVERY nested round: a live-eval turn spent ~71 of its 128 calls
+    on nested-round critics for a single question. A nested sub-plan is the
+    bounded fallback for one already-classified step and its aggregated result
+    is re-verified by the outer Monitor + success-check, so the critics'
+    coverage/grounding/criteria review (a top-level-plan concern) is redundant
+    there -- the drafter, which already carries the full planner instructions
+    and grounding block, stands on its own."""
     registry = build_council_prompt_registry()
 
     # 1. DRAFT -- the existing planner block, fast (no thinking).
@@ -459,8 +472,9 @@ async def run_planner_council(
 
     # Adaptive depth: a routine continuation (not the first invocation, no
     # replan flags) trusts the fast draft as-is and skips the critic+synth
-    # calls entirely -- see _should_run_full_council.
-    if not _should_run_full_council(invocation, planner_input):
+    # calls entirely -- see _should_run_full_council. A nested sub-plan
+    # (`council_enabled=False`) always takes this drafter-only path.
+    if not council_enabled or not _should_run_full_council(invocation, planner_input):
         return draft_output.model_copy(
             update={"warnings": [*draft_output.warnings, "planner_council_draft_only"]}
         )

@@ -463,6 +463,7 @@ async def build_next_plan_steps(
     block_id: str,
     invocation: int,
     prompt_contract_name: str = PLANNER_V1,
+    council_enabled: bool = True,
     thinking_enabled: bool | None = None,
     reasoning_effort: str | None = None,
     timeout: float | None = None,
@@ -485,6 +486,7 @@ async def build_next_plan_steps(
         block_id=block_id,
         invocation=invocation,
         prompt_contract_name=prompt_contract_name,
+        council_enabled=council_enabled,
         output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,
         output_schema=PLANNER_OUTPUT_SCHEMA,
     )
