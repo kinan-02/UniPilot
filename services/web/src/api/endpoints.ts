@@ -299,9 +299,9 @@ export const advisorApi = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
       },
       body: JSON.stringify({ question }),
+      credentials: 'include',
     })
   },
 }
