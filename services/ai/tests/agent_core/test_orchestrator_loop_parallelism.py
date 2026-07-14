@@ -227,3 +227,53 @@ async def test_repeatedly_failing_step_becomes_an_exhausted_step(monkeypatch: py
     assert captured_exhausted[2] == ["resolve X"]
     # The exhausted objective never appears in monitor_flags.
     assert all("resolve X" not in flag for flags in captured_flags for flag in flags)
+
+
+def _two_independent_steps() -> PlannerInvocationOutput:
+    a = PlanStep(step_id="a", objective="resolve X", depends_on=[], success_criteria=[])
+    b = PlanStep(step_id="b", objective="fetch Y", depends_on=[], success_criteria=[])
+    return PlannerInvocationOutput(
+        plan_status="in_progress",
+        next_steps=[a, b],
+        plan_summary="",
+        plan_graph=PlanGraph(forward={"a": [], "b": []}, dependents={}, execution_layers=[["a", "b"]]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_replan_focus_scopes_the_next_invocation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W3b scoped replan: when a step fails alongside a step that succeeded, the
+    NEXT invocation's `replan_focus` names the failed step and protects the
+    completed one, so the Planner repairs only the failed region."""
+    captured_focus: list[object] = []
+
+    async def fake_build_next_plan_steps(*, planner_input, **_kwargs: object) -> PlannerInvocationOutput:
+        captured_focus.append(planner_input.replan_focus)
+        return _two_independent_steps() if len(captured_focus) == 1 else _never_completes()
+
+    async def fake_run_task_handler(*, step: PlanStep, **_kwargs: object) -> StateEntry:
+        return _entry(step.step_id, status="failed" if step.step_id == "a" else "succeeded")
+
+    async def fake_compose_answer(**_kwargs: object) -> SubagentResult:
+        return _fake_composed()
+
+    monkeypatch.setattr(loop_module, "build_next_plan_steps", fake_build_next_plan_steps)
+    monkeypatch.setattr(loop_module, "run_task_handler", fake_run_task_handler)
+    monkeypatch.setattr(loop_module, "compose_answer", fake_compose_answer)
+
+    await loop_module.run_plan_to_completion(
+        user_goal="g",
+        original_user_message="m",
+        user_id="u",
+        llm_adapter=None,
+        role_roster={"composition": object()},
+        tool_registry=None,
+        plan_id="p",
+        max_planner_invocations=2,
+    )
+
+    assert captured_focus[0] is None  # first invocation: nothing failed yet
+    focus = captured_focus[1]
+    assert focus is not None
+    assert focus.failed_step_ids == ["a"]
+    assert focus.protected_step_ids == ["b"]

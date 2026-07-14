@@ -270,6 +270,11 @@ def _planner_contract() -> PromptContract:
             "with a composition step that answers from what IS established (honestly noting what "
             "could not be determined), or, only if that objective is genuinely essential and cannot "
             "be worked around, set plan_status='blocked_needs_clarification' and ask the student.",
+            "If `replan_focus` is present, this is a SCOPED replan: fix only its `failed_step_ids` "
+            "and any steps that depend on them, addressing its `unmet_criteria`. Treat every step in "
+            "`protected_step_ids` as already done and correct -- do NOT re-emit, re-fetch, or "
+            "re-plan those; depend on their existing results instead. Emit only the minimal new "
+            "steps needed to repair the failed region.",
         ],
         allowed_context_fields=None,
         output_schema_name=PLANNER_OUTPUT_SCHEMA_NAME,

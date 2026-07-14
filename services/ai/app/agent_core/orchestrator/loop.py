@@ -16,7 +16,7 @@ from app.agent_core.orchestrator.replan_ledger import ReplanLedger
 from app.agent_core.orchestrator.state_index import build_state_index
 from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.planner import build_next_plan_steps
-from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, RoleName
+from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, ReplanFocus, RoleName
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning_effort import TurnReasoningConfig
@@ -63,6 +63,7 @@ async def run_plan_to_completion(
     state = PlanExecutionState(plan_id=plan_id)
     monitor_flags: list[str] = []
     replan_reason: str | None = None
+    replan_focus: ReplanFocus | None = None
     plan_status = "in_progress"
     clarification_question: str | None = None
 
@@ -92,6 +93,9 @@ async def run_plan_to_completion(
             # for these (§4.1). Kept off monitor_flags for the same council-gate
             # reason as final_round.
             exhausted_steps=replan_ledger.exhausted() if replan_ledger else [],
+            # Scopes a replan to the failed region + protected steps (§4.2);
+            # None on the first round and any non-replan round.
+            replan_focus=replan_focus,
         )
         planner_output = await build_next_plan_steps(
             planner_input=planner_input,
@@ -108,7 +112,12 @@ async def run_plan_to_completion(
 
         monitor_flags = []
         replan_reason = None
+        replan_focus = None  # consumed above; rebuilt below only if this round replans
         should_replan = False
+        # This round's failed steps + verbatim unmet criteria, folded into a
+        # scoped `replan_focus` for the next invocation (§4.2).
+        round_failed_step_ids: list[str] = []
+        round_unmet: list[str] = []
         steps_by_id = {step.step_id: step for step in planner_output.next_steps}
 
         async def _dispatch_one(step_id: str, _steps_by_id: dict[str, PlanStep] = steps_by_id) -> StateEntry:
@@ -147,6 +156,7 @@ async def run_plan_to_completion(
                     monitor_flags.append(f"step {step.step_id} failed")
                     replan_reason = f"step {step.step_id} failed"
                     should_replan = True
+                    round_failed_step_ids.append(step.step_id)
                     if replan_ledger is not None:
                         replan_ledger.record(step.objective, replan_reason)
                 if decision == "clarify":
@@ -164,6 +174,8 @@ async def run_plan_to_completion(
                         monitor_flags.append(
                             f"step {step.step_id} partial or did not fully satisfy its success criteria"
                         )
+                    round_failed_step_ids.append(step.step_id)
+                    round_unmet.extend(unmet_criteria)
                     if replan_ledger is not None:
                         replan_ledger.record(step.objective, replan_reason or "unmet success criteria")
             if should_replan:
@@ -176,6 +188,20 @@ async def run_plan_to_completion(
                 break
 
         if should_replan:
+            # Scope the next invocation to the failed region: fix the steps that
+            # fell short, and protect everything already established so the
+            # Planner repairs rather than re-derives (§4.2). Protected = the
+            # succeeded entries that aren't themselves in the failed set.
+            protected_step_ids = [
+                entry.step_id
+                for entry in state.entries
+                if entry.status == "succeeded" and entry.step_id not in round_failed_step_ids
+            ]
+            replan_focus = ReplanFocus(
+                failed_step_ids=round_failed_step_ids,
+                protected_step_ids=protected_step_ids,
+                unmet_criteria=round_unmet,
+            )
             continue
         if plan_status == "complete":
             break

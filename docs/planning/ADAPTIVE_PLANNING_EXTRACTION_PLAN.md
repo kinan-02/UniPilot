@@ -270,7 +270,7 @@ excluding the live investigation file.
   is a possible follow-up.
 - **Phase 4 — W3b scoped replan.** Populate `replan_focus` in `loop.py`;
   planner instruction. Tests: failed + protected ids computed correctly;
-  instruction present only on a focused replan.
+  `replan_focus` is None on the first/non-replan round. **Done** — 596 passed.
 - **Phase 5 — integration + live re-check.** Full non-live suite green. Live
   re-check on **case_04** (flagship "Can I take Algorithms next semester?") and
   **case_01** (simple), measuring: (a) critic calls/turn (expect ↓ from 4),
