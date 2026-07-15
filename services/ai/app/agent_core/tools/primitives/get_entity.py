@@ -121,7 +121,9 @@ def _wiki_page_meta(engine: AcademicGraphEngine, slug: str) -> dict[str, Any]:
     return next((entry for entry in engine.wiki_catalog if entry.get("slug") == slug), {})
 
 
-def _wiki_entity_result(engine: AcademicGraphEngine, entity_type: str, slug: str) -> ToolOutputEnvelope:
+def _wiki_entity_result(
+    engine: AcademicGraphEngine, entity_type: str, slug: str, *, trust_page_kind: bool = False
+) -> ToolOutputEnvelope:
     page = engine.wiki_pages.get(slug)
     if page is None:
         # Exact-slug miss. The model routinely guesses a plausible-but-wrong
@@ -142,7 +144,25 @@ def _wiki_entity_result(engine: AcademicGraphEngine, entity_type: str, slug: str
         return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: {entity_type}:{slug}")
 
     actual_kind = _classify_wiki_path(page.get("path", ""), slug)
-    if entity_type != "wiki_page" and actual_kind != entity_type:
+    if trust_page_kind:
+        # The slug came from OUR OWN database lookup (an ObjectId -> wikiPage
+        # translation), not from the model. The caller's `entity_type` was a
+        # guess about a foreign key it cannot see inside; the page we resolved
+        # to is ground truth. Re-checking the guess against the answer we just
+        # found only throws the answer away.
+        #
+        # Concretely: `degree_programs.metadata.programKind` is only ever
+        # `bsc_track`/`bsc_specialization`, so a `degreeId` always resolves to a
+        # TRACK page -- while the model reasonably asks for entity_type="program"
+        # (the field IS `degreeId`, the collection IS `degree_programs`). That
+        # made entity_type="program" unsatisfiable for EVERY student. Found
+        # live: the agent resolved the right page, got
+        # `entity_type_mismatch: requested program, track-... is track`,
+        # abandoned the lookup and asked the student to name their own degree.
+        entity_type = actual_kind or entity_type
+    elif entity_type != "wiki_page" and actual_kind != entity_type:
+        # Still fail closed for a MODEL-supplied slug: there the guess is the
+        # only evidence we have that it fetched the thing it meant to.
         return ToolOutputEnvelope(
             ok=False,
             data=None,
@@ -308,6 +328,7 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
         return _course_entity_result(engine, course_code)
 
     slug = entity_id
+    resolved_from_database = False
     if entity_type != "wiki_page" and ObjectId.is_valid(entity_id):
         # Same real bug as the course case above, confirmed live: a
         # student_profile's `degreeId` (a Mongo _id reference into
@@ -319,7 +340,8 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
         resolved = await _resolve_program_slug_from_object_id(entity_id)
         if resolved is not None:
             slug = resolved
-    return _wiki_entity_result(engine, entity_type, slug)
+            resolved_from_database = True
+    return _wiki_entity_result(engine, entity_type, slug, trust_page_kind=resolved_from_database)
 
 
 _COURSES_COLLECTION = "courses"

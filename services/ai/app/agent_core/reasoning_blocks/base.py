@@ -73,6 +73,11 @@ class LlmCallResult:
 
     parsed: dict[str, Any]
     raw_text: str
+    # True when `parsed` was reconstructed from an unparseable prose response
+    # rather than returned by the model as JSON -- see `_invoke_llm`'s
+    # `salvage_text_field`. Callers surface this as a warning; it is a recovered
+    # answer, not a clean one.
+    salvaged: bool = False
 
 
 def _build_repair_user_prompt(
@@ -203,6 +208,46 @@ class BaseReasoningBlock(ABC):
             max_retries=requested.max_retries,
         )
 
+    def _salvage_prose_response(
+        self,
+        *,
+        error: LLMAdapterError,
+        raw_text: str,
+        salvage_text_field: str | None,
+        block_input: BaseReasoningBlockInput,
+        phase: str,
+    ) -> LlmCallResult | None:
+        """Rebuild a result from a prose response the model refused to wrap in JSON.
+
+        Opt-in (`salvage_text_field`), and only meaningful for a schema whose
+        payload is a single free-text field: there, the prose IS the value, so
+        discarding it loses a correct answer over its wrapper.
+
+        Found live (2026-07-15): the composition model twice answered
+        `"Here is a list of your completed courses... includes 17 courses..."`
+        -- fully correct, drawn from real records -- as plain prose. Both
+        attempts raised `json_parse_failed` (no `{` at all, so the
+        control-character `strict=False` fix cannot help), the block failed, and
+        the student received an EMPTY string. Structured output is off by
+        default (`agent_reasoning_structured_output_enabled: bool = False`), so
+        nothing forces JSON and a retry just re-rolls the same dice.
+
+        Returns None -- letting the original error propagate -- for any
+        non-parse failure (a transport error has no usable text), when the
+        caller did not opt in, or when the text is blank. A blank salvage would
+        manufacture an empty answer, which is worse than a clean failure.
+        """
+        if salvage_text_field is None or str(error) not in _PARSE_FAILURE_CODES:
+            return None
+        text = (raw_text or "").strip()
+        if not text:
+            return None
+        logger.warning(
+            "reasoning_block_salvaged_prose_response",
+            extra={"block_id": block_input.block_id, "phase": phase, "field": salvage_text_field},
+        )
+        return LlmCallResult(parsed={salvage_text_field: text}, raw_text=raw_text, salvaged=True)
+
     async def _invoke_llm(
         self,
         *,
@@ -213,6 +258,7 @@ class BaseReasoningBlock(ABC):
         phase: str,
         block_input: BaseReasoningBlockInput,
         telemetry: RunTelemetry,
+        salvage_text_field: str | None = None,
     ) -> LlmCallResult:
         """Wraps the actual adapter call with schema support and telemetry.
 
@@ -259,6 +305,15 @@ class BaseReasoningBlock(ABC):
                 )
                 if will_retry:
                     continue
+                salvaged = self._salvage_prose_response(
+                    error=exc,
+                    raw_text=raw_text_out[0] if raw_text_out else "",
+                    salvage_text_field=salvage_text_field,
+                    block_input=block_input,
+                    phase=phase,
+                )
+                if salvaged is not None:
+                    return salvaged
                 raise
             raw_text = raw_text_out[0] if raw_text_out else ""
             return LlmCallResult(parsed=parsed, raw_text=raw_text)

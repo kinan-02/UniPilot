@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniPilot AI — System &amp; Backend Review</title>
+</head>
+<body>
+
+<div class="stage" id="stage">
+
+  <!-- ══════════════ 1 · title ══════════════ -->
+  <section class="slide" data-sec="15" data-eyebrow="Project review">
+    <div class="pad title-slide">
+      <div class="title-main">
+        <p class="kicker">Technion · academic decision support</p>
+        <h1>UniPilot<span class="accent">AI</span></h1>
+        <p class="lede">A degree is a rule system, not a checklist.<br>UniPilot makes those rules computable — and proves it.</p>
+      </div>
+      <div class="title-meta">
+        <div class="meta-row"><span class="m-num">8</span><span class="m-lab">services</span></div>
+        <div class="meta-row"><span class="m-num">75</span><span class="m-lab">REST endpoints</span></div>
+        <div class="meta-row"><span class="m-num">5,273</span><span class="m-lab">backend tests</span></div>
+        <div class="meta-row"><span class="m-num">214</span><span class="m-lab">commits · 3 authors</span></div>
+        <div class="byline">
+          <p class="kicker">Team</p>
+          <p class="names">Tymor Ibrahim<br>Raya Kheraldine<br>Monya Abu Doli</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-notes">Hi — we're going to walk the whole UniPilot system in five minutes, weighted toward the backend and how we test it. One sentence of framing: a Technion degree isn't a checklist you tick off, it's a rule system — buckets, pools, overlap rules, prerequisite chains. Almost everything hard about this project comes from taking those rules seriously. Let's start with why that's hard.</div>
+  </section>
+
+  <!-- ══════════════ 2 · problem ══════════════ -->
+  <section class="slide" data-sec="20" data-eyebrow="The problem">
+    <div class="pad">
+      <h2>“What am I still missing to graduate?”</h2>
+      <p class="sub">A question with no reliable answer today. Students reconcile a PDF transcript against catalog rules by hand.</p>
+      <div class="prob-grid">
+        <div class="prob"><h4>Requirement buckets</h4><p>Credits don't count once. Pool and overlap rules decide which bucket a course actually fills.</p></div>
+        <div class="prob"><h4>Prerequisite chains</h4><p>Ordering constraints that span years, with equivalences across tracks.</p></div>
+        <div class="prob"><h4>Per-semester offerings</h4><p>A course only exists if it's offered — winter, spring, or summer.</p></div>
+        <div class="prob"><h4>Schedule &amp; exam conflicts</h4><p>Lecture, tutorial and lab groups, plus exam dates that collide.</p></div>
+      </div>
+      <p class="pull">Get any one of these wrong and the answer is worse than useless — it's <em>confidently</em> wrong.</p>
+    </div>
+    <div class="slide-notes">Here's the problem. Ask a Technion student what they're missing to graduate and there's no reliable answer. They're reconciling a PDF transcript against catalog rules by hand. Four things make it hard: credits don't count once — pool and overlap rules decide which bucket a course actually fills; prerequisite chains span years; a course only exists if it's offered that semester; and lecture, tutorial, lab and exam times all collide. And the key point — get any one wrong and the answer isn't just useless, it's confidently wrong. That's the constraint that shaped the entire backend.</div>
+  </section>
+
+  <!-- ══════════════ 3 · student journey (animated) ══════════════ -->
+  <section class="slide" data-sec="30" data-eyebrow="User experience">
+    <div class="pad">
+      <h2>What the student actually does</h2>
+      <p class="sub">Six steps from sign-up to a plan you can trust. Each one hands structured state to the next.</p>
+
+      <div class="journey" data-anim>
+        <div class="jstep" style="--i:0">
+          <div class="jbadge"><span>1</span></div>
+          <div class="jcard">
+            <span class="s-n">Register</span>
+            <span class="s-d">JWT auth</span>
+          </div>
+        </div>
+        <div class="jstep" style="--i:1">
+          <div class="jbadge"><span>2</span></div>
+          <div class="jcard">
+            <span class="s-n">Onboarding</span>
+            <span class="s-d">pick degree program</span>
+          </div>
+        </div>
+        <div class="jstep hi" style="--i:2">
+          <div class="jbadge"><span>3</span></div>
+          <div class="jcard">
+            <span class="s-n">Upload transcript</span>
+            <span class="s-d">official Technion PDF</span>
+          </div>
+        </div>
+        <div class="jstep" style="--i:3">
+          <div class="jbadge"><span>4</span></div>
+          <div class="jcard">
+            <span class="s-n">Progress</span>
+            <span class="s-d">audit against rules</span>
+          </div>
+        </div>
+        <div class="jstep" style="--i:4">
+          <div class="jbadge"><span>5</span></div>
+          <div class="jcard">
+            <span class="s-n">Plan</span>
+            <span class="s-d">build a semester</span>
+          </div>
+        </div>
+        <div class="jstep" style="--i:5">
+          <div class="jbadge"><span>6</span></div>
+          <div class="jcard">
+            <span class="s-n">Risks</span>
+            <span class="s-d">what will bite you</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <h4>Step 3 is the real onboarding</h4>
+          <p class="body-text">A dedicated <code>transcript-parser</code> service turns the official gradesheet into structured rows. Students <em>review and confirm</em> the parse before anything is written — the machine never silently decides what you've taken.</p>
+        </div>
+        <div>
+          <h4>Hebrew-first, RTL by default</h4>
+          <p class="body-text">The UI ships Hebrew as the default with a live English switcher — not an afterthought translation layer. Every Playwright journey runs against a WCAG accessibility gate.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-notes">Quickly, the user experience — six steps: register, pick your degree program, upload your transcript, see progress, build a plan, see risks. Each step hands structured state to the next, which is why the order matters. Two things worth calling out. First, step three — the PDF upload — is the real onboarding. A dedicated parser service turns the official gradesheet into structured rows, and the student reviews and confirms the parse before anything is written. The machine never silently decides what you've taken. Second, the UI is Hebrew-first, right-to-left by default with a live English switcher — not a bolted-on translation.</div>
+  </section>
+
+  <!-- ══════════════ 4 · planner ══════════════ -->
+  <section class="slide" data-sec="35" data-eyebrow="User experience">
+    <div class="pad">
+      <h2>The planner is the product</h2>
+      <div class="planner-wrap">
+        <div class="grid-mock" aria-hidden="true">
+          <div class="gm-head">א</div><div class="gm-head">ב</div><div class="gm-head">ג</div><div class="gm-head">ד</div><div class="gm-head">ה</div><div class="gm-head">ו</div>
+          <div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div>
+          <div class="gm-cell"><div class="ev c1">הרצאה</div></div><div class="gm-cell"></div><div class="gm-cell"><div class="ev c2">תרגול</div></div><div class="gm-cell"></div><div class="gm-cell"><div class="ev c1">הרצאה</div></div><div class="gm-cell"></div>
+          <div class="gm-cell"><div class="ev c1"></div></div><div class="gm-cell"><div class="ev c3">מעבדה</div></div><div class="gm-cell"><div class="ev c2"></div></div><div class="gm-cell"></div><div class="gm-cell"><div class="ev c1"></div></div><div class="gm-cell"></div>
+          <div class="gm-cell"></div><div class="gm-cell"><div class="ev c3"></div></div><div class="gm-cell"></div><div class="gm-cell"><div class="ev clash">התנגשות</div></div><div class="gm-cell"></div><div class="gm-cell"></div>
+          <div class="gm-cell"><div class="ev c4">הרצאה</div></div><div class="gm-cell"></div><div class="gm-cell"><div class="ev c4">הרצאה</div></div><div class="gm-cell"><div class="ev clash"></div></div><div class="gm-cell"></div><div class="gm-cell"></div>
+          <div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div><div class="gm-cell"></div>
+        </div>
+        <div class="planner-list">
+          <h4>A schedule workspace, not a form</h4>
+          <ul class="ticks">
+            <li><b>Auto-pick</b> proposes a semester that respects credit caps, offerings, prerequisites and exam collisions — <em>preview only</em>, always editable before save.</li>
+            <li><b>Group-level control</b> — choose the exact lecture / tutorial / lab group per course.</li>
+            <li><b>Active-only grid</b> — deactivated courses stay in the list but leave credits, conflicts and exports.</li>
+            <li><b>Versioning</b>, read-only <b>share tokens</b>, and <b>.ics export</b> to a real calendar.</li>
+          </ul>
+          <p class="micro">Product inspiration from CheeseFork — no CheeseFork code in this repo.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-notes">The planner is really the product. It's a schedule workspace, not a form. Auto-pick proposes a semester that respects credit caps, what's actually offered, prerequisites and exam collisions — but it's preview only, always editable before you save. You pick the exact lecture, tutorial and lab group per course. Deactivated courses stay visible but drop out of credits and conflicts. Plans are versioned, shareable read-only by token, and export to a real calendar as .ics. The recurring theme: the system proposes, the student decides.</div>
+  </section>
+
+  <!-- ══════════════ 5 · architecture ══════════════ -->
+  <section class="slide" data-sec="40" data-eyebrow="Backend · architecture">
+    <div class="pad">
+      <h2>Eight services. Two doors.</h2>
+      <div class="arch">
+        <div class="arch-col">
+          <p class="col-lab">Exposed to the host</p>
+          <div class="node door"><b>web</b><span>React SPA · proxies /api</span></div>
+          <div class="node door"><b>api</b><span>FastAPI · the only backend a client ever talks to</span></div>
+        </div>
+        <div class="arch-col wide">
+          <p class="col-lab">Internal only — never reachable from outside</p>
+          <div class="node-row">
+            <div class="node"><b>agent</b><span>conversational layer</span></div>
+            <div class="node"><b>transcript-parser</b><span>PDF → structured rows</span></div>
+            <div class="node"><b>data-engineering</b><span>catalog pipeline CLI</span></div>
+          </div>
+          <div class="node-row">
+            <div class="node"><b>ai</b><span>inference</span></div>
+            <div class="node"><b>worker</b><span>async jobs</span></div>
+            <div class="node"><b>outlook-mcp</b><span>read-only Graph</span></div>
+          </div>
+        </div>
+        <div class="arch-col">
+          <p class="col-lab">State</p>
+          <div class="node store"><b>MongoDB</b><span>persistence</span></div>
+          <div class="node store"><b>Redis</b><span>rate limits · queue</span></div>
+        </div>
+      </div>
+      <div class="arch-note">
+        <p class="body-text"><b>The boundary is the design.</b> Only <code>web</code> and <code>api</code> bind host ports. Everything else is service-to-service behind an <code>X-Internal-Service-Token</code>. Docker-first — the whole stack is <code>docker compose up --build</code>.</p>
+      </div>
+    </div>
+    <div class="slide-notes">Now the backend. Eight services, but only two doors: web and api are the only things that bind a host port. Everything else — the agent, the transcript parser, the data-engineering CLI, inference, worker, the Outlook connector — is internal only, reachable service-to-service behind an internal service token. Mongo for persistence, Redis for rate limits. The boundary is deliberate: api is the only backend a client ever talks to, so there's exactly one place to enforce auth. And the whole stack comes up with a single docker compose command.</div>
+  </section>
+
+  <!-- ══════════════ 6 · data pipeline ══════════════ -->
+  <section class="slide" data-sec="40" data-eyebrow="Backend · data">
+    <div class="pad">
+      <h2>More code to <em>trust</em> the data than to serve it</h2>
+      <p class="sub">Real Technion DDS catalog data. It does not arrive clean, and a wrong catalog silently corrupts every answer downstream.</p>
+      <div class="pipe">
+        <div class="pipe-stage"><span class="p-n">Vault</span><span class="p-f">export_dds_catalog</span><span class="p-l">1,391</span></div>
+        <div class="pipe-arrow"></div>
+        <div class="pipe-stage"><span class="p-n">Staging</span><span class="p-f">staging_importer</span><span class="p-l">725</span></div>
+        <div class="pipe-arrow"></div>
+        <div class="pipe-stage"><span class="p-n">Quality</span><span class="p-f">staging_quality</span><span class="p-l">989</span></div>
+        <div class="pipe-arrow"></div>
+        <div class="pipe-stage gate"><span class="p-n">Gate</span><span class="p-f">promotion_gate</span><span class="p-l">904</span></div>
+        <div class="pipe-arrow"></div>
+        <div class="pipe-stage"><span class="p-n">Production</span><span class="p-f">production_promoter</span><span class="p-l">1,133</span></div>
+      </div>
+      <div class="two-col tight">
+        <div>
+          <ul class="ticks">
+            <li>Promotion is <b>guarded and reversible</b> — <code>--dry-run</code> first, always.</li>
+            <li><code>verify-vault-production-parity</code> proves what shipped equals what was exported.</li>
+            <li><b>100% line coverage</b> enforced on this service. No exceptions.</li>
+          </ul>
+        </div>
+        <div class="stat-big">
+          <span class="sb-num">~5,100</span>
+          <span class="sb-lab">lines standing between raw Technion data and a student-facing answer</span>
+        </div>
+      </div>
+    </div>
+    <div class="slide-notes">Here's the part people underestimate. We run on real Technion DDS catalog data, and it does not arrive clean. So there's a five-stage pipeline: export to a vault, import to staging, run quality checks, pass a promotion gate, then promote to production. That's about five thousand one hundred lines — genuinely more code to trust the data than to serve it. Promotion is guarded and reversible: dry-run first, and a parity check proves what shipped equals what was exported. This service is held at a hundred percent line coverage, no exceptions. A wrong catalog silently corrupts every answer downstream, so this is where the paranoia goes.</div>
+  </section>
+
+  <!-- ══════════════ 7 · api & security ══════════════ -->
+  <section class="slide" data-sec="35" data-eyebrow="Backend · API &amp; security">
+    <div class="pad">
+      <h2>One door, guarded</h2>
+      <div class="api-wrap">
+        <div class="api-table">
+          <div class="ar"><span class="a-area">Auth</span><span class="a-r"><code>/auth/register · login · refresh · logout · me</code></span></div>
+          <div class="ar"><span class="a-area">Profile</span><span class="a-r"><code>/student-profile</code></span></div>
+          <div class="ar"><span class="a-area">Catalog</span><span class="a-r"><code>/catalog/courses · degree-programs</code> <em>read-only</em></span></div>
+          <div class="ar"><span class="a-area">Transcript</span><span class="a-r"><code>/completed-courses · /transcript-import/{parse,commit}</code></span></div>
+          <div class="ar"><span class="a-area">Progress</span><span class="a-r"><code>/graduation-progress · /curriculum-graph</code></span></div>
+          <div class="ar"><span class="a-area">Plans</span><span class="a-r"><code>/semester-plans/{generate,suggest-*,versions}</code></span></div>
+          <div class="ar"><span class="a-area">Risks</span><span class="a-r"><code>/academic-risks/analyze</code></span></div>
+        </div>
+        <div class="sec-list">
+          <h4>Every route but <code>/health</code> is JWT-protected</h4>
+          <ul class="ticks">
+            <li>Access + refresh tokens with <b>rotation and reuse detection</b></li>
+            <li>Ownership enforced per record — the user is the security boundary</li>
+            <li>Redis-backed <b>rate limiting</b></li>
+            <li>Internal services gated by <code>X-Internal-Service-Token</code></li>
+            <li>Catalog is <b>structurally read-only</b> to students</li>
+          </ul>
+          <div class="sec-stat"><span class="ss-n">10</span><span class="ss-l">dedicated security test suites</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-notes">The API surface: seventy-five endpoints across auth, profile, catalog, transcript, progress, plans and risks. Everything except health is JWT-protected. Refresh tokens rotate and we detect reuse. Ownership is enforced per record — the user is the security boundary. Rate limiting is Redis-backed, internal services are gated by a service token, and the catalog is structurally read-only to students. And security isn't a claim here — there are ten dedicated security test suites that try to break exactly these boundaries.</div>
+  </section>
+
+  <!-- ══════════════ 8 · agent ══════════════ -->
+  <section class="slide" data-sec="25" data-eyebrow="Backend · one consumer among many">
+    <div class="pad">
+      <h2>Where the agent fits — and where it doesn't</h2>
+      <div class="agent-split">
+        <div class="as-col allow">
+          <p class="as-lab">The LLM may</p>
+          <ul class="ticks">
+            <li>Classify what you asked for</li>
+            <li>Extract preferences from your phrasing</li>
+            <li><b>Explain</b> results the core computed</li>
+            <li><b>Propose</b> an action</li>
+          </ul>
+        </div>
+        <div class="as-col deny">
+          <p class="as-lab">The LLM may not</p>
+          <ul class="crosses">
+            <li>Invent a requirement</li>
+            <li>Compute your progress</li>
+            <li>Decide what you've completed</li>
+            <li><b>Write student data — ever</b></li>
+          </ul>
+        </div>
+      </div>
+      <div class="agent-chain">
+        <span class="ac">agent proposes</span><span class="ac-a"></span><span class="ac hi">student confirms</span><span class="ac-a"></span><span class="ac">api executes the write</span>
+      </div>
+      <p class="pull">The agent is a <em>view</em> onto the deterministic core — it calls the same engines the REST endpoints do.</p>
+    </div>
+    <div class="slide-notes">A word on the agent, because it's one part of the system, not the system. The language model may classify what you asked, extract preferences, explain results, and propose an action. It may not invent a requirement, compute your progress, decide what you've completed, or write student data — ever. Every action goes: agent proposes, student confirms, and the api executes the write. The agent is a view onto the deterministic core — it calls the exact same engines the REST endpoints do. Nothing it says is a new source of truth.</div>
+  </section>
+
+  <!-- ══════════════ 9 · testing ══════════════ -->
+  <section class="slide" data-sec="40" data-eyebrow="Testing">
+    <div class="pad">
+      <h2>Testing is most of the engineering</h2>
+      <div class="test-hero">
+        <div class="th-cell"><span class="th-n">5,273</span><span class="th-l">backend tests</span><span class="th-s">448 files</span></div>
+        <div class="th-cell"><span class="th-n">99,205</span><span class="th-l">lines of test code</span><span class="th-s">vs 117,197 of source</span></div>
+        <div class="th-cell"><span class="th-n">340</span><span class="th-l">component tests</span><span class="th-s">Vitest</span></div>
+        <div class="th-cell"><span class="th-n">57</span><span class="th-l">end-to-end tests</span><span class="th-s">10 Playwright projects</span></div>
+      </div>
+      <div class="two-col tight">
+        <div>
+          <h4>Four kinds of backend suite</h4>
+          <div class="suite-bars">
+            <div class="sbar"><span class="sb-k">unit</span><span class="sb-track"><i style="width:100%"></i></span></div>
+            <div class="sbar"><span class="sb-k">integration</span><span class="sb-track"><i style="width:62%"></i></span></div>
+            <div class="sbar"><span class="sb-k">security</span><span class="sb-track"><i class="crit" style="width:30%"></i></span></div>
+            <div class="sbar"><span class="sb-k">stress</span><span class="sb-track"><i class="warn" style="width:18%"></i></span></div>
+          </div>
+          <p class="micro">Plus a 331-case RAG retrieval benchmark across 9 locked profiles.</p>
+        </div>
+        <div>
+          <h4>Gates that actually fail the build</h4>
+          <ul class="ticks">
+            <li><b>100%</b> line coverage — <code>transcript-parser</code>, <code>data-engineering</code></li>
+            <li><b>80%</b> line coverage floor — <code>api</code>, <code>agent</code></li>
+            <li>WCAG accessibility scans as a Playwright project</li>
+            <li>CI runs the full E2E suite against a live Docker stack</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-notes">Testing. Honestly, testing is most of the engineering here. Five thousand two hundred seventy-three backend tests across four hundred forty-eight files. Ninety-nine thousand lines of test code against a hundred and seventeen thousand lines of source — nearly one to one. Three hundred forty component tests, fifty-seven end-to-end tests across ten Playwright projects. Four kinds of backend suite: unit, integration, security and stress — stress matters because a transcript with hundreds of courses shouldn't melt the audit engine. And these are gates that actually fail the build: a hundred percent line coverage on the parser and the data pipeline, an eighty percent floor on api and agent, accessibility scans as their own project, and CI runs the whole end-to-end suite against a live Docker stack — not mocks.</div>
+  </section>
+
+  <!-- ══════════════ 10 · conclusion ══════════════ -->
+  <section class="slide" data-sec="20" data-eyebrow="Conclusion">
+    <div class="pad">
+      <h2>What UniPilot proves</h2>
+      <div class="concl-grid">
+        <div class="concl">
+          <p class="cl-lab">Truth</p>
+          <h3>Computed, never generated</h3>
+          <p class="cl-desc">Catalog rules are parsed into a typed DSL, and deterministic engines own every academic answer. The same inputs give the same result — explainable to a student and to a registrar.</p>
+        </div>
+        <div class="concl">
+          <p class="cl-lab">Data</p>
+          <h3>Trust is engineered</h3>
+          <p class="cl-desc">Real Technion data reaches a student only through a five-stage guarded pipeline with a promotion gate, a dry run, and a parity check. Roughly 5,100 lines of deliberate paranoia.</p>
+        </div>
+        <div class="concl">
+          <p class="cl-lab">Proof</p>
+          <h3>Tests are the warranty</h3>
+          <p class="cl-desc">5,273 backend tests, near 1:1 test-to-source, security and stress suites, and coverage gates that fail the build rather than warn.</p>
+        </div>
+      </div>
+      <p class="pull final">One discipline runs through all three: <em>the system only claims what it can compute.</em></p>
+    </div>
+    <div class="slide-notes">To conclude — three things UniPilot proves. First, truth: academic answers are computed, never generated. Catalog rules become a typed DSL and deterministic engines own every answer, so the same inputs always give the same result, explainable to a student and to a registrar. Second, data: trust is engineered — real Technion data only reaches a student through a five-stage guarded pipeline with a gate, a dry run and a parity check. Third, proof: the tests are the warranty — over five thousand backend tests, near one-to-one test-to-source, and gates that fail the build rather than warn. One discipline runs through all three: the system only claims what it can compute. Thank you — happy to take questions.</div>
+  </section>
+
+</div>
+
+<div class="hud" id="hud">
+  <div class="hud-rail">
+    <span class="hud-eyebrow" id="hudEyebrow"></span>
+    <span class="hud-sep"></span>
+    <span class="hud-clock" id="hudClock">00:00</span>
+    <span class="hud-target" id="hudTarget">/ 00:15</span>
+    <span class="hud-sep"></span>
+    <span class="hud-count"><b id="hudNow">1</b>/<span id="hudTotal">10</span></span>
+  </div>
+  <div class="hud-progress"><i id="hudBar"></i></div>
+</div>
+
+<div class="notes-panel" id="notesPanel" hidden>
+  <p class="np-lab">Speaker notes <span id="npTime"></span></p>
+  <div class="np-body" id="npBody"></div>
+</div>
+
+<div class="help" id="help">
+  <kbd>←</kbd><kbd>→</kbd> slides · <kbd>N</kbd> notes · <kbd>T</kbd> timer · <kbd>R</kbd> reset
+</div>
+
+<style>
+  /* ── tokens ──────────────────────────────────────────────
+     Deliberately single-theme: this deck is projected. A viewer's
+     dark toggle must not repaint it mid-talk, so the light palette
+     is pinned against both the media query and [data-theme].
+  */
+  :root,
+  :root[data-theme="dark"],
+  :root[data-theme="light"] {
+    --ground:   #F4F6F9;
+    --panel:    #FFFFFF;
+    --panel-2:  #EDF1F6;
+    --rule:     #D6DCE5;
+    --fg:       #101826;
+    --fg-mid:   #4A5567;
+    --fg-dim:   #78849A;
+    --accent:   #9A6304;
+    --accent-q: #F7E9CE;
+    --data:     #14796E;
+    --pass:     #2C7A4B;
+    --crit:     #B33232;
+
+    --font-display: "Avenir Next", "Avenir", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Iowan Old Style", "Charter", "Palatino", Georgia, serif;
+    --font-mono: "SF Mono", "Menlo", "JetBrains Mono", "Consolas", monospace;
+
+    color-scheme: light;
+  }
+
+  /* ── stage ──────────────────────────────────────────────── */
+  body {
+    background: var(--ground);
+    color: var(--fg);
+    font-family: var(--font-display);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .stage {
+    position: relative;
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    font-size: calc(min(100vw, calc(100vh * 16 / 9)) / 64);
+    background: var(--ground);
+    overflow: hidden;
+  }
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    background:
+      linear-gradient(var(--rule) 1px, transparent 1px) 0 0 / 100% 4.6em,
+      linear-gradient(90deg, var(--rule) 1px, transparent 1px) 0 0 / 6.2em 100%,
+      var(--ground);
+  }
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 40%, transparent 28%, var(--ground) 86%);
+    pointer-events: none;
+  }
+  .slide.is-active { display: block; animation: rise .34s cubic-bezier(.2,.7,.3,1); }
+  @keyframes rise { from { opacity: 0; transform: translateY(.5em); } to { opacity: 1; transform: none; } }
+
+  .pad {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 3.1em 3.2em 3.4em;
+    display: flex;
+    flex-direction: column;
+    gap: .9em;
+  }
+
+  /* ── type ───────────────────────────────────────────────── */
+  h1 {
+    font-size: 4.3em;
+    font-weight: 600;
+    letter-spacing: -.035em;
+    line-height: .92;
+    margin: .06em 0 .1em;
+    text-wrap: balance;
+  }
+  h1 .accent { color: var(--accent); margin-left: .12em; }
+  h2 {
+    font-size: 1.85em;
+    font-weight: 600;
+    letter-spacing: -.022em;
+    line-height: 1.06;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h2 em { font-style: normal; color: var(--accent); }
+  h4 {
+    font-size: .72em;
+    font-weight: 600;
+    letter-spacing: .04em;
+    margin: 0 0 .5em;
+    color: var(--fg);
+  }
+  .sub {
+    font-family: var(--font-body);
+    font-size: .82em;
+    line-height: 1.4;
+    color: var(--fg-mid);
+    margin: 0;
+    max-width: 46em;
+  }
+  .body-text {
+    font-family: var(--font-body);
+    font-size: .74em;
+    line-height: 1.5;
+    color: var(--fg-mid);
+    margin: 0;
+  }
+  .kicker, .col-lab, .as-lab, .cl-lab, .np-lab {
+    font-family: var(--font-mono);
+    font-size: .56em;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    margin: 0;
+  }
+  .micro {
+    font-family: var(--font-mono);
+    font-size: .52em;
+    letter-spacing: .04em;
+    color: var(--fg-dim);
+    margin: .7em 0 0;
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: .88em;
+    color: var(--data);
+    background: none;
+  }
+  .pull {
+    font-family: var(--font-body);
+    font-size: .84em;
+    line-height: 1.4;
+    color: var(--fg);
+    margin: auto 0 0;
+    padding-top: .7em;
+    border-top: 1px solid var(--rule);
+  }
+  .pull em { font-style: italic; color: var(--accent); }
+  .pull.final { font-size: .8em; }
+
+  /* ── 1 title ────────────────────────────────────────────── */
+  .title-slide { flex-direction: row; align-items: center; gap: 3em; }
+  .title-main { flex: 1.5; }
+  .lede {
+    font-family: var(--font-body);
+    font-size: .92em;
+    line-height: 1.42;
+    color: var(--fg-mid);
+    margin: 1.1em 0 0;
+    max-width: 20em;
+  }
+  .title-meta {
+    flex: .9;
+    display: flex;
+    flex-direction: column;
+    gap: .1em;
+    border-left: 1px solid var(--rule);
+    padding-left: 1.7em;
+  }
+  .meta-row { display: flex; align-items: baseline; gap: .7em; padding: .4em 0; border-bottom: 1px solid var(--rule); }
+  .m-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.24em;
+    color: var(--accent);
+    min-width: 3.2em;
+    text-align: right;
+  }
+  .m-lab { font-size: .62em; letter-spacing: .04em; color: var(--fg-mid); }
+  .byline { margin-top: 1.1em; }
+  .names {
+    font-size: .68em;
+    line-height: 1.55;
+    color: var(--fg);
+    margin: .6em 0 0;
+    font-weight: 500;
+    letter-spacing: -.005em;
+  }
+
+  /* ── 2 problem ──────────────────────────────────────────── */
+  .prob-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8em; margin-top: .5em; }
+  .prob {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-top: 2px solid var(--accent);
+    padding: .95em .9em;
+  }
+  .prob h4 { font-size: .66em; margin-bottom: .45em; }
+  .prob p { font-family: var(--font-body); font-size: .62em; line-height: 1.42; color: var(--fg-mid); margin: 0; }
+
+  /* ── 3 journey ──────────────────────────────────────────── */
+  .journey {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: .5em;
+    margin: 1.1em 0 .3em;
+  }
+  .journey::before,
+  .journey::after {
+    content: "";
+    position: absolute;
+    top: calc(.8em - 1px);
+    left: 8.33%;
+    right: 8.33%;
+    height: 2px;
+  }
+  .journey::before { background: var(--rule); }
+  .journey::after { background: var(--accent); transform-origin: left center; }
+  .jstep { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: .55em; }
+  .jbadge {
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--accent);
+    color: var(--panel);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+  }
+  .jbadge span {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: .58em;
+    line-height: 1;
+  }
+  .jcard {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: .7em .55em;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: .24em;
+    min-height: 4.2em;
+  }
+  .jstep.hi .jcard { border-color: var(--accent); background: var(--accent-q); }
+  .s-n { font-size: .64em; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; }
+  .s-d { font-family: var(--font-mono); font-size: .48em; color: var(--fg-dim); letter-spacing: .02em; line-height: 1.3; }
+
+  /* animated reveal — base state is the finished state, so the
+     journey reads correctly even if the script never runs */
+  .journey.anim::after { animation: railGrow 5.2s cubic-bezier(.45,.05,.3,1) forwards; }
+  @keyframes railGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+  .journey.anim .jbadge {
+    animation: badgeLight .4s cubic-bezier(.2,.7,.3,1) backwards;
+    animation-delay: calc(.35s + var(--i) * .85s);
+  }
+  @keyframes badgeLight {
+    from { border-color: var(--rule); background: var(--panel); color: var(--fg-dim); transform: scale(.72); }
+    60%  { transform: scale(1.14); }
+    to   { transform: scale(1); }
+  }
+  .journey.anim .jcard {
+    animation: cardIn .45s cubic-bezier(.2,.7,.3,1) backwards;
+    animation-delay: calc(.35s + var(--i) * .85s);
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(.55em); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; margin-top: auto; padding-top: .8em; border-top: 1px solid var(--rule); }
+  .two-col.tight { gap: 2.4em; margin-top: .4em; }
+
+  /* ── 4 planner ──────────────────────────────────────────── */
+  .planner-wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 2.2em; flex: 1; align-items: center; }
+  .grid-mock {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-auto-rows: 1.5em;
+    gap: 2px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    padding: 2px;
+    direction: rtl;
+  }
+  .gm-head {
+    background: var(--panel-2);
+    font-family: var(--font-mono);
+    font-size: .55em;
+    color: var(--fg-dim);
+    display: flex; align-items: center; justify-content: center;
+    height: 2.4em;
+  }
+  .gm-cell { background: var(--panel); position: relative; }
+  .ev {
+    position: absolute; inset: 0;
+    font-family: var(--font-mono);
+    font-size: .46em;
+    display: flex; align-items: center; justify-content: center;
+    color: #FFFFFF;
+    letter-spacing: .02em;
+  }
+  .ev.c1 { background: var(--data); }
+  .ev.c2 { background: var(--pass); }
+  .ev.c3 { background: var(--fg-dim); }
+  .ev.c4 { background: var(--accent); }
+  .ev.clash { background: var(--crit); box-shadow: inset 0 0 0 1px var(--panel); }
+  .planner-list ul { margin: 0; }
+  .ticks, .crosses { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .5em; }
+  .ticks li, .crosses li {
+    font-family: var(--font-body);
+    font-size: .68em;
+    line-height: 1.4;
+    color: var(--fg-mid);
+    padding-left: 1.2em;
+    position: relative;
+  }
+  .ticks li b, .crosses li b { color: var(--fg); font-weight: 600; }
+  .ticks li em { color: var(--accent); font-style: italic; }
+  .ticks li::before {
+    content: "";
+    position: absolute; left: 0; top: .48em;
+    width: .42em; height: .42em;
+    border-left: 1.5px solid var(--accent);
+    border-bottom: 1.5px solid var(--accent);
+    transform: rotate(-45deg);
+  }
+  .crosses li::before {
+    content: "×";
+    position: absolute; left: 0; top: -.05em;
+    color: var(--crit);
+    font-family: var(--font-mono);
+    font-size: 1.1em;
+  }
+
+  /* ── 5 architecture ─────────────────────────────────────── */
+  .arch { display: grid; grid-template-columns: .9fr 1.75fr .7fr; gap: 1.3em; margin: .7em 0; flex: 1; align-content: start; }
+  .arch-col { display: flex; flex-direction: column; gap: .5em; }
+  .node-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5em; }
+  .node {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: .6em .7em;
+    display: flex; flex-direction: column; gap: .18em;
+  }
+  .node b { font-family: var(--font-mono); font-size: .62em; letter-spacing: .02em; color: var(--fg); }
+  .node span { font-family: var(--font-body); font-size: .56em; color: var(--fg-dim); line-height: 1.3; }
+  .node.door { border-color: var(--accent); background: var(--accent-q); }
+  .node.door b { color: var(--accent); }
+  .node.store { border-style: dashed; }
+  .node.store b { color: var(--data); }
+  .arch-note { margin-top: auto; padding-top: .8em; border-top: 1px solid var(--rule); }
+  .arch-note b { color: var(--fg); }
+
+  /* ── 6 pipeline ─────────────────────────────────────────── */
+  .pipe { display: flex; align-items: stretch; gap: 0; margin: .8em 0 .4em; }
+  .pipe-stage {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: .75em .7em;
+    display: flex; flex-direction: column; gap: .25em;
+  }
+  .pipe-stage.gate { border-color: var(--accent); background: var(--accent-q); }
+  .p-n { font-size: .7em; font-weight: 600; letter-spacing: -.01em; }
+  .p-f { font-family: var(--font-mono); font-size: .48em; color: var(--fg-dim); letter-spacing: .01em; }
+  .p-l {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: .72em;
+    color: var(--accent);
+    margin-top: .2em;
+  }
+  .pipe-arrow { width: 1.4em; position: relative; flex: none; }
+  .pipe-arrow::after {
+    content: "";
+    position: absolute; top: 50%; left: 0; right: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .pipe-arrow::before {
+    content: "";
+    position: absolute; top: 50%; right: .15em;
+    width: .38em; height: .38em;
+    border-top: 1px solid var(--fg-dim);
+    border-right: 1px solid var(--fg-dim);
+    transform: translateY(-50%) rotate(45deg);
+  }
+  .stat-big { display: flex; flex-direction: column; justify-content: center; border-left: 2px solid var(--accent); padding-left: 1.1em; }
+  .sb-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 2.2em;
+    color: var(--accent);
+    line-height: 1;
+    letter-spacing: -.02em;
+  }
+  .sb-lab { font-family: var(--font-body); font-size: .62em; color: var(--fg-mid); line-height: 1.35; margin-top: .5em; max-width: 17em; }
+
+  /* ── 7 api ──────────────────────────────────────────────── */
+  .api-wrap { display: grid; grid-template-columns: 1.25fr 1fr; gap: 2.2em; flex: 1; margin-top: .7em; }
+  .api-table { display: flex; flex-direction: column; }
+  .ar { display: grid; grid-template-columns: 6em 1fr; gap: .8em; align-items: baseline; padding: .52em 0; border-bottom: 1px solid var(--rule); }
+  .a-area { font-family: var(--font-mono); font-size: .55em; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim); }
+  .a-r { font-size: .6em; color: var(--fg-mid); }
+  .a-r code { font-size: 1em; }
+  .a-r em { font-family: var(--font-body); color: var(--fg-dim); font-size: .95em; }
+  .sec-list h4 { font-size: .68em; margin-bottom: .7em; }
+  .sec-stat { display: flex; align-items: baseline; gap: .6em; margin-top: auto; padding-top: .8em; border-top: 1px solid var(--rule); }
+  .ss-n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 1.6em; color: var(--crit); }
+  .ss-l { font-size: .6em; color: var(--fg-mid); }
+
+  /* ── 8 agent ────────────────────────────────────────────── */
+  .agent-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2em; margin: .9em 0; }
+  .as-col { background: var(--panel); border: 1px solid var(--rule); padding: 1em 1.1em; display: flex; flex-direction: column; gap: .7em; }
+  .as-col.allow { border-left: 2px solid var(--pass); }
+  .as-col.deny { border-left: 2px solid var(--crit); }
+  .as-col.allow .as-lab { color: var(--pass); }
+  .as-col.deny .as-lab { color: var(--crit); }
+  .agent-chain { display: flex; align-items: center; gap: .1em; margin: .3em 0 .2em; }
+  .ac {
+    font-family: var(--font-mono);
+    font-size: .58em;
+    letter-spacing: .03em;
+    padding: .6em .9em;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    color: var(--fg-mid);
+  }
+  .ac.hi { border-color: var(--accent); background: var(--accent-q); color: var(--accent); }
+  .ac-a { width: 1.6em; height: 1px; background: var(--rule); flex: none; }
+
+  /* ── 9 testing ──────────────────────────────────────────── */
+  .test-hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1em; margin: .8em 0 .3em; }
+  .th-cell { display: flex; flex-direction: column; gap: .12em; border-top: 2px solid var(--accent); padding-top: .6em; }
+  .th-n {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.9em;
+    color: var(--fg);
+    line-height: 1;
+    letter-spacing: -.03em;
+  }
+  .th-l { font-size: .62em; color: var(--fg); margin-top: .3em; }
+  .th-s { font-family: var(--font-mono); font-size: .5em; color: var(--fg-dim); letter-spacing: .03em; }
+  .suite-bars { display: flex; flex-direction: column; gap: .42em; }
+  .sbar { display: grid; grid-template-columns: 5.5em 1fr; gap: .7em; align-items: center; }
+  .sb-k { font-family: var(--font-mono); font-size: .54em; color: var(--fg-mid); letter-spacing: .04em; }
+  .sb-track { height: .5em; background: var(--panel-2); border: 1px solid var(--rule); display: block; }
+  .sb-track i { display: block; height: 100%; background: var(--data); }
+  .sb-track i.crit { background: var(--crit); }
+  .sb-track i.warn { background: var(--accent); }
+
+  /* ── 10 conclusion ──────────────────────────────────────── */
+  .concl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2em; margin: 1.1em 0 .4em; flex: 1; }
+  .concl {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-top: 2px solid var(--accent);
+    padding: 1.1em 1.05em;
+    display: flex;
+    flex-direction: column;
+    gap: .5em;
+  }
+  .concl h3 {
+    font-size: .96em;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    margin: .1em 0 0;
+    text-wrap: balance;
+  }
+  .cl-desc { font-family: var(--font-body); font-size: .66em; line-height: 1.45; color: var(--fg-mid); margin: 0; }
+
+  /* ── HUD ────────────────────────────────────────────────── */
+  .hud { position: fixed; top: 0; left: 0; right: 0; z-index: 20; pointer-events: none; }
+  .hud-rail {
+    display: flex; align-items: center; gap: .8rem;
+    padding: .55rem 1rem;
+    font-family: var(--font-mono);
+    font-size: .62rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    background: color-mix(in srgb, var(--ground) 86%, transparent);
+  }
+  .hud-eyebrow { color: var(--fg-mid); }
+  .hud-sep { width: 1px; height: .8em; background: var(--rule); }
+  .hud-clock { font-variant-numeric: tabular-nums; color: var(--fg-dim); }
+  .hud-clock.running { color: var(--data); }
+  .hud-clock.behind { color: var(--accent); }
+  .hud-target { font-variant-numeric: tabular-nums; color: var(--fg-dim); opacity: .6; }
+  .hud-count { margin-left: auto; }
+  .hud-count b { color: var(--accent); }
+  .hud-progress { height: 2px; background: var(--rule); }
+  .hud-progress i { display: block; height: 100%; background: var(--accent); transition: width .3s cubic-bezier(.2,.7,.3,1); }
+
+  .notes-panel {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 21;
+    background: var(--panel);
+    border-top: 1px solid var(--accent);
+    padding: .9rem 1.2rem 1rem;
+    max-height: 32vh;
+    overflow-y: auto;
+    box-shadow: 0 -8px 24px rgba(16, 24, 38, .07);
+  }
+  .np-lab { margin-bottom: .5rem; }
+  .np-lab span { color: var(--accent); margin-left: .6em; }
+  .np-body { font-family: var(--font-body); font-size: .92rem; line-height: 1.5; color: var(--fg-mid); max-width: 68ch; }
+  .slide-notes { display: none; }
+
+  .help {
+    position: fixed; bottom: .7rem; right: 1rem; z-index: 20;
+    font-family: var(--font-mono);
+    font-size: .56rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    opacity: .5;
+    transition: opacity .3s;
+  }
+  .help.dim { opacity: 0; }
+  kbd {
+    font-family: var(--font-mono);
+    border: 1px solid var(--rule);
+    padding: .1em .35em;
+    margin-right: .1em;
+    color: var(--fg-mid);
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slide.is-active { animation: none; }
+    .journey.anim::after,
+    .journey.anim .jbadge,
+    .journey.anim .jcard { animation: none; }
+    .hud-progress i { transition: none; }
+  }
+</style>
+
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+
+  var hudEyebrow = document.getElementById('hudEyebrow');
+  var hudNow     = document.getElementById('hudNow');
+  var hudTotal   = document.getElementById('hudTotal');
+  var hudBar     = document.getElementById('hudBar');
+  var hudClock   = document.getElementById('hudClock');
+  var hudTarget  = document.getElementById('hudTarget');
+  var notesPanel = document.getElementById('notesPanel');
+  var npBody     = document.getElementById('npBody');
+  var npTime     = document.getElementById('npTime');
+  var help       = document.getElementById('help');
+
+  // cumulative target end-time per slide
+  var cume = [], run = 0;
+  slides.forEach(function (s) { run += parseInt(s.dataset.sec, 10); cume.push(run); });
+  var total = run;
+  hudTotal.textContent = slides.length;
+
+  function fmt(s) {
+    s = Math.max(0, Math.round(s));
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function replayAnim(slide) {
+    var els = slide.querySelectorAll('[data-anim]');
+    Array.prototype.forEach.call(els, function (el) {
+      el.classList.remove('anim');
+      void el.offsetWidth; // force reflow so the animation restarts on revisit
+      el.classList.add('anim');
+    });
+  }
+
+  function render() {
+    slides.forEach(function (s, n) { s.classList.toggle('is-active', n === i); });
+    hudEyebrow.textContent = slides[i].dataset.eyebrow;
+    hudNow.textContent = i + 1;
+    hudBar.style.width = ((i + 1) / slides.length * 100) + '%';
+    hudTarget.textContent = '/ ' + fmt(cume[i]);
+    npBody.textContent = slides[i].querySelector('.slide-notes').textContent.trim();
+    npTime.textContent = '· ' + slides[i].dataset.sec + 's · cue ' + fmt(cume[i]) + ' of ' + fmt(total);
+    replayAnim(slides[i]);
+  }
+
+  function go(n) {
+    i = Math.min(slides.length - 1, Math.max(0, n));
+    render();
+  }
+
+  // ── talk timer: amber when you're behind the cue for this slide
+  var t0 = null, paused = 0, tick = null;
+  function clock() {
+    if (t0 === null) return;
+    var e = (Date.now() - t0) / 1000;
+    hudClock.textContent = fmt(e);
+    hudClock.classList.toggle('behind', e > cume[i]);
+  }
+  function toggleTimer() {
+    if (t0 === null) {
+      t0 = Date.now() - paused * 1000;
+      hudClock.classList.add('running');
+      tick = setInterval(clock, 250);
+      clock();
+    } else {
+      paused = (Date.now() - t0) / 1000;
+      t0 = null;
+      clearInterval(tick);
+      hudClock.classList.remove('running');
+    }
+  }
+  function resetTimer() {
+    t0 = null; paused = 0; clearInterval(tick);
+    hudClock.textContent = '00:00';
+    hudClock.className = 'hud-clock';
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (k === 'ArrowRight' || k === ' ' || k === 'PageDown') { e.preventDefault(); go(i + 1); }
+    else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); go(i - 1); }
+    else if (k === 'Home') { go(0); }
+    else if (k === 'End') { go(slides.length - 1); }
+    else if (k === 'n' || k === 'N') { notesPanel.hidden = !notesPanel.hidden; }
+    else if (k === 't' || k === 'T') { toggleTimer(); }
+    else if (k === 'r' || k === 'R') { resetTimer(); }
+  });
+
+  var hide;
+  document.addEventListener('mousemove', function () {
+    help.classList.remove('dim');
+    clearTimeout(hide);
+    hide = setTimeout(function () { help.classList.add('dim'); }, 2600);
+  });
+  setTimeout(function () { help.classList.add('dim'); }, 3400);
+
+  render();
+})();
+</script>
+</body>
+</html>

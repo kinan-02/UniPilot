@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
 from app.agent_core.subagents.composition_block import run_composition_subagent
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
@@ -23,6 +24,68 @@ def _context_package() -> SubagentContextPackage:
         output_schema_name="generic_step_output_v1",
         output_schema={"type": "object"},
     )
+
+
+class _ProseOnlyAdapter:
+    """Reproduces the live failure (2026-07-15): the composition model answers
+    in PROSE rather than JSON, so `complete_json` records the raw text and then
+    raises `json_parse_failed`. Structured output is off by default
+    (`agent_reasoning_structured_output_enabled: bool = False`), so nothing
+    forces the model to emit JSON, and both attempts came back as prose."""
+
+    def __init__(self, prose: str) -> None:
+        self.prose = prose
+        self.call_count = 0
+
+    async def complete_json(self, *, raw_model_text_out: list[str] | None = None, **_: object) -> dict:
+        self.call_count += 1
+        if raw_model_text_out is not None:
+            # The real adapter records raw text BEFORE raising.
+            raw_model_text_out.append(self.prose)
+        raise LLMAdapterError("json_parse_failed")
+
+    async def complete_text(self, **_: object) -> str:
+        raise AssertionError("composition must not use complete_text")
+
+
+@pytest.mark.asyncio
+async def test_prose_answer_is_salvaged_rather_than_discarded() -> None:
+    """A correct answer must not be thrown away over its wrapper.
+
+    Live, the model returned a fully correct answer ("...includes 17 courses...
+    00940564: Grade 90...") as prose; the block failed and the student received
+    an EMPTY string. For a single-string-field schema the prose IS the
+    answer_text, so salvage it instead of losing it."""
+    prose = "Here is a list of your completed courses. The data covers three semesters and includes 17 courses."
+    adapter = _ProseOnlyAdapter(prose)
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result is not None
+    assert result.result["answer_text"] == prose
+    # Retried once before salvaging (parse failures are retried), never silently.
+    assert adapter.call_count == 2
+    assert any("salvaged" in warning for warning in result.warnings), result.warnings
+
+
+@pytest.mark.asyncio
+async def test_empty_prose_is_not_salvaged() -> None:
+    """Salvage only rescues real content -- an empty response is still a
+    failure, never an empty 'answer'."""
+    adapter = _ProseOnlyAdapter("   ")
+
+    result = await run_composition_subagent(
+        context_package=_context_package(),
+        llm_adapter=adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "failed"
 
 
 @pytest.mark.asyncio

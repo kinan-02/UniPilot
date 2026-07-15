@@ -223,7 +223,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
-            llm_call_params=LLMCallParameters(timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
         )
     if role.name == "interpretation":
         return await run_interpretation_subagent(
@@ -251,7 +251,7 @@ async def _dispatch_single_specialist(
             llm_adapter=llm_adapter,
             block_id=block_id,
             streaming_queue=streaming_queue,
-            llm_call_params=LLMCallParameters(timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
         )
     return await run_subagent(
         role=role,

@@ -120,6 +120,36 @@ async def test_unknown_specialist_substep_is_dropped_and_fails_closed_if_empty(f
     assert [s.specialist for s in out.pipeline] == ["retrieval"]
 
 
+async def test_null_optional_list_fields_are_accepted_not_dropped(fake_llm_adapter_factory):
+    """`_SUB_STEP_SCHEMA` advertises `specific_instructions` and
+    `context_requirements` as `{"type": ["array", "null"]}`, so `null` is a
+    CORRECT response. `RoutedSubStep` typed them `list[str]`, which rejects
+    null -- so a perfectly good route was dropped
+    (`specialist_router_dropped_invalid_substep`), the pipeline emptied, and
+    `_fail_closed_pipeline` downgraded the step to a blind RETRIEVAL fetch.
+
+    Measured live (2026-07-15, credits_remaining): the router correctly routed
+    "Calculate the total credits..." to `calculation_validation` with
+    `context_requirements: null`. It was dropped for saying null; retrieval got
+    the step instead, did 17-number mental math, returned 63.0 (truth: 62.5),
+    and stamped it `certainty_basis="official_record", confidence=1.0`.
+
+    We must accept exactly what we advertise."""
+    sub = _sub("1e-0", "calculation_validation", "Sum all creditsEarned values.")
+    sub["context_requirements"] = None
+    sub["specific_instructions"] = None
+    adapter = fake_llm_adapter_factory([_pipeline(sub)])
+
+    output = await _route(adapter)
+
+    assert [s.specialist for s in output.pipeline] == ["calculation_validation"], (
+        "a schema-valid null must not be downgraded to the fail-closed retrieval route"
+    )
+    assert output.pipeline[0].context_requirements == []
+    assert output.pipeline[0].specific_instructions == []
+    assert "specialist_router_fallback_used" not in output.warnings
+
+
 async def test_router_uses_cheap_fast_params(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([_pipeline(_sub("s1", "retrieval"))])
 

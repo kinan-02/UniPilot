@@ -25,7 +25,7 @@ import json
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent_core.planning.schemas import PlanStep, RoleName, StateEntrySummary
 from app.agent_core.reasoning.grounding import build_shared_grounding_block
@@ -87,6 +87,33 @@ class RoutedSubStep(BaseModel):
     success_criteria: list[str] = Field(default_factory=list)
     specific_instructions: list[str] = Field(default_factory=list)
     context_requirements: list[str] = Field(default_factory=list)
+
+    @field_validator(
+        "depends_on",
+        "success_criteria",
+        "specific_instructions",
+        "context_requirements",
+        mode="before",
+    )
+    @classmethod
+    def _null_list_means_empty(cls, value: Any) -> Any:
+        """Accept exactly what `_SUB_STEP_SCHEMA` advertises.
+
+        The schema declares `specific_instructions`/`context_requirements` as
+        `{"type": ["array", "null"]}`, so `null` is a CORRECT model response --
+        but `list[str]` rejects it. The sub-step was then dropped as "invalid"
+        (`specialist_router_dropped_invalid_substep`), the pipeline emptied, and
+        `_fail_closed_pipeline` silently downgraded the whole step to a blind
+        RETRIEVAL fetch.
+
+        Measured live (2026-07-15): the router correctly routed "Calculate the
+        total credits..." to `calculation_validation` with
+        `context_requirements: null`, was dropped for saying null, and retrieval
+        inherited the step -- doing 17-number mental math, returning 63.0
+        (truth: 62.5) and stamping it `official_record` / confidence 1.0.
+        Punishing the model for obeying our own schema is our bug, not its.
+        """
+        return [] if value is None else value
 
 
 class SpecialistRouterOutput(BaseReasoningBlockOutput):

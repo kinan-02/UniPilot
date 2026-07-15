@@ -153,6 +153,37 @@ def test_validate_unknown_ref():
     assert "ref 'completedCourses' not found in facts" in errors[0]
 
 
+def test_validate_rejects_aggregate_over_a_non_list_ref():
+    """Regression (live, 2026-07-15): the calc-validation model summed over
+    `creditBreakdown` -- the credit-BUCKETS dict -- instead of the
+    `completedCourses` list sitting in the same facts. Validation passed (the
+    ref exists), so it only blew up at EVALUATION time inside the tool call as
+    `of_not_a_list`, which is unrepairable: the block never retries a validated
+    tree. The step failed, and a retrieval block then did the arithmetic
+    in-model and asserted a wrong total (63.0 vs 62.5).
+
+    Catching it at validation time hands the bounded repair loop a fixable
+    error instead."""
+    node = ExpressionNode(op="sum", of=ExpressionNode(ref="creditBreakdown"), field="creditsEarned")
+    facts = {
+        "creditBreakdown": {"required": 107.5, "electives": 35.5},
+        "completedCourses": [{"creditsEarned": 4.0}],
+    }
+
+    errors = validate_expression_tree(node, facts=facts)
+
+    assert any("creditBreakdown" in error and "not a list" in error for error in errors), errors
+    # The message must point at the list-valued facts, so repair can succeed.
+    assert any("completedCourses" in error for error in errors), errors
+
+
+def test_validate_allows_aggregate_over_a_list_ref():
+    node = ExpressionNode(op="sum", of=ExpressionNode(ref="completedCourses"), field="creditsEarned")
+    facts = {"completedCourses": [{"creditsEarned": 4.0}]}
+
+    assert validate_expression_tree(node, facts=facts) == []
+
+
 def test_validate_missing_required_sibling_field_for_sum():
     node = ExpressionNode(op="sum", of=ExpressionNode(ref="completed_courses"))  # no `field`
     errors = validate_expression_tree(node, facts={"completed_courses": []})

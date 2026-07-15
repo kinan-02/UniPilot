@@ -24,7 +24,19 @@ class TurnReasoningConfig:
     subagent_thinking_enabled: bool
     subagent_reasoning_effort: str | None
     subagent_timeout: float
-    # Static subagents (Retrieval, Composition)
+    # Static subagents (Retrieval, Composition).
+    #
+    # These MUST be passed explicitly. `task_handler.py` used to dispatch them
+    # with only a timeout, so `thinking_enabled` fell back to the global
+    # `agent_llm_thinking_enabled` (True). Measured live (2026-07-15): every
+    # realistic question classifies `low` or `medium`, and both tiers set
+    # `subagent_thinking_enabled=False` -- so thinking was explicitly OFF for
+    # the smart subagents and accidentally ON for retrieval, the one that only
+    # fetches, against a 20s ceiling. Retrieval was the sole component doing
+    # extended reasoning on the common path, and the sole one timing out
+    # (httpx.ReadTimeout -> `llm_call_failed`). Exactly backwards.
+    static_subagent_thinking_enabled: bool
+    static_subagent_reasoning_effort: str | None
     static_subagent_timeout: float
 
 
@@ -34,6 +46,8 @@ _CONFIGS: dict[str, TurnReasoningConfig] = {
         subagent_thinking_enabled=False,
         subagent_reasoning_effort=None,
         subagent_timeout=20.0,
+        static_subagent_thinking_enabled=False,
+        static_subagent_reasoning_effort=None,
         static_subagent_timeout=20.0,
     ),
     "medium": TurnReasoningConfig(
@@ -41,6 +55,8 @@ _CONFIGS: dict[str, TurnReasoningConfig] = {
         subagent_thinking_enabled=False,
         subagent_reasoning_effort=None,
         subagent_timeout=20.0,
+        static_subagent_thinking_enabled=False,
+        static_subagent_reasoning_effort=None,
         static_subagent_timeout=20.0,
     ),
     "high": TurnReasoningConfig(
@@ -48,14 +64,18 @@ _CONFIGS: dict[str, TurnReasoningConfig] = {
         subagent_thinking_enabled=True,
         subagent_reasoning_effort="low",
         subagent_timeout=45.0,
-        static_subagent_timeout=20.0,
+        static_subagent_thinking_enabled=True,
+        static_subagent_reasoning_effort="low",
+        static_subagent_timeout=45.0,
     ),
     "max": TurnReasoningConfig(
         max_planner_invocations=5,
         subagent_thinking_enabled=True,
         subagent_reasoning_effort="medium",
         subagent_timeout=45.0,
-        static_subagent_timeout=20.0,
+        static_subagent_thinking_enabled=True,
+        static_subagent_reasoning_effort="medium",
+        static_subagent_timeout=45.0,
     ),
 }
 

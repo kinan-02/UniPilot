@@ -76,6 +76,11 @@ class CompositionReasoningBlock(BaseReasoningBlock):
             phase="pass1_of_1",
             block_input=block_input,
             telemetry=telemetry,
+            # Composition's payload is a single free-text field, so a prose
+            # response IS the answer. Live, the model twice answered correctly
+            # in prose and the block discarded it, leaving the student with an
+            # empty string -- salvage rather than lose a correct answer.
+            salvage_text_field="answer_text",
         )
 
         normalized = self._normalize_result(call_result.parsed, output_schema=block_input.output_schema)
@@ -105,6 +110,10 @@ class CompositionReasoningBlock(BaseReasoningBlock):
             schema_valid=True,
             result=normalized,
             confidence=1.0,
+            # A salvaged answer is recovered, not clean -- surface it so the
+            # model's failure to honour the JSON contract stays visible rather
+            # than being silently absorbed.
+            warnings=(["composition_salvaged_prose_answer"] if call_result.salvaged else []),
         )
 
     def _composition_failed_output(self, *, reason: str) -> BaseReasoningBlockOutput:

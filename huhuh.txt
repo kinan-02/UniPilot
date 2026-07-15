@@ -1,0 +1,2 @@
+cd /Users/tymoribrahim/Desktop/UniPilot/services/ai
+python -m pytest tests/agent_core/test_ise_correctness_eval.py -m live -s --no-cov

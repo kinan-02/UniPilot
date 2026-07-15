@@ -26,6 +26,7 @@ def test_high_tier():
     assert cfg.subagent_thinking_enabled is True
     assert cfg.subagent_reasoning_effort == "low"
     assert cfg.subagent_timeout == 45.0
+    assert cfg.static_subagent_timeout == 45.0
 
 
 def test_max_tier():
@@ -34,6 +35,51 @@ def test_max_tier():
     assert cfg.subagent_thinking_enabled is True
     assert cfg.subagent_reasoning_effort == "medium"
     assert cfg.subagent_timeout == 45.0
+    assert cfg.static_subagent_timeout == 45.0
+
+
+def test_static_subagent_thinking_follows_the_tier_intent():
+    """Measured live (2026-07-15): EVERY realistic question classifies `low` or
+    `medium` -- never high/max. Both tiers set
+    `subagent_thinking_enabled=False`, i.e. "do not think on this turn".
+
+    But `task_handler.py` dispatches static subagents (Retrieval, Composition)
+    with ONLY a timeout, so they fall through to the global default
+    (`agent_llm_thinking_enabled: bool = True`). Net effect on the common path:
+    thinking is explicitly OFF for the smart subagents and accidentally ON for
+    retrieval -- the one that just fetches -- against a 20s ceiling. That is
+    exactly backwards, and it is why `llm_call_failed` (httpx.ReadTimeout)
+    clustered on retrieval steps.
+
+    The tier's declared intent must reach the static subagents too."""
+    for tier in ("low", "medium"):
+        cfg = build_reasoning_config(tier)
+        assert cfg.static_subagent_thinking_enabled is False, f"{tier}: retrieval must not think"
+        assert cfg.static_subagent_thinking_enabled == cfg.subagent_thinking_enabled
+
+    for tier in ("high", "max"):
+        cfg = build_reasoning_config(tier)
+        assert cfg.static_subagent_thinking_enabled == cfg.subagent_thinking_enabled
+
+
+def test_static_subagent_timeout_scales_with_the_tier():
+    """Retrieval/Composition are dispatched with ONLY a timeout (see
+    `task_handler.py`'s static-subagent branch) -- no `thinking_enabled`, so
+    they fall back to the global default (`agent_llm_thinking_enabled: bool =
+    True` in config.py). A thinking model against a hard 20s read timeout gets
+    cut off mid-response on hard turns: `httpx.ReadTimeout` ->
+    `LLMAdapterError: llm_call_failed`, observed repeatedly in live evals on
+    retrieval steps specifically -- they were the only ones that never got more
+    time. Static timeouts must scale with the tier like dynamic ones do."""
+    for tier in ("low", "medium"):
+        cfg = build_reasoning_config(tier)
+        assert cfg.static_subagent_timeout == cfg.subagent_timeout == 20.0
+
+    for tier in ("high", "max"):
+        cfg = build_reasoning_config(tier)
+        assert cfg.static_subagent_timeout == cfg.subagent_timeout == 45.0, (
+            f"{tier}: retrieval/composition must get the same headroom as dynamic subagents"
+        )
 
 
 def test_invalid_tier_defaults_to_medium():

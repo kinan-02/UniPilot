@@ -148,6 +148,24 @@ def _validate_node(
                 counter=counter,
                 errors=errors,
             )
+            # An aggregate can only run over a LIST. Checking that here -- not
+            # just at evaluation time -- is what makes the mistake repairable:
+            # `_eval_node` raises `of_not_a_list` only once the tool is already
+            # executing a tree that passed validation, and the block never
+            # retries a validated tree, so the whole step fails. Observed live
+            # (2026-07-15): the model summed over `creditBreakdown` (the
+            # credit-buckets DICT) instead of the `completedCourses` list in the
+            # same facts; the step died and a retrieval block then did the sum
+            # in-model and asserted a wrong total. Naming the list-valued facts
+            # gives the repair pass something concrete to switch to.
+            of_ref = node.of.ref
+            if of_ref is not None and of_ref in facts and not isinstance(facts[of_ref], list):
+                list_refs = sorted(key for key, value in facts.items() if isinstance(value, list))
+                errors.append(
+                    f"{node_path}.of: ref '{of_ref}' is not a list (it is a "
+                    f"{type(facts[of_ref]).__name__}); op '{op}' aggregates over a list of records. "
+                    f"List-valued facts available: {list_refs}"
+                )
         if op in ("sum", "average") and not node.field:
             errors.append(f"{node_path}: 'field' is required for op '{op}'")
         return

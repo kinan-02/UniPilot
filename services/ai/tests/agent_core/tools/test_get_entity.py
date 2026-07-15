@@ -125,6 +125,53 @@ async def test_program_entity_resolves_a_student_profile_degree_id_object_id(
     assert result.data["slug"] == "program-alonim"
 
 
+async def test_degree_id_resolving_to_a_track_page_adopts_the_page_kind(
+    use_real_academic_engine, fake_database_factory
+):
+    """The REAL shape, which the `program-alonim` fixture above misses.
+
+    `degree_programs.metadata.programKind` is only ever `bsc_track` or
+    `bsc_specialization` -- so a `degreeId`'s `wikiPage` points at a TRACK page,
+    never a `program` one. The model reasonably asks for entity_type="program"
+    (the field is `degreeId`, the collection is `degree_programs`), the ObjectId
+    resolves correctly to `track-information-systems-engineering`... and then we
+    threw the result away:
+
+        entity_type_mismatch: requested program, track-... is track
+
+    Measured live (2026-07-15): that dead end made the agent abandon a correct
+    lookup and ask the student to name their own degree -- while the resolved
+    track slug sat in the same payload. entity_type="program" for ANY degreeId
+    can never succeed, so this is every student, not one fixture.
+
+    When entity_id is a DATABASE REFERENCE, the database decides the type -- the
+    caller's guess is not evidence. The mismatch check still guards
+    model-invented slugs; it must not second-guess our own lookup."""
+    degree_object_id = ObjectId()
+    set_test_database(
+        fake_database_factory(
+            {
+                "degree_programs": [
+                    {
+                        "_id": degree_object_id,
+                        "metadata": {
+                            "wikiPage": "track-information-systems-engineering",
+                            "programKind": "bsc_track",
+                        },
+                    }
+                ]
+            }
+        )
+    )
+
+    result = await run_get_entity(GetEntityInput(entity_type="program", entity_id=str(degree_object_id)))
+
+    assert result.ok is True, result.error
+    assert result.data["slug"] == "track-information-systems-engineering"
+    # Reports what the page actually IS, not what the caller guessed.
+    assert result.data["entityType"] == "track"
+
+
 async def test_program_entity_with_unresolvable_degree_id_fails_closed(
     use_real_academic_engine, fake_database_factory
 ):
