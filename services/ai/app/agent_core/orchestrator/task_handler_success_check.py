@@ -226,6 +226,9 @@ class SuccessCriteriaCheckReasoningBlock(BaseReasoningBlock):
         return self._fallback_output(extra_warning=f"reasoning_block_failed: {reason}")
 
 
+_NO_STRUCTURED_OUTPUT = "step produced no structured output"
+
+
 async def check_success_criteria(
     *,
     step: PlanStep,
@@ -233,29 +236,34 @@ async def check_success_criteria(
     llm_adapter: LLMAdapter,
     block_id: str,
 ) -> SuccessCheckResult:
-    if not step.success_criteria:
-        return SuccessCheckResult(True, [])  # nothing declared to check against -- no LLM call needed
+    """Deterministic success check -- no LLM call.
 
-    block = SuccessCriteriaCheckReasoningBlock(llm_adapter=llm_adapter)
-    output = await block.run(
-        SuccessCriteriaCheckInput(
-            block_id=block_id,
-            agent_name="task_handler_success_check",
-            objective=f"Check whether the result satisfies: {'; '.join(step.success_criteria)}",
-            output_schema_name=_OUTPUT_SCHEMA_NAME,
-            output_schema=_OUTPUT_SCHEMA,
-            prompt_contract_name=TASK_HANDLER_SUCCESS_CHECK_V1,
-            step=step,
-            specialist_result=result.result or {},
-            llm_call_parameters=LLMCallParameters(
-                thinking_enabled=False,
-                reasoning_effort="low",
-                timeout=15.0,
-                max_retries=1,
-            ),
-        )
-    )
-    return SuccessCheckResult(bool(output.criteria_met), list(output.unmet_criteria))
+    An earlier version asked an LLM whether a specialist's result "satisfied"
+    a step's `success_criteria`. That is unsound at runtime: there is no ground
+    truth for what a step should return -- if there were, executing the step
+    would be pointless -- so the LLM was re-judging sufficiency against criteria
+    the Planner itself only guessed, adding one call per step/sub-step and
+    producing false `partial` downgrades (a live-eval tally put the
+    success-check bucket at ~1 redundant call per step).
+
+    We now verify only what IS deterministically knowable: the specialist did
+    not fail, and it produced structurally usable (non-empty) output. Each
+    specialist block already schema-validates its own result before it may
+    report `succeeded`, so a non-empty result is a well-formed one -- there is
+    nothing left for a second model to add.
+
+    `llm_adapter`/`block_id` are kept in the signature (now unused) so every
+    call site -- and the bypassed `SuccessCriteriaCheckReasoningBlock` retained
+    in this module -- needs no change; re-introducing a model-based check later
+    is a body-only edit. The function stays `async` for the same reason.
+    """
+    if not step.success_criteria:
+        return SuccessCheckResult(True, [])  # nothing declared to check against
+
+    payload = result.result
+    if result.status != "failed" and isinstance(payload, dict) and payload:
+        return SuccessCheckResult(True, [])
+    return SuccessCheckResult(False, [_NO_STRUCTURED_OUTPUT])
 
 
 __all__ = [

@@ -79,9 +79,9 @@ _RESPONSES = [
             "facts": {"course_id": "234218", "name": "Some Course"},
         },
     },
-    # 4a. Task handler's success-criteria check for step 1 -- met.
-    {"criteria_met": True, "unmet_criteria": []},
-    # NB: no monitor OUTER success-criteria check here. Step 1 is ATOMIC
+    # NB: the task handler's success-criteria check is DETERMINISTIC now (no
+    # LLM call) -- step 1's non-empty result passes it, so nothing is queued
+    # for it. Also no monitor OUTER success-criteria check here. Step 1 is ATOMIC
     # (nested_trace is None), and the task handler already verified it against
     # this step's own success_criteria above -- so the monitor skips the
     # identical re-check (see orchestrator/monitor.py).
@@ -123,10 +123,9 @@ _RESPONSES = [
     {
         "answer_text": "Course 234218 is Some Course."
     },
-    # 8a. Task handler's success-criteria check for step 2 -- met.
-    {"criteria_met": True, "unmet_criteria": []},
-    # NB: no monitor OUTER check here either -- step 2 is atomic, already
-    # verified by 8a (see orchestrator/monitor.py).
+    # NB: the deterministic success-criteria check passes on step 2's non-empty
+    # result with no LLM call, so nothing is queued for it -- and no monitor
+    # OUTER check either, step 2 being atomic (see orchestrator/monitor.py).
 ]
 
 

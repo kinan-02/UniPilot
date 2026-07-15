@@ -79,8 +79,10 @@ async def test_atomic_succeeded_step_skips_the_redundant_recheck(fake_llm_adapte
     assert adapter.calls == []  # no redundant re-check
 
 
-async def test_nested_succeeded_status_continues_when_success_criteria_are_met(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([{"criteria_met": True, "unmet_criteria": []}])
+async def test_nested_succeeded_with_output_continues_without_an_llm_call(fake_llm_adapter_factory):
+    # Deterministic outer check: a nested aggregate that produced structured
+    # output is trusted as-is -- no LLM re-judges whether it covered "enough".
+    adapter = fake_llm_adapter_factory([])  # any call would exhaust and raise
     step = _step(success_criteria=["a numeric GPA is returned"])
     entry = _entry("succeeded", data={"gpa": 3.5}, nested_trace=_NESTED)
 
@@ -88,21 +90,18 @@ async def test_nested_succeeded_status_continues_when_success_criteria_are_met(f
 
     assert decision == "continue"
     assert unmet == []
+    assert adapter.calls == []  # deterministic -- no success-criteria LLM call
 
 
-async def test_nested_succeeded_status_downgrades_to_clarify_when_success_criteria_are_not_met(fake_llm_adapter_factory):
-    # A NESTED entry self-reported "succeeded", but the aggregated result
-    # doesn't actually cover the ORIGINAL step's declared success_criteria --
-    # exactly the gap the task handler's internal checks can't catch, since
-    # they only verify sub-steps against criteria THEY were given (see
-    # monitor.py's docstring). This is the case the outer check still exists for.
-    adapter = fake_llm_adapter_factory(
-        [{"criteria_met": False, "unmet_criteria": ["semester GPAs for the last two semesters"]}]
-    )
+async def test_nested_succeeded_with_no_output_downgrades_to_clarify(fake_llm_adapter_factory):
+    # The one deterministic failure the outer check can still assert: a nested
+    # entry self-reported "succeeded" yet carries no structured output at all.
+    adapter = fake_llm_adapter_factory([])
     step = _step(success_criteria=["cumulative GPA and semester GPAs for the last two semesters"])
-    entry = _entry("succeeded", data={"gpa": 3.5}, nested_trace=_NESTED)
+    entry = _entry("succeeded", data={}, nested_trace=_NESTED)
 
     decision, unmet = await evaluate_step_result(step, entry, llm_adapter=adapter, block_id="blk-1")
 
     assert decision == "clarify"
-    assert unmet == ["semester GPAs for the last two semesters"]
+    assert unmet == ["step produced no structured output"]
+    assert adapter.calls == []

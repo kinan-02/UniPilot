@@ -1,18 +1,26 @@
-"""Tests for `app.agent_core.orchestrator.task_handler_success_check`."""
+"""Tests for the DETERMINISTIC `check_success_criteria` (no LLM call).
+
+The success check no longer asks an LLM whether a specialist's result
+"satisfies" a step's success_criteria: at runtime there is no ground truth
+for what a step should have returned -- if there were, executing the step
+would be pointless -- so an LLM re-judging sufficiency only added a call per
+step and produced false `partial` downgrades. The check now verifies only
+what IS deterministically knowable: the specialist did not fail, and it
+produced structurally usable (non-empty) output.
+"""
 
 from __future__ import annotations
 
 from app.agent_core.orchestrator.task_handler_success_check import check_success_criteria
 from app.agent_core.planning.schemas import PlanStep
 from app.agent_core.planning.state import CertaintyTag
-from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.subagents.schemas import SubagentResult
 
 
-def _result(data: dict | None = None) -> SubagentResult:
+def _result(data: dict | None = None, status: str = "succeeded") -> SubagentResult:
     return SubagentResult(
-        status="succeeded",
-        result=data or {},
+        status=status,
+        result=data if data is not None else {},
         certainty=CertaintyTag(basis="official_record", confidence=0.9),
         assumptions=[],
         warnings=[],
@@ -20,83 +28,73 @@ def _result(data: dict | None = None) -> SubagentResult:
     )
 
 
-async def test_no_llm_call_when_success_criteria_is_empty(fake_llm_adapter_factory):
-    step = PlanStep(step_id="1a", objective="do a thing", depends_on=[], success_criteria=[], assumptions_to_verify=[])
-    adapter = fake_llm_adapter_factory([])  # exhausting would raise -- proves zero calls happen
+class _ExplodingAdapter:
+    """Any LLM call is now a bug -- the check must be purely deterministic."""
 
-    met, _ = await check_success_criteria(step=step, result=_result(), llm_adapter=adapter, block_id="blk-1")
+    async def complete_json(self, **_: object) -> dict:
+        raise AssertionError("check_success_criteria must not call the LLM")
 
-    assert met is True
-    assert len(adapter.calls) == 0
-
-
-async def test_criteria_met_returns_true(fake_llm_adapter_factory):
-    step = PlanStep(
-        step_id="1a", objective="fetch GPA", depends_on=[],
-        success_criteria=["cumulative GPA returned"], assumptions_to_verify=[],
-    )
-    adapter = fake_llm_adapter_factory([{"criteria_met": True, "unmet_criteria": []}])
-
-    met, _ = await check_success_criteria(step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1")
-
-    assert met is True
+    async def complete_text(self, **_: object) -> str:
+        raise AssertionError("check_success_criteria must not call the LLM")
 
 
-async def test_criteria_not_met_returns_false(fake_llm_adapter_factory):
-    step = PlanStep(
-        step_id="1a", objective="fetch GPA breakdown", depends_on=[],
-        success_criteria=["cumulative GPA AND last two semester GPAs"], assumptions_to_verify=[],
-    )
-    adapter = fake_llm_adapter_factory(
-        [{"criteria_met": False, "unmet_criteria": ["last two semester GPAs missing"]}]
+def _step(success_criteria: list[str]) -> PlanStep:
+    return PlanStep(
+        step_id="1a",
+        objective="fetch a thing",
+        depends_on=[],
+        success_criteria=success_criteria,
+        assumptions_to_verify=[],
     )
 
-    met, _ = await check_success_criteria(step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1")
 
-    assert met is False
-
-
-async def test_raising_adapter_fails_closed_to_false():
-    step = PlanStep(
-        step_id="1a", objective="fetch GPA", depends_on=[],
-        success_criteria=["cumulative GPA returned"], assumptions_to_verify=[],
-    )
-
-    class RaisingAdapter:
-        async def complete_json(self, **kwargs):
-            raise LLMAdapterError("boom")
-
-    met, _ = await check_success_criteria(step=step, result=_result(), llm_adapter=RaisingAdapter(), block_id="blk-1")
-
-    assert met is False
-
-
-async def test_hollow_criteria_met_true_with_unmet_listed_fails_closed(fake_llm_adapter_factory):
-    step = PlanStep(
-        step_id="1a", objective="fetch GPA", depends_on=[],
-        success_criteria=["cumulative GPA returned"], assumptions_to_verify=[],
-    )
-    adapter = fake_llm_adapter_factory(
-        [{"criteria_met": True, "unmet_criteria": ["something still missing"]}] * 2
-    )
-
-    met, _ = await check_success_criteria(step=step, result=_result(), llm_adapter=adapter, block_id="blk-1")
-
-    assert met is False
-
-
-async def test_unmet_criteria_text_is_returned_alongside_the_verdict(fake_llm_adapter_factory):
-    step = PlanStep(
-        step_id="1a", objective="fetch GPA breakdown", depends_on=[],
-        success_criteria=["cumulative GPA AND last two semester GPAs"], assumptions_to_verify=[],
-    )
-    adapter = fake_llm_adapter_factory(
-        [{"criteria_met": False, "unmet_criteria": ["last two semester GPAs missing"]}]
-    )
-
+async def test_no_criteria_is_met_without_any_llm_call():
     met, unmet = await check_success_criteria(
-        step=step, result=_result({"gpa": 3.5}), llm_adapter=adapter, block_id="blk-1"
+        step=_step([]), result=_result({"x": 1}), llm_adapter=_ExplodingAdapter(), block_id="b"
     )
+    assert met is True
+    assert unmet == []
 
+
+async def test_criteria_with_nonempty_output_is_met_without_llm_call():
+    # A partially-covering result now passes: there is no runtime ground truth
+    # for "enough", and the specialist already schema-validated its own output.
+    met, unmet = await check_success_criteria(
+        step=_step(["cumulative GPA AND last two semester GPAs"]),
+        result=_result({"gpa": 3.5}),
+        llm_adapter=_ExplodingAdapter(),
+        block_id="b",
+    )
+    assert met is True
+    assert unmet == []
+
+
+async def test_empty_output_with_criteria_is_not_met():
+    met, unmet = await check_success_criteria(
+        step=_step(["cumulative GPA returned"]),
+        result=_result({}),
+        llm_adapter=_ExplodingAdapter(),
+        block_id="b",
+    )
     assert met is False
-    assert unmet == ["last two semester GPAs missing"]
+    assert unmet  # a non-empty reason is surfaced for the replan
+
+
+async def test_failed_status_with_criteria_is_not_met():
+    met, _ = await check_success_criteria(
+        step=_step(["cumulative GPA returned"]),
+        result=_result({"gpa": 3.5}, status="failed"),
+        llm_adapter=_ExplodingAdapter(),
+        block_id="b",
+    )
+    assert met is False
+
+
+async def test_non_dict_output_with_criteria_is_not_met():
+    met, _ = await check_success_criteria(
+        step=_step(["something"]),
+        result=_result(None),
+        llm_adapter=_ExplodingAdapter(),
+        block_id="b",
+    )
+    assert met is False
