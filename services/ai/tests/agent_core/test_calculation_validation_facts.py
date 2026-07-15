@@ -81,6 +81,44 @@ def test_flatten_promotes_and_unwraps_completed_courses_list() -> None:
     assert facts["1b"]["facts"]["completedCourses"]["key"] == "completedCourses"
 
 
+def test_flatten_promotes_facts_nested_under_pipeline_sub_results() -> None:
+    # A routed multi-specialist pipeline aggregates its sub-steps one level
+    # deeper, under data["sub_results"][<sub>]["facts"] -- there is no top-level
+    # "facts" key. The flattener must descend so a downstream calc expression
+    # can still bind {"ref": "completedCourses"} to the list. Regression for the
+    # ISE `credits_remaining` live run: without this, `_flatten_dependency_facts`
+    # left the list buried, the sum step reported `List-valued facts available:
+    # []`, and the whole calculation died.
+    courses = [
+        {"courseNumber": "00940345", "creditsEarned": 4.0},
+        {"courseNumber": "00940704", "creditsEarned": 1.5},
+    ]
+    entry = _entry(
+        "1e",
+        {
+            "sub_results": {
+                "1b": {
+                    "facts": {
+                        "completedCourses": {
+                            "key": "completedCourses",
+                            "value": courses,
+                            "source": "get_entity(entity_type='completed_courses')",
+                            "confidence": 1.0,
+                        }
+                    }
+                }
+            }
+        },
+    )
+
+    facts = _flatten_dependency_facts([entry])
+
+    assert facts["completedCourses"] == courses
+    assert isinstance(facts["completedCourses"], list)
+    # The step_id key still carries the full aggregate output.
+    assert "sub_results" in facts["1e"]
+
+
 def test_flatten_does_not_overwrite_existing_step_id_key() -> None:
     # An inner fact key that collides with a step_id must not clobber it
     # (promotion is additive, via setdefault).

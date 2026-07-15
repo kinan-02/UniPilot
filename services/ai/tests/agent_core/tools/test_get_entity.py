@@ -172,6 +172,40 @@ async def test_degree_id_resolving_to_a_track_page_adopts_the_page_kind(
     assert result.data["entityType"] == "track"
 
 
+async def test_program_entity_surfaces_authoritative_total_credits(
+    use_real_academic_engine, fake_database_factory
+):
+    """The wiki page only ever expresses the graduation requirement as a PROSE
+    breakdown (per-bucket credit lines); the clean, authoritative total lives on
+    the degree_programs doc as `totalCredits`. get_entity must surface it so the
+    agent reads the real total directly instead of scraping the page and either
+    summing the buckets or grabbing a sub-requirement. Regression for the ISE
+    `credits_remaining` case: the agent kept getting 157.5 / 42 and never the
+    authoritative 155, because this field was fetched then discarded."""
+    degree_object_id = ObjectId()
+    set_test_database(
+        fake_database_factory(
+            {
+                "degree_programs": [
+                    {
+                        "_id": degree_object_id,
+                        "metadata": {"wikiPage": "program-alonim"},
+                        "totalCredits": 155.0,
+                        "programCode": "009118-1-000",
+                    }
+                ]
+            }
+        )
+    )
+
+    result = await run_get_entity(GetEntityInput(entity_type="program", entity_id=str(degree_object_id)))
+
+    assert result.ok is True, result.error
+    assert result.data["slug"] == "program-alonim"  # wiki resolution still works
+    assert result.data["totalCredits"] == 155.0  # authoritative total is surfaced
+    assert result.data["programCode"] == "009118-1-000"
+
+
 async def test_program_entity_with_unresolvable_degree_id_fails_closed(
     use_real_academic_engine, fake_database_factory
 ):

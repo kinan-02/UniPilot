@@ -444,14 +444,20 @@ async def test_expression_validation_failure_path():
 
 
 async def test_expression_evaluation_failure_path():
-    """Structurally valid, but a runtime surprise (non-numeric field value)
-    only detectable at evaluation time."""
+    """Structurally valid AND validation-clean (the field is numeric on at
+    least one record, so `validate_expression_tree`'s numeric-field check
+    passes), but a later record carries a non-numeric value -- a genuine
+    runtime surprise only detectable at evaluation time. (An ALL-non-numeric
+    field is now caught earlier, at validation time, as a repairable error.)"""
     rule = {
         "type": "expression",
         "expression": {"op": "sum", "of": {"ref": "completed_courses"}, "field": "credits_earned"},
     }
     result = await run_apply_deterministic_rule(
-        ApplyDeterministicRuleInput(rule=rule, facts={"completed_courses": [{"credits_earned": "three"}]})
+        ApplyDeterministicRuleInput(
+            rule=rule,
+            facts={"completed_courses": [{"credits_earned": 3.5}, {"credits_earned": "three"}]},
+        )
     )
     assert result.ok is False
     assert "expression_evaluation_failed" in result.error

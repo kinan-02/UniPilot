@@ -329,6 +329,7 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
 
     slug = entity_id
     resolved_from_database = False
+    program_fields: dict[str, Any] = {}
     if entity_type != "wiki_page" and ObjectId.is_valid(entity_id):
         # Same real bug as the course case above, confirmed live: a
         # student_profile's `degreeId` (a Mongo _id reference into
@@ -337,18 +338,46 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
         # (`degree_programs.metadata.wikiPage`). `wiki_page` is excluded
         # because its own entity_id IS canonically a slug already; there is
         # no database-id form of it to confuse with.
-        resolved = await _resolve_program_slug_from_object_id(entity_id)
-        if resolved is not None:
-            slug = resolved
+        resolution = await _resolve_program_from_object_id(entity_id)
+        if resolution is not None:
+            slug, program_fields = resolution
             resolved_from_database = True
-    return _wiki_entity_result(engine, entity_type, slug, trust_page_kind=resolved_from_database)
+
+    result = _wiki_entity_result(engine, entity_type, slug, trust_page_kind=resolved_from_database)
+
+    # Merge the authoritative structured degree-program fields (notably
+    # `totalCredits`) onto the wiki result, so the agent reads the clean
+    # graduation total instead of scraping the page's prose breakdown. Only ADD
+    # them -- an existing wiki key always wins a clash.
+    if program_fields and result.ok and isinstance(result.data, dict):
+        result = result.model_copy(update={"data": {**program_fields, **result.data}})
+    return result
 
 
 _COURSES_COLLECTION = "courses"
 _DEGREE_PROGRAMS_COLLECTION = "degree_programs"
 
+# Authoritative structured fields to surface off a degree_programs doc when a
+# degreeId resolves to its wiki page. `totalCredits` is the important one: the
+# wiki page only ever states the graduation requirement as a PROSE breakdown
+# (per-bucket credit lines), so an agent fetching the program scrapes those and
+# either sums them (a live run got 157.5) or grabs a sub-requirement (another
+# got 42) -- never the clean total sitting on the doc itself (155). The rest add
+# cheap identifying context.
+_DEGREE_PROGRAM_SURFACED_FIELDS: tuple[str, ...] = (
+    "totalCredits",
+    "name",
+    "nameEn",
+    "programCode",
+    "catalogYear",
+)
 
-async def _resolve_program_slug_from_object_id(object_id: str) -> str | None:
+
+async def _resolve_program_from_object_id(object_id: str) -> tuple[str, dict[str, Any]] | None:
+    """Resolve a `degree_programs` ObjectId (a profile's `degreeId`) to its wiki
+    slug AND its authoritative structured fields (see
+    `_DEGREE_PROGRAM_SURFACED_FIELDS`). Best-effort: returns None on any failure,
+    exactly as the old slug-only resolver did."""
     try:
         database = await get_database()
         program = await database[_DEGREE_PROGRAMS_COLLECTION].find_one({"_id": ObjectId(object_id)})
@@ -357,7 +386,14 @@ async def _resolve_program_slug_from_object_id(object_id: str) -> str | None:
     if program is None:
         return None
     wiki_page = (program.get("metadata") or {}).get("wikiPage")
-    return str(wiki_page) if wiki_page else None
+    if not wiki_page:
+        return None
+    fields = {
+        key: _sanitize_value(program[key])
+        for key in _DEGREE_PROGRAM_SURFACED_FIELDS
+        if program.get(key) is not None
+    }
+    return str(wiki_page), fields
 
 
 async def _resolve_course_code_from_object_id(object_id: str) -> str | None:

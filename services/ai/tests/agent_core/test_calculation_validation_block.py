@@ -15,10 +15,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.subagents.calculation_validation_block import (
     _MAX_REPAIR_ATTEMPTS,
     run_calculation_validation_subagent,
 )
+
+# A successful calc result now goes through one targeted plausibility check
+# (the ONE per-step LLM check we keep -- semantic correctness of a computed
+# number is the one thing no schema catches). Tests that reach a successful
+# evaluation queue this verdict after the draft/repair responses.
+_PLAUSIBLE = {"plausible": True, "reason": "the expression answers the objective"}
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.tools.registry import ToolRegistry
@@ -59,7 +66,9 @@ class _CountingToolRegistry:
 
 
 async def test_draft_valid_on_first_try_calls_tool_once_and_returns_result(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([{"op": "add", "left": {"const": 2}, "right": {"const": 3}}])
+    adapter = fake_llm_adapter_factory(
+        [{"op": "add", "left": {"const": 2}, "right": {"const": 3}}, _PLAUSIBLE]
+    )
     registry = _CountingToolRegistry(build_default_tool_registry())
 
     result = await run_calculation_validation_subagent(
@@ -74,7 +83,7 @@ async def test_draft_valid_on_first_try_calls_tool_once_and_returns_result(fake_
     assert result.certainty.basis == "official_record"
     assert result.certainty.confidence == 1.0
     assert registry.call_count == 1
-    assert len(adapter.calls) == 1
+    assert len(adapter.calls) == 2  # draft + plausibility check
 
 
 async def test_invalid_draft_bad_ref_triggers_one_repair_call_with_the_exact_error(fake_llm_adapter_factory):
@@ -82,6 +91,7 @@ async def test_invalid_draft_bad_ref_triggers_one_repair_call_with_the_exact_err
         [
             {"op": "add", "left": {"ref": "missing_fact"}, "right": {"const": 1}},
             {"op": "add", "left": {"const": 5}, "right": {"const": 1}},
+            _PLAUSIBLE,
         ]
     )
     registry = _CountingToolRegistry(build_default_tool_registry())
@@ -96,7 +106,7 @@ async def test_invalid_draft_bad_ref_triggers_one_repair_call_with_the_exact_err
     assert result.status == "succeeded"
     assert result.result == {"type": "expression", "result": 6, "trace": ["5 + 1 = 6"]}
     assert registry.call_count == 1
-    assert len(adapter.calls) == 2
+    assert len(adapter.calls) == 3  # invalid draft + repair + plausibility check
     repair_prompt = adapter.calls[1]["user_prompt"]
     assert "missing_fact" in repair_prompt
     assert "not found in facts" in repair_prompt
@@ -160,7 +170,9 @@ async def test_tool_not_in_grant_fails_closed_without_calling_the_tool(fake_llm_
 async def test_returns_subagent_result_shape_matching_the_generic_paths_output(fake_llm_adapter_factory):
     """Same shape `build_subagent_result` produces today -- so `task_handler.py`'s
     downstream handling needs zero changes regardless of which path ran."""
-    adapter = fake_llm_adapter_factory([{"op": "add", "left": {"const": 2}, "right": {"const": 3}}])
+    adapter = fake_llm_adapter_factory(
+        [{"op": "add", "left": {"const": 2}, "right": {"const": 3}}, _PLAUSIBLE]
+    )
     registry = _CountingToolRegistry(build_default_tool_registry())
 
     result = await run_calculation_validation_subagent(
@@ -177,6 +189,95 @@ async def test_returns_subagent_result_shape_matching_the_generic_paths_output(f
     assert isinstance(result.tool_audit_trail, list)
     assert result.tool_audit_trail[0].tool_name == "apply_deterministic_rule"
     assert result.needs_another_round is False
+
+
+async def test_implausible_result_triggers_a_redraft_that_recovers(fake_llm_adapter_factory):
+    # The deterministic engine computes correctly, but the plausibility check
+    # catches a valid-but-WRONG expression (e.g. a spurious filter). Its critique
+    # is fed back into a bounded re-draft, which then passes.
+    adapter = fake_llm_adapter_factory(
+        [
+            {"op": "add", "left": {"const": 2}, "right": {"const": 3}},  # draft -> 5
+            {"plausible": False, "reason": "drop the courseNumber filter -- the objective asks for the total"},
+            {"op": "add", "left": {"const": 60}, "right": {"const": 2}},  # re-draft -> 62
+            {"plausible": True, "reason": "now aggregates all courses"},
+        ]
+    )
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_calculation_validation_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result == {"type": "expression", "result": 62, "trace": ["60 + 2 = 62"]}
+    assert registry.call_count == 2  # evaluated the draft and the re-draft
+    assert len(adapter.calls) == 4  # draft + plausibility + re-draft + plausibility
+    # The plausibility critique must reach the re-draft prompt so it can act on it.
+    assert "drop the courseNumber filter" in adapter.calls[2]["user_prompt"]
+    assert not any("calculation_implausible" in warning for warning in result.warnings)
+
+
+async def test_implausible_after_the_redraft_budget_is_marked_partial(fake_llm_adapter_factory):
+    # Still implausible after the one allowed re-draft: keep the number (so it is
+    # not silently discarded) but mark the step partial -> the orchestrator
+    # replans rather than reporting a wrong number as fact.
+    adapter = fake_llm_adapter_factory(
+        [
+            {"op": "add", "left": {"const": 2}, "right": {"const": 3}},  # draft -> 5
+            {"plausible": False, "reason": "wrong subset"},
+            {"op": "add", "left": {"const": 1}, "right": {"const": 1}},  # re-draft -> 2
+            {"plausible": False, "reason": "still the wrong subset"},
+        ]
+    )
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_calculation_validation_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "partial"
+    assert any("calculation_implausible" in warning for warning in result.warnings)
+    assert result.certainty.confidence == 0.3
+    # The last computed number is still returned, for transparency in the replan.
+    assert result.result == {"type": "expression", "result": 2, "trace": ["1 + 1 = 2"]}
+    assert registry.call_count == 2
+
+
+async def test_plausibility_checker_error_fails_open_and_keeps_the_result():
+    # A flaky plausibility checker must never discard a correctly-computed
+    # result -- the check fails OPEN (treated as plausible).
+    class _DraftThenRaiseAdapter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def complete_json(self, *, raw_model_text_out=None, **_):
+            self.calls += 1
+            if self.calls == 1:
+                return {"op": "add", "left": {"const": 2}, "right": {"const": 3}}
+            raise LLMAdapterError("plausibility_boom")
+
+        async def complete_text(self, **_):
+            raise AssertionError("calc block does not use complete_text")
+
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_calculation_validation_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=_DraftThenRaiseAdapter(),
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result == {"type": "expression", "result": 5, "trace": ["2 + 3 = 5"]}
+    assert not any("calculation_implausible" in warning for warning in result.warnings)
 
 
 async def test_dependency_facts_nested_under_data_facts_are_promoted_to_top_level_refs(
@@ -212,7 +313,10 @@ async def test_dependency_facts_nested_under_data_facts_are_promoted_to_top_leve
         output_schema={"type": "object"},
     )
     adapter = fake_llm_adapter_factory(
-        [{"op": "compare", "left": {"ref": "gpa"}, "comparator": ">=", "right": {"const": 2.0}}]
+        [
+            {"op": "compare", "left": {"ref": "gpa"}, "comparator": ">=", "right": {"const": 2.0}},
+            _PLAUSIBLE,
+        ]
     )
     registry = _CountingToolRegistry(build_default_tool_registry())
 

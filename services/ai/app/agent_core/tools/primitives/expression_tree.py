@@ -166,6 +166,29 @@ def _validate_node(
                     f"{type(facts[of_ref]).__name__}); op '{op}' aggregates over a list of records. "
                     f"List-valued facts available: {list_refs}"
                 )
+            elif (
+                op in ("sum", "average")
+                and node.field
+                and of_ref is not None
+                and isinstance(facts.get(of_ref), list)
+            ):
+                # sum/average need a NUMERIC field on the records. Catching a
+                # wrong/absent field name here -- not only at eval time -- turns
+                # a fatal `non_numeric_field_value` on an already-validated tree
+                # into a repairable error the bounded repair loop can act on.
+                # Observed live (ISE credits_remaining): the model summed field
+                # 'deficit', absent from the course records, so the step died and
+                # the composition reported a hallucinated earned-credits total.
+                # Naming the numeric fields that DO exist gives repair a target.
+                records = [record for record in facts[of_ref] if isinstance(record, dict)]
+                if records and not any(_is_number(record.get(node.field)) for record in records):
+                    numeric_fields = sorted(
+                        {key for record in records for key, value in record.items() if _is_number(value)}
+                    )
+                    errors.append(
+                        f"{node_path}.field: '{node.field}' is not a numeric field on the "
+                        f"'{of_ref}' records; numeric fields available: {numeric_fields}"
+                    )
         if op in ("sum", "average") and not node.field:
             errors.append(f"{node_path}: 'field' is required for op '{op}'")
         return

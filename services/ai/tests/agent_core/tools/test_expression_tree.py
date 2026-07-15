@@ -177,6 +177,31 @@ def test_validate_rejects_aggregate_over_a_non_list_ref():
     assert any("completedCourses" in error for error in errors), errors
 
 
+def test_validate_rejects_sum_over_a_field_absent_from_the_records():
+    """Regression (live, ISE credits_remaining): the calc-validation model
+    summed `field: "deficit"` over the `completedCourses` list -- a field the
+    course records don't carry -- so every `record.get("deficit")` was None and
+    the tool died at EVALUATION time as `non_numeric_field_value`, which is
+    unrepairable (the block never retries a validated tree). The step failed and
+    the composition then reported a hallucinated earned-credits total.
+
+    Catching it at validation time, and naming the numeric fields that DO exist,
+    hands the bounded repair loop a fixable error."""
+    node = ExpressionNode(op="sum", of=ExpressionNode(ref="completedCourses"), field="deficit")
+    facts = {
+        "completedCourses": [
+            {"courseNumber": "00940345", "creditsEarned": 4.0, "grade": 88.0},
+            {"courseNumber": "00940704", "creditsEarned": 1.5, "grade": 95.0},
+        ]
+    }
+
+    errors = validate_expression_tree(node, facts=facts)
+
+    assert any("deficit" in error and "numeric" in error for error in errors), errors
+    # The message must name the numeric fields available, so repair can switch.
+    assert any("creditsEarned" in error for error in errors), errors
+
+
 def test_validate_allows_aggregate_over_a_list_ref():
     node = ExpressionNode(op="sum", of=ExpressionNode(ref="completedCourses"), field="creditsEarned")
     facts = {"completedCourses": [{"creditsEarned": 4.0}]}
