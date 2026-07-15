@@ -73,13 +73,14 @@ graphify-out/
 .graphify/
 **/.graphify/
 
-# Golden-set eval traces and local debug artifacts
+# Golden-set eval traces and local debug artifacts (services/agent only —
+# NOT the pytest live-eval logs under services/ai/tests/agent_core/live_eval_logs/,
+# which are intentionally tracked so the team can share and inspect runs)
 services/agent/tmp/
 **/final_answer_eval_traces/
 **/final_answer_eval_traces_raw/
 **/raw_llm/
 **/raw_llm_debug/
-**/live_eval_logs/
 
 services/api/data/cache/wiki_embedding_index.json
 services/api/data/cache/wiki_embedding_index.compact.pkl.gz
