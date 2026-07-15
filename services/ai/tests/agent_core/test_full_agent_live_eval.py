@@ -294,3 +294,80 @@ async def test_action_boundary_challenge(
         "Agent should either gracefully explain the boundary in synthesis, or ask a real clarifying "
         "question -- either is a valid way to avoid silently performing/fabricating the action."
     )
+
+
+# --- Complex, multi-part scenarios ---------------------------------------
+# These stress the orchestrator harder than the single-determination cases
+# above: each bundles several determinations / a conditional future state /
+# a gap-then-filter chain into ONE question, exercising whether the planner
+# stays parsimonious, whether within-turn memory is reused across sub-asks,
+# and whether the simulation_planning composites carry the multi-step load.
+# Assertions stay loose (in_scope + a synthesis OR a clarification): the exact
+# content of a many-part answer is not something to pin, but silently failing
+# to reach any conclusion is.
+
+
+async def test_multi_prereq_gap_and_sequencing(
+    adapter: LoggingLLMAdapter, live_eval_log: LiveEvalLog, live_test_student: str
+) -> None:
+    """Multi-hop: identify what's still missing for 00440148 (student has
+    00440105 but not 00440140), then reason about fitting the missing
+    prerequisite(s) plus the target course across two semesters."""
+    message = (
+        "I want to take course 00440148 as soon as possible. I've completed 00440105 but not "
+        "00440140. What exactly do I still need to finish first, and is it realistic to complete "
+        "everything required plus 00440148 itself across the next two semesters?"
+    )
+    understanding, state, final_entry, clarification = await _run_full_turn(
+        message, adapter, live_test_student, block_prefix="eval-e2e-gap-sequencing"
+    )
+    _record(live_eval_log, "multi_prereq_gap_and_sequencing", adapter, understanding, state, final_entry, clarification)
+
+    assert understanding.in_scope
+    assert final_entry is not None or clarification is not None, f"No conclusion reached. Clarification: {clarification}"
+    if final_entry is not None:
+        assert "answer_text" in final_entry.data
+
+
+async def test_conditional_future_eligibility(
+    adapter: LoggingLLMAdapter, live_eval_log: LiveEvalLog, live_test_student: str
+) -> None:
+    """Conditional future-state: simulate completing 00440140 next semester,
+    then re-evaluate 00440148 eligibility for the semester after -- combined
+    with an offering-pattern question about 00440140."""
+    message = (
+        "If I take and pass course 00440140 next semester, would I then be eligible to take course "
+        "00440148 the following semester? And is 00440140 usually offered in the summer, or only in "
+        "winter and spring?"
+    )
+    understanding, state, final_entry, clarification = await _run_full_turn(
+        message, adapter, live_test_student, block_prefix="eval-e2e-conditional-eligibility"
+    )
+    _record(live_eval_log, "conditional_future_eligibility", adapter, understanding, state, final_entry, clarification)
+
+    assert understanding.in_scope
+    assert final_entry is not None or clarification is not None, f"No conclusion reached. Clarification: {clarification}"
+    if final_entry is not None:
+        assert "answer_text" in final_entry.data
+
+
+async def test_track_gap_analysis_filtered_by_offering(
+    adapter: LoggingLLMAdapter, live_eval_log: LiveEvalLog, live_test_student: str
+) -> None:
+    """Gap-then-filter: audit the Electrical Engineering track against completed
+    courses to surface the most important prerequisite gaps, then filter those
+    gap courses by whether they are actually offered next semester."""
+    message = (
+        "Based on the courses I've completed, what are the most important prerequisite gaps I "
+        "should close next to progress in my Electrical Engineering track, and which of those gap "
+        "courses are actually offered next semester?"
+    )
+    understanding, state, final_entry, clarification = await _run_full_turn(
+        message, adapter, live_test_student, block_prefix="eval-e2e-gap-analysis"
+    )
+    _record(live_eval_log, "track_gap_analysis_filtered_by_offering", adapter, understanding, state, final_entry, clarification)
+
+    assert understanding.in_scope
+    assert final_entry is not None or clarification is not None, f"No conclusion reached. Clarification: {clarification}"
+    if final_entry is not None:
+        assert "answer_text" in final_entry.data
