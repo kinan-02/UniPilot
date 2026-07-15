@@ -25,6 +25,25 @@ from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistr
 
 logger = logging.getLogger(__name__)
 
+# The schema asks for tool arguments under "arguments", but live-eval runs
+# repeatedly caught the model placing them under a different key instead --
+# "args", "tool_input", "parameters", "params", "input" have all appeared --
+# leaving "arguments" empty so the call got {} and failed input validation,
+# wasting the round (in the ISE `credits_remaining` case, twice blocking the
+# requirement-page fetch so the agent clarified instead of answering). Falling
+# back across the known variants costs nothing when the model uses the canonical
+# key. Only a non-empty dict counts, so a genuine zero-argument call still
+# resolves to {} (correct for tools like get_current_date).
+_TOOL_ARGUMENT_KEYS = ("arguments", "args", "tool_input", "parameters", "params", "input")
+
+
+def _extract_tool_arguments(request: dict[str, Any]) -> dict[str, Any]:
+    for key in _TOOL_ARGUMENT_KEYS:
+        value = request.get(key)
+        if isinstance(value, dict) and value:
+            return value
+    return {}
+
 
 async def execute_tool_round(
     *,
@@ -51,12 +70,9 @@ async def execute_tool_round(
         # block failure instead of one recorded, gracefully-skipped audit
         # entry). Fall back to a clearly-marked placeholder instead.
         tool_name = request.get("tool_name") or "<missing_tool_name>"
-        # Defensive: found via a live-eval run where the model emitted
-        # {"tool_name": ..., "args": {...}} instead of the schema's own
-        # "arguments" key (~15% of tool_requests in that run) -- every such
-        # call silently got {} and failed validation, wasting a whole round.
-        # Falling back to "args" costs nothing when the model gets it right.
-        arguments = request.get("arguments") or request.get("args") or {}
+        # Recover arguments the model placed under a non-canonical key (see
+        # `_extract_tool_arguments`) rather than silently running with {}.
+        arguments = _extract_tool_arguments(request)
         result_key = f"{tool_name}:{json.dumps(arguments, sort_keys=True, default=str)}"
 
         if tool_name not in tool_grant:
@@ -203,4 +219,4 @@ async def execute_tool_round(
     return merged_results, audit_records
 
 
-__all__ = ["execute_tool_round"]
+__all__ = ["execute_tool_round", "_extract_tool_arguments"]

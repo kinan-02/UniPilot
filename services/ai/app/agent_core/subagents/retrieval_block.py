@@ -16,7 +16,7 @@ from pydantic import Field
 
 from app.agent_core.planning.state import CertaintyTag, ToolInvocationRecord
 from app.agent_core.reasoning.grounding import build_shared_grounding_block
-from app.agent_core.reasoning.llm_adapter import LLMAdapter
+from app.agent_core.reasoning.llm_adapter import LLMAdapter, LLMAdapterError
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
@@ -61,6 +61,13 @@ _RETRIEVAL_OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 _MAX_ROUNDS = 3
+
+# Confidence stamped on a step that had to finalize on already-gathered tool
+# results because a round's LLM call failed transiently (see
+# `_salvage_on_round_call_failure`). Deliberately low: the facts are real but
+# no final synthesis pass judged their sufficiency, so a downstream
+# success-check should treat the step as partial, not fully trustworthy.
+_DEGRADED_FINALIZE_CONFIDENCE = 0.3
 
 
 def _retrieval_round_contract() -> PromptContract:
@@ -229,15 +236,26 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
 
             user_prompt = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
-            call_result = await self._invoke_llm(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                params=params,
-                response_schema=round_schema,
-                phase=f"retrieval_round_{round_num}",
-                block_input=block_input,
-                telemetry=telemetry,
-            )
+            try:
+                call_result = await self._invoke_llm(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    params=params,
+                    response_schema=round_schema,
+                    phase=f"retrieval_round_{round_num}",
+                    block_input=block_input,
+                    telemetry=telemetry,
+                )
+            except LLMAdapterError as exc:
+                salvaged = self._salvage_on_round_call_failure(
+                    exc,
+                    tool_results_so_far=tool_results_so_far,
+                    tool_audit_trail=tool_audit_trail,
+                    rounds_used=round_num,
+                )
+                if salvaged is not None:
+                    return salvaged
+                raise
 
             # Simple fallback normalization if the LLM output is malformed
             parsed = call_result.parsed or {}
@@ -246,7 +264,12 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
             if status == "need_tools" and not is_final_round:
                 requests = parsed.get("tool_requests") or []
                 requests = await self._repair_tool_requests_if_needed(
-                    parsed, requests, round_schema=round_schema, block_input=block_input, telemetry=telemetry
+                    parsed,
+                    requests,
+                    round_schema=round_schema,
+                    block_input=block_input,
+                    telemetry=telemetry,
+                    tool_registry=self._tool_registry,
                 )
                 tool_results_so_far, new_records = await execute_tool_round(
                     tool_requests=requests,
@@ -303,6 +326,67 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
             reason="round_budget_exhausted_unexpectedly",
             tool_audit_trail=tool_audit_trail,
             rounds_used=round_num,
+        )
+
+    def _salvage_on_round_call_failure(
+        self,
+        exc: LLMAdapterError,
+        *,
+        tool_results_so_far: dict[str, dict],
+        tool_audit_trail: list[ToolInvocationRecord],
+        rounds_used: int,
+    ) -> _RetrievalBlockOutput | None:
+        """Finalize on already-gathered tool results when a round's LLM call
+        fails, instead of discarding the whole step.
+
+        A round call that raises `LLMAdapterError` -- a transient transport
+        blip surfaced as `llm_call_failed`, or a parse failure that already
+        exhausted `_invoke_llm`'s own retry -- would otherwise propagate to
+        `run()` and blow the step away as `internal_error`, throwing out every
+        fact the earlier rounds already fetched and forcing an expensive
+        Planner re-plan (a live-eval run reproduced exactly this: step 1a died
+        with an empty audit trail on one transient blip).
+
+        When at least one tool result was already gathered, those results ARE a
+        usable, if incomplete, answer: package them as `facts` at a
+        deliberately low confidence with an explicit degradation assumption, so
+        a downstream success-check treats the step as partial rather than the
+        turn losing the work entirely -- costing NO extra LLM call. With
+        nothing gathered yet (the failure hit the very first round), there is
+        nothing to salvage: return `None` so the caller re-raises and the step
+        fails closed exactly as before.
+        """
+        if not tool_results_so_far:
+            return None
+
+        salvaged_result = {
+            "certainty_basis": "wiki_derived",
+            "confidence": _DEGRADED_FINALIZE_CONFIDENCE,
+            "facts": dict(tool_results_so_far),
+            "assumptions": [
+                f"Retrieval degraded: the reasoning model was unreachable ({exc}) after "
+                f"{rounds_used} round(s); finalized on the tool results already gathered "
+                "without a final synthesis pass."
+            ],
+        }
+        # The salvaged shape is hand-built to satisfy the output schema;
+        # validate it defensively so a future schema change can never let a
+        # malformed salvage escape as if it were a real result.
+        if not self._validate_schema(salvaged_result, _RETRIEVAL_OUTPUT_SCHEMA).valid:
+            return None
+
+        logger.warning(
+            "retrieval_round_call_failed_salvaged",
+            extra={"error": str(exc), "rounds_used": rounds_used, "facts_count": len(tool_results_so_far)},
+        )
+        return _RetrievalBlockOutput(
+            status="completed",
+            schema_valid=True,
+            result=salvaged_result,
+            confidence=_DEGRADED_FINALIZE_CONFIDENCE,
+            warnings=[f"retrieval_degraded_partial_finalize: {exc}"],
+            tool_audit_trail=tool_audit_trail,
+            rounds_used=rounds_used,
         )
 
     def _retrieval_failed_output(

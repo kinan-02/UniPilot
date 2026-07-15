@@ -16,6 +16,7 @@ from typing import Any
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.reasoning.prompt_registry import build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
+from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.reasoning_blocks.schemas import (
     BaseReasoningBlockInput,
     BaseReasoningBlockOutput,
@@ -336,6 +337,90 @@ async def test_repair_tool_requests_fixes_wrong_keys_via_one_repair_call(fake_ll
 
     assert result == [{"tool_name": "get_entity", "arguments": {"entity_id": "1"}}]
     assert len(adapter.calls) == 1
+
+
+async def test_repair_tool_requests_repairs_arguments_invalid_for_the_specific_tool(fake_llm_adapter_factory):
+    # Round-schema-valid (arguments present and an object) but EMPTY for a tool
+    # that requires fields -- a gap the generic round schema cannot see, since
+    # it types `arguments` as an opaque object. Validating against get_entity's
+    # own input_model catches it and drives one repair with the tool's error.
+    registry = build_default_tool_registry()
+    adapter = fake_llm_adapter_factory(
+        [
+            {
+                "status": "need_tools",
+                "tool_requests": [
+                    {"tool_name": "get_entity", "arguments": {"entity_type": "course", "entity_id": "234218"}}
+                ],
+            }
+        ]
+    )
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+    parsed = {"status": "need_tools", "tool_requests": [{"tool_name": "get_entity", "arguments": {}}]}
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        parsed["tool_requests"],
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+        tool_registry=registry,
+    )
+
+    assert result == [{"tool_name": "get_entity", "arguments": {"entity_type": "course", "entity_id": "234218"}}]
+    assert len(adapter.calls) == 1  # one repair, driven by the tool-input error
+
+
+async def test_repair_tool_requests_skips_repair_when_args_recoverable_from_another_key(fake_llm_adapter_factory):
+    # The arguments merely sit under `params`; execute_tool_round recovers them
+    # deterministically, so per-tool validation must NOT spend a repair call --
+    # the free recovery layer sits in front of the LLM safety net.
+    registry = build_default_tool_registry()
+    adapter = fake_llm_adapter_factory([])  # any repair call would exhaust and raise
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+    parsed = {
+        "status": "need_tools",
+        "tool_requests": [
+            {"tool_name": "get_entity", "arguments": {}, "params": {"entity_type": "course", "entity_id": "234218"}}
+        ],
+    }
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        parsed["tool_requests"],
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+        tool_registry=registry,
+    )
+
+    assert result == parsed["tool_requests"]  # unchanged
+    assert len(adapter.calls) == 0  # recovery is free -- no repair
+
+
+async def test_repair_tool_requests_keeps_original_when_repair_does_not_fix_the_args():
+    # A repair that returns round-valid but STILL tool-invalid arguments must
+    # not be adopted over the original (which key-recovery might still salvage).
+    registry = build_default_tool_registry()
+
+    class _StillBadRepairAdapter:
+        async def complete_json(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"status": "need_tools", "tool_requests": [{"tool_name": "get_entity", "arguments": {}}]}
+
+    block = _EchoReasoningBlock(llm_adapter=_StillBadRepairAdapter())
+    original = [{"tool_name": "get_entity", "arguments": {}}]
+    parsed = {"status": "need_tools", "tool_requests": original}
+
+    result = await block._repair_tool_requests_if_needed(
+        parsed,
+        original,
+        round_schema=_ROUND_SCHEMA,
+        block_input=_make_block_input(),
+        telemetry=RunTelemetry(),
+        tool_registry=registry,
+    )
+
+    assert result == original
 
 
 async def test_repair_tool_requests_falls_back_to_original_when_repair_fails():

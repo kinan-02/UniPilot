@@ -7,15 +7,57 @@ entry point.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
+from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.subagents.retrieval_block import (
+    _DEGRADED_FINALIZE_CONFIDENCE,
     _MAX_ROUNDS,
     run_retrieval_subagent,
 )
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.tools.registry import ToolRegistry
+
+
+class _NeedToolsThenTransientFailAdapter:
+    """Round 1 asks for a tool (so a real tool runs and results accumulate);
+    the next round's LLM call raises a transient `llm_call_failed` -- the
+    mid-loop transport blip that used to discard the whole retrieval step and
+    every fact its earlier rounds already fetched.
+    """
+
+    def __init__(self, tool_requests: list[dict[str, Any]], *, failure_code: str = "llm_call_failed") -> None:
+        self._first: dict[str, Any] = {"status": "need_tools", "tool_requests": tool_requests}
+        self._failure_code = failure_code
+        self.calls: list[dict[str, Any]] = []
+
+    async def complete_json(self, *, raw_model_text_out: list[str] | None = None, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        if len(self.calls) == 1:
+            return self._first
+        raise LLMAdapterError(self._failure_code)
+
+    async def complete_text(self, **_: Any) -> str:
+        raise AssertionError("retrieval block does not use complete_text")
+
+
+class _AlwaysTransientFailAdapter:
+    """Every LLM call raises `llm_call_failed` -- the failure hits round 1
+    before any tool runs, so there is nothing to salvage."""
+
+    def __init__(self, *, failure_code: str = "llm_call_failed") -> None:
+        self._failure_code = failure_code
+        self.calls: list[dict[str, Any]] = []
+
+    async def complete_json(self, *, raw_model_text_out: list[str] | None = None, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        raise LLMAdapterError(self._failure_code)
+
+    async def complete_text(self, **_: Any) -> str:
+        raise AssertionError("retrieval block does not use complete_text")
 
 
 def _context_package(tool_grant=("get_entity", "search_knowledge", "traverse_relationship")) -> SubagentContextPackage:
@@ -300,6 +342,59 @@ async def test_repair_exhausted_fails_closed(fake_llm_adapter_factory):
 
     assert result.status == "failed"
     assert any("schema_repair_exhausted" in w for w in result.warnings)
+
+
+async def test_transient_llm_failure_mid_loop_salvages_accumulated_tool_results():
+    """A transient `llm_call_failed` on a round's LLM call, AFTER earlier
+    rounds already fetched facts, must finalize on those facts instead of
+    discarding the whole step. Regression for the multi_prereq live-eval case
+    where a mid-loop transport blip failed step 1a with an empty audit trail
+    and forced an expensive Planner re-plan.
+    """
+    adapter = _NeedToolsThenTransientFailAdapter(
+        [{"tool_name": "get_entity", "arguments": {"entity_id": "123456", "entity_type": "course"}}]
+    )
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    # Finalized rather than failed.
+    assert result.status == "succeeded"
+    assert result.result is not None
+    # The facts gathered before the blip survive.
+    assert result.result["facts"], "salvaged facts must not be empty"
+    assert len(result.tool_audit_trail) == 1
+    # Degradation is explicit and honestly low-confidence, so a downstream
+    # success-check treats this as partial rather than fully trustworthy.
+    assert result.certainty.confidence == _DEGRADED_FINALIZE_CONFIDENCE
+    assert any("retrieval_degraded_partial_finalize" in w for w in result.warnings)
+    # Exactly two LLM calls: the need_tools round + the failing round. The
+    # salvage itself spends NO extra LLM call.
+    assert len(adapter.calls) == 2
+
+
+async def test_transient_llm_failure_before_any_tools_fails_closed():
+    """When the transient failure hits before any tool has run, there is
+    nothing to salvage, so the step must still fail closed rather than
+    fabricate an empty-facts answer."""
+    adapter = _AlwaysTransientFailAdapter()
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "failed"
+    assert not any("retrieval_degraded_partial_finalize" in w for w in result.warnings)
+    assert registry.call_count == 0
 
 
 async def test_returns_subagent_result_shape_matching_generic_paths_output(fake_llm_adapter_factory):

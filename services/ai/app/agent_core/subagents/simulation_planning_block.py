@@ -243,7 +243,12 @@ class SimulationPlanningReasoningBlock(BaseReasoningBlock):
             if status == "need_tools" and not is_final_round:
                 requests = parsed.get("tool_requests") or []
                 requests = await self._repair_tool_requests_if_needed(
-                    parsed, requests, round_schema=round_schema, block_input=block_input, telemetry=telemetry
+                    parsed,
+                    requests,
+                    round_schema=round_schema,
+                    block_input=block_input,
+                    telemetry=telemetry,
+                    tool_registry=self._tool_registry,
                 )
                 tool_results_so_far, new_records = await execute_tool_round(
                     tool_requests=requests,

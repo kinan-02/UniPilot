@@ -433,6 +433,38 @@ class BaseReasoningBlock(ABC):
 
         return SchemaRepairOutcome(result=current_result, valid=False, errors=errors, attempts_used=attempts_used)
 
+    def _tool_argument_errors(self, requests: list[Any], tool_registry: Any) -> list[str]:
+        """Validate each request's EFFECTIVE arguments against the specific
+        tool's own `input_model` -- the check the generic round schema cannot
+        do, since it types `arguments` as an opaque `{"type": "object"}`, so an
+        empty `{}` (or arguments the model stashed under a non-canonical key)
+        is round-schema-valid yet fails the tool the moment it runs.
+
+        Uses `execute_tool_round`'s own key-recovery, so a request whose args
+        merely sit under `params`/`tool_input`/... produces NO error here (it
+        will be recovered deterministically at execution, for free). Only a
+        genuinely missing/malformed argument set is reported -- with the tool's
+        own pydantic error -- so the repair pass has a concrete target. Unknown
+        tools are skipped (execute_tool_round records those `ok=False`)."""
+        from app.agent_core.subagents.tool_round import _extract_tool_arguments
+
+        errors: list[str] = []
+        for request in requests:
+            if not isinstance(request, dict):
+                continue
+            tool_name = request.get("tool_name")
+            if not isinstance(tool_name, str):
+                continue
+            try:
+                descriptor = tool_registry.get(tool_name)
+            except Exception:  # noqa: BLE001 -- unknown tool: not our concern here
+                continue
+            try:
+                descriptor.input_model(**_extract_tool_arguments(request))
+            except Exception as exc:  # noqa: BLE001 -- pydantic ValidationError / TypeError
+                errors.append(f"tool '{tool_name}' arguments invalid: {exc}")
+        return errors
+
     async def _repair_tool_requests_if_needed(
         self,
         parsed: dict[str, Any],
@@ -441,6 +473,7 @@ class BaseReasoningBlock(ABC):
         round_schema: dict[str, Any],
         block_input: BaseReasoningBlockInput,
         telemetry: RunTelemetry,
+        tool_registry: Any = None,
     ) -> list[Any]:
         """Best-effort repair for a tool-round's `tool_requests` list.
 
@@ -458,6 +491,15 @@ class BaseReasoningBlock(ABC):
         old behavior: returns the original `requests` unchanged if nothing
         needed repair, or if the repair attempt itself didn't produce a
         valid result.
+
+        When a `tool_registry` is supplied, each request's arguments are ALSO
+        validated against the specific tool's own `input_model`
+        (`_tool_argument_errors`) -- the round schema alone treats `arguments`
+        as an opaque object, so an empty/mis-shaped argument set is
+        round-valid yet fails at execution. Those errors, too, drive a bounded
+        repair (with the tool's own message as the target). A repair is only
+        adopted if it actually clears the argument errors, so it can never
+        replace requests the deterministic key-recovery could still salvage.
         """
         # Deterministic pre-pass before spending any LLM repair call: the
         # single most common tool-request malformation (a live-eval tally put
@@ -475,19 +517,26 @@ class BaseReasoningBlock(ABC):
 
         normalized = self._normalize_result(parsed, output_schema=round_schema)
         validation = self._validate_schema(normalized, round_schema)
-        if validation.valid:
+        arg_errors = self._tool_argument_errors(requests, tool_registry) if tool_registry is not None else []
+        if validation.valid and not arg_errors:
             return requests
 
         repair_outcome = await self._repair_schema(
             initial_result=normalized,
-            initial_errors=validation.errors,
+            initial_errors=[*validation.errors, *arg_errors],
             output_schema=round_schema,
             max_attempts=1,
             block_input=block_input,
             telemetry=telemetry,
         )
         if repair_outcome.valid and repair_outcome.result is not None:
-            return repair_outcome.result.get("tool_requests") or requests
+            repaired = repair_outcome.result.get("tool_requests") or requests
+            # Adopt the repair only if it actually cleared the argument errors
+            # (round-schema validity alone does not guarantee that); otherwise
+            # keep the original, which execute_tool_round's key-recovery may
+            # still salvage -- never regress.
+            if tool_registry is None or not self._tool_argument_errors(repaired, tool_registry):
+                return repaired
         return requests
 
     def _emit_debug_observer(

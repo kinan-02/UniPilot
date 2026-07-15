@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from pydantic import BaseModel
 
 from app.agent_core.subagents.tool_round import execute_tool_round
@@ -87,6 +88,30 @@ async def test_successful_call_merges_into_a_new_dict_and_records_audit():
     assert original == {"existing_key": {"already": "there"}}
     assert "existing_key" in merged
     assert any(k.startswith("fake_tool:") for k in merged)
+
+
+@pytest.mark.parametrize("arg_key", ["args", "tool_input", "parameters", "params", "input"])
+async def test_arguments_under_a_non_canonical_key_are_recovered(arg_key):
+    # Live-eval runs (ISE `credits_remaining`, across two runs) repeatedly found
+    # the model placing its arguments under a key OTHER than the schema's
+    # "arguments" -- "args", "tool_input", "parameters", "params" have all
+    # appeared -- leaving "arguments" empty so the call got {} and failed input
+    # validation, wasting the round and (twice) blocking the requirement-page
+    # fetch so the agent clarified instead of answering.
+    registry = _CountingToolRegistry(_make_registry(ok=True))
+
+    merged, records = await execute_tool_round(
+        tool_requests=[{"tool_name": "fake_tool", arg_key: {"entity_id": "234218"}}],
+        tool_grant=["fake_tool"],
+        tool_registry=registry,
+        tool_results_so_far={},
+    )
+
+    assert registry.call_count == 1
+    assert len(records) == 1
+    assert records[0].tool_name == "fake_tool"
+    assert records[0].output_ok is True
+    assert records[0].arguments == {"entity_id": "234218"}
 
 
 async def test_two_calls_to_same_tool_with_different_arguments_do_not_clobber():

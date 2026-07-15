@@ -91,6 +91,16 @@ class LoggingLLMAdapter:
                 streaming_queue=streaming_queue,
             )
         except Exception as exc:
+            # Faithfully mirror the real `ChatLLMAdapter`, which appends the
+            # raw model text to `raw_model_text_out` BEFORE raising a parse
+            # failure (it did produce a response, it just wasn't valid JSON).
+            # A caller's prose-recovery path -- e.g.
+            # `CompositionReasoningBlock`'s `raw_capture` -- depends on seeing
+            # that text even on the failure path; forwarding it only on
+            # success silently starved that path during a live-eval run and
+            # discarded a complete answer as an `internal_error`.
+            if raw_model_text_out is not None and local_raw:
+                raw_model_text_out.append(local_raw[0])
             self.calls.append(
                 _RecordedCall(
                     system_prompt=system_prompt,
