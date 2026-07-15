@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<!--
+  UniPilot Agent — Architecture Animation (standalone, self-contained)
+  Built from docs/agent/AGENT_ARCHITECTURE_ANIMATION_SPEC.md
+  Open directly in any modern browser; present fullscreen. No external assets.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniPilot Agent — Flight Recorder</title>
+<style>
+  :root{
+    --ground:#0a0e17; --ground2:#0c1120; --panel:#121a2b; --panel2:#0f1626;
+    --hairline:#24304a; --hairline2:#1a2338; --ink:#e8eefb; --muted:#8091b0;
+    --accent:#31d0e6; --det:#2fd98f;
+    --ret:#4d8dff; --int:#f4a63a; --calc:#2fd98f; --sim:#a06bff; --comp:#ff6faa;
+    --critic:#8aa0d8; --tool:#5b6b8c; --propose:#b57bff;
+    --official:#37d979; --interpreted:#f4a63a; --predicted:#4d8dff;
+    --fail:#ff5c6c;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:
+      radial-gradient(120% 80% at 50% -10%, #12203a 0%, rgba(18,32,58,0) 55%),
+      radial-gradient(100% 120% at 50% 120%, #0d1424 0%, rgba(13,20,36,0) 60%),
+      var(--ground);
+    color:var(--ink); font-family:var(--sans);
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex; flex-direction:column; height:100vh; height:100dvh}
+
+  /* ---------- top HUD ---------- */
+  .hud{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:14px 22px; border-bottom:1px solid var(--hairline2);
+    background:linear-gradient(180deg, rgba(18,26,43,.65), rgba(18,26,43,0));
+    z-index:6;
+  }
+  .brand{display:flex; align-items:baseline; gap:12px; min-width:0}
+  .brand .glyph{
+    font-family:var(--mono); font-weight:700; letter-spacing:.12em;
+    color:var(--accent); font-size:13px;
+    border:1px solid rgba(49,208,230,.4); border-radius:6px; padding:3px 8px;
+    text-shadow:0 0 12px rgba(49,208,230,.5);
+  }
+  .brand h1{font-size:15px; font-weight:700; letter-spacing:.01em; margin:0; white-space:nowrap}
+  .brand .sub{font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase}
+  .counter{font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.14em; white-space:nowrap}
+  .counter b{color:var(--ink); font-weight:700}
+
+  /* ---------- stage ---------- */
+  .stage-wrap{position:relative; flex:1; min-height:0; overflow:hidden}
+  .stage-wrap::before{content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+    background-image:linear-gradient(rgba(120,150,200,.05) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(120,150,200,.05) 1px,transparent 1px);
+    background-size:44px 44px; mask-image:radial-gradient(80% 70% at 50% 45%,#000 30%,transparent 78%);
+    -webkit-mask-image:radial-gradient(80% 70% at 50% 45%,#000 30%,transparent 78%)}
+  .stage-wrap::after{content:""; position:absolute; inset:0; z-index:1; pointer-events:none;
+    box-shadow:inset 0 0 200px 40px rgba(6,9,16,.55)}
+  svg#stage{position:relative; z-index:1; width:100%; height:100%; display:block}
+  #camera{transition:transform .95s cubic-bezier(.6,.02,.2,1)}
+
+  .edge{fill:none; stroke:rgba(120,150,200,.16); stroke-width:1.6}
+  .edge.on{stroke:rgba(49,208,230,.55); stroke-width:2.1; stroke-dasharray:6 7; animation:dash 1s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:-26}}
+
+  .node .shape{
+    fill:var(--panel); stroke:color-mix(in srgb, var(--c,#4a5b7d) 55%, transparent);
+    stroke-width:1.6; transition:fill .4s, stroke .4s, filter .4s;
+  }
+  .node .lbl{
+    font-family:var(--mono); fill:var(--muted); font-size:14px; font-weight:600;
+    text-anchor:middle; dominant-baseline:middle; letter-spacing:.02em;
+    transition:fill .4s;
+  }
+  .node .lbl.sm{font-size:11px; letter-spacing:.04em}
+  .node .lock{font-size:20px; opacity:0; transition:opacity .35s}
+  .node{opacity:.5; transition:opacity .5s}
+  .node.on{opacity:1}
+  .node.on .shape{
+    fill:color-mix(in srgb, var(--c,#4a5b7d) 20%, var(--panel));
+    stroke:var(--c,#6ea3ff);
+    filter:drop-shadow(0 0 10px color-mix(in srgb, var(--c,#4a5b7d) 60%, transparent));
+    animation:pulse 2.2s ease-in-out infinite;
+  }
+  .node.on .lbl{fill:var(--ink)}
+  @keyframes pulse{0%,100%{filter:drop-shadow(0 0 6px color-mix(in srgb,var(--c,#4a5b7d) 45%,transparent))}
+    50%{filter:drop-shadow(0 0 16px color-mix(in srgb,var(--c,#4a5b7d) 80%,transparent))}}
+  .node.fail .shape{fill:color-mix(in srgb,var(--fail) 26%,var(--panel)); stroke:var(--fail);
+    filter:drop-shadow(0 0 12px rgba(255,92,108,.7)); animation:shake .5s ease-in-out 2}
+  .node.fail{opacity:1}
+  .node.fail .lbl{fill:#ffd7db}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+  .node.protected{opacity:.85}
+  .node.protected .shape{stroke:var(--det); stroke-dasharray:3 3}
+  .node.protected .lock{opacity:1}
+
+  .ring-shape{fill:rgba(20,30,52,.35); stroke:rgba(120,150,200,.22); stroke-width:1.4; rx:26}
+  .ring-label{font-family:var(--mono); fill:var(--muted); font-size:14px; letter-spacing:.22em; text-transform:uppercase}
+  .cluster-title{font-family:var(--mono); fill:var(--accent); font-size:15px; letter-spacing:.16em; text-transform:uppercase; opacity:.85}
+  .cluster-sub{font-family:var(--mono); fill:var(--muted); font-size:12px; letter-spacing:.1em}
+
+  .mon-dot{transition:fill .35s, filter .35s; fill:#26314c}
+  .mon-dot.lit-green{fill:var(--official); filter:drop-shadow(0 0 8px var(--official))}
+  .mon-dot.lit-amber{fill:var(--interpreted); filter:drop-shadow(0 0 8px var(--interpreted))}
+  .mon-dot.lit-red{fill:var(--fail); filter:drop-shadow(0 0 8px var(--fail))}
+
+  .packet{filter:drop-shadow(0 0 8px currentColor)}
+
+  /* invocation badges + sub-ask chips (annotation layer) */
+  .badge.pop{animation:saPop .45s cubic-bezier(.2,.9,.3,1.4) both}
+  .badge-c{fill:var(--ground2); stroke:var(--c,#6ea3ff); stroke-width:1.6;
+    filter:drop-shadow(0 0 6px color-mix(in srgb,var(--c,#6ea3ff) 60%,transparent))}
+  .badge-t{font-family:var(--mono); font-size:14px; font-weight:700; fill:var(--ink); text-anchor:middle; dominant-baseline:middle}
+  .sa-lbl{font-family:var(--mono); font-size:11px; fill:var(--muted); letter-spacing:.2em; text-anchor:middle}
+  .sa-chip{fill:color-mix(in srgb,var(--accent) 13%,var(--panel2)); stroke:color-mix(in srgb,var(--accent) 52%,transparent); stroke-width:1.4}
+  .sa-num{font-family:var(--mono); font-size:13px; fill:var(--accent); font-weight:700}
+  .sa-txt{font-family:var(--mono); font-size:12px; fill:var(--ink)}
+  .sa-pop{animation:saPop .5s cubic-bezier(.2,.9,.3,1.3) both}
+  @keyframes saPop{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+
+  /* ledger cards */
+  .card-rect{fill:var(--panel2); stroke:var(--hairline); stroke-width:1}
+  .card-bar{stroke-width:0}
+  .card-txt{font-family:var(--mono); font-size:12.5px; fill:var(--ink)}
+  .card-tag{font-family:var(--mono); font-size:10.5px; fill:var(--muted); letter-spacing:.06em}
+  .card-pop{animation:pop .5s cubic-bezier(.2,.9,.3,1.3) both}
+  @keyframes pop{from{opacity:0; transform:translateX(-10px)}to{opacity:1; transform:translateX(0)}}
+
+  /* ---------- overlays ---------- */
+  .overlay{position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    text-align:center; padding:6vw; z-index:4; pointer-events:none}
+  .overlay.show{display:flex; animation:fade .6s ease both}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .overlay .card{max-width:820px; background:linear-gradient(180deg, rgba(15,22,38,.82), rgba(12,17,32,.72));
+    border:1px solid var(--hairline); border-radius:18px; padding:38px 42px; backdrop-filter:blur(4px);
+    box-shadow:0 30px 90px rgba(0,0,0,.5)}
+  .overlay .eyebrow{font-family:var(--mono); color:var(--accent); letter-spacing:.28em; font-size:12px; text-transform:uppercase}
+  .overlay h2{font-size:clamp(28px,4.6vw,52px); margin:.4em 0 .2em; line-height:1.05; text-wrap:balance; font-weight:800; letter-spacing:-.01em}
+  .overlay p.tag{color:var(--muted); font-size:clamp(14px,1.7vw,18px); margin:0 0 22px}
+  .ideas{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; text-align:left}
+  .ideas .idea{background:rgba(255,255,255,.02); border:1px solid var(--hairline); border-radius:12px; padding:14px 16px}
+  .ideas .idea .n{font-family:var(--mono); color:var(--accent); font-size:12px; letter-spacing:.1em}
+  .ideas .idea h3{margin:6px 0 4px; font-size:15px; font-weight:700}
+  .ideas .idea p{margin:0; color:var(--muted); font-size:12.5px; line-height:1.45}
+  @media(max-width:680px){.ideas{grid-template-columns:1fr}}
+
+  /* answer overlay — the real recorded reply */
+  .overlay.ans{align-items:flex-start; padding-top:9vh}
+  .ans-card{max-width:760px; text-align:left;
+    background:linear-gradient(180deg, rgba(16,24,42,.94), rgba(11,16,30,.92));
+    border:1px solid color-mix(in srgb,var(--comp) 40%,var(--hairline)); border-radius:20px;
+    box-shadow:0 30px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(255,111,170,.12), 0 0 40px rgba(255,111,170,.1);
+    animation:ansIn .5s cubic-bezier(.2,.9,.3,1.15) both}
+  @keyframes ansIn{from{opacity:0; transform:translateY(18px) scale(.98)}to{opacity:1; transform:none}}
+  /* staggered line-by-line reveal, like the answer is being written */
+  .ans.show .ans-head{animation:ansUp .5s ease both .12s}
+  .ans.show .ans-he{animation:ansUp .6s ease both .34s}
+  .ans.show .ans-en{animation:ansUp .6s ease both .62s}
+  @keyframes ansUp{from{opacity:0; transform:translateY(12px)}to{opacity:1; transform:none}}
+  .ans-head{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:16px}
+  .ans-tags{display:flex; gap:8px; flex-wrap:wrap}
+  .ptag{font-family:var(--mono); font-size:11px; letter-spacing:.03em; padding:5px 10px; border-radius:999px;
+    border:1px solid var(--hairline); white-space:nowrap}
+  .pt-pred{color:var(--predicted); border-color:color-mix(in srgb,var(--predicted) 45%,transparent); background:color-mix(in srgb,var(--predicted) 12%,transparent)}
+  .pt-off{color:var(--official); border-color:color-mix(in srgb,var(--official) 45%,transparent); background:color-mix(in srgb,var(--official) 12%,transparent)}
+  .ans-he{font-family:var(--sans); font-size:clamp(15px,1.7vw,19px); line-height:1.7; margin:0 0 16px; color:var(--ink)}
+  .ans-he b{color:var(--accent); font-weight:700}
+  .ans-en{font-family:var(--sans); font-size:clamp(13px,1.4vw,15.5px); line-height:1.6; margin:0; color:var(--muted);
+    padding-top:15px; border-top:1px solid var(--hairline2)}
+  .ans-en em{color:var(--official); font-style:normal; font-weight:700}
+  .ans-en b{color:var(--ink); font-weight:600}
+  .glabel{font-family:var(--mono); font-size:10px; letter-spacing:.12em; color:var(--comp);
+    border:1px solid color-mix(in srgb,var(--comp) 40%,transparent); border-radius:5px; padding:2px 6px; margin-right:8px}
+
+  /* caption */
+  .caption{position:absolute; left:0; right:0; bottom:0; padding:20px 26px 22px; z-index:5;
+    background:linear-gradient(0deg, rgba(9,13,22,.92) 20%, rgba(9,13,22,0)); pointer-events:none}
+  .caption .act{font-family:var(--mono); color:var(--accent); letter-spacing:.2em; font-size:11.5px; text-transform:uppercase; margin-bottom:6px}
+  .caption .txt{font-size:clamp(15px,2vw,21px); line-height:1.4; max-width:70ch; text-wrap:pretty; font-weight:500}
+  .caption .txt em{color:var(--accent); font-style:normal; font-weight:700}
+
+  /* legend */
+  .legend-toggle{position:absolute; top:14px; right:16px; z-index:7;
+    font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); background:rgba(18,26,43,.7); border:1px solid var(--hairline); border-radius:8px;
+    padding:7px 12px; cursor:pointer; transition:color .2s, border-color .2s}
+  .legend-toggle:hover{color:var(--ink); border-color:var(--accent)}
+  .legend{position:absolute; top:52px; right:16px; z-index:7; width:260px;
+    background:rgba(14,20,34,.94); border:1px solid var(--hairline); border-radius:14px; padding:16px 16px 6px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5); display:none}
+  .legend.show{display:block; animation:fade .25s ease both}
+  .legend h4{margin:0 0 8px; font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+  .legend .grp{margin-bottom:14px}
+  .legend .row{display:flex; align-items:center; gap:9px; margin:5px 0; font-size:12px}
+  .legend .row .k{font-family:var(--mono); font-size:11px}
+  .swatch{width:12px; height:12px; border-radius:4px; flex:0 0 auto; box-shadow:0 0 8px currentColor}
+  .dotk{width:12px; text-align:center; flex:0 0 auto}
+  .legend .row small{color:var(--muted); margin-left:auto; font-size:10.5px}
+
+  /* ---------- dock ---------- */
+  .dock{display:flex; align-items:center; gap:18px; padding:12px 22px;
+    border-top:1px solid var(--hairline2); background:rgba(13,19,33,.7); z-index:6}
+  .transport{display:flex; align-items:center; gap:8px}
+  .btn{display:inline-flex; align-items:center; justify-content:center; cursor:pointer;
+    width:38px; height:38px; border-radius:10px; border:1px solid var(--hairline);
+    background:var(--panel); color:var(--ink); transition:.18s}
+  .btn:hover{border-color:var(--accent); color:var(--accent)}
+  .btn.play{width:46px; height:46px; border-color:var(--accent); color:var(--accent);
+    box-shadow:0 0 0 1px rgba(49,208,230,.15), 0 0 22px rgba(49,208,230,.18)}
+  .btn svg{width:16px; height:16px; fill:currentColor}
+  .btn.play svg{width:19px; height:19px}
+  .scrub{flex:1; min-width:0}
+  .ticks{display:flex; gap:5px; align-items:center}
+  .tick{flex:1; height:5px; border-radius:4px; background:#22314f; cursor:pointer; transition:.2s; position:relative}
+  .tick.grp{margin-left:11px}
+  .tick:hover{background:#3a4d75}
+  .tick.done{background:color-mix(in srgb,var(--ac,#33456b) 50%,#22314f)}
+  .tick.cur{background:var(--ac,var(--accent)); box-shadow:0 0 10px color-mix(in srgb,var(--ac,var(--accent)) 60%,transparent)}
+  .tick .fill{position:absolute; inset:0; width:0; background:var(--ac,var(--accent)); border-radius:4px; box-shadow:0 0 10px color-mix(in srgb,var(--ac,var(--accent)) 60%,transparent)}
+  .chapter{font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:7px; letter-spacing:.06em}
+  .chapter b{color:var(--ink)}
+  .speed{display:flex; gap:5px}
+  .sp{font-family:var(--mono); font-size:11px; color:var(--muted); border:1px solid var(--hairline);
+    background:var(--panel); border-radius:8px; padding:6px 9px; cursor:pointer; transition:.18s}
+  .sp:hover{color:var(--ink)}
+  .sp.on{color:var(--accent); border-color:var(--accent)}
+
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:6px}
+  .hint{position:absolute; left:22px; bottom:96px; font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:.08em; z-index:5; opacity:.7}
+
+  /* ---------- telemetry (flight recorder) ---------- */
+  .hud-tel{display:flex; align-items:center; gap:16px}
+  .tel{display:flex; align-items:baseline; gap:5px; font-family:var(--mono); white-space:nowrap}
+  .tel .tk{font-size:9px; letter-spacing:.15em; color:var(--muted); text-transform:uppercase}
+  .tel b{font-size:15px; color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums; text-shadow:0 0 10px rgba(49,208,230,.25)}
+  .tel s{font-size:11px; color:var(--muted); text-decoration:none}
+  .tel b.dim{color:var(--muted); text-shadow:none}
+  .tel b.cx{color:var(--int); text-shadow:0 0 10px rgba(244,166,58,.3)}
+  .tel .rec{width:8px; height:8px; border-radius:50%; background:var(--fail); box-shadow:0 0 8px var(--fail); animation:blink 1.4s steps(1) infinite; margin-right:2px}
+  @keyframes blink{0%,60%{opacity:1}61%,100%{opacity:.25}}
+
+  .tape{position:absolute; top:96px; right:16px; z-index:6; width:292px;
+    background:rgba(11,17,30,.82); border:1px solid var(--hairline); border-radius:14px;
+    padding:12px 13px 11px; box-shadow:0 20px 60px rgba(0,0,0,.45); backdrop-filter:blur(4px)}
+  .tape.hide{display:none}
+  .tape h4{margin:0 0 10px; font-family:var(--mono); font-size:9.5px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--muted); display:flex; justify-content:space-between; align-items:center}
+  .tape h4 .live{color:var(--accent)}
+  .tape .rows{display:flex; flex-direction:column; gap:6px; min-height:150px}
+  .trow{display:flex; align-items:center; gap:9px; font-family:var(--mono)}
+  .trow.new{animation:tapein .45s cubic-bezier(.2,.9,.3,1.2) both}
+  @keyframes tapein{from{opacity:0; transform:translateX(10px)}to{opacity:1; transform:translateX(0)}}
+  .trow .ix{color:var(--muted); font-size:9.5px; min-width:20px; text-align:right; font-variant-numeric:tabular-nums}
+  .trow .bar{width:3px; height:26px; border-radius:2px; flex:0 0 auto; background:var(--sc,#5b6b8c); box-shadow:0 0 6px var(--sc,#5b6b8c)}
+  .trow .body{min-width:0; flex:1}
+  .trow .st{font-size:11.5px; color:var(--ink); font-weight:600; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .trow .nt{font-size:10px; color:var(--muted); line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .trow .gl{font-size:12px; flex:0 0 auto; width:14px; text-align:center}
+  @media(max-width:1180px){.tape{display:none}}
+  @media(max-width:900px){.tel.opt{display:none}}
+  @media (prefers-reduced-motion: reduce){.trow.new{animation:none} .tel .rec{animation:none}}
+
+  @media (prefers-reduced-motion: reduce){
+    #camera{transition:none}
+    .node.on .shape,.node.fail .shape{animation:none}
+    .edge.on{animation:none; stroke-dasharray:none}
+    .card-pop{animation:none}
+  }
+  @media(max-width:760px){
+    .legend{width:220px}
+    .hint{display:none}
+    .brand .sub{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hud">
+    <div class="brand">
+      <span class="glyph">UNIPILOT</span>
+      <h1>Agent Flight Recorder</h1>
+      <span class="sub">adaptive graph-planner</span>
+    </div>
+    <div class="hud-tel">
+      <div class="tel"><span class="rec" aria-hidden="true"></span><span class="tk">LLM calls</span><b id="mCalls">0</b><s>/26</s></div>
+      <div class="tel"><span class="tk">elapsed</span><b id="mClock">0.0</b><s>s</s></div>
+      <div class="tel opt"><span class="tk">complexity</span><b id="mCx" class="dim">—</b></div>
+      <div class="tel opt"><span class="tk">confidence</span><b id="mConf" class="dim">—</b></div>
+      <div class="counter"><b id="scNum">01</b> / <span id="scTot">00</span></div>
+    </div>
+  </div>
+
+  <div class="stage-wrap">
+    <button class="legend-toggle" id="legendBtn" aria-expanded="false">Legend</button>
+    <aside class="legend" id="legend" aria-hidden="true">
+      <div class="grp">
+        <h4>Specialists · workers</h4>
+        <div class="row"><span class="swatch" style="background:var(--ret);color:var(--ret)"></span><span class="k">Retrieval</span><small>fetch facts</small></div>
+        <div class="row"><span class="swatch" style="background:var(--int);color:var(--int)"></span><span class="k">Interpretation</span><small>read prose</small></div>
+        <div class="row"><span class="swatch" style="background:var(--calc);color:var(--calc)"></span><span class="k">Calculation</span><small>compute</small></div>
+        <div class="row"><span class="swatch" style="background:var(--sim);color:var(--sim)"></span><span class="k">Simulation</span><small>what-if</small></div>
+        <div class="row"><span class="swatch" style="background:var(--comp);color:var(--comp)"></span><span class="k">Composition</span><small>no tools</small></div>
+      </div>
+      <div class="grp">
+        <h4>Certainty · provenance</h4>
+        <div class="row"><span class="dotk" style="color:var(--official)">●</span><span class="k">Official record</span></div>
+        <div class="row"><span class="dotk" style="color:var(--interpreted)">◆</span><span class="k">Interpreted (wiki)</span></div>
+        <div class="row"><span class="dotk" style="color:var(--predicted)">▲</span><span class="k">Predicted / inferred</span></div>
+      </div>
+      <div class="grp">
+        <h4>Machinery</h4>
+        <div class="row"><span class="swatch" style="background:var(--accent);color:var(--accent)"></span><span class="k">Orchestration (LLM)</span></div>
+        <div class="row"><span class="swatch" style="background:var(--det);color:var(--det)"></span><span class="k">Deterministic · no LLM</span></div>
+        <div class="row"><span class="dotk">🔒</span><span class="k">Protected / proposal</span></div>
+      </div>
+    </aside>
+
+    <svg id="stage" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" role="img"
+         aria-label="Animated diagram of the UniPilot planning agent">
+      <g id="camera">
+        <g id="edges"></g>
+        <g id="nodes"></g>
+        <g id="cards"></g>
+        <g id="annot"></g>
+        <g id="packets"></g>
+      </g>
+    </svg>
+
+    <!-- intro overlay -->
+    <div class="overlay" id="ovIntro">
+      <div class="card">
+        <div class="eyebrow">UniPilot · academic advising agent</div>
+        <h2>It doesn't match your question to a menu. It <span style="color:var(--accent)">plans</span>.</h2>
+        <p class="tag">One recorded run, end to end: <b>“Am I eligible to take course 01040032 — and do I meet its prerequisites?”</b></p>
+        <div class="ideas">
+          <div class="idea"><div class="n">01</div><h3>Planning is a loop</h3><p>Plan a few steps, run them, look at what came back, re-plan — until done.</p></div>
+          <div class="idea"><div class="n">02</div><h3>Effort scales</h3><p>Simple asks run one fast call; hard ones convene a review council.</p></div>
+          <div class="idea"><div class="n">03</div><h3>Tools compute</h3><p>The LLM reasons; every fact routes through a typed tool, tagged with its certainty.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- recap overlay -->
+    <div class="overlay" id="ovRecap">
+      <div class="card">
+        <div class="eyebrow">why it holds together</div>
+        <h2>Plans, not menus. Effort that scales. Certainty that survives.</h2>
+        <div class="ideas">
+          <div class="idea"><div class="n">↻</div><h3>Adaptive loop</h3><p>The Planner re-plans from accumulated state — repairing a failed region, or here simply appending the compose step.</p></div>
+          <div class="idea"><div class="n">◑</div><h3>Effort that scales</h3><p>This run rated <b>medium</b>, so critics reviewed the plan; a trivial ask skips the council entirely.</p></div>
+          <div class="idea"><div class="n">◈</div><h3>Grounded answers</h3><p>Composition writes from memory only — every ● official ▲ predicted tag preserved to the final line.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="tape" id="tape" aria-label="Recorded LLM call tape">
+      <h4><span>Call tape · recorded</span><span class="live" id="tapeCount">0/26</span></h4>
+      <div class="rows" id="tapeRows"></div>
+    </aside>
+
+    <!-- answer overlay -->
+    <div class="overlay ans" id="ovAnswer">
+      <div class="card ans-card">
+        <div class="ans-head">
+          <span class="eyebrow">UniPilot · grounded answer</span>
+          <span class="ans-tags">
+            <span class="ptag pt-pred">▲ not offered in summer</span>
+            <span class="ptag pt-off">● prereqs met · 01040031</span>
+          </span>
+        </div>
+        <p class="ans-he" dir="rtl" lang="he">לצערי, אינך יכול/ה להירשם לקורס <b>01040032</b> (חשבון אינפיניטסימלי 2מ׳) בסמסטר הנוכחי (קיץ 2025). הסיבה העיקרית: הקורס פשוט אינו מוצע בסמסטר קיץ — היסטורית מעולם לא נלמד בסמסטר 3. מבחינת דרישות הקדם, הקורס דורש <b>01040195</b> או <b>01040031</b>, ועמדת בהצלחה ב־01040031 (ציון 85) — כך שמבחינת דרישות הקדם לא היית נחסם/ת.</p>
+        <p class="ans-en" lang="en"><span class="glabel">EN</span> You <em>do</em> meet the prerequisites — 01040032 requires <b>01040195 or 01040031</b>, and you passed 01040031 (grade 85). But you can't take it this semester: the course simply isn't offered in summer — it has never run in semester 3.</p>
+      </div>
+    </div>
+
+    <div class="hint" id="hint">SPACE play/pause · ← → step · click the timeline to jump</div>
+    <div class="caption" id="caption">
+      <div class="act" id="capAct">SCENE</div>
+      <div class="txt" id="capTxt"></div>
+    </div>
+  </div>
+
+  <div class="dock">
+    <div class="transport">
+      <button class="btn" id="prevBtn" title="Previous (←)" aria-label="Previous scene">
+        <svg viewBox="0 0 24 24"><path d="M7 5h2v14H7zM20 5v14l-11-7z"/></svg></button>
+      <button class="btn play" id="playBtn" title="Play / pause (space)" aria-label="Play or pause">
+        <svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      <button class="btn" id="nextBtn" title="Next (→)" aria-label="Next scene">
+        <svg viewBox="0 0 24 24"><path d="M15 5h2v14h-2zM4 5l11 7-11 7z"/></svg></button>
+    </div>
+    <div class="scrub">
+      <div class="ticks" id="ticks"></div>
+      <div class="chapter"><b id="chapNum">01</b> · <span id="chapName">—</span></div>
+    </div>
+    <div class="speed" id="speed">
+      <button class="sp" data-s="0.5">0.5×</button>
+      <button class="sp on" data-s="1">1×</button>
+      <button class="sp" data-s="1.6">1.6×</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const NS="http://www.w3.org/2000/svg";
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const C={accent:"#31d0e6",det:"#2fd98f",ret:"#4d8dff",int:"#f4a63a",calc:"#2fd98f",
+  sim:"#a06bff",comp:"#ff6faa",critic:"#8aa0d8",tool:"#5b6b8c",propose:"#b57bff",
+  official:"#37d979",interpreted:"#f4a63a",predicted:"#4d8dff",fail:"#ff5c6c",
+  ink:"#e8eefb",muted:"#8091b0"};
+const VIEW={w:1600,h:900};
+const $=id=>document.getElementById(id);
+function E(tag,attrs){const e=document.createElementNS(NS,tag);if(attrs)for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+/* ------------------------------------------------------------------ nodes */
+// role -> color var
+const ROLE={accent:C.accent,det:C.det,critic:C.critic,ring:"#4a5b7d",
+  ret:C.ret,int:C.int,calc:C.calc,sim:C.sim,comp:C.comp,tool:C.tool,propose:C.propose,neutral:"#6f80a6"};
+
+const NODES=[
+  // ---- main pipeline ----
+  {id:"orch",shape:"ring",x:470,y:250,w:1180,h:560,label:"Orchestrator Loop ⟳"},
+  {id:"user",shape:"bubble",cx:110,cy:440,w:150,h:92,label:"USER",role:"neutral"},
+  {id:"ru",shape:"prism",cx:340,cy:440,w:168,h:120,label:["REQUEST","UNDERSTANDING"],role:"accent"},
+  {id:"planner",shape:"rect",cx:645,cy:445,w:158,h:98,label:"PLANNER",role:"accent"},
+  {id:"dispatch",shape:"rect",cx:985,cy:352,w:176,h:84,label:["PER-STEP","DISPATCH"],role:"accent"},
+  {id:"spec_ret",shape:"spec",cx:865,cy:522,r:21,label:"RET",role:"ret"},
+  {id:"spec_int",shape:"spec",cx:925,cy:522,r:21,label:"INT",role:"int"},
+  {id:"spec_calc",shape:"spec",cx:985,cy:522,r:21,label:"CAL",role:"calc"},
+  {id:"spec_sim",shape:"spec",cx:1045,cy:522,r:21,label:"SIM",role:"sim"},
+  {id:"spec_comp",shape:"spec",cx:1105,cy:522,r:21,label:"CMP",role:"comp"},
+  {id:"ledger",shape:"ledger",cx:1294,cy:560,w:252,h:250,label:"PLAN STATE"},
+  {id:"monitor",shape:"monitor",cx:1430,cy:360,w:158,h:98,label:"MONITOR"},
+  {id:"composition",shape:"rect",cx:1770,cy:440,w:158,h:98,label:"COMPOSITION",role:"comp"},
+  {id:"response",shape:"bubble",cx:1962,cy:440,w:150,h:92,label:"ANSWER",role:"accent"},
+
+  // ---- council cluster (below-left) ----
+  {id:"draft",shape:"rect",cx:520,cy:1180,w:150,h:92,label:"DRAFTER",role:"accent"},
+  {id:"validator",shape:"hex",cx:742,cy:1120,w:140,h:92,label:"VALIDATOR",role:"det"},
+  {id:"selector",shape:"rect",cx:742,cy:1268,w:140,h:74,label:["CRITIC","SELECTOR"],role:"det"},
+  {id:"synth",shape:"rect",cx:1198,cy:1180,w:158,h:92,label:"SYNTHESIZER",role:"accent"},
+  {id:"planOut",shape:"card",cx:1372,cy:1180,w:120,h:104,label:["PLAN","BATCH"],role:"accent"},
+
+  // ---- dispatch cluster (its own band, below the council) ----
+  {id:"router",shape:"rect",cx:1176,cy:1636,w:164,h:90,label:["SPECIALIST","ROUTER"],role:"accent"},
+  {id:"specInst",shape:"avatar",cx:1404,cy:1636,w:120,h:120,label:"SPECIALIST",role:"ret"},
+  {id:"resultCard",shape:"card",cx:1908,cy:1612,w:158,h:112,label:"RESULT",role:"ret"},
+  {id:"successCheck",shape:"rect",cx:1908,cy:1800,w:158,h:66,label:["SUCCESS","CHECK"],role:"det"},
+];
+// critics (6) — palette column
+const CRITICS=[["cov","COVERAGE"],["gnd","GROUNDING"],["cri","CRITERIA"],
+  ["par","PARSIMONY"],["str","STRATEGY"],["dom","DOMAIN"]];
+CRITICS.forEach(([k,name],i)=>NODES.push(
+  {id:"critic_"+k,shape:"chip",cx:972,cy:1042+i*58,w:158,h:44,label:name,role:"critic"}));
+// tool rack (9) — 3x3 grid
+const TOOLS=["entity","search","traverse","interpret","temporal","rule","mutate","search·st","propose"];
+TOOLS.forEach((name,i)=>{
+  const col=i%3, row=(i/3)|0;
+  NODES.push({id:"tool_"+i,shape:"tool",cx:1618+col*72,cy:1580+row*56,w:64,h:44,
+    label:name,role:i===8?"propose":"tool",lock:i===8});
+});
+// cluster headings (decorative text nodes)
+const HEADINGS=[
+  {x:742,y:990,title:"INSIDE THE PLANNER",sub:"adaptive council · validate → critics → synth"},
+  {x:1500,y:1500,title:"INSIDE ONE STEP",sub:"specialist dispatch · reason, then route to a tool"},
+];
+
+const nodeById={}; NODES.forEach(n=>nodeById[n.id]=n);
+function cx(n){return n.shape==="ring"?n.x+n.w/2:n.cx;}
+function cy(n){return n.shape==="ring"?n.y+n.h/2:n.cy;}
+
+/* ------------------------------------------------------------------ edges */
+const EDGES=[
+  ["e_user_ru","user","ru","flow"],
+  ["e_ru_pl","ru","planner","flow"],
+  ["e_pl_disp","planner","dispatch","flow"],
+  ["e_disp_ret","dispatch","spec_ret","flow"],
+  ["e_disp_int","dispatch","spec_int","flow"],
+  ["e_disp_calc","dispatch","spec_calc","flow"],
+  ["e_disp_sim","dispatch","spec_sim","flow"],
+  ["e_ret_led","spec_ret","ledger","flow"],
+  ["e_int_led","spec_int","ledger","flow"],
+  ["e_calc_led","spec_calc","ledger","flow"],
+  ["e_sim_led","spec_sim","ledger","flow"],
+  ["e_led_mon","ledger","monitor","flow"],
+  ["e_mon_pl","monitor","planner","loopback"],
+  ["e_led_comp","ledger","composition","flow"],
+  ["e_comp_resp","composition","response","flow"],
+  // council
+  ["c_dr_val","draft","validator","flow"],
+  ["c_val_sel","validator","selector","flow"],
+  ["c_sel_dom","selector","critic_dom","flow"],
+  ["c_sel_cov","selector","critic_cov","flow"],
+  ["c_dom_syn","critic_dom","synth","flow"],
+  ["c_cov_syn","critic_cov","synth","flow"],
+  ["c_sel_gnd","selector","critic_gnd","flow"],
+  ["c_gnd_syn","critic_gnd","synth","flow"],
+  ["c_syn_out","synth","planOut","flow"],
+  ["c_dr_out","draft","planOut","cheap"],
+  // dispatch
+  ["d_rt_inst","router","specInst","flow"],
+  ["d_inst_tool","specInst","tool_0","flow"],
+  ["d_tool_inst","tool_0","specInst","flow"],
+  ["d_inst_res","specInst","resultCard","flow"],
+  ["d_res_chk","resultCard","successCheck","flow"],
+];
+function edgePath(a,b,kind){
+  const ax=cx(a),ay=cy(a),bx=cx(b),by=cy(b);
+  if(kind==="loopback"){const m=Math.min(ay,by)-150;return `M ${ax} ${ay} C ${ax} ${m}, ${bx} ${m}, ${bx} ${by}`;}
+  if(kind==="cheap"){const m=Math.min(ay,by)-90;return `M ${ax} ${ay} C ${ax} ${m}, ${bx} ${m}, ${bx} ${by}`;}
+  const dx=(bx-ax)*0.42;
+  return `M ${ax} ${ay} C ${ax+dx} ${ay}, ${bx-dx} ${by}, ${bx} ${by}`;
+}
+
+/* ------------------------------------------------------------------ render world */
+const gEdges=$("edges"),gNodes=$("nodes"),gCards=$("cards"),gPackets=$("packets"),cam=$("camera");
+const edgeEl={};
+EDGES.forEach(([id,a,b,kind])=>{
+  const p=E("path",{class:"edge",id:"E_"+id,d:edgePath(nodeById[a],nodeById[b],kind)});
+  gEdges.appendChild(p); edgeEl[id]={el:p,len:0};
+});
+// cluster headings
+HEADINGS.forEach(h=>{
+  const t1=E("text",{class:"cluster-title",x:h.x,y:h.y,"text-anchor":"middle"});t1.textContent=h.title;
+  const t2=E("text",{class:"cluster-sub",x:h.x,y:h.y+22,"text-anchor":"middle"});t2.textContent=h.sub;
+  gNodes.appendChild(t1);gNodes.appendChild(t2);
+});
+function addLabel(g,label,x,y,cls){
+  const arr=Array.isArray(label)?label:[label];
+  const off=(arr.length-1)*9;
+  arr.forEach((line,i)=>{
+    const t=E("text",{class:"lbl"+(cls?" "+cls:""),x:x,y:y-off+i*18});t.textContent=line;g.appendChild(t);
+  });
+}
+NODES.forEach(n=>{
+  const g=E("g",{class:"node","data-id":n.id});
+  g.style.setProperty("--c",ROLE[n.role]||ROLE.neutral);
+  const X=cx(n),Y=cy(n);
+  if(n.shape==="ring"){
+    g.setAttribute("class","node ring");
+    g.appendChild(E("rect",{class:"ring-shape",x:n.x,y:n.y,width:n.w,height:n.h,rx:28}));
+    const t=E("text",{class:"ring-label",x:n.x+24,y:n.y+34});t.textContent=n.label;g.appendChild(t);
+    g.style.opacity=1;
+    gNodes.appendChild(g);return;
+  }
+  if(n.shape==="bubble"||n.shape==="rect"||n.shape==="chip"||n.shape==="tool"||n.shape==="card"){
+    const rx=n.shape==="bubble"?18:(n.shape==="tool"?8:12);
+    g.appendChild(E("rect",{class:"shape",x:X-n.w/2,y:Y-n.h/2,width:n.w,height:n.h,rx:rx}));
+    addLabel(g,n.label,X,Y,(n.shape==="tool"||n.shape==="chip")?"sm":null);
+  }else if(n.shape==="prism"){
+    g.appendChild(E("polygon",{class:"shape",points:`${X-n.w/2},${Y} ${X-6},${Y-n.h/2} ${X+n.w/2},${Y} ${X-6},${Y+n.h/2}`}));
+    addLabel(g,n.label,X-4,Y,"sm");
+  }else if(n.shape==="hex"){
+    const w=n.w/2,h=n.h/2;
+    g.appendChild(E("polygon",{class:"shape",points:`${X-w},${Y} ${X-w/2},${Y-h} ${X+w/2},${Y-h} ${X+w},${Y} ${X+w/2},${Y+h} ${X-w/2},${Y+h}`}));
+    addLabel(g,n.label,X,Y,"sm");
+  }else if(n.shape==="avatar"){
+    g.appendChild(E("circle",{class:"shape",cx:X,cy:Y-6,r:n.w/2}));
+    addLabel(g,n.label,X,Y+n.w/2+8,"sm");
+  }else if(n.shape==="spec"){
+    g.appendChild(E("circle",{class:"shape",cx:X,cy:Y,r:n.r}));
+    const t=E("text",{class:"lbl sm",x:X,y:Y+n.r+13});t.textContent=n.label;g.appendChild(t);
+  }else if(n.shape==="monitor"){
+    g.appendChild(E("rect",{class:"shape",x:X-n.w/2,y:Y-n.h/2,width:n.w,height:n.h,rx:12}));
+    const t=E("text",{class:"lbl sm",x:X,y:Y-14});t.textContent="MONITOR";g.appendChild(t);
+    ["red","amber","green"].forEach((c,i)=>
+      g.appendChild(E("circle",{class:"mon-dot","data-c":c,cx:X-26+i*26,cy:Y+16,r:8})));
+  }else if(n.shape==="ledger"){
+    g.appendChild(E("rect",{class:"shape",x:X-n.w/2,y:Y-n.h/2,width:n.w,height:n.h,rx:14}));
+    const t=E("text",{class:"lbl sm",x:X,y:Y-n.h/2+20});t.textContent="PLAN STATE";g.appendChild(t);
+    g.style.opacity=1; // ledger always present
+  }
+  // lock glyph (protected/proposal)
+  if(n.shape!=="ring"&&n.shape!=="ledger"){
+    const hw=n.w?n.w/2:(n.r||0), hh=n.h?n.h/2:(n.r||0);
+    const lk=E("text",{class:"lock",x:X+hw-4,y:Y-hh+6,"text-anchor":"middle"});
+    lk.textContent="🔒"; g.appendChild(lk);
+    if(n.lock){lk.style.opacity=".9";lk.setAttribute("y",Y+hh+2);}
+  }
+  gNodes.appendChild(g);
+});
+const nodeEl={}; gNodes.querySelectorAll(".node").forEach(g=>nodeEl[g.getAttribute("data-id")]=g);
+// measure edge lengths (after layout)
+requestAnimationFrame(()=>{for(const k in edgeEl)edgeEl[k].len=edgeEl[k].el.getTotalLength();});
+
+/* ------------------------------------------------------------------ camera regions */
+const R={
+  OVERVIEW:{x:20,y:222,w:2060,h:648},
+  RU:{x:20,y:352,w:540,h:300},
+  LAYER:{x:558,y:296,w:1010,h:440},
+  COUNCIL:{x:418,y:958,w:1060,h:466},
+  DISPATCH:{x:1080,y:1470,w:940,h:400},
+  REPLAN:{x:560,y:300,w:1010,h:520},
+  COMPOSE:{x:1150,y:352,w:900,h:320},
+};
+function camTransform(r){
+  const s=Math.min(VIEW.w/r.w,VIEW.h/r.h);
+  const tx=(VIEW.w-r.w*s)/2 - r.x*s;
+  const ty=(VIEW.h-r.h*s)/2 - r.y*s;
+  return `translate(${tx} ${ty}) scale(${s})`;
+}
+
+/* ------------------------------------------------------------------ certainty cards */
+const TAG={official:{c:C.official,i:"●",t:"official"},interpreted:{c:C.interpreted,i:"◆",t:"interpreted"},
+  predicted:{c:C.predicted,i:"▲",t:"predicted"},sim:{c:C.predicted,i:"✦",t:"projected"},final:{c:C.comp,i:"✓",t:"answer"}};
+function renderCards(list){
+  gCards.innerHTML="";
+  const led=nodeById.ledger, x0=cx(led)-led.w/2+14, y0=cy(led)-led.h/2+34, W=led.w-28, H=32, GAP=4;
+  list.slice(-6).forEach((cardData,i)=>{
+    const y=y0+i*(H+GAP);
+    const meta=TAG[cardData.t]||TAG.official;
+    const g=E("g",{class:reduced?"":"card-pop"});
+    g.appendChild(E("rect",{class:"card-rect",x:x0,y:y,width:W,height:H,rx:7}));
+    g.appendChild(E("rect",{class:"card-bar",x:x0,y:y,width:5,height:H,rx:2.5,fill:meta.c,style:`color:${meta.c};filter:drop-shadow(0 0 6px ${meta.c})`}));
+    const ic=E("text",{class:"card-txt",x:x0+15,y:y+H/2+4,fill:meta.c,style:`filter:drop-shadow(0 0 4px ${meta.c})`});ic.textContent=meta.i;g.appendChild(ic);
+    const tx=E("text",{class:"card-txt",x:x0+32,y:y+H/2+4});tx.textContent=cardData.label;g.appendChild(tx);
+    if(cardData.note){const nt=E("text",{class:"card-tag",x:x0+W-8,y:y+H/2+4,"text-anchor":"end"});nt.textContent=cardData.note;g.appendChild(nt);}
+    gCards.appendChild(g);
+  });
+}
+
+/* ------------------------------------------------------------------ annotations (badges + sub-asks) */
+const gAnnot=$("annot");
+function renderAnnot(s){
+  gAnnot.innerHTML="";
+  (s.badges||[]).forEach(b=>{
+    const n=nodeById[b.id]; if(!n)return;
+    const X=cx(n),Y=cy(n),hw=n.r||(n.w/2),hh=n.r||(n.h/2),bx=X+hw-2,by=Y-hh+2;
+    const g=E("g",{class:"badge"+(reduced?"":" pop")});
+    g.style.setProperty("--c",ROLE[n.role]||ROLE.neutral);
+    g.appendChild(E("circle",{class:"badge-c",cx:bx,cy:by,r:15}));
+    const t=E("text",{class:"badge-t",x:bx,y:by+1});t.textContent=b.t;g.appendChild(t);
+    gAnnot.appendChild(g);
+  });
+  if(s.subasks){
+    const items=[["1","eligible to take 01040032?"],["2","prerequisites met?"]];
+    const cxr=340,w=252,x=cxr-w/2,h=34;
+    const lbl=E("text",{class:"sa-lbl",x:cxr,y:511});lbl.textContent="ONE PROMPT → TWO SUB-ASKS";gAnnot.appendChild(lbl);
+    items.forEach(([num,txt],i)=>{
+      const y=524+i*44;
+      const g=E("g",{class:reduced?"":"sa-pop"});g.style.animationDelay=(i*0.13)+"s";
+      g.appendChild(E("rect",{class:"sa-chip",x:x,y:y,width:w,height:h,rx:9}));
+      const nn=E("text",{class:"sa-num",x:x+16,y:y+h/2+4});nn.textContent=num;g.appendChild(nn);
+      const tx=E("text",{class:"sa-txt",x:x+34,y:y+h/2+4});tx.textContent=txt;g.appendChild(tx);
+      gAnnot.appendChild(g);
+    });
+  }
+}
+
+/* ------------------------------------------------------------------ scenes */
+// helper packet defs: {edge, color, start(0-1 of scene), dur(0-1), r, reverse}
+const P=(edge,color,start=0.15,dur=0.55,extra={})=>Object.assign({edge,color,start,dur},extra);
+const SCENES=[
+  {act:"Overview",name:"The question",cam:R.OVERVIEW,dur:5200,overlay:"intro",active:[],
+   cap:`A recorded run of one real question — answered by <em>planning</em>, not by matching a fixed menu of intents.`},
+
+  {act:"Act 1 · Understand",name:"A student asks",cam:R.RU,dur:4600,active:["user"],
+   packets:[P("e_user_ru",C.accent,.25,.55)],
+   cap:`A student asks: <em>“Am I eligible to take course 01040032 — and do I meet its prerequisites?”</em>`},
+
+  {act:"Act 1 · Understand",name:"Request Understanding",cam:R.RU,dur:5200,active:["ru"],subasks:true,
+   cap:`<em>Request Understanding</em> splits it into two sub-asks — <em>am I eligible?</em> and <em>do I meet the prerequisites?</em> — in a single LLM call, 0.95 confidence. In scope: Technion advising.`},
+
+  {act:"Act 1 · Understand",name:"Effort: medium",cam:R.LAYER,dur:4800,active:["orch","planner"],
+   packets:[P("e_ru_pl",C.accent,.2,.55)],
+   cap:`A <em>Complexity Classifier</em> rates the planning effort <em>medium</em> — enough to convene the review council before running anything.`},
+
+  {act:"Act 2 · Plan",name:"The Planner drafts",cam:R.COUNCIL,dur:5200,active:["draft","validator"],
+   packets:[P("c_dr_val",C.accent,.2,.45)],
+   cap:`The Drafter lays out four steps: fetch the <em>profile</em>, <em>completed courses</em>, and <em>course 01040032</em> in parallel — then a fourth step checks eligibility against all three.`},
+
+  {act:"Act 2 · Plan",name:"Critics find nothing",cam:R.COUNCIL,dur:5400,active:["selector","critic_gnd","critic_dom"],
+   packets:[P("c_sel_gnd",C.critic,.2,.45),P("c_sel_dom",C.critic,.2,.45)],
+   cap:`Two critics fire in parallel — <em>Grounding</em> and <em>Domain</em>. Each hunts one class of defect. Both return <em>zero issues</em>: the plan is sound as drafted.`},
+
+  {act:"Act 2 · Plan",name:"Ship as drafted",cam:R.COUNCIL,dur:4600,active:["draft","planOut"],
+   packets:[P("c_dr_out",C.det,.2,.5)],
+   cap:`Nothing to repair, so no Synthesizer rewrite — the plan batch ships exactly as drafted, with its parallel execution layer.`},
+
+  {act:"Act 3 · Execute",name:"Three fetches at once",cam:R.LAYER,dur:5600,active:["dispatch","spec_ret","ledger"],
+   packets:[P("e_pl_disp",C.accent,.1,.3),P("e_disp_ret",C.ret,.3,.26),P("e_disp_ret",C.ret,.4,.26),
+            P("e_ret_led",C.official,.6,.3),P("e_ret_led",C.official,.7,.3)],
+   cards:[{t:"official",label:"student profile"},{t:"official",label:"completed courses"},
+          {t:"official",label:"course 01040032"}],
+   badges:[{id:"dispatch",t:"×3"},{id:"spec_ret",t:"×6"}],
+   cap:`Steps A, B and C have no dependencies, so they run <em>at once</em>. Retrieval pulls the profile, the completed-courses record, and course 01040032's catalog entry — three green <em>official</em> records.`},
+
+  {act:"Act 3 · Execute",name:"All criteria met",cam:R.LAYER,dur:4800,active:["ledger","monitor","planner"],monitor:"green",
+   packets:[P("e_led_mon",C.official,.15,.35),P("e_mon_pl",C.accent,.5,.4)],
+   cards:[{t:"official",label:"student profile"},{t:"official",label:"completed courses"},
+          {t:"official",label:"course 01040032"}],
+   cap:`A fast deterministic <em>success check</em> verifies each fetch met its criteria. All green → the loop advances to the eligibility step.`},
+
+  {act:"Act 3 · Execute",name:"Eligibility is a prediction",cam:R.LAYER,dur:5600,active:["dispatch","spec_sim","ledger"],
+   packets:[P("e_disp_sim",C.sim,.2,.3),P("e_sim_led",C.predicted,.55,.3)],
+   cards:[{t:"official",label:"course 01040032"},{t:"official",label:"01040031 passed",note:"85"},
+          {t:"predicted",label:"not offered in summer"}],
+   badges:[{id:"spec_sim",t:"×2"}],
+   cap:`The eligibility step routes to <em>Simulation</em> — the answer hinges on a <em>pattern</em>: 01040032 has historically never run in summer. Tagged <em>predicted</em>, kept distinct from a fact on record.`},
+
+  {act:"Act 3 · Execute",name:"A malformed reply, repaired",cam:R.DISPATCH,dur:5400,active:["specInst","resultCard","successCheck"],
+   packets:[P("d_inst_res",C.sim,.15,.3),P("d_res_chk",C.det,.55,.35)],
+   cap:`Inside that step, the specialist's first reply came back as <em>malformed JSON</em>. A deterministic repair pass restructures it — no second model call, no lost work — and the success check clears it.`},
+
+  {act:"Act 4 · Replan",name:"Enough to answer",cam:R.REPLAN,dur:5400,active:["monitor","planner"],monitor:"green",
+   packets:[P("e_mon_pl",C.accent,.3,.45)],
+   cards:[{t:"official",label:"course 01040032"},{t:"official",label:"01040031 passed"},
+          {t:"predicted",label:"not offered in summer"}],
+   cap:`The Planner is re-invoked. Every fact is gathered and eligibility resolved — so instead of more retrieval it appends a single <em>composition</em> step. The plan is complete.`},
+
+  {act:"Act 5 · Answer",name:"Compose from memory",cam:R.COMPOSE,dur:5400,active:["ledger","composition"],
+   packets:[P("e_led_comp",C.official,.15,.28),P("e_led_comp",C.predicted,.32,.28)],
+   cards:[{t:"official",label:"course 01040032"},{t:"official",label:"01040031 passed"},
+          {t:"predicted",label:"not offered in summer"}],
+   cap:`<em>Composition</em> uses no tools. It writes the answer from accumulated Plan State only — never re-deriving a fact — preserving every ● official ▲ predicted tag.`},
+
+  {act:"Act 5 · Answer",name:"Back to the student",cam:R.COMPOSE,dur:7200,overlay:"answer",active:["composition","response"],
+   packets:[P("e_comp_resp",C.comp,.15,.4)],
+   cards:[{t:"final",label:"grounded answer"}],
+   cap:`The final reply — written in the student's own language, every certainty tag intact.`},
+
+  {act:"Recap",name:"Why it holds together",cam:R.OVERVIEW,dur:6000,overlay:"recap",active:[],
+   cap:`Plans, not menus · effort that scales with difficulty · every fact carrying its certainty, from fetch to final answer.`},
+];
+
+/* ------------------------------------------------------------------ telemetry (real trace) */
+// Recorded run: 26 LLM calls, 65.95s. Per scene → cumulative {calls, secs} + newly-revealed call-tape rows.
+// Row: [index, stage, note, status]  status: ok|warn|flow
+const TOTAL_CALLS=26, TOTAL_SECS=65.95;
+const STAGE_COL={understanding:C.accent,complexity:C.accent,planner:C.accent,plan:C.accent,
+  critic:C.critic,router:"#5b6b8c",retrieval:C.ret,success:C.det,simulation:C.sim,json:C.interpreted,composition:C.comp};
+const GLYPH={ok:["✓",C.official],warn:["⚠",C.interpreted],flow:["›",C.muted]};
+const TEL=[
+  {c:0,  s:0,     rows:[]},
+  {c:0,  s:0.6,   rows:[]},
+  {c:1,  s:7,     rows:[["00","understanding","2 sub-asks · in-scope","ok"]]},
+  {c:2,  s:11,    rows:[["01","complexity","→ medium","ok"]]},
+  {c:3,  s:17,    rows:[["02","planner","4 steps · A·B·C ∥ D","ok"]]},
+  {c:5,  s:25,    rows:[["03","critic·grounding","0 issues","ok"],["04","critic·domain","0 issues","ok"]]},
+  {c:5,  s:27,    rows:[["—","plan","ships as drafted","flow"]]},
+  {c:14, s:41,    rows:[["05","router ×3","→ retrieval","flow"],["08","retrieval ×6","profile · courses · 01040032","ok"]]},
+  {c:17, s:47,    rows:[["14","success ×3","criteria met","ok"]]},
+  {c:20, s:55,    rows:[["17","router","→ simulation","flow"],["18","simulation ×2","eligibility · predicted","ok"]]},
+  {c:22, s:59,    rows:[["20","json·repair","malformed → fixed","warn"],["21","success","cleared","ok"]]},
+  {c:23, s:62,    rows:[["22","planner·replan","+compose · complete","ok"]]},
+  {c:25, s:64.5,  rows:[["23","router","→ composition","flow"],["24","composition","from Plan State","ok"]]},
+  {c:26, s:65.95, rows:[["25","success","answer delivered","ok"]]},
+  {c:26, s:65.95, rows:[]},
+];
+const mCalls=$("mCalls"),mClock=$("mClock"),mCx=$("mCx"),mConf=$("mConf"),
+      tapeRows=$("tapeRows"),tapeCount=$("tapeCount");
+let dCalls=0,dClock=0,tCalls=0,tClock=0;
+function renderTape(i){
+  const rows=[];
+  for(let k=0;k<=i;k++)(TEL[k]?.rows||[]).forEach(r=>rows.push({r,isNew:k===i}));
+  const vis=rows.slice(-8);
+  tapeRows.innerHTML="";
+  vis.forEach(({r,isNew})=>{
+    const [ix,stage,note,st]=r;
+    const key=stage.split(/[·× ]/)[0];
+    const col=STAGE_COL[key]||"#5b6b8c";
+    const [g,gc]=GLYPH[st]||GLYPH.flow;
+    const row=document.createElement("div");
+    row.className="trow"+(isNew&&!reduced?" new":"");
+    row.style.setProperty("--sc",col);
+    row.innerHTML=`<span class="ix">${ix}</span><span class="bar"></span>`+
+      `<span class="body"><span class="st">${stage}</span><span class="nt">${note}</span></span>`+
+      `<span class="gl" style="color:${gc}">${g}</span>`;
+    tapeRows.appendChild(row);
+  });
+  tapeCount.textContent=(TEL[i]?.c??0)+"/"+TOTAL_CALLS;
+}
+function applyTelemetry(i){
+  const t=TEL[i]||TEL[TEL.length-1];
+  tCalls=t.c; tClock=t.s;
+  mCx.textContent=i>=3?"medium":"—"; mCx.className=i>=3?"cx":"dim";
+  mConf.textContent=i>=2?"0.95":"—"; mConf.className=i>=2?"":"dim";
+  if(reduced){dCalls=tCalls;dClock=tClock;mCalls.textContent=tCalls;mClock.textContent=tClock.toFixed(1);}
+  renderTape(i);
+}
+
+/* ------------------------------------------------------------------ player */
+let cur=0, elapsed=0, playing=false, speed=1, last=performance.now();
+const capAct=$("capAct"),capTxt=$("capTxt"),scNum=$("scNum"),chapNum=$("chapNum"),chapName=$("chapName");
+$("scTot").textContent=String(SCENES.length).padStart(2,"0");
+
+// build ticks — grouped & tinted by act
+const ACT_COL={"Overview":C.muted,"Act 1 · Understand":C.accent,"Act 2 · Plan":C.critic,
+  "Act 3 · Execute":C.ret,"Act 4 · Replan":C.sim,"Act 5 · Answer":C.comp,"Recap":C.muted};
+const ticksEl=$("ticks"); const tickEls=[]; let prevAct=null;
+SCENES.forEach((s,i)=>{
+  const t=document.createElement("div");t.className="tick"+(i>0&&s.act!==prevAct?" grp":"");t.title=s.act+" · "+s.name;
+  t.style.setProperty("--ac",ACT_COL[s.act]||C.accent);
+  t.setAttribute("role","button");t.setAttribute("tabindex","0");t.setAttribute("aria-label",`Scene ${i+1}: ${s.act} — ${s.name}`);
+  const f=document.createElement("div");f.className="fill";t.appendChild(f);
+  t.addEventListener("click",()=>goTo(i));
+  t.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goTo(i);}});
+  ticksEl.appendChild(t);tickEls.push({t,f}); prevAct=s.act;
+});
+
+function setNodeStates(s){
+  const on=new Set(s.active||[]),fail=new Set(s.fail||[]),prot=new Set(s.protected||[]);
+  for(const id in nodeEl){
+    const g=nodeEl[id],n=nodeById[id];
+    g.classList.remove("fail","protected");
+    if(n.shape==="ring"||n.shape==="ledger"){continue;}
+    if(fail.has(id)){g.classList.add("fail","on");}
+    else if(prot.has(id)){g.classList.add("protected");g.classList.toggle("on",false);}
+    else g.classList.toggle("on",on.has(id));
+  }
+  // orchestrator ring emphasised whenever a pipeline scene
+  nodeEl.orch.classList.toggle("on",(s.active||[]).some(id=>["planner","dispatch","monitor","ledger"].includes(id)));
+  // monitor lights
+  const monG=nodeEl.monitor;
+  monG.querySelectorAll(".mon-dot").forEach(d=>d.classList.remove("lit-green","lit-amber","lit-red"));
+  if(s.monitor){const sel=monG.querySelector(`.mon-dot[data-c="${s.monitor==="green"?"green":s.monitor==="red"?"red":"amber"}"]`);
+    if(sel)sel.classList.add("lit-"+(s.monitor==="green"?"green":s.monitor==="red"?"red":"amber"));}
+}
+function setActiveEdges(s){
+  for(const k in edgeEl)edgeEl[k].el.classList.remove("on");
+  (s.packets||[]).forEach(p=>{const e=edgeEl[p.edge];if(e)e.el.classList.add("on");});
+}
+function applyScene(i){
+  const s=SCENES[i];
+  cam.setAttribute("transform",camTransform(s.cam));
+  setNodeStates(s);
+  setActiveEdges(s);
+  renderCards(s.cards||[]);
+  renderAnnot(s);
+  capAct.textContent=s.act; capTxt.innerHTML=s.cap;
+  scNum.textContent=String(i+1).padStart(2,"0");
+  chapNum.textContent=String(i+1).padStart(2,"0"); chapName.textContent=s.name;
+  $("ovIntro").classList.toggle("show",s.overlay==="intro");
+  $("ovRecap").classList.toggle("show",s.overlay==="recap");
+  $("ovAnswer").classList.toggle("show",s.overlay==="answer");
+  applyTelemetry(i);
+  tickEls.forEach((o,k)=>{o.t.classList.toggle("cur",k===i);o.t.classList.toggle("done",k<i);o.f.style.width=k<i?"100%":"0%";});
+}
+function goTo(i){
+  cur=Math.max(0,Math.min(SCENES.length-1,i));
+  elapsed=0; gPackets.innerHTML=""; applyScene(cur);
+}
+function updatePackets(t){
+  gPackets.innerHTML="";
+  const defs=SCENES[cur].packets||[];
+  for(const p of defs){
+    const e=edgeEl[p.edge]; if(!e||!e.len)continue;
+    const local=(t-p.start)/p.dur;
+    if(local<-0.01||local>1.5)continue;
+    let prog=Math.max(0,Math.min(local,1));
+    if(reduced)prog=local<1?0.5:1;
+    if(p.reverse)prog=1-prog;
+    const pt=e.el.getPointAtLength(prog*e.len);
+    let op=1;
+    if(!reduced){if(local>1)op=Math.max(0,1-(local-1)*3.2);if(local<0.09)op=Math.max(0,local/0.09);}
+    const c=E("circle",{class:"packet",cx:pt.x,cy:pt.y,r:p.r||7,fill:p.color,opacity:op});
+    c.style.color=p.color;
+    gPackets.appendChild(c);
+  }
+}
+function frame(now){
+  const dt=Math.min(now-last,60); last=now;
+  if(playing)elapsed+=dt*speed;
+  const s=SCENES[cur],dur=s.dur;
+  updatePackets(elapsed/dur);
+  // live instrument readout — ease displayed metrics toward the scene's recorded targets
+  dCalls+=(tCalls-dCalls)*0.12; dClock+=(tClock-dClock)*0.12;
+  mCalls.textContent=Math.round(dCalls);
+  mClock.textContent=dClock.toFixed(1);
+  // progress fill on current tick
+  tickEls[cur].f.style.width=Math.min(100,(elapsed/dur)*100)+"%";
+  if(playing&&elapsed>=dur+(s.hold||500)){
+    if(cur<SCENES.length-1)goTo(cur+1);
+    else{playing=false;setPlayIcon();}
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------ controls */
+const playIcon=$("playIcon");
+function setPlayIcon(){playIcon.innerHTML=playing
+  ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'
+  : '<path d="M8 5v14l11-7z"/>';}
+function togglePlay(){
+  if(!playing&&cur===SCENES.length-1&&elapsed>=SCENES[cur].dur){goTo(0);}
+  playing=!playing;setPlayIcon();$("hint").style.opacity=playing?0:.7;
+}
+$("playBtn").addEventListener("click",togglePlay);
+$("prevBtn").addEventListener("click",()=>goTo(cur-1));
+$("nextBtn").addEventListener("click",()=>goTo(cur+1));
+$("speed").addEventListener("click",e=>{
+  const b=e.target.closest(".sp");if(!b)return;
+  speed=parseFloat(b.dataset.s);
+  document.querySelectorAll(".sp").forEach(x=>x.classList.toggle("on",x===b));
+});
+$("legendBtn").addEventListener("click",()=>{
+  const l=$("legend"),open=l.classList.toggle("show");
+  $("legendBtn").setAttribute("aria-expanded",open);l.setAttribute("aria-hidden",!open);
+});
+document.addEventListener("keydown",e=>{
+  if(e.key===" "){e.preventDefault();togglePlay();}
+  else if(e.key==="ArrowRight")goTo(cur+1);
+  else if(e.key==="ArrowLeft")goTo(cur-1);
+});
+
+/* ------------------------------------------------------------------ go */
+applyScene(0);
+setPlayIcon();
+requestAnimationFrame(()=>{           // ensure edge lengths measured, then autoplay
+  for(const k in edgeEl)edgeEl[k].len=edgeEl[k].el.getTotalLength();
+  playing=true;setPlayIcon();$("hint").style.opacity=0;
+  requestAnimationFrame(frame);
+});
+})();
+</script>
+</body>
+</html>

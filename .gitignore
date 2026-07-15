@@ -73,14 +73,18 @@ graphify-out/
 .graphify/
 **/.graphify/
 
-# Golden-set eval traces and local debug artifacts (services/agent only —
-# NOT the pytest live-eval logs under services/ai/tests/agent_core/live_eval_logs/,
-# which are intentionally tracked so the team can share and inspect runs)
+# Golden-set eval traces and local debug artifacts (services/agent only)
 services/agent/tmp/
 **/final_answer_eval_traces/
 **/final_answer_eval_traces_raw/
 **/raw_llm/
 **/raw_llm_debug/
+
+# Pytest live-eval dumps (large; one new timestamped JSON per run).
+# Already-tracked runs stay tracked so teammates can pull them.
+# To share a new run: git add -f services/ai/tests/agent_core/live_eval_logs/<file>.json
+**/live_eval_logs/*.json
+**/live_eval_logs/check.py
 
 services/api/data/cache/wiki_embedding_index.json
 services/api/data/cache/wiki_embedding_index.compact.pkl.gz

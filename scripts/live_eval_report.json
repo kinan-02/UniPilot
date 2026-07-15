@@ -1,0 +1,32 @@
+[
+  {
+    "question": "What is course 234218?",
+    "expected_tier": "low",
+    "status": "CRASHED",
+    "error": "'TurnReasoningConfig' object has no attribute 'planner_thinking_enabled'"
+  },
+  {
+    "question": "What are my remaining graduation requirements?",
+    "expected_tier": "low",
+    "status": "CRASHED",
+    "error": "'TurnReasoningConfig' object has no attribute 'planner_thinking_enabled'"
+  },
+  {
+    "question": "Am I eligible to take Data Structures next semester?",
+    "expected_tier": "medium",
+    "status": "CRASHED",
+    "error": "'TurnReasoningConfig' object has no attribute 'planner_thinking_enabled'"
+  },
+  {
+    "question": "If I fail Linear Algebra this semester, how does that affect my graduation timeline?",
+    "expected_tier": "high",
+    "status": "CRASHED",
+    "error": "'TurnReasoningConfig' object has no attribute 'planner_thinking_enabled'"
+  },
+  {
+    "question": "Write me a poem about graduation",
+    "expected_tier": "out_of_scope",
+    "status": "CRASHED",
+    "error": "'TurnReasoningConfig' object has no attribute 'planner_thinking_enabled'"
+  }
+]

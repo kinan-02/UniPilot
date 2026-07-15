@@ -30,6 +30,7 @@ from typing import AsyncIterator
 
 import pytest
 from bson import ObjectId
+from tqdm import tqdm
 
 import app.db.mongo as mongo_module
 from app.agent_core.reasoning.llm_client import agent_llm_available
@@ -50,6 +51,36 @@ def live_eval_log():
     log = LiveEvalLog(suite_name="full_agent_e2e")
     yield log
     log.write()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _live_eval_progress_bar(request):
+    """A SINGLE progress bar for the whole live sweep.
+
+    Deliberately module-scoped so exactly one `tqdm` instance is created and
+    then updated in place -- never re-instantiated per test, which is what would
+    otherwise spam a fresh bar for every scenario. The paired autouse fixture
+    below advances this one bar once per test.
+
+    Run the suite with `-s` (e.g. `-m live -s --no-cov`, no `-v`) so pytest does
+    not capture the bar's stderr output and it renders live in your terminal.
+    """
+    total = sum(1 for name in dir(request.module) if name.startswith("test_"))
+    bar = tqdm(total=total, desc="live eval", unit="scenario", leave=True)
+    try:
+        yield bar
+    finally:
+        bar.close()
+
+
+@pytest.fixture(autouse=True)
+def _advance_live_eval_progress(_live_eval_progress_bar, request):
+    """Label the shared bar with the running scenario, then advance it by one
+    when the test finishes (teardown runs on pass *and* fail, so the bar always
+    reflects true progress)."""
+    _live_eval_progress_bar.set_postfix_str(request.node.name, refresh=True)
+    yield
+    _live_eval_progress_bar.update(1)
 
 
 @pytest.fixture(autouse=True)

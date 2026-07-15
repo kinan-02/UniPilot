@@ -34,7 +34,7 @@ from typing import Any, Literal
 
 from pydantic import Field, ValidationError
 
-from app.agent_core.planning.state import CertaintyTag, ToolInvocationRecord
+from app.agent_core.planning.state import CertaintyTag, StateEntry, ToolInvocationRecord
 from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
@@ -330,6 +330,41 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
         return self._calculation_failed_output(reason=f"reasoning_block_failed: {reason}")
 
 
+def _unwrap_fact_envelope(value: Any) -> Any:
+    """Retrieval facts arrive wrapped as `{key, value, source, confidence}`
+    (the canonical retrieval-block shape -- see `orchestrator/state_index.py`).
+    The expression evaluator does a single-hop `facts[ref]` lookup with no
+    dotted-path traversal, so a list/number fact left inside its envelope
+    resolves to the wrapper dict -- producing `of_not_a_list` (or a ref that
+    can't be summed/counted) no matter how the expression is retried. Unwrap to
+    the inner `.value` so `{"ref": "completedCourses"}` binds to the actual
+    list. Only a genuine envelope (both `key` and `value` present) is unwrapped;
+    any other dict fact is left untouched."""
+    if isinstance(value, dict) and "key" in value and "value" in value:
+        return value["value"]
+    return value
+
+
+def _flatten_dependency_facts(dependency_state: list[StateEntry]) -> dict[str, Any]:
+    """Flatten a calc-validation step's dependencies into the single-hop `facts`
+    map the expression evaluator binds `ref`s against.
+
+    Each dependency is keyed by its `step_id`; a retrieval/interpretation
+    dependency's actual fetched values live one level deeper under its own
+    `data["facts"]`, so those inner keys are promoted to the top level too
+    (additive -- never overwrites an existing `step_id` key), each unwrapped
+    from its `{key, value, source, confidence}` envelope so a fact fetched as
+    `completedCourses` is directly ref-able as `{"ref": "completedCourses"}`."""
+    facts: dict[str, Any] = {}
+    for entry in dependency_state:
+        facts[entry.step_id] = entry.data
+        inner_facts = entry.data.get("facts") if isinstance(entry.data, dict) else None
+        if isinstance(inner_facts, dict):
+            for key, value in inner_facts.items():
+                facts.setdefault(key, _unwrap_fact_envelope(value))
+    return facts
+
+
 async def run_calculation_validation_subagent(
     *,
     context_package: SubagentContextPackage,
@@ -345,24 +380,7 @@ async def run_calculation_validation_subagent(
     # like "source: completed_courses record (user_id ...) + course entity
     # 00950120") -- flattening by step_id gives it a smaller, cleaner
     # surface to build expressions against than raw `dependency_state`.
-    facts: dict[str, Any] = {}
-    for entry in context_package.dependency_state:
-        facts[entry.step_id] = entry.data
-        # `ref` is a single-hop lookup (expression_tree.py's `facts[node.ref]`
-        # -- no dotted-path traversal). A retrieval/interpretation dependency's
-        # actual fetched values live one level deeper, under its own
-        # `data["facts"]` -- referencing it only by step_id would hand the
-        # model the whole result envelope (confidence, source_ref, ...) where
-        # a list/number was expected, producing "of_not_a_list" or "ref not
-        # found" no matter how the expression is retried. Promote those
-        # inner keys to the top level too (additive -- never overwrites an
-        # existing step_id key) so a fact fetched as e.g. `facts:
-        # {"completed_courses": [...]}` is directly ref-able as
-        # `{"ref": "completed_courses"}`.
-        inner_facts = entry.data.get("facts") if isinstance(entry.data, dict) else None
-        if isinstance(inner_facts, dict):
-            for key, value in inner_facts.items():
-                facts.setdefault(key, value)
+    facts = _flatten_dependency_facts(context_package.dependency_state)
 
     block_input = _CalculationValidationBlockInput(
         block_id=block_id,

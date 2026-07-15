@@ -85,7 +85,13 @@ def parse_llm_json_detailed(content: str) -> LlmJsonParseOutcome:
     last_decode_error = False
     for candidate in candidates:
         try:
-            payload = json.loads(candidate)
+            # strict=False tolerates raw control characters (literal newlines,
+            # tabs) inside string values. Synthesis answers are multi-paragraph
+            # markdown, so the model routinely emits un-escaped newlines inside
+            # `answer_text` -- valid content, but illegal to strict json.loads,
+            # which previously hard-failed the whole turn as `json_parse_failed`.
+            # It still rejects genuinely malformed JSON (trailing commas, etc.).
+            payload = json.loads(candidate, strict=False)
         except json.JSONDecodeError:
             last_decode_error = True
             continue
