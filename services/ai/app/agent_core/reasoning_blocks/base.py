@@ -40,6 +40,15 @@ from app.agent_core.reasoning_blocks.schemas import (
 
 logger = logging.getLogger(__name__)
 
+# A parse-failure code means the model DID answer, but the text wasn't valid
+# JSON -- a transient flake a fresh call usually fixes. Distinct from a hard
+# failure (no model, import error) that a retry cannot help. Live-eval runs
+# showed an un-retried json_parse_failed at the composition/interpretation step
+# was the single dominant cause of a turn ending in neither answer nor
+# clarification.
+_PARSE_FAILURE_CODES = frozenset({"json_parse_failed", "invalid_json_response"})
+_MAX_PARSE_FAILURE_RETRIES = 1
+
 
 @dataclass
 class RunTelemetry:
@@ -205,33 +214,56 @@ class BaseReasoningBlock(ABC):
         block_input: BaseReasoningBlockInput,
         telemetry: RunTelemetry,
     ) -> LlmCallResult:
-        """Wraps the actual adapter call with schema-support and telemetry.
-        Never raises -- handles `LLMAdapterError` natively.
+        """Wraps the actual adapter call with schema support and telemetry.
+
+        A parse-failure code (the model DID respond, but with malformed/
+        unparseable JSON) is retried once with a fresh call before giving up:
+        `complete_json`'s own `max_retries` only covers transport errors, so a
+        successful call that returned bad JSON was never retried -- live-eval
+        runs showed that this transient flake at the composition/interpretation
+        step was the dominant cause of a turn ending in neither an answer nor a
+        clarification. A hard failure (no model, import error) is not retried;
+        it cannot fix itself on a second call. On exhaustion the error still
+        propagates to `run()`, which turns it into a `status="failed"` output.
         """
-        telemetry.call_count += 1
         raw_text_out: list[str] = []
-        try:
-            parsed = await self._llm_adapter.complete_json(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=params.temperature,
-                model=params.model,
-                thinking_enabled=params.thinking_enabled,
-                reasoning_effort=params.reasoning_effort,
-                response_schema=response_schema,
-                raw_model_text_out=raw_text_out,
-                timeout=params.timeout,
-                max_retries=params.max_retries,
-                streaming_queue=self._streaming_queue,
-            )
+        last_error: LLMAdapterError | None = None
+        for attempt in range(_MAX_PARSE_FAILURE_RETRIES + 1):
+            telemetry.call_count += 1
+            raw_text_out.clear()
+            try:
+                parsed = await self._llm_adapter.complete_json(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=params.temperature,
+                    model=params.model,
+                    thinking_enabled=params.thinking_enabled,
+                    reasoning_effort=params.reasoning_effort,
+                    response_schema=response_schema,
+                    raw_model_text_out=raw_text_out,
+                    timeout=params.timeout,
+                    max_retries=params.max_retries,
+                    streaming_queue=self._streaming_queue,
+                )
+            except LLMAdapterError as exc:
+                last_error = exc
+                will_retry = str(exc) in _PARSE_FAILURE_CODES and attempt < _MAX_PARSE_FAILURE_RETRIES
+                logger.warning(
+                    "reasoning_block_llm_call_failed",
+                    extra={
+                        "block_id": block_input.block_id,
+                        "phase": phase,
+                        "attempt": attempt,
+                        "will_retry": will_retry,
+                    },
+                )
+                if will_retry:
+                    continue
+                raise
             raw_text = raw_text_out[0] if raw_text_out else ""
-        except LLMAdapterError:
-            logger.warning(
-                "reasoning_block_llm_call_failed",
-                extra={"block_id": block_input.block_id, "phase": phase},
-            )
-            raise
-        return LlmCallResult(parsed=parsed, raw_text=raw_text)
+            return LlmCallResult(parsed=parsed, raw_text=raw_text)
+        assert last_error is not None  # loop always returns or raises before here
+        raise last_error
 
     async def _invoke_llm_text(
         self,

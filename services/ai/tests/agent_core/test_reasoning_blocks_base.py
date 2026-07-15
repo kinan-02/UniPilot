@@ -128,7 +128,69 @@ async def test_invoke_llm_error_propagates_and_run_returns_failed_status():
     output = await block.run(_make_block_input())
 
     assert output.status == "failed"
+    # "llm_unavailable_test" is a hard failure, not a parse failure -- one call,
+    # no retry.
     assert output.total_llm_calls_used == 1
+
+
+class _ParseFailingThenSucceedingAdapter:
+    """Raises `json_parse_failed` for the first `fail_times` calls, then returns
+    a valid payload -- models the transient parse flake seen in live-eval runs."""
+
+    def __init__(self, *, fail_times: int, payload: dict[str, Any] | None = None) -> None:
+        self._fail_times = fail_times
+        self._payload = payload if payload is not None else {"answer": "hello"}
+        self.calls = 0
+
+    async def complete_json(self, **_kwargs: Any) -> dict[str, Any]:
+        self.calls += 1
+        if self.calls <= self._fail_times:
+            raise LLMAdapterError("json_parse_failed")
+        return dict(self._payload)
+
+
+class _HardFailingAdapter:
+    """Always raises a NON-parse (hard) failure -- must never be retried."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete_json(self, **_kwargs: Any) -> dict[str, Any]:
+        self.calls += 1
+        raise LLMAdapterError("llm_unavailable")
+
+
+async def test_invoke_llm_retries_transient_parse_failure_then_succeeds():
+    adapter = _ParseFailingThenSucceedingAdapter(fail_times=1)
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "completed"
+    assert output.result == {"answer": "hello"}
+    assert adapter.calls == 2  # first call flaked, the retry recovered it
+    assert output.total_llm_calls_used == 2
+
+
+async def test_invoke_llm_gives_up_after_parse_failure_retries_exhausted():
+    adapter = _ParseFailingThenSucceedingAdapter(fail_times=99)  # never recovers
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "failed"
+    assert adapter.calls == 2  # one initial attempt + one bounded retry, then give up
+    assert output.total_llm_calls_used == 2
+
+
+async def test_invoke_llm_does_not_retry_a_hard_failure():
+    adapter = _HardFailingAdapter()
+    block = _EchoReasoningBlock(llm_adapter=adapter)
+
+    output = await block.run(_make_block_input())
+
+    assert output.status == "failed"
+    assert adapter.calls == 1  # a non-parse failure will not fix itself; no retry
 
 
 async def test_repair_schema_recovers_initially_invalid_result_and_counts_calls(fake_llm_adapter_factory):
