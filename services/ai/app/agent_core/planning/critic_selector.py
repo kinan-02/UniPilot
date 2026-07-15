@@ -101,7 +101,16 @@ def select_critics(
         candidates.append((CRITERIA_CRITIC_V1, 5))
     elif F_EMPTY_CRITERIA in codes:
         candidates.append((CRITERIA_CRITIC_V1, 4))
-    if {F_DUP_OBJECTIVE, F_OVER_DECOMPOSED} & codes:
+    if F_OVER_DECOMPOSED in codes:
+        # A plan-wide over-decomposition wastes the fixed per-step tax (a router
+        # + a success-check call per step), so the parsimony critic that would
+        # collapse it must not be crowded out under the active-critic cap.
+        # Observed live: a 9-step complex plan fired F_OVER_DECOMPOSED but
+        # parsimony (then priority 3) lost every cap slot to domain/grounding/
+        # strategy/criteria, so the finding fired into a void. Priority 5 lets it
+        # win a slot alongside criteria on exactly the plans that most need it.
+        candidates.append((PARSIMONY_CRITIC_V1, 5))
+    elif F_DUP_OBJECTIVE in codes:
         candidates.append((PARSIMONY_CRITIC_V1, 3))
     if _has_keyword(corpus, _DOMAIN_KEYWORDS):
         candidates.append((DOMAIN_CRITIC_V1, 4))

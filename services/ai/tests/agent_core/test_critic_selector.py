@@ -74,6 +74,21 @@ def test_over_decomposed_selects_parsimony() -> None:
     assert PARSIMONY_CRITIC_V1 in _select(_report(F_OVER_DECOMPOSED))
 
 
+def test_over_decomposed_parsimony_is_not_crowded_out_by_competing_critics() -> None:
+    # Regression for a live-observed miss: a complex 9-step plan fired
+    # F_OVER_DECOMPOSED but its domain/grounding/criteria signals filled the
+    # cap and parsimony (then priority 3) never ran. At priority 5 it must win a
+    # slot on exactly the plans that most need collapsing.
+    selected = _select(
+        _report(F_OVER_DECOMPOSED, F_EMPTY_CRITERIA),
+        objectives=[
+            "check prerequisite eligibility for the degree track",  # domain keywords
+            "fetch the student's completed credits and gpa",  # grounding keywords
+        ],
+    )
+    assert PARSIMONY_CRITIC_V1 in selected
+
+
 def test_domain_keyword_selects_domain_critic() -> None:
     selected = _select(_report(), objectives=["evaluate prerequisite eligibility for the target course"])
     assert DOMAIN_CRITIC_V1 in selected
