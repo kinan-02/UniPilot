@@ -414,3 +414,180 @@ async def test_returns_subagent_result_shape_matching_generic_paths_output(fake_
     assert isinstance(result.warnings, list)
     assert isinstance(result.tool_audit_trail, list)
     assert result.needs_another_round is False
+
+
+# ── Fact grounding ───────────────────────────────────────────────────────────
+#
+# Retrieval FETCHES; it cannot compute. Measured live (2026-07-16) it computed
+# anyway -- a 17-number sum done in its head, wrong (63.0; truth 62.5), stamped
+# confidence 1.0, and indistinguishable from a fetched fact once in state. The
+# tell is `source`: a real fact cites a TOOL, that one cited a sentence.
+
+
+def _need_get_entity() -> dict[str, Any]:
+    """Round 1: make a real `get_entity` call, so the audit trail names a tool.
+
+    Groundedness is only decidable against a trail that recorded something --
+    with no tool called, the guard deliberately abstains.
+    """
+    return {
+        "status": "need_tools",
+        "tool_requests": [
+            {"tool_name": "get_entity", "arguments": {"entity_id": "123456", "entity_type": "course"}}
+        ],
+    }
+
+
+async def test_fabricated_fact_is_dropped_on_the_shape_the_model_actually_emits(fake_llm_adapter_factory):
+    """The regression the previous unit tests could not see.
+
+    They called `_drop_ungrounded_facts` directly with `facts` as a LIST, and
+    passed. But nothing hands this guard a list: `facts` is declared
+    `{"type": "object"}`, so `_flatten_fact_list_to_object` has already turned
+    the model's list into a dict keyed by label by the time the guard runs
+    (`_normalize_result` -> `_validate_schema` -> guard). The guard opened with
+    `if not isinstance(facts, list): return candidate, []` -- so it returned
+    immediately, every call, and had never once fired in production.
+
+    Measured live (2026-07-16, `credits_remaining`): this exact fact reached
+    state with `warnings: []` and `tool_audit_trail: ['get_entity']` -- a trail
+    naming a tool, a source naming none -- and composition published 63.0. The
+    student's real total is 62.5; the model's own transcribed list, one field
+    above, sums to 62.5.
+
+    So this test feeds the list the model really emits and drives the real
+    entry point, which is the only way the flattening is in the path at all.
+    This file's docstring already said every scenario goes through
+    `run_retrieval_subagent`; those three tests were the only ones that did not,
+    and they were the ones that lied.
+    """
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        {
+            "status": "ready",
+            "result": {
+                "certainty_basis": "official_record",
+                "confidence": 1.0,
+                # A list, exactly as the live run's retrieval emitted it.
+                "facts": [
+                    {
+                        "key": "completedCourses",
+                        "value": [{"courseNumber": "00940224", "creditsEarned": 4.0}],
+                        "source": "get_entity completed_courses for user 6a586297a1a0209ebc175675",
+                        "confidence": 1.0,
+                    },
+                    {
+                        "key": "totalCreditsEarned",
+                        "value": 63.0,
+                        "source": "sum of creditsEarned across all 17 completed courses",
+                        "confidence": 1.0,
+                    },
+                ],
+            },
+        },
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    facts = result.result["facts"]
+    assert "totalCreditsEarned" not in facts, (
+        "retrieval cannot compute; a fact citing mental arithmetic must not survive"
+    )
+    assert "completedCourses" in facts, "the fetched fact beside it must be untouched"
+    assert any("totalCreditsEarned" in w for w in result.warnings)
+
+
+async def test_a_cited_tool_survives_the_model_dressing_up_the_name(fake_llm_adapter_factory):
+    """Substring, not equality: `get_entity(student_profile)` is an honest
+    citation of a call that happened, and must not be mistaken for a fabrication."""
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        {
+            "status": "ready",
+            "result": {
+                "certainty_basis": "official_record",
+                "confidence": 1.0,
+                "facts": [
+                    {"key": "degreeId", "value": "x", "source": "get_entity(student_profile)", "confidence": 1.0},
+                    {"key": "grade", "value": 85, "source": "get_entity: completed_courses", "confidence": 1.0},
+                ],
+            },
+        },
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert set(result.result["facts"]) == {"degreeId", "grade"}
+    assert result.warnings == []
+
+
+async def test_a_fact_carrying_no_source_at_all_is_kept(fake_llm_adapter_factory):
+    """`facts` is only `{"type": "object"}` -- a bare `{"degreeId": "x"}` with no
+    per-fact `source` is a legal, common shape. There is no citation to judge
+    there, so the guard must abstain: dropping it would discard genuinely
+    fetched data on the grounds that the model was terse.
+
+    The guard adjudicates CITATIONS, not facts. Only a source that names
+    something, where that something is no tool we called, is a fabrication tell.
+    """
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        {
+            "status": "ready",
+            "result": {
+                "certainty_basis": "official_record",
+                "confidence": 1.0,
+                "facts": {"degreeId": "6a477d511f64e5fd20129b44", "currentSemesterCode": "2025-2"},
+            },
+        },
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert set(result.result["facts"]) == {"degreeId", "currentSemesterCode"}
+    assert result.warnings == []
+
+
+async def test_nothing_is_dropped_when_no_tool_was_recorded(fake_llm_adapter_factory):
+    """Conservative by design: an empty audit trail is a salvage/cache path, not
+    evidence of fabrication. This guard exists to catch the invented fact standing
+    amongst real ones -- not to adjudicate a block that recorded no calls."""
+    adapter = fake_llm_adapter_factory([
+        {
+            "status": "ready",
+            "result": {
+                "certainty_basis": "wiki_derived",
+                "confidence": 1.0,
+                "facts": [{"key": "k", "value": 1, "source": "somewhere", "confidence": 1.0}],
+            },
+        },
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert "k" in result.result["facts"]
+    assert result.warnings == []

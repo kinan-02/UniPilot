@@ -61,6 +61,25 @@ def _entry(step_id: str, *, role: RoleName = "retrieval", status: str = "succeed
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_plan_router(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`route_plan` is a loop collaborator exactly like `build_next_plan_steps`
+    and `run_task_handler`, so it is stubbed for the same reason (see module
+    docstring): these tests exercise orchestration LOGIC, and pass
+    `llm_adapter=None` precisely because no LLM should be reached.
+
+    Returning `{}` means "nothing precomputed" -- the same best-effort miss
+    `route_plan` reports on any failure, and the case the task handler is built
+    to fall back from. Without this, most of these tests still passed, but only
+    because that fail-open path swallowed a doomed call against a null adapter.
+    """
+
+    async def _no_precomputed_routes(**_kwargs: object) -> dict[str, list]:
+        return {}
+
+    monkeypatch.setattr(loop_module, "route_plan", _no_precomputed_routes)
+
+
 @pytest.mark.asyncio
 async def test_same_layer_steps_dispatch_concurrently_not_sequentially(monkeypatch: pytest.MonkeyPatch) -> None:
     step_a = PlanStep(step_id="a", objective="fetch A", depends_on=[], success_criteria=[])

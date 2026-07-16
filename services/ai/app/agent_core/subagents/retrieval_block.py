@@ -312,11 +312,14 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
                     )
                 candidate = repair_outcome.result
 
+            candidate, ungrounded = _drop_ungrounded_facts(candidate, tool_audit_trail)
+
             return _RetrievalBlockOutput(
                 status="completed",
                 schema_valid=True,
                 result=candidate,
                 confidence=candidate.get("confidence", 1.0),
+                warnings=[f"retrieval_dropped_ungrounded_fact: {key}" for key in ungrounded],
                 tool_audit_trail=tool_audit_trail,
                 rounds_used=round_num,
             )
@@ -404,6 +407,87 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
 
     def _failed_output(self, block_input: BaseReasoningBlockInput, *, reason: str) -> _RetrievalBlockOutput:
         return self._retrieval_failed_output(reason=f"reasoning_block_failed: {reason}")
+
+
+def _drop_ungrounded_facts(
+    candidate: dict[str, Any], tool_audit_trail: list[ToolInvocationRecord]
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop facts whose `source` names no tool this block actually called.
+
+    Retrieval FETCHES; it cannot compute. The specialist router is already told
+    so verbatim ("Never route a derivation to retrieval; retrieval cannot
+    compute") -- but nothing enforced it, and the retrieval prompt's own
+    `facts`/`source`/`confidence` shape gives a model a comfortable place to
+    write down a number it worked out in its head.
+
+    Measured live (2026-07-16, ise_correctness `credits_remaining`) it did
+    exactly that:
+
+        {"key": "totalCreditsEarned", "value": 63.0,
+         "source": "sum of creditsEarned across all 17 completed courses",
+         "confidence": 1.0}
+
+    The real total is 62.5. The plan already had a `calculation_validation`
+    step, which computed 62.5 correctly -- so both numbers sat in state and
+    composition published the wrong one. The agent had the right answer and
+    still got it wrong, because a fabricated fact is indistinguishable from a
+    fetched one once it is in the state index.
+
+    The tell is `source`. A fetched fact names a TOOL (`get_course_profile`);
+    that one names a sentence describing mental arithmetic. We do not need a
+    model to judge this: `tool_audit_trail` is the record of what was actually
+    called, so groundedness is decidable in code -- the same reason
+    `check_success_criteria` stopped asking an LLM.
+
+    Substring match, not equality: a model writes `get_entity` as
+    `get_entity(student_profile)` or `get_entity: completed_courses`, and all of
+    those are honest citations of a call that happened. Only a `source` naming
+    NO invoked tool is dropped.
+
+    Conservative on purpose, in three ways.
+
+    With an empty audit trail (a salvage path, a cache-only round) nothing is
+    dropped: this exists to catch the fabricated fact standing amongst real
+    ones, not to adjudicate a block that called no tools at all.
+
+    A fact carrying no `source` at all is kept. `facts` is declared only
+    `{"type": "object"}`, so a bare `{"degreeId": "x"}` is a legal and common
+    shape -- there is no citation there to judge, and dropping it would discard
+    genuinely fetched data because the model was terse. This guard adjudicates
+    CITATIONS, not facts.
+
+    And it reads `facts` as a DICT, because that is the only shape that reaches
+    it. This code originally checked `isinstance(facts, list)` -- the shape the
+    model emits -- and so returned immediately on every call and never once
+    fired in production, including on the very run this docstring quotes.
+    `facts` is declared `{"type": "object"}`, so by the time a candidate arrives
+    here `_flatten_fact_list_to_object` has already keyed the list by label
+    (`_normalize_result` -> `_validate_schema` -> here). The old unit tests
+    handed the helper a list directly and stayed green throughout.
+    """
+    facts = candidate.get("facts")
+    called = {record.tool_name for record in tool_audit_trail if getattr(record, "tool_name", None)}
+    if not isinstance(facts, dict) or not called:
+        return candidate, []
+
+    kept: dict[str, Any] = {}
+    dropped: list[str] = []
+    for key, fact in facts.items():
+        source = fact.get("source") if isinstance(fact, dict) else None
+        if not isinstance(source, str) or not source.strip():
+            kept[key] = fact
+        elif any(tool_name in source for tool_name in called):
+            kept[key] = fact
+        else:
+            dropped.append(str(key))
+
+    if not dropped:
+        return candidate, []
+
+    logger.warning(
+        "retrieval_dropped_ungrounded_facts keys=%s cited_tools=%s", dropped, sorted(called)
+    )
+    return {**candidate, "facts": kept}, dropped
 
 
 async def run_retrieval_subagent(

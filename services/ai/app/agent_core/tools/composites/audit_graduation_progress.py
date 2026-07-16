@@ -64,8 +64,13 @@ class AuditGraduationProgressInput(BaseModel):
 def _completed_course_numbers(state: dict[str, Any]) -> set[str]:
     return {
         str(entry.get("courseNumber"))
+        # Counts unless FAILED. `status` is absent on everything `get_entity`
+        # emits and is only ever written by `mutate_state` as "failed", so
+        # demanding "completed" here matched nothing -- reporting every student
+        # as having earned zero credits. See `check_eligibility`'s own
+        # `_completed_course_numbers` for the full account.
         for entry in state.get("completedCourses") or []
-        if entry.get("status") == "completed" and entry.get("courseNumber")
+        if entry.get("status") != "failed" and entry.get("courseNumber")
     }
 
 

@@ -44,12 +44,12 @@ def _step(step_id="1a", depends_on=None, success_criteria=None, assumptions=None
     )
 
 
-def _entry(step_id: str, confidence: float = 0.9) -> StateEntry:
+def _entry(step_id: str, confidence: float = 0.9, status: str = "succeeded") -> StateEntry:
     return StateEntry(
         entry_id=f"{step_id}-0",
         step_id=step_id,
         role="retrieval",
-        status="succeeded",
+        status=status,
         output_schema_name="generic_step_output_v1",
         data={},
         certainty=CertaintyTag(basis="wiki_derived", confidence=confidence),
@@ -89,7 +89,7 @@ def _sub(sub_step_id, specialist="retrieval", *, depends_on=None, objective="do 
     }
 
 
-async def _run(monkeypatch, step, *, state=None, route, dispatch=None, check=None):
+async def _run(monkeypatch, step, *, state=None, route, dispatch=None, check=None, precomputed_route=None):
     """Drives `run_task_handler`, faking its three collaborators.
 
     - `route`: the pipeline (a list of `_sub(...)` dicts) the router returns.
@@ -130,8 +130,69 @@ async def _run(monkeypatch, step, *, state=None, route, dispatch=None, check=Non
         original_user_message="hello",
         user_id="test-user-1",
         plan_id="p1",
+        precomputed_route=precomputed_route,
     )
     return entry, route_dependency_contexts
+
+
+async def test_precomputed_route_is_used_and_skips_the_router_call(monkeypatch):
+    """The whole point of batching: a step whose route was computed for the plan
+    up front must not pay its own blocking router call. `route_dependency_contexts`
+    stays empty because `route_step` was never reached."""
+    entry, route_dependency_contexts = await _run(
+        monkeypatch,
+        _step(),
+        route=[_sub("s1", "retrieval")],
+        precomputed_route=[RoutedSubStep.model_validate(_sub("s1", "retrieval"))],
+        dispatch={"1a": [_subagent_result(data={"answer": 42})]},
+        check={"1a": [True]},
+    )
+
+    assert route_dependency_contexts == []
+    assert entry.status == "succeeded"
+
+
+async def test_a_failed_dependency_forces_a_fresh_route(monkeypatch):
+    """The safety valve. A plan-time route is computed before anything ran, so
+    it cannot know a dependency misfired -- and that is the one situation where
+    the results genuinely change the right route (measured live 2026-07-15: the
+    sole route of 25 that used dependency results was reacting to a failed
+    lookup). So a step whose dependencies are not all clean re-routes, precomputed
+    route or not."""
+    state = PlanExecutionState(plan_id="p1")
+    state.append(_entry("dep", status="failed"))
+
+    entry, route_dependency_contexts = await _run(
+        monkeypatch,
+        _step(depends_on=["dep"]),
+        state=state,
+        route=[_sub("s1", "retrieval")],
+        precomputed_route=[RoutedSubStep.model_validate(_sub("s1", "retrieval"))],
+        dispatch={"1a": [_subagent_result(data={"answer": 42})]},
+        check={"1a": [True]},
+    )
+
+    assert len(route_dependency_contexts) == 1, "a failed dependency must trigger a fresh route"
+
+
+async def test_a_clean_dependency_still_reuses_the_precomputed_route(monkeypatch):
+    """The complement: a succeeded dependency is not a reason to re-route --
+    otherwise every dependent step pays the call again and batching buys nothing
+    beyond the first layer."""
+    state = PlanExecutionState(plan_id="p1")
+    state.append(_entry("dep"))
+
+    _, route_dependency_contexts = await _run(
+        monkeypatch,
+        _step(depends_on=["dep"]),
+        state=state,
+        route=[_sub("s1", "retrieval")],
+        precomputed_route=[RoutedSubStep.model_validate(_sub("s1", "retrieval"))],
+        dispatch={"1a": [_subagent_result(data={"answer": 42})]},
+        check={"1a": [True]},
+    )
+
+    assert route_dependency_contexts == []
 
 
 async def test_atomic_fast_path_succeeds(monkeypatch):

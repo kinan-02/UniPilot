@@ -45,6 +45,18 @@ from app.agent_core.planning.state import (
 )
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
+
+
+def _dependencies_are_clean(dependency_entries: list[StateEntry]) -> bool:
+    """True when every result this step builds on came back `succeeded`.
+
+    The gate on reusing a plan-time route: only a dependency that did something
+    UNEXPECTED can make a route computed from the step's objective wrong, and
+    only then is re-routing (with the real results in hand) worth its call.
+    A step with no dependencies is trivially clean -- there is nothing whose
+    outcome could have changed its routing.
+    """
+    return all(entry.status == "succeeded" for entry in dependency_entries)
 from app.agent_core.subagents.calculation_validation_block import run_calculation_validation_subagent
 from app.agent_core.subagents.composition_block import run_composition_subagent
 from app.agent_core.subagents.interpretation_block import run_interpretation_subagent
@@ -88,6 +100,7 @@ async def run_task_handler(
     tool_call_cache: ToolCallCache | None = None,
     unresolvable_registry: UnresolvableEntityRegistry | None = None,
     reasoning_config: TurnReasoningConfig | None = None,
+    precomputed_route: list[RoutedSubStep] | None = None,
 ) -> StateEntry:
     """Routes the step to a specialist pipeline and executes it ONCE. It never
     re-routes/repairs locally: a live measurement showed a per-step repair loop
@@ -99,21 +112,36 @@ async def run_task_handler(
 
     Never appends to `state` itself -- the caller still owns
     `state.append(entry)`."""
-    route = await route_step(
-        step=step,
-        dependency_context=build_state_index(state.slice(step.depends_on)),
-        llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-router",
-        user_id=user_id,
-        role_roster=role_roster,
-    )
+    dependency_entries = state.slice(step.depends_on)
+    # A route precomputed for the whole plan (specialist_router.route_plan) is
+    # used ONLY while this step's dependencies came back clean.
+    #
+    # The one thing per-step routing knows that a plan-time batch cannot is what
+    # the dependencies ACTUALLY produced -- and that only changes the route when
+    # they produced something unexpected. Measured live (2026-07-15): 24 of 25
+    # routes were a single specialist label that the step's own objective already
+    # determined; the sole route that used dependency results was reacting to a
+    # failed `degreeId` lookup. So we re-route exactly there, and skip the call
+    # -- and its blocking hop before every step -- everywhere else.
+    if precomputed_route and _dependencies_are_clean(dependency_entries):
+        pipeline = list(precomputed_route)
+    else:
+        route = await route_step(
+            step=step,
+            dependency_context=build_state_index(dependency_entries),
+            llm_adapter=llm_adapter,
+            block_id=f"{plan_id}-{step.step_id}-router",
+            user_id=user_id,
+            role_roster=role_roster,
+        )
+        pipeline = route.pipeline
 
     # Atomic route: one specialist, verified against THIS step's own
     # success_criteria (no nested_trace, so the Monitor skips the outer
     # re-check). A failed check returns a partial/failed atomic entry rather
     # than re-routing the identical single specialist.
-    if route.is_atomic:
-        sub = route.pipeline[0]
+    if len(pipeline) == 1:  # atomic: one specialist owns the whole step
+        sub = pipeline[0]
         result = await _dispatch_single_specialist(
             step=step,
             step_prep_output=_sub_step_prep(
@@ -154,7 +182,7 @@ async def run_task_handler(
     private_state = _new_private_state(step=step, parent_state=state)
     pipeline_succeeded = await _execute_pipeline_once(
         step=step,
-        pipeline=list(route.pipeline),
+        pipeline=list(pipeline),
         private_state=private_state,
         role_roster=role_roster,
         tool_registry=tool_registry,
@@ -213,7 +241,7 @@ async def _dispatch_single_specialist(
             tool_registry=tool_registry,
             llm_adapter=llm_adapter,
             block_id=block_id,
-            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout, max_retries=reasoning_config.subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "retrieval":
         return await run_retrieval_subagent(
@@ -223,7 +251,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
-            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout, max_retries=reasoning_config.static_subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "interpretation":
         return await run_interpretation_subagent(
@@ -233,7 +261,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
-            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout, max_retries=reasoning_config.subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "simulation_planning":
         return await run_simulation_planning_subagent(
@@ -243,7 +271,7 @@ async def _dispatch_single_specialist(
             block_id=block_id,
             tool_call_cache=tool_call_cache,
             unresolvable_registry=unresolvable_registry,
-            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout, max_retries=reasoning_config.subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "composition":
         return await run_composition_subagent(
@@ -251,7 +279,7 @@ async def _dispatch_single_specialist(
             llm_adapter=llm_adapter,
             block_id=block_id,
             streaming_queue=streaming_queue,
-            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout) if reasoning_config else None,
+            llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout, max_retries=reasoning_config.static_subagent_max_retries) if reasoning_config else None,
         )
     return await run_subagent(
         role=role,

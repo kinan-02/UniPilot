@@ -14,6 +14,7 @@ from app.agent_core.orchestrator.monitor import evaluate_step_result
 from app.agent_core.orchestrator.parallel_dispatch import dispatch_layer_concurrently
 from app.agent_core.orchestrator.replan_ledger import ReplanLedger
 from app.agent_core.orchestrator.state_index import build_state_index
+from app.agent_core.orchestrator.specialist_router import route_plan
 from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.planner import build_next_plan_steps
 from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, ReplanFocus, RoleName
@@ -120,6 +121,22 @@ async def run_plan_to_completion(
         round_unmet: list[str] = []
         steps_by_id = {step.step_id: step for step in planner_output.next_steps}
 
+        # Route this whole batch in ONE call, before any layer runs, instead of
+        # paying a blocking router call per step -- on a live run (2026-07-15)
+        # 24 of 25 routes were a single specialist label the step's own
+        # objective already determined, and each one stalled its step's layer.
+        #
+        # Best-effort by construction: `route_plan` returns {} on any failure,
+        # and `run_task_handler` re-routes any step whose dependencies came back
+        # unclean (see `_dependencies_are_clean`), so this can only remove calls
+        # -- it can never make a step run unrouted or wrongly routed.
+        precomputed_routes = await route_plan(
+            steps=list(planner_output.next_steps),
+            llm_adapter=llm_adapter,
+            block_id=f"{plan_id}-plan-router-{invocation}",
+            role_roster=role_roster,
+        )
+
         async def _dispatch_one(step_id: str, _steps_by_id: dict[str, PlanStep] = steps_by_id) -> StateEntry:
             return await run_task_handler(
                 step=_steps_by_id[step_id],
@@ -134,6 +151,7 @@ async def run_plan_to_completion(
                 tool_call_cache=tool_call_cache,
                 unresolvable_registry=unresolvable_registry,
                 reasoning_config=reasoning_config,
+                precomputed_route=precomputed_routes.get(step_id),
             )
 
         # Dispatch one execution layer at a time -- steps within a layer are

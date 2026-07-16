@@ -206,6 +206,63 @@ async def test_program_entity_surfaces_authoritative_total_credits(
     assert result.data["programCode"] == "009118-1-000"
 
 
+async def test_degree_id_resolves_even_when_the_caller_asks_for_a_wiki_page(
+    use_real_academic_engine, fake_database_factory
+):
+    """Same principle as the track-page case above -- when entity_id is a
+    DATABASE REFERENCE, the database decides and the caller's guess is not
+    evidence -- applied one guard earlier, at the ObjectId resolution itself.
+
+    `wiki_page` used to be excluded from that resolution on the reasoning that
+    its entity_id is canonically a slug, so there is no database-id form to
+    confuse it with. True for disambiguation, but it made a degreeId passed as
+    entity_type="wiki_page" fail instead of resolve.
+
+    Measured live (2026-07-15, ise_correctness `credits_remaining`): the Planner
+    wrote the step as "retrieve the degree program's WIKI PAGE", so the agent
+    asked for exactly that with the degreeId -- hit this excluded branch, got
+    entity_not_found, fell back to search_knowledge, scraped the page's prose
+    and answered 42 points instead of the authoritative 155. That turn burned
+    39 LLM calls and 177s to deliver a wrong number.
+
+    Nothing is given up by including wiki_page: `ObjectId.is_valid` is an
+    unambiguous discriminator -- no real slug ('minor-robotics', '00950120',
+    even 12-char 'abcdefabcdef') passes it, only a true 24-hex id."""
+    degree_object_id = ObjectId()
+    set_test_database(
+        fake_database_factory(
+            {
+                "degree_programs": [
+                    {
+                        "_id": degree_object_id,
+                        "metadata": {"wikiPage": "program-alonim"},
+                        "totalCredits": 155.0,
+                    }
+                ]
+            }
+        )
+    )
+
+    result = await run_get_entity(GetEntityInput(entity_type="wiki_page", entity_id=str(degree_object_id)))
+
+    assert result.ok is True, result.error
+    assert result.data["slug"] == "program-alonim"
+    # The authoritative total must reach the agent on this path too -- reading
+    # it is the entire reason the step existed.
+    assert result.data["totalCredits"] == 155.0
+
+
+async def test_wiki_page_with_a_real_slug_is_unaffected(use_real_academic_engine, fake_database_factory):
+    """The ordinary wiki_page path -- a genuine slug, no database round-trip --
+    must not regress now that wiki_page reaches the ObjectId branch."""
+    set_test_database(fake_database_factory({"degree_programs": []}))
+
+    result = await run_get_entity(GetEntityInput(entity_type="wiki_page", entity_id="program-alonim"))
+
+    assert result.ok is True, result.error
+    assert result.data["slug"] == "program-alonim"
+
+
 async def test_program_entity_with_unresolvable_degree_id_fails_closed(
     use_real_academic_engine, fake_database_factory
 ):

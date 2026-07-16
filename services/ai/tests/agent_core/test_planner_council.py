@@ -95,6 +95,30 @@ def _plan(step_id: str = "A", objective: str = "Retrieve the student's current a
     }
 
 
+def _multi_plan(steps: list[tuple[str, list[str]]]) -> dict:
+    """A plan of several steps, each `(step_id, depends_on)` -- so a test can
+    state a DAG's SHAPE (its parallel width and serial depth) directly."""
+    return {
+        "plan_status": "in_progress",
+        "next_steps": [
+            {
+                "step_id": step_id,
+                "objective": f"Do {step_id}.",
+                "depends_on": depends_on,
+                "success_criteria": ["ok"],
+                "assumptions_to_verify": [],
+            }
+            for step_id, depends_on in steps
+        ],
+        "plan_summary": "summary",
+        "clarification_question": None,
+    }
+
+
+def _step_ids(output) -> list[str]:
+    return [step.step_id for step in output.next_steps]
+
+
 def _critic(issues: list[str]) -> dict:
     return {"issues": issues}
 
@@ -112,6 +136,78 @@ async def _run(adapter, planner_input: PlannerInvocationInput = _INPUT, **kwargs
 
 def _system_prompts(adapter) -> list[str]:
     return [c["system_prompt"] for c in adapter.calls]
+
+
+# ── Synthesis depth gate ─────────────────────────────────────────────────────
+#
+# Measured on the 2026-07-15 ise_correctness live run: the council never once
+# shrank a plan (7->8, 4->5, 6->6 steps), and on `credits_remaining` the
+# synthesizer took a draft whose depth was 5 and returned one of depth 7 --
+# serializing a branch that had been parallel (E: depends_on B -> B,D) and
+# splitting one calculation into two chained steps. That case then spent 39
+# LLM calls and 177s to deliver a non-answer.
+#
+# The gate is on critical-path DEPTH rather than step COUNT deliberately: the
+# coverage critic's whole job is to add a genuinely missing step, and adding a
+# PARALLEL one costs no wall-clock. Depth is what turns into latency (each
+# serial hop is one blocking LLM round-trip), so depth is what synthesis may
+# not inflate.
+
+
+async def test_synthesis_that_deepens_the_critical_path_is_discarded(fake_llm_adapter_factory, monkeypatch):
+    _force_selection(monkeypatch, [COVERAGE_CRITIC_V1])
+    draft = _multi_plan([("A", []), ("B", ["A"])])  # depth 2
+    deeper = _multi_plan([("A", []), ("B", ["A"]), ("C", ["B"])])  # depth 3
+    adapter = fake_llm_adapter_factory([draft, _critic(["something is missing"]), deeper])
+
+    output = await _run(adapter)
+
+    assert _step_ids(output) == ["A", "B"]
+    assert "planner_council_synth_discarded_deeper_plan" in output.warnings
+
+
+async def test_synthesis_adding_a_parallel_step_is_kept(fake_llm_adapter_factory, monkeypatch):
+    # The coverage critic's legitimate case: a genuinely missing step that
+    # depends on nothing runs alongside the others and costs no extra hop.
+    # Gating on step count would wrongly reject this; gating on depth keeps it.
+    _force_selection(monkeypatch, [COVERAGE_CRITIC_V1])
+    draft = _multi_plan([("A", []), ("B", ["A"])])  # depth 2
+    wider = _multi_plan([("A", []), ("B", ["A"]), ("C", [])])  # depth 2, wider
+
+    adapter = fake_llm_adapter_factory([draft, _critic(["you never fetch C"]), wider])
+
+    output = await _run(adapter)
+
+    assert _step_ids(output) == ["A", "B", "C"]
+    assert "planner_council_synthesized" in output.warnings
+
+
+async def test_synthesis_serializing_a_parallel_branch_is_discarded(fake_llm_adapter_factory, monkeypatch):
+    # The exact `credits_remaining` regression: same step count, but a branch
+    # that could run in parallel is made to wait on another.
+    _force_selection(monkeypatch, [COVERAGE_CRITIC_V1])
+    draft = _multi_plan([("A", []), ("B", [])])  # depth 1, both parallel
+    serialized = _multi_plan([("A", []), ("B", ["A"])])  # depth 2, same count
+
+    adapter = fake_llm_adapter_factory([draft, _critic(["B should follow A"]), serialized])
+
+    output = await _run(adapter)
+
+    assert _step_ids(output) == ["A", "B"]
+    assert "planner_council_synth_discarded_deeper_plan" in output.warnings
+
+
+async def test_synthesis_that_flattens_the_plan_is_kept(fake_llm_adapter_factory, monkeypatch):
+    _force_selection(monkeypatch, [COVERAGE_CRITIC_V1])
+    draft = _multi_plan([("A", []), ("B", ["A"]), ("C", ["B"])])  # depth 3
+    flatter = _multi_plan([("A", []), ("B", ["A"]), ("C", ["A"])])  # depth 2
+
+    adapter = fake_llm_adapter_factory([draft, _critic(["C need not wait on B"]), flatter])
+
+    output = await _run(adapter)
+
+    assert _step_ids(output) == ["A", "B", "C"]
+    assert "planner_council_synthesized" in output.warnings
 
 
 # ── Orchestration (selection monkeypatched to one critic) ────────────────────

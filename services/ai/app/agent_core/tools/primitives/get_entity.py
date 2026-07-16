@@ -330,14 +330,28 @@ async def run_get_entity(payload: GetEntityInput) -> ToolOutputEnvelope:
     slug = entity_id
     resolved_from_database = False
     program_fields: dict[str, Any] = {}
-    if entity_type != "wiki_page" and ObjectId.is_valid(entity_id):
+    if ObjectId.is_valid(entity_id):
         # Same real bug as the course case above, confirmed live: a
         # student_profile's `degreeId` (a Mongo _id reference into
         # `degree_programs`) is not a valid entity_id for entity_type in
         # program/track/minor/faculty -- those are wiki slugs
-        # (`degree_programs.metadata.wikiPage`). `wiki_page` is excluded
-        # because its own entity_id IS canonically a slug already; there is
-        # no database-id form of it to confuse with.
+        # (`degree_programs.metadata.wikiPage`).
+        #
+        # `wiki_page` used to be excluded here, reasoning that its entity_id is
+        # canonically a slug so there is no database-id form to confuse with.
+        # That held for disambiguation but made a degreeId passed AS a
+        # wiki_page fail rather than resolve -- and the Planner words the step
+        # "retrieve the degree program's wiki page", so that is exactly what
+        # the agent asks for. Measured live (2026-07-15, `credits_remaining`):
+        # entity_not_found -> search_knowledge fallback -> scraped the page's
+        # prose -> answered 42 points instead of the authoritative 155.
+        #
+        # Including it gives up nothing: `ObjectId.is_valid` is an unambiguous
+        # discriminator (no real slug -- 'minor-robotics', '00950120', even
+        # 12-char 'abcdefabcdef' -- passes it), and a slug still takes the
+        # normal path untouched. Same principle the entity_type mismatch check
+        # already follows: when entity_id is a DATABASE REFERENCE, the database
+        # decides -- the caller's guess is not evidence.
         resolution = await _resolve_program_from_object_id(entity_id)
         if resolution is not None:
             slug, program_fields = resolution

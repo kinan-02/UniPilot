@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +39,22 @@ class _RecordedCall:
     parsed_response: dict[str, Any] | None
     timeout: float | None
     max_retries: int | None
+    # `time.perf_counter()` at call start, plus how long the call took.
+    #
+    # Both are REQUIRED (no default) so a construction site cannot silently
+    # record an untimed call as a plausible-looking 0.0.
+    #
+    # `started_at` exists because durations alone cannot be summed into
+    # wall-clock here: the orchestrator dispatches plan steps in parallel
+    # layers and the Planner council runs its critics concurrently, so calls
+    # genuinely overlap. Keeping each call's start instant makes the real
+    # critical path reconstructable rather than just the total spend -- which
+    # is what a "why did this case take 3 minutes?" investigation actually
+    # asks. Monotonic, so it is immune to any wall-clock adjustment mid-run;
+    # written to the log normalized to an offset from the case's own first
+    # call (see `record_case`).
+    started_at: float
+    duration_seconds: float
     # "json" for a `complete_json` call, "text" for a `complete_text` call --
     # kept in one ordered list (rather than two separate lists) so a
     # two-stage flow's stage1/stage2 calls stay in their real call order in
@@ -76,6 +93,7 @@ class LoggingLLMAdapter:
         streaming_queue: asyncio.Queue[str] | None = None,
     ) -> dict[str, Any]:
         local_raw: list[str] = []
+        started = time.perf_counter()
         try:
             result = await self._adapter.complete_json(
                 system_prompt=system_prompt,
@@ -114,6 +132,8 @@ class LoggingLLMAdapter:
                     parsed_response=None,
                     timeout=timeout,
                     max_retries=max_retries,
+                    started_at=started,
+                    duration_seconds=time.perf_counter() - started,
                     error=f"{type(exc).__name__}: {exc}",
                 )
             )
@@ -133,6 +153,8 @@ class LoggingLLMAdapter:
                 parsed_response=result,
                 timeout=timeout,
                 max_retries=max_retries,
+                started_at=started,
+                duration_seconds=time.perf_counter() - started,
             )
         )
         return result
@@ -149,6 +171,7 @@ class LoggingLLMAdapter:
         timeout: float | None = None,
         max_retries: int | None = None,
     ) -> str:
+        started = time.perf_counter()
         try:
             result = await self._adapter.complete_text(
                 system_prompt=system_prompt,
@@ -174,6 +197,8 @@ class LoggingLLMAdapter:
                     parsed_response=None,
                     timeout=timeout,
                     max_retries=max_retries,
+                    started_at=started,
+                    duration_seconds=time.perf_counter() - started,
                     kind="text",
                     error=f"{type(exc).__name__}: {exc}",
                 )
@@ -192,6 +217,8 @@ class LoggingLLMAdapter:
                 parsed_response=None,
                 timeout=timeout,
                 max_retries=max_retries,
+                started_at=started,
+                duration_seconds=time.perf_counter() - started,
                 kind="text",
             )
         )
@@ -221,12 +248,29 @@ class LiveEvalLog:
         self._path = _LOG_DIR / f"{suite_name}-{timestamp}.json"
 
     def record_case(self, case_name: str, adapter: LoggingLLMAdapter, **extra: Any) -> None:
+        # Raw `perf_counter` values have an arbitrary origin (seconds since
+        # process/boot), so they are meaningless read absolutely. Normalizing
+        # to the case's own first call turns the list into a readable
+        # timeline -- `started_at` 0.0, 3.2, 3.4... -- where concurrent calls
+        # visibly share a window and the critical path can be traced by eye.
+        origin = min((call.started_at for call in adapter.calls), default=0.0)
         self._cases.append(
             {
                 "case": case_name,
+                # Wall-clock for the case as a whole: the last call to finish,
+                # NOT the sum of durations (calls overlap -- see _RecordedCall).
+                "wall_clock_seconds": round(
+                    max(
+                        (call.started_at + call.duration_seconds - origin for call in adapter.calls),
+                        default=0.0,
+                    ),
+                    3,
+                ),
                 "calls": [
                     {
                         "kind": call.kind,
+                        "started_at": round(call.started_at - origin, 3),
+                        "duration_seconds": round(call.duration_seconds, 3),
                         "system_prompt": call.system_prompt,
                         "user_prompt": call.user_prompt,
                         "params": {

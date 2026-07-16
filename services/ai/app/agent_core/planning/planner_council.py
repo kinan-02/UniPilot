@@ -528,6 +528,36 @@ def _draft_steps_as_dicts(output: PlannerReasoningBlockOutput) -> list[dict[str,
     return [step.model_dump() for step in output.next_steps]
 
 
+def _critical_path_depth(steps: list[PlanStepDraft]) -> int:
+    """Longest chain of `depends_on` links within THIS batch of steps.
+
+    A dependency pointing outside the batch (to a step already executed in
+    accumulated state) is a root here: it is already done, so it costs this
+    batch no hop.
+
+    This is the batch's serial cost. Steps at the same depth are dispatched
+    concurrently (orchestrator's parallel_dispatch), so wall-clock tracks
+    depth, not step count.
+    """
+    by_id = {step.step_id: step for step in steps}
+    memo: dict[str, int] = {}
+
+    def depth(step_id: str) -> int:
+        cached = memo.get(step_id)
+        if cached is not None:
+            return cached
+        step = by_id.get(step_id)
+        if step is None:
+            return 0
+        # Seed before recursing: `rewrite.py` resolves depends_on into a DAG,
+        # but a malformed cycle must terminate here rather than hang the turn.
+        memo[step_id] = 1
+        memo[step_id] = 1 + max((depth(dep) for dep in step.depends_on if dep in by_id), default=0)
+        return memo[step_id]
+
+    return max((depth(step.step_id) for step in steps), default=0)
+
+
 def _should_run_full_council(invocation: int, planner_input: PlannerInvocationInput) -> bool:
     """Adaptive depth: the critic+synth pass runs only where the plan's SHAPE
     is genuinely at stake --
@@ -694,6 +724,37 @@ async def run_planner_council(
     ):
         # Revision came back empty/hollow -- keep the vetted draft.
         return draft_output.model_copy(update={"warnings": [*draft_output.warnings, "planner_council_synth_discarded"]})
+
+    # Gate: synthesis may fix the draft, not lengthen its critical path.
+    #
+    # A critic is asked what is WRONG with a plan, and the synthesizer's only
+    # lever is plan structure -- so a critique about a step's CONTENT ("the
+    # wiki may express credits as buckets, not one number") gets answered
+    # structurally, by splitting that step into several chained ones. Measured
+    # on the 2026-07-15 ise_correctness run, the council never once shrank a
+    # plan (7->8, 4->5, 6->6); on `credits_remaining` it took a depth-5 draft
+    # to depth 7, serializing a branch that had been parallel and splitting one
+    # calculation in two. That turn spent 39 calls and 177s to answer nothing.
+    #
+    # DEPTH, not step count, is the gate: the coverage critic exists to add a
+    # genuinely missing step, and a step that depends on nothing runs alongside
+    # the rest for free. Depth is what becomes latency -- every serial hop is a
+    # blocking LLM round-trip -- so depth is what synthesis may not inflate.
+    # A rejected revision falls back to the draft, which is already a
+    # validator-vetted plan (same contract as the hollow-result path above).
+    #
+    # The content fix that a critique like that actually wanted belongs in the
+    # step itself (`objective` / `assumptions_to_verify`), where one specialist
+    # handles it in one hop -- not in four more steps.
+    if _critical_path_depth(synth_output.next_steps) > _critical_path_depth(draft_output.next_steps):
+        logger.info(
+            "planner_council_synth_discarded_deeper_plan draft_depth=%d synth_depth=%d",
+            _critical_path_depth(draft_output.next_steps),
+            _critical_path_depth(synth_output.next_steps),
+        )
+        return draft_output.model_copy(
+            update={"warnings": [*draft_output.warnings, "planner_council_synth_discarded_deeper_plan"]}
+        )
     return synth_output.model_copy(update={"warnings": [*synth_output.warnings, "planner_council_synthesized"]})
 
 

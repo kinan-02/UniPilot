@@ -9,7 +9,7 @@ still verifies, so a bad route can never silently pass).
 
 from __future__ import annotations
 
-from app.agent_core.orchestrator.specialist_router import route_step
+from app.agent_core.orchestrator.specialist_router import route_plan, route_step
 from app.agent_core.planning.schemas import PlanStep
 
 
@@ -45,6 +45,76 @@ async def _route(adapter, step=None):
         block_id="blk-1",
         user_id="u1",
     )
+
+
+# ── route_plan: batch routing ────────────────────────────────────────────────
+#
+# Measured live (2026-07-15, ise_correctness): 24 of 25 routes were a single
+# specialist label the step's own objective already determined, and each cost a
+# blocking call before its step could start. `route_plan` does the batch in one
+# call. It is an OPTIMIZATION, never a dependency -- every one of these tests
+# exists to pin that a miss costs a call, never a correct route.
+
+
+def _plan_step(step_id, objective="Fetch the student's completed courses.") -> PlanStep:
+    return PlanStep(
+        step_id=step_id, objective=objective, depends_on=[], success_criteria=["done"], assumptions_to_verify=[]
+    )
+
+
+def _routes(*entries: tuple[str, list[dict]]) -> dict:
+    return {"routes": [{"step_id": step_id, "pipeline": pipeline} for step_id, pipeline in entries]}
+
+
+async def test_route_plan_routes_every_step_in_one_call(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory(
+        [_routes(("A", [_sub("s1", "retrieval")]), ("B", [_sub("s1", "calculation_validation")]))]
+    )
+
+    routes = await route_plan(
+        steps=[_plan_step("A"), _plan_step("B")], llm_adapter=adapter, block_id="blk-1"
+    )
+
+    assert len(adapter.calls) == 1, "the whole batch must cost exactly one call"
+    assert routes["A"][0].specialist == "retrieval"
+    assert routes["B"][0].specialist == "calculation_validation"
+
+
+async def test_route_plan_fails_open_to_no_routes(fake_llm_adapter_factory):
+    """The property the whole design rests on. A malformed batch must yield NO
+    routes -- not a guessed one -- so every step falls back to `route_step` and
+    is routed correctly. Contrast `route_step` itself, which fails CLOSED to a
+    blind retrieval sub-step because by then there is no one left to fall back to."""
+    adapter = fake_llm_adapter_factory([{"nonsense": True}])
+
+    routes = await route_plan(
+        steps=[_plan_step("A"), _plan_step("B")], llm_adapter=adapter, block_id="blk-1"
+    )
+
+    assert routes == {}
+
+
+async def test_route_plan_drops_a_route_for_a_step_that_was_never_planned(fake_llm_adapter_factory):
+    """A hallucinated step_id must never reach dispatch -- same posture as the
+    per-step router dropping an invented specialist."""
+    adapter = fake_llm_adapter_factory(
+        [_routes(("A", [_sub("s1", "retrieval")]), ("GHOST", [_sub("s1", "retrieval")]))]
+    )
+
+    routes = await route_plan(steps=[_plan_step("A"), _plan_step("B")], llm_adapter=adapter, block_id="blk-1")
+
+    assert set(routes) == {"A"}
+
+
+async def test_route_plan_does_not_spend_a_call_on_a_single_step(fake_llm_adapter_factory):
+    """A batch of one can only break even, and loses if it fails open (the
+    per-step router then runs anyway). Nothing to win, so no call."""
+    adapter = fake_llm_adapter_factory([])
+
+    routes = await route_plan(steps=[_plan_step("A")], llm_adapter=adapter, block_id="blk-1")
+
+    assert routes == {}
+    assert adapter.calls == []
 
 
 async def test_atomic_step_routes_to_a_single_specialist_pipeline(fake_llm_adapter_factory):

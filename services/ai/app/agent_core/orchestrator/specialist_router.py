@@ -74,6 +74,32 @@ _OUTPUT_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+SPECIALIST_PLAN_ROUTER_V1 = "specialist_plan_router_v1"
+_PLAN_OUTPUT_SCHEMA_NAME = "specialist_plan_router_output_v1"
+
+# One call routes N steps, so it cannot be held to one step's time budget.
+_PLAN_TIMEOUT_SECONDS = _TIMEOUT_SECONDS * 3
+
+_PLAN_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "routes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "step_id": {"type": "string"},
+                    "pipeline": {"type": "array", "items": _SUB_STEP_SCHEMA},
+                },
+                "required": ["step_id", "pipeline"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["routes"],
+    "additionalProperties": False,
+}
+
 
 class RoutedSubStep(BaseModel):
     """One specialist invocation in a step's pipeline. `specialist` is a real
@@ -198,9 +224,53 @@ def _router_contract() -> PromptContract:
     )
 
 
+def _plan_router_contract() -> PromptContract:
+    """The batch sibling of `_router_contract`.
+
+    Reuses that contract's `instructions` and `safety_rules` VERBATIM -- every
+    one of them is a rule about routing a single step to a pipeline, and holds
+    unchanged when several steps are routed in one call. Duplicating them here
+    (rather than sharing) is exactly how the two would drift apart.
+
+    Only the role prompt differs: it must say the steps arrive as a batch, must
+    be routed independently of one another, and -- unlike the per-step router --
+    come with no results, because nothing has run yet.
+    """
+    base = _router_contract()
+    return PromptContract(
+        name=SPECIALIST_PLAN_ROUTER_V1,
+        version="1.0.0",
+        role_prompt=(
+            f"{build_shared_grounding_block()}\n\n"
+            "You are the Specialist Router for the UniPilot Agent's task handler. You are given "
+            "EVERY step of a plan at once, and must decide for EACH one the PIPELINE of specialist "
+            "subagents that will execute it. You do not use tools and you do not do the work "
+            "yourself -- the specialists own the tools; you decide WHICH specialist types are needed "
+            "and how their outputs chain. A step that one specialist can fully complete is a "
+            "one-element pipeline (that is what 'atomic' means); most steps are.\n\n"
+            "Return one entry per step you were given, keyed by its exact step_id. Route each step "
+            "on its OWN objective and success_criteria -- how you route one step never changes how "
+            "you route another.\n\n"
+            "These steps have NOT run yet, so you are shown no results -- only what each step is "
+            "asking for, and the step_ids it depends on. Route on the ask. Do not speculate about "
+            "what a dependency will return; if a step's dependencies later come back failed or "
+            "incomplete, that step is re-routed at dispatch with those real results in hand."
+        ),
+        instructions=base.instructions,
+        allowed_context_fields=None,
+        output_schema_name=_PLAN_OUTPUT_SCHEMA_NAME,
+        default_risk_level="low",
+        default_min_iterations=1,
+        default_max_iterations=1,
+        default_temperature=0.0,
+        safety_rules=base.safety_rules,
+    )
+
+
 def build_specialist_router_prompt_registry() -> PromptRegistry:
     registry = build_default_prompt_registry()
     registry.register(_router_contract())
+    registry.register(_plan_router_contract())
     return registry
 
 
@@ -377,12 +447,212 @@ async def route_step(
     )
 
 
+class PlanRouterInput(BaseReasoningBlockInput):
+    steps: list[PlanStep] = Field(default_factory=list)
+    specialist_catalog: str = ""
+
+
+class PlanRouterOutput(BaseReasoningBlockOutput):
+    routes: dict[str, list[RoutedSubStep]] = Field(default_factory=dict)
+
+
+def _build_plan_user_prompt(block_input: PlanRouterInput) -> str:
+    payload = {
+        "steps": [
+            {
+                "step_id": step.step_id,
+                "objective": step.objective,
+                # The batch has not run, so there are no RESULTS to show -- but a
+                # step's own declared dependencies are known at plan time, and are
+                # the ids a sub-step must reference verbatim.
+                "depends_on": list(step.depends_on),
+                "success_criteria": list(step.success_criteria),
+            }
+            for step in block_input.steps
+        ],
+        "output_schema_name": block_input.output_schema_name,
+        "output_schema": block_input.output_schema,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+class PlanRouterBlock(BaseReasoningBlock):
+    """Single-shot, no tools. Fails OPEN to NO routes -- see `_fallback_output`."""
+
+    def __init__(
+        self, *, llm_adapter: LLMAdapter, prompt_registry: PromptRegistry | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(
+            llm_adapter=llm_adapter,
+            prompt_registry=prompt_registry or build_specialist_router_prompt_registry(),
+            **kwargs,
+        )
+
+    async def _run_internal(self, block_input: PlanRouterInput, telemetry: RunTelemetry) -> PlanRouterOutput:
+        contract = self._resolve_prompt_contract(block_input.prompt_contract_name or SPECIALIST_PLAN_ROUTER_V1)
+        params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, contract)
+
+        call_result = await self._invoke_llm(
+            system_prompt=_build_system_prompt(contract, block_input.specialist_catalog),
+            user_prompt=_build_plan_user_prompt(block_input),
+            params=params,
+            response_schema=block_input.output_schema,
+            phase="pass1_of_1",
+            block_input=block_input,
+            telemetry=telemetry,
+        )
+
+        normalized = self._normalize_result(call_result.parsed, output_schema=block_input.output_schema)
+        validation = self._validate_schema(normalized, block_input.output_schema)
+        if not validation.valid:
+            repair_outcome = await self._repair_schema(
+                initial_result=normalized,
+                initial_errors=validation.errors,
+                output_schema=block_input.output_schema,
+                max_attempts=_MAX_SCHEMA_REPAIR_ATTEMPTS,
+                block_input=block_input,
+                telemetry=telemetry,
+            )
+            if not repair_outcome.valid:
+                return self._fallback_output(block_input, extra_warning="schema_validation_failed")
+            normalized = repair_outcome.result
+
+        return self._to_plan_output(normalized, block_input)
+
+    def _to_plan_output(self, normalized: dict[str, Any], block_input: PlanRouterInput) -> PlanRouterOutput:
+        raw_routes = normalized.get("routes")
+        if not isinstance(raw_routes, list):
+            return self._fallback_output(block_input, extra_warning="routes_not_a_list")
+
+        known_ids = {step.step_id for step in block_input.steps}
+        routes: dict[str, list[RoutedSubStep]] = {}
+        for item in raw_routes:
+            if not isinstance(item, dict):
+                continue
+            step_id = item.get("step_id")
+            # A route naming a step the Planner never emitted is dropped, never
+            # dispatched -- same posture as an invented specialist below.
+            if not isinstance(step_id, str) or step_id not in known_ids:
+                logger.warning("specialist_plan_router_dropped_unknown_step", extra={"stepId": step_id})
+                continue
+            pipeline: list[RoutedSubStep] = []
+            for sub in item.get("pipeline") or []:
+                if not isinstance(sub, dict):
+                    continue
+                try:
+                    pipeline.append(RoutedSubStep.model_validate(sub))
+                except Exception:  # noqa: BLE001 -- one bad sub-step must not sink the batch
+                    logger.warning("specialist_plan_router_dropped_invalid_substep", extra={"stepId": step_id})
+            # A step whose pipeline came back empty is simply left unrouted: the
+            # task handler routes it itself, which is strictly better than
+            # dispatching a fail-closed blind retrieval for it.
+            if pipeline:
+                routes[step_id] = pipeline
+
+        return PlanRouterOutput(
+            status="completed",
+            schema_valid=True,
+            result=normalized,
+            confidence=1.0,
+            routes=routes,
+        )
+
+    def _fallback_output(
+        self, block_input: PlanRouterInput, *, extra_warning: str | None = None
+    ) -> PlanRouterOutput:
+        """Fails OPEN, unlike `SpecialistRouterBlock`'s fail-CLOSED single
+        retrieval sub-step -- and deliberately so.
+
+        This block is an OPTIMIZATION, not a dependency: every step it fails to
+        route is routed by `route_step` at dispatch, exactly as before batching
+        existed. So the safe failure is to return nothing and let the per-step
+        router do its job -- guessing a blind retrieval pipeline here would
+        replace a correct route with a wrong one to save a call.
+        """
+        warnings = ["specialist_plan_router_fallback_used"]
+        if extra_warning:
+            warnings.append(extra_warning)
+        return PlanRouterOutput(
+            status="completed",
+            schema_valid=False,
+            result=None,
+            confidence=0.0,
+            warnings=warnings,
+            routes={},
+        )
+
+    def _failed_output(self, block_input: BaseReasoningBlockInput, *, reason: str) -> PlanRouterOutput:
+        assert isinstance(block_input, PlanRouterInput)
+        return self._fallback_output(block_input, extra_warning=f"reasoning_block_failed: {reason}")
+
+
+async def route_plan(
+    *,
+    steps: list[PlanStep],
+    llm_adapter: LLMAdapter,
+    block_id: str,
+    role_roster: dict[RoleName, RoleDefinition] | None = None,
+) -> dict[str, list[RoutedSubStep]]:
+    """Route a whole batch of plan steps in ONE call, keyed by step_id.
+
+    Measured live (2026-07-15, ise_correctness): 24 of 25 routes were a
+    one-element pipeline -- a single specialist label -- and each cost its own
+    blocking LLM call before its step could start. `credits_remaining` alone
+    paid 8 such calls across ~6 layers.
+
+    What per-step routing buys that this cannot is `dependency_context`: the
+    results a step's dependencies ACTUALLY produced, which a batch routed at
+    plan time cannot see because nothing has run. On that same run, exactly one
+    route used it -- reacting to a `degreeId` that failed to resolve, which was
+    a get_entity bug since fixed. So the caller keeps that adaptation where it
+    still pays: `run_task_handler` re-routes a step itself whenever its
+    dependencies came back anything but clean.
+
+    Returns `{}` on any failure -- an empty map means "nothing precomputed", and
+    every step falls back to `route_step`. This function can only ever save
+    calls; it can never be the reason a step is routed wrongly.
+    """
+    # A batch of one can only break even (one batch call replacing one per-step
+    # call) -- and loses outright if the batch fails open, since the per-step
+    # router then runs anyway. Nothing to win, so don't spend the call.
+    if len(steps) <= 1:
+        return {}
+    roster = role_roster or build_default_role_roster()
+    block = PlanRouterBlock(llm_adapter=llm_adapter)
+    output = await block.run(
+        PlanRouterInput(
+            block_id=block_id,
+            agent_name="specialist_plan_router",
+            objective="Route every step of the plan to its specialist pipeline.",
+            output_schema_name=_PLAN_OUTPUT_SCHEMA_NAME,
+            output_schema=_PLAN_OUTPUT_SCHEMA,
+            prompt_contract_name=SPECIALIST_PLAN_ROUTER_V1,
+            steps=list(steps),
+            specialist_catalog=render_specialist_catalog(roster),
+            llm_call_parameters=LLMCallParameters(
+                thinking_enabled=False,
+                reasoning_effort="low",
+                # Scaled off the per-step bound: this call does the work of N of
+                # them, so it must not be held to one step's budget.
+                timeout=_PLAN_TIMEOUT_SECONDS,
+                max_retries=1,
+            ),
+        )
+    )
+    return dict(output.routes)
+
+
 __all__ = [
     "SPECIALIST_ROUTER_V1",
+    "SPECIALIST_PLAN_ROUTER_V1",
     "RoutedSubStep",
     "SpecialistRouterOutput",
     "SpecialistRouterInput",
     "SpecialistRouterBlock",
+    "PlanRouterInput",
+    "PlanRouterOutput",
+    "PlanRouterBlock",
     "route_step",
+    "route_plan",
     "build_specialist_router_prompt_registry",
 ]
