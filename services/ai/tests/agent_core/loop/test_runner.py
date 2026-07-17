@@ -151,6 +151,56 @@ async def test_completeness_gate_rejection_continues_the_loop(monkeypatch):
     assert any(step.get("completeness_rejected") for step in result.transcript)
 
 
+async def test_what_if_chain_threads_state_via_arg_refs(monkeypatch):
+    """The §17.3 chain, previously inexpressible: fetch -> surface -> mutate_state
+    (altered state) -> surface -> check_eligibility over {"ref": altered} -> answer.
+    Proves a grounded object threads into a tool arg without the model typing it."""
+    received: dict[str, Any] = {}
+
+    class _MutateInput(BaseModel):
+        base_state: dict[str, Any] = {}
+        change: dict[str, Any] = {}
+
+    async def _mutate(payload: _MutateInput) -> ToolOutputEnvelope:
+        courses = payload.base_state.get("completedCourses", [])
+        altered = {"completedCourses": [{**c, "status": "failed"} for c in courses]}
+        return ToolOutputEnvelope(ok=True, data={"state": altered}, certainty=CertaintyTag(basis="hypothetical_simulation", confidence=1.0))
+
+    class _EligInput(BaseModel):
+        course_id: str = ""
+        state: dict[str, Any] = {}
+        student_id: str = ""
+
+    async def _elig(payload: _EligInput) -> ToolOutputEnvelope:
+        received["state"] = payload.state
+        eligible = all(c.get("status") != "failed" for c in payload.state.get("completedCourses", []))
+        return ToolOutputEnvelope(ok=True, data={"eligible": eligible}, certainty=CertaintyTag(basis="official_record", confidence=1.0))
+
+    registry = _stub_registry()
+    registry.register(ToolDescriptor(name="mutate_state", description="stub", input_model=_MutateInput, output_model=ToolOutputEnvelope, side_effect="compute", callable=_mutate))
+    registry.register(ToolDescriptor(name="check_eligibility", description="stub", input_model=_EligInput, output_model=ToolOutputEnvelope, side_effect="read", callable=_elig))
+
+    turns = [
+        {"thought": "fetch", "tool_calls": [_FETCH]},
+        {"thought": "surface", "tool_calls": [_SURFACE]},
+        {"thought": "mutate", "tool_calls": [{"tool": "mutate_state", "arguments": {"base_state": {"completedCourses": {"ref": "completed"}}, "change": {"type": "fail_course", "courseNumber": "00940224", "semester": "2024-1"}}}]},
+        {"thought": "surface altered", "tool_calls": [{"tool": "surface_fact", "arguments": {"key": "altered", "from": "call_2", "path": "data.state"}}]},
+        {"thought": "eligibility", "tool_calls": [{"tool": "check_eligibility", "arguments": {"course_id": "00960211", "state": {"ref": "altered"}}}]},
+        {"thought": "surface eligible", "tool_calls": [{"tool": "surface_fact", "arguments": {"key": "eligible", "from": "call_3", "path": "data.eligible"}}]},
+        {"thought": "answer", "tool_calls": [{"tool": "final_answer", "arguments": {"prose": "Eligibility after failing 00940224: {eligible}.", "fact_refs": {"eligible": "eligible"}}}]},
+    ]
+    adapter = _FakeAdapter(turns=turns, sub_asks=["Would the student still be eligible?"])
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("If I fail 00940224, can I take 00960211?", "u1", registry)
+
+    assert result.outcome == "answered"
+    # The tool received the RESOLVED altered state (grounded object), not a {"ref": ...}.
+    assert received["state"] == {"completedCourses": [{**c, "status": "failed"} for c in _COMPLETED]}
+    assert result.facts["eligible"].value is False
+    assert result.answer == "Eligibility after failing 00940224: False."
+
+
 async def test_no_progress_governor_forces_graceful_conclusion(monkeypatch):
     noop = {"tool": "surface_fact", "arguments": {"key": "x", "from": "call_9", "path": "nope"}}
     adapter = _FakeAdapter(

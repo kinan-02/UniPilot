@@ -46,6 +46,12 @@ TOOL_NOTES: dict[str, str] = {
         "Pass student_id; the tool self-fetches the record. Pass an altered `state` only for a "
         "what-if projection."
     ),
+    "mutate_state": (
+        "Produces an altered state for a what-if. base_state needs the record you are altering "
+        "(e.g. {\"completedCourses\": {\"ref\":\"<a surfaced completed-courses fact>\"}}); change is a "
+        "literal like {\"type\":\"fail_course\",\"courseNumber\":\"X\",\"semester\":\"YYYY-N\"}. Surface the "
+        "result's data.state, then pass {\"ref\":\"<that fact>\"} as another tool's `state`."
+    ),
 }
 
 
@@ -113,6 +119,16 @@ results into grounded facts and end the turn -- use these, never invent others:
       that did not come from a slot is REJECTED and you must retry.
 
   - clarify (ends the turn): {{"tool":"clarify","arguments":{{"question":"..."}}}}  -- only if genuinely blocked.
+
+PASSING A GROUNDED OBJECT INTO A TOOL (for what-if chains):
+When a data tool needs a whole object you already fetched (e.g. the student's
+`state` for a simulation), do NOT type the object. Put {{"ref":"factKey"}} in place
+of that argument value and code substitutes the grounded fact's value. Example --
+fail a course, then check eligibility over the altered state:
+  1. surface the fetched completed-courses list as fact "completed"
+  2. {{"tool":"mutate_state","arguments":{{"base_state":{{"completedCourses":{{"ref":"completed"}}}},"change":{{"type":"fail_course","courseNumber":"...","semester":"..."}}}}}}
+  3. surface the result's data.state as fact "altered", then
+     {{"tool":"check_eligibility","arguments":{{"course_id":"...","state":{{"ref":"altered"}}}}}}
 
 The student's user_id is: {user_id}
 (use it as entity_id for student_profile / completed_courses / semester_plan).

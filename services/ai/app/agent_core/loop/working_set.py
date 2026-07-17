@@ -23,6 +23,11 @@ from app.agent_core.subagents.fact_projection import available_paths, describe_c
 # turn's outcome without the whole history flooding context.
 _OBSERVATION_TAIL = 8
 
+# A call signature bound to a large object (a what-if state, via arg-refs) would
+# otherwise dump the whole object into the index -- clip it; the handle + paths
+# are what the model addresses it by.
+_INDEX_CALL_CLIP = 160
+
 
 @dataclass(frozen=True)
 class Fact:
@@ -110,15 +115,14 @@ def _render_index(ws: WorkingSet) -> str:
     lines: list[str] = []
     for handle, result_key in ws.handles.items():
         envelope = ws.tool_results.get(result_key, {})
+        signature = describe_call(result_key)[:_INDEX_CALL_CLIP]
         if envelope.get("ok"):
             lines.append(
-                f"  {handle} = {describe_call(result_key)}  ok=True\n"
+                f"  {handle} = {signature}  ok=True\n"
                 f"     paths: {available_paths(envelope)}"
             )
         else:
-            lines.append(
-                f"  {handle} = {describe_call(result_key)}  ok=False error={envelope.get('error')}"
-            )
+            lines.append(f"  {handle} = {signature}  ok=False error={envelope.get('error')}")
     return "\n".join(lines)
 
 

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent_core.loop.answer_boundary import completeness_gate, resolve_final
+from app.agent_core.loop.arg_refs import resolve_arg_refs
 from app.agent_core.loop.constitution import build_constitution, build_tool_catalog
 from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface
 from app.agent_core.loop.front_door import decompose
@@ -74,10 +75,25 @@ async def _run_data_tools(
     ws: WorkingSet, requests: list[dict[str, Any]], registry: ToolRegistry, cache: ToolCallCache
 ) -> tuple[int, list[ToolInvocationRecord]]:
     """Run the turn's data-tool calls, refresh the working set's result index,
-    and report progress (count of newly-recorded successful results)."""
+    and report progress (count of newly-recorded successful results).
+
+    Each call's `{"ref": factKey}` arguments are resolved to grounded values
+    first (§17.3); a call with an unresolvable ref is skipped with a repairable
+    observation rather than dispatched malformed."""
+    resolved_requests: list[dict[str, Any]] = []
+    for request in requests:
+        args, errors = resolve_arg_refs(request["arguments"], ws.facts)
+        if errors:
+            for err in errors:
+                ws.observe(f"tool '{request['tool_name']}' arg error: {err}")
+            continue
+        resolved_requests.append({"tool_name": request["tool_name"], "arguments": args})
+    if not resolved_requests:
+        return 0, []
+
     before = set(ws.tool_results)
     merged, audit = await execute_tool_round(
-        tool_requests=requests,
+        tool_requests=resolved_requests,
         tool_grant=registry.names(),
         tool_registry=registry,
         tool_results_so_far=ws.tool_results,
