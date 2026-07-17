@@ -27,6 +27,7 @@ from app.agent_core.tools.composites.get_track_requirements import (
     GetTrackRequirementsInput,
     run_get_track_requirements,
 )
+from app.agent_core.tools.composites.student_state import resolve_student_state
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.primitives.search_over_state import SearchOverStateInput, run_search_over_state
 from app.agent_core.tools.registry import ToolDescriptor
@@ -44,6 +45,11 @@ _SUBSTITUTE_CANDIDATE_NOTE = (
 class FindRequirementSubstitutesInput(BaseModel):
     course_id: str
     track_slug: str
+    # PREFERRED. Given this, the tool reads the student's completed courses
+    # itself and `state` is not needed -- see `student_state.resolve_student_state`.
+    student_id: str | None = None
+    # Only for a what-if the CALLER built. Wins over `student_id` when it carries
+    # completed courses.
     state: dict[str, Any] = Field(default_factory=dict)
     max_semesters: float | None = None
 
@@ -56,6 +62,12 @@ async def run_find_requirement_substitutes(payload: FindRequirementSubstitutesIn
     track_slug = (payload.track_slug or "").strip()
     if not track_slug:
         return ToolOutputEnvelope(ok=False, data=None, error="track_slug_required")
+
+    # Read the record ourselves when the caller only named the student, so the
+    # completed-course list never has to cross a model to get here.
+    state, state_error = await resolve_student_state(payload.state, payload.student_id)
+    if state_error:
+        return ToolOutputEnvelope(ok=False, data=None, error=state_error)
 
     track_result = await run_get_track_requirements(GetTrackRequirementsInput(track_slug=track_slug))
     if not track_result.ok:
@@ -72,7 +84,7 @@ async def run_find_requirement_substitutes(payload: FindRequirementSubstitutesIn
         constraints.append({"type": "max_semesters", "value": payload.max_semesters})
 
     search_result = await run_search_over_state(
-        SearchOverStateInput(state=payload.state, constraints=constraints, objective="find_substitute")
+        SearchOverStateInput(state=state, constraints=constraints, objective="find_substitute")
     )
     if not search_result.ok:
         return ToolOutputEnvelope(ok=False, data=None, error=f"substitute_search_failed: {search_result.error}")

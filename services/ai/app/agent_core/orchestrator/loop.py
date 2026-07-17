@@ -7,50 +7,74 @@ Synthesis.
 
 from __future__ import annotations
 
-import asyncio
+import logging
 from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.monitor import evaluate_step_result
 from app.agent_core.orchestrator.parallel_dispatch import dispatch_layer_concurrently
-from app.agent_core.orchestrator.replan_ledger import ReplanLedger
 from app.agent_core.orchestrator.state_index import build_state_index
 from app.agent_core.orchestrator.specialist_router import route_plan
 from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.planner import build_next_plan_steps
-from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, ReplanFocus, RoleName
+from app.agent_core.planning.schemas import PlannerInvocationInput, PlanStep, ReplanFocus
 from app.agent_core.planning.state import PlanExecutionState, StateEntry
-from app.agent_core.reasoning.llm_adapter import LLMAdapter
-from app.agent_core.reasoning_effort import TurnReasoningConfig
-from app.agent_core.roles.schemas import RoleDefinition
+from app.agent_core.response_language import HEBREW, detect_message_language
 from app.agent_core.synthesis.synthesis import compose_answer
-from app.agent_core.tools.call_cache import ToolCallCache
-from app.agent_core.tools.registry import ToolRegistry
-from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
+from app.agent_core.turn_context import TurnContext
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_PLANNER_INVOCATIONS = 5
+
+_EMPTY_ANSWER_MARKER = "synthesis_produced_no_answer_text"
+
+# Said in the student's own language, for the same reason every other answer is.
+# Deliberately admits the failure rather than dressing it up: the student can act
+# on "I could not determine this, ask the secretariat"; they cannot act on "".
+_NO_ANSWER_MESSAGE = {
+    "English": (
+        "I could not determine an answer to this from your academic records and the course "
+        "catalog. Please try rephrasing your question, or check with your academic advisor or "
+        "the faculty secretariat."
+    ),
+    "Hebrew": (
+        "לא הצלחתי להגיע לתשובה לשאלה זו מתוך הרשומות האקדמיות שלך ומקטלוג הקורסים. "
+        "נסה לנסח את השאלה מחדש, או פנה ליועץ האקדמי או למזכירות הפקולטה."
+    ),
+}
+
+
+def _answer_text_from(data: dict | None) -> str:
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("answer_text") or "").strip()
+
+
+def _answer_text(entry: StateEntry) -> str:
+    return _answer_text_from(entry.data)
+
+
+def _no_answer_message(original_user_message: str) -> str:
+    language = detect_message_language(original_user_message)
+    return _NO_ANSWER_MESSAGE[HEBREW if language == HEBREW else "English"]
 
 
 async def run_plan_to_completion(
     *,
+    ctx: TurnContext,
     user_goal: str,
-    original_user_message: str,
-    user_id: str,
-    llm_adapter: LLMAdapter,
-    role_roster: dict[RoleName, RoleDefinition],
-    tool_registry: ToolRegistry,
-    plan_id: str,
     max_planner_invocations: int = DEFAULT_MAX_PLANNER_INVOCATIONS,
-    reasoning_config: TurnReasoningConfig | None = None,
     sub_asks: list[str] | None = None,
     constraints: list[str] | None = None,
     open_questions: list[str] | None = None,
     implies_action_request: bool = False,
-    streaming_queue: asyncio.Queue[str] | None = None,
-    tool_call_cache: ToolCallCache | None = None,
-    unresolvable_registry: UnresolvableEntityRegistry | None = None,
-    replan_ledger: ReplanLedger | None = None,
 ) -> tuple[PlanExecutionState, StateEntry | None, str | None]:
     """Drives one full turn: adaptive planning + per-step dispatch + Synthesis.
+
+    `ctx` carries the turn's wiring (adapter, tools, roles, and the three
+    per-turn registries). Everything still spelled out here is the REQUEST --
+    what this turn was actually asked to do -- which stays visible at the call
+    site rather than being folded into the context object.
 
     Returns `(state, None, clarification_question)` when the plan never
     reached `plan_status="complete"` -- the caller must treat a `None` final
@@ -61,14 +85,14 @@ async def run_plan_to_completion(
     answer from (a composition-role step's own entry if the Planner ended
     the plan with one, else a synthesis fallback entry -- see below).
     """
-    state = PlanExecutionState(plan_id=plan_id)
+    state = PlanExecutionState(plan_id=ctx.plan_id)
     monitor_flags: list[str] = []
     replan_reason: str | None = None
     replan_focus: ReplanFocus | None = None
     plan_status = "in_progress"
     clarification_question: str | None = None
 
-    _max_invocations = reasoning_config.max_planner_invocations if reasoning_config else max_planner_invocations
+    _max_invocations = ctx.reasoning.max_planner_invocations if ctx.reasoning else max_planner_invocations
     for invocation in range(1, _max_invocations + 1):
         # On the last available round, tell the Planner to conclude (compose or
         # clarify) rather than schedule more exploration -- otherwise a turn
@@ -78,7 +102,7 @@ async def run_plan_to_completion(
         # doesn't misread a wrap-up as a replan (see planner schema).
         planner_input = PlannerInvocationInput(
             user_goal=user_goal,
-            original_user_message=original_user_message,
+            original_user_message=ctx.original_user_message,
             sub_asks=sub_asks or [],
             constraints=constraints or [],
             open_questions=open_questions or [],
@@ -87,21 +111,21 @@ async def run_plan_to_completion(
             plan_graph_so_far=state.plan_graph,
             monitor_flags=monitor_flags,
             replan_reason=replan_reason,
-            unresolvable_entities=unresolvable_registry.snapshot() if unresolvable_registry else [],
+            unresolvable_entities=ctx.unresolvable.snapshot(),
             final_round=(invocation == _max_invocations),
             # Objectives re-attempted past the replan threshold and still
             # failing -- the Planner is told not to reschedule equivalent work
             # for these (§4.1). Kept off monitor_flags for the same council-gate
             # reason as final_round.
-            exhausted_steps=replan_ledger.exhausted() if replan_ledger else [],
+            exhausted_steps=ctx.replans.exhausted(),
             # Scopes a replan to the failed region + protected steps (§4.2);
             # None on the first round and any non-replan round.
             replan_focus=replan_focus,
         )
         planner_output = await build_next_plan_steps(
             planner_input=planner_input,
-            llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-planner-{invocation}",
+            llm_adapter=ctx.llm,
+            block_id=ctx.block_id("planner", str(invocation)),
             invocation=invocation,
         )
         plan_status = planner_output.plan_status
@@ -132,25 +156,16 @@ async def run_plan_to_completion(
         # -- it can never make a step run unrouted or wrongly routed.
         precomputed_routes = await route_plan(
             steps=list(planner_output.next_steps),
-            llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-plan-router-{invocation}",
-            role_roster=role_roster,
+            llm_adapter=ctx.llm,
+            block_id=ctx.block_id("plan-router", str(invocation)),
+            role_roster=ctx.roles,
         )
 
         async def _dispatch_one(step_id: str, _steps_by_id: dict[str, PlanStep] = steps_by_id) -> StateEntry:
             return await run_task_handler(
                 step=_steps_by_id[step_id],
                 state=state,
-                role_roster=role_roster,
-                tool_registry=tool_registry,
-                llm_adapter=llm_adapter,
-                original_user_message=original_user_message,
-                user_id=user_id,
-                plan_id=plan_id,
-                streaming_queue=streaming_queue,
-                tool_call_cache=tool_call_cache,
-                unresolvable_registry=unresolvable_registry,
-                reasoning_config=reasoning_config,
+                ctx=ctx,
                 precomputed_route=precomputed_routes.get(step_id),
             )
 
@@ -168,16 +183,22 @@ async def run_plan_to_completion(
                 state.append(entry)
                 step = steps_by_id[step_id]
                 decision, unmet_criteria = await evaluate_step_result(
-                    step, entry, llm_adapter=llm_adapter, block_id=f"{plan_id}-{step.step_id}-monitor"
+                    step, entry, llm_adapter=ctx.llm, block_id=ctx.block_id(step.step_id, "monitor")
                 )
                 if decision == "replan":
                     monitor_flags.append(f"step {step.step_id} failed")
                     replan_reason = f"step {step.step_id} failed"
                     should_replan = True
                     round_failed_step_ids.append(step.step_id)
-                    if replan_ledger is not None:
-                        replan_ledger.record(step.objective, replan_reason)
+                    ctx.replans.record(step.objective, replan_reason)
                 if decision == "clarify":
+                    # A step that fell short is a replan, exactly as a failed
+                    # one is -- this branch used to collect the flags and the
+                    # failed step id and then NOT ask for the replan, so on any
+                    # round the Planner had already called "complete" the loop
+                    # broke below and dropped everything gathered here. That is
+                    # the missing replan the comment further down records.
+                    should_replan = True
                     # Thread the success-check's own verbatim unmet_criteria
                     # in, not just a generic phrase -- without this the
                     # re-invoked Planner only knows SOMETHING was missing,
@@ -194,8 +215,7 @@ async def run_plan_to_completion(
                         )
                     round_failed_step_ids.append(step.step_id)
                     round_unmet.extend(unmet_criteria)
-                    if replan_ledger is not None:
-                        replan_ledger.record(step.objective, replan_reason or "unmet success criteria")
+                    ctx.replans.record(step.objective, replan_reason or "unmet success criteria")
             if should_replan:
                 # Let the whole in-flight layer finish (it already has, by
                 # the time we get here) but never start the NEXT layer once
@@ -242,28 +262,60 @@ async def run_plan_to_completion(
     # *is* the final answer. `synthesis.compose_answer` is the safety net for
     # a plan that reached "complete" (or ran out of rounds) without ever
     # assigning a composition step.
-    if state.entries[-1].role == "composition":
+    #
+    # ...but only if it actually SAID something. A composition entry with no
+    # answer_text is not an answer, and returning it hands the student a blank
+    # reply.
+    #
+    # CAUGHT LIVE (2026-07-16, ise_correctness `offering_pattern`): the
+    # composition step returned `partial` with `data={}` via task_handler's
+    # empty-dependency-context guard -- whose own comment says it fails partial
+    # "so the Monitor replans, rather than emitting a confident wrong answer".
+    # No replan came. The plan was already complete, this line accepted the empty
+    # entry, and the student got "". The guard was right to refuse to compose
+    # from nothing; nothing downstream honoured it.
+    #
+    # Falling through to `compose_answer` is a real recovery rather than a
+    # cosmetic one: it composes over the WHOLE state, and in that run a sibling
+    # retrieval step had succeeded with exactly the offering data the answer
+    # needed. The empty entry stays in state -- it is a true record of what that
+    # step did.
+    if state.entries[-1].role == "composition" and _answer_text(state.entries[-1]):
         return state, state.entries[-1], None
 
     composed = await compose_answer(
         state=state,
         user_goal=user_goal,
-        composition_role=role_roster["composition"],
-        tool_registry=tool_registry,
-        llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-synthesis",
-        streaming_queue=streaming_queue,
+        composition_role=ctx.roles["composition"],
+        tool_registry=ctx.tools,
+        llm_adapter=ctx.llm,
+        block_id=ctx.block_id("synthesis"),
+        original_user_message=ctx.original_user_message,
+        streaming_queue=ctx.stream,
     )
+    # Last line of defence. If even synthesis produced nothing, say so in words
+    # rather than shipping an empty string: a blank reply tells the student
+    # nothing, hides that anything went wrong, and (measured live) sails through
+    # any gate that only checks a final entry exists. An honest "I could not
+    # determine this" is a worse answer than a real one and a far better one
+    # than silence.
+    data = composed.result or {}
+    warnings = list(composed.warnings)
+    if not _answer_text_from(data):
+        logger.warning("synthesis_produced_no_answer_text plan_id=%s status=%s", ctx.plan_id, composed.status)
+        data = {**data, "answer_text": _no_answer_message(ctx.original_user_message)}
+        warnings.append(_EMPTY_ANSWER_MARKER)
+
     fallback_entry = StateEntry(
         entry_id=f"synthesis-{len(state.entries)}",
         step_id="synthesis",
         role="composition",
         status=composed.status,
         output_schema_name="composition_agent_output_v1",
-        data=composed.result or {},
+        data=data,
         certainty=composed.certainty,
         assumptions=composed.assumptions,
-        warnings=composed.warnings,
+        warnings=warnings,
         tool_audit_trail=composed.tool_audit_trail,
         produced_at=datetime.now(timezone.utc),
     )

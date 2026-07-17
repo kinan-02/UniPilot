@@ -127,3 +127,72 @@ def test_flatten_does_not_overwrite_existing_step_id_key() -> None:
     facts = _flatten_dependency_facts([entry])
 
     assert facts["credits"] == entry.data
+
+
+# --- Cross-step refs -------------------------------------------------------
+#
+# CAUGHT LIVE (2026-07-16, `credits_remaining`). The turn computed both numbers
+# it needed and could not subtract them: `ref` is a single-hop `facts[ref]`
+# lookup, and a prior calculation's 62.5 sat one level down inside its entry
+# dict. Retrieval was unaffected (its `facts` map gets promoted), so the system
+# could compute from fetched data but never from a computation -- and any
+# credits-remaining answer is inherently two-stage.
+
+
+def _calc_entry(step_id: str, result) -> StateEntry:
+    entry = _entry(step_id, {"type": "expression", "result": result, "trace": [f"... = {result}"]})
+    return entry.model_copy(update={"role": "calculation_validation"})
+
+
+def _interpretation_entry(step_id: str, answer: str) -> StateEntry:
+    entry = _entry(
+        step_id,
+        {"certainty_basis": "wiki_derived", "confidence": 1.0, "assumptions": [], "answer": answer},
+    )
+    return entry.model_copy(update={"role": "interpretation"})
+
+
+def test_a_prior_calculations_result_is_ref_able_by_step_id() -> None:
+    facts = _flatten_dependency_facts([_calc_entry("1e", 62.5)])
+
+    assert facts["1e"] == 62.5, "a ref must bind to the number, not the entry dict"
+
+
+def test_an_interpretations_answer_is_ref_able_by_step_id() -> None:
+    facts = _flatten_dependency_facts([_interpretation_entry("1d", "155")])
+
+    assert facts["1d"] == "155"
+
+
+def test_the_live_credits_remaining_expression_now_evaluates() -> None:
+    """The exact expression the model wrote, which failed three times.
+
+    `subtract(ref "1d", ref "1e")` -> `non_numeric_operand: subtract`, because
+    both refs bound to entry dicts. There was no expression that could have
+    worked; composition did the arithmetic in prose instead.
+    """
+    from app.agent_core.tools.primitives.expression_tree import (
+        ExpressionNode,
+        evaluate_expression,
+        validate_expression_tree,
+    )
+
+    facts = _flatten_dependency_facts([_interpretation_entry("1d", "155"), _calc_entry("1e", 62.5)])
+    node = ExpressionNode(op="subtract", left=ExpressionNode(ref="1d"), right=ExpressionNode(ref="1e"))
+
+    assert validate_expression_tree(node, facts=facts) == []
+    result, _trace, errors = evaluate_expression(node, facts)
+
+    assert errors == []
+    assert result == 92.5, "155 (read off the wiki as a string) minus 62.5 (a prior calculation)"
+
+
+def test_a_retrieval_entry_still_binds_to_its_whole_data() -> None:
+    """Only a step that answered with ONE value is scalarized. Retrieval answers
+    with a `facts` map, whose members are promoted individually -- unchanged."""
+    facts = _flatten_dependency_facts([
+        _entry("1b", {"certainty_basis": "official_record", "confidence": 1.0, "facts": {"completedCourses": {"key": "completedCourses", "value": [{"creditsEarned": 4.0}]}}})
+    ])
+
+    assert isinstance(facts["1b"], dict)
+    assert facts["completedCourses"] == [{"creditsEarned": 4.0}]

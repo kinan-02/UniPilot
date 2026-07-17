@@ -16,9 +16,63 @@ from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetr
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.roles.prompts import COMPOSITION_AGENT_V1, build_prompt_registry_with_roles
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.planning.state import CertaintyTag, StateEntry
 
 _COMPOSITION_OUTPUT_SCHEMA_NAME = "composition_agent_output_v1"
+
+# How well-grounded the EVIDENCE an answer was composed from actually is.
+# `retrieval_block._weakest_basis` states the principle this applies: "the
+# certainty a projected step actually earned, taken from the envelopes of the
+# calls it read rather than from the model's say-so". Composition was the last
+# place still using the model's say-so -- it stamped a flat 1.0 on every
+# successful answer, so `certainty_band` reported "high" for an answer built
+# entirely out of in-model arithmetic exactly as readily as for one read
+# straight off an official record.
+#
+# Numbers are `result_normalizer._CONFIDENCE_WORD_MAP`'s own high/medium/low
+# points, so a composed answer lands on the same scale every other result in
+# the system is already measured against.
+_GROUNDED_BASES: frozenset[str] = frozenset({"official_record", "wiki_derived"})
+_GROUNDED_CONFIDENCE = 0.9  # every fact came from a record -> "high"
+_INFERRED_CONFIDENCE = 0.6  # something in the chain was inferred -> "medium"
+_NO_EVIDENCE_CONFIDENCE = 0.3  # nothing succeeded to compose from -> "low"
+
+
+def _evidence_confidence(dependency_state: list[StateEntry]) -> float:
+    """The grounding of the weakest fact this answer rests on.
+
+    A step that never succeeded is a HOLE in the evidence: whatever it was
+    supposed to establish, the prose either omits or -- far worse -- supplies
+    itself. Caught live (2026-07-16, `credits_remaining`): the deterministic
+    subtraction died, composition did that arithmetic in-model instead, and the
+    answer shipped "high" because grounding was read off the SUCCEEDED entries
+    alone, leaving the one failure that forced the guess invisible to the check.
+    So an unresolved failure costs the answer its high band, however
+    well-grounded everything around it is.
+
+    "Unresolved" is the operative word. `PlanExecutionState` is append-only by
+    design -- a step retried after a replan leaves its failed first attempt in
+    state forever (see `PlanExecutionState`'s docstring) -- so a failure is only
+    a hole when NO entry for that same `step_id` ever succeeded. Otherwise the
+    retry filled it, and the superseded attempt must not drag the answer down.
+
+    Deliberately does NOT touch `basis`: the answer stays `llm_interpretation`
+    because it IS model-written prose, and nothing here verifies the prose
+    actually used the evidence. Promoting it to `official_record` on the
+    strength of well-grounded inputs would let a fabricated number ship
+    stamped as official -- strictly worse than the flat 1.0 this replaces.
+    Earning a stronger basis needs composition to be templated from the facts
+    themselves, not merely prompted with them.
+    """
+    resolved_step_ids = {entry.step_id for entry in dependency_state if entry.status == "succeeded"}
+    evidence = [entry for entry in dependency_state if entry.status == "succeeded"]
+    if not evidence:
+        return _NO_EVIDENCE_CONFIDENCE
+    if any(entry.step_id not in resolved_step_ids for entry in dependency_state):
+        return _INFERRED_CONFIDENCE
+    if all(entry.certainty.basis in _GROUNDED_BASES for entry in evidence):
+        return _GROUNDED_CONFIDENCE
+    return _INFERRED_CONFIDENCE
 
 _COMPOSITION_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -165,10 +219,19 @@ async def run_composition_subagent(
 
     status = "succeeded" if output.status == "completed" else "failed"
 
-    # Default certainty for a subagent result.
-    # We map 1.0 confidence to an llm_interpretation certainty tag, 
-    # as the subagent itself doesn't possess inherent certainty basis logic beyond its own text output.
-    certainty = CertaintyTag(basis="llm_interpretation", confidence=output.confidence)
+    # `basis` is `llm_interpretation` because the answer is model-written prose,
+    # whatever it was written from. `confidence` is the grounding of the evidence
+    # it was composed from, NOT the block's own flat 1.0 -- see
+    # `_evidence_confidence`. A failed composition already reports 0.0 honestly,
+    # so its own number stands.
+    certainty = CertaintyTag(
+        basis="llm_interpretation",
+        confidence=(
+            _evidence_confidence(context_package.dependency_state)
+            if status == "succeeded"
+            else output.confidence
+        ),
+    )
 
     return SubagentResult(
         status=status,

@@ -301,6 +301,7 @@ class BaseReasoningBlock(ABC):
                         "phase": phase,
                         "attempt": attempt,
                         "will_retry": will_retry,
+                        "error": exc.detail,
                     },
                 )
                 if will_retry:
@@ -351,10 +352,10 @@ class BaseReasoningBlock(ABC):
                 timeout=params.timeout,
                 max_retries=params.max_retries,
             )
-        except LLMAdapterError:
+        except LLMAdapterError as exc:
             logger.warning(
                 "reasoning_block_llm_call_failed",
-                extra={"block_id": block_input.block_id, "phase": phase},
+                extra={"block_id": block_input.block_id, "phase": phase, "error": exc.detail},
             )
             raise
 

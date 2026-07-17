@@ -34,7 +34,7 @@ from app.agent_core.tools.primitives.extract_temporal_pattern import (
     ExtractTemporalPatternInput,
     run_extract_temporal_pattern,
 )
-from app.agent_core.tools.primitives.get_entity import GetEntityInput, run_get_entity
+from app.agent_core.tools.composites.student_state import resolve_completed_entries
 from app.agent_core.tools.registry import ToolDescriptor
 from app.retrieval.graph_engine.graph_registry import graph_registry
 
@@ -89,61 +89,15 @@ async def _resolve_completed_entries(
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Prefer reading the record ourselves over being told what is in it.
 
-    `state` used to be the only way in, which meant a model had to hand-copy the
-    student's whole completed-course list into this tool's arguments -- data
-    that came out of OUR database, through two rounds of LLM transcription, to
-    be read back by OUR code. Measured live (2026-07-16): 3,267 chars of
-    re-typing (~11s), and the relay snake_cased `completedCourses` on the way,
-    so the lookup missed and a student who had passed 00940224 was told they
-    were ineligible for a course requiring it.
-
-    Given `student_id` we now fetch it directly. The model passes one id; no
-    record crosses a model at all, so no amount of transcription can reshape it.
-
-    `state` still wins when non-empty: that is the what-if path, where a caller
-    has deliberately altered the record (`mutate_state` failing a course) and a
-    fresh read would defeat the entire simulation.
-
-    Delegates to `get_entity` rather than hitting the repository directly --
-    `courseNumber` is derived there (from `metadata.courseNumber`, falling back
-    to a courseId lookup), and a second copy of that derivation would be a
-    second thing to drift.
+    This tool pioneered the `student_id` self-fetch; `student_state` now holds
+    the implementation, because `simulate_course_disruption`,
+    `audit_graduation_progress` and `find_requirement_substitutes` needed the
+    identical thing -- and this function's own docstring warned that a second
+    copy of the derivation would be a second thing to drift. The precedence it
+    documented is unchanged: `state` wins when it carries completed courses,
+    since a deliberately-altered state is the whole point of passing one.
     """
-    entries = _completed_entries(payload.state)
-    if entries:
-        return entries, None
-    if not payload.student_id:
-        return [], None
-
-    result = await run_get_entity(
-        GetEntityInput(entity_type="completed_courses", entity_id=payload.student_id)
-    )
-    if not result.ok:
-        return [], f"completed_courses_unavailable: {result.error}"
-    return _completed_entries(result.data or {}), None
-
-
-def _completed_entries(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Accept either spelling of the completed-courses key.
-
-    `get_entity` emits `completedCourses`, but this tool's `state` never arrives
-    straight from it: a specialist reads the record, re-types the facts into its
-    own output, and a later one re-types them again into this tool's `state`
-    argument. LLM transcription does not preserve key case -- measured live
-    (2026-07-16) the agent sent `completed_courses`, snake_cased somewhere in
-    that relay, so the camelCase lookup found nothing and every prerequisite
-    came back missing.
-
-    Reading both spellings is the narrow fix. The real defect is upstream -- a
-    `state` argument that makes a model hand-copy structured data between two
-    pieces of our own code -- and until that contract changes, this tool must
-    not fail on a key the relay reshaped.
-    """
-    for key in ("completedCourses", "completed_courses"):
-        entries = state.get(key)
-        if entries:
-            return [entry for entry in entries if isinstance(entry, dict)]
-    return []
+    return await resolve_completed_entries(payload.state, payload.student_id)
 
 
 async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnvelope:

@@ -292,10 +292,17 @@ async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
                                     streamed_answer = parsed["answer_text"]
                             except (json.JSONDecodeError, TypeError):
                                 pass
+                            # ONLY the answer. Recovering the answer text says
+                            # nothing about whether retrieval succeeded or how
+                            # confident the turn should be -- those are the
+                            # turn's own verdict on itself, already computed by
+                            # `_build_advise_response` from the real state, and
+                            # this block has no evidence that would revise
+                            # either. It used to rewrite `retrievalStatus`
+                            # "failed" -> "succeeded" here, which reported a
+                            # genuinely failed turn to the frontend as a clean
+                            # success, on the streaming path only.
                             advisor["answer"] = streamed_answer
-                            advisor["confidence"] = advisor.get("confidence") or "medium"
-                            if advisor.get("retrievalStatus") == "failed":
-                                advisor["retrievalStatus"] = "succeeded"
                             chunk = json.dumps(event)
                     except (json.JSONDecodeError, TypeError):
                         pass

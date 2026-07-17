@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 
 from app.agent_core.planning.state import CertaintyTag
 from app.agent_core.tools.composites.compare_plans import ComparePlansInput, run_compare_plans
+from app.agent_core.tools.composites.student_state import resolve_student_state
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.primitives.extract_temporal_pattern import (
     ExtractTemporalPatternInput,
@@ -61,6 +62,19 @@ _KNOWN_DISRUPTION_TYPES: frozenset[str] = frozenset({"fail", "drop"})
 class SimulateCourseDisruptionInput(BaseModel):
     course_id: str
     disruption_type: str
+    # PREFERRED. Given this, the tool reads the student's completed courses
+    # itself and `state` is not needed -- see `student_state.resolve_student_state`.
+    #
+    # This composite applies the disruption ITSELF (`mutate_state` below), so a
+    # caller has no reason to pre-mutate anything: it passes the real record and
+    # asks for a what-if against it. Measured live (2026-07-16) the model duly
+    # hand-copied all 17 of the student's completed courses into `state` --
+    # 1775 chars of argument, a 41.9s call, and three siblings dead on the 45s
+    # ceiling -- to hand our own database's rows back to our own code.
+    student_id: str | None = None
+    # Only for a what-if the CALLER built (e.g. a state already altered via
+    # `mutate_state`). Wins over `student_id` when it carries completed courses,
+    # because a deliberately-altered state is the whole point of passing one.
     state: dict[str, Any] = Field(default_factory=dict)
     constraints: list[dict[str, Any]] = Field(default_factory=list)
     objective: str = "minimize_semesters"
@@ -76,14 +90,20 @@ async def run_simulate_course_disruption(payload: SimulateCourseDisruptionInput)
     if disruption_type not in _KNOWN_DISRUPTION_TYPES:
         return ToolOutputEnvelope(ok=False, data=None, error=f"unknown_disruption_type: {disruption_type}")
 
-    semester = payload.semester or payload.state.get("currentSemesterCode")
+    # Read the record ourselves when the caller only named the student, so the
+    # completed-course list never has to cross a model to get here.
+    state, state_error = await resolve_student_state(payload.state, payload.student_id)
+    if state_error:
+        return ToolOutputEnvelope(ok=False, data=None, error=state_error)
+
+    semester = payload.semester or state.get("currentSemesterCode")
     if not semester:
         return ToolOutputEnvelope(ok=False, data=None, error="semester_required")
 
     # -- 1. Mutate the state -------------------------------------------
     drop_result = await run_mutate_state(
         MutateStateInput(
-            base_state=payload.state,
+            base_state=state,
             change={"type": "drop_course", "courseNumber": course_id, "semester": semester},
         )
     )
@@ -104,7 +124,7 @@ async def run_simulate_course_disruption(payload: SimulateCourseDisruptionInput)
 
     # -- 2. Baseline and disrupted plans --------------------------------
     baseline_result = await run_search_over_state(
-        SearchOverStateInput(state=payload.state, constraints=payload.constraints, objective=payload.objective)
+        SearchOverStateInput(state=state, constraints=payload.constraints, objective=payload.objective)
     )
     if not baseline_result.ok:
         return ToolOutputEnvelope(ok=False, data=None, error=f"baseline_plan_failed: {baseline_result.error}")

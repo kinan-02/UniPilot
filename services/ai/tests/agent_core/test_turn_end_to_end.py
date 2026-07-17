@@ -13,7 +13,7 @@ from __future__ import annotations
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.turn import run_agent_turn
-from tests.agent_core.test_skeleton_end_to_end import _RESPONSES
+from tests.agent_core.test_skeleton_end_to_end import _RESPONSES, _StubbedCourseRegistry
 
 _RAW_MESSAGE = "What course is 234218?"
 
@@ -50,7 +50,10 @@ _COMPLEXITY_CLASSIFIER_RESPONSE = {
 async def test_raw_message_drives_the_full_chain_with_no_gaps(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([_REQUEST_UNDERSTANDING_RESPONSE, _COMPLEXITY_CLASSIFIER_RESPONSE, *_RESPONSES])
     role_roster = build_default_role_roster()
-    tool_registry = build_default_tool_registry()
+    # Same reason as the skeleton test it borrows `_RESPONSES` from: retrieval
+    # now reads its facts out of the recorded tool envelope, so the tool has to
+    # actually return something.
+    tool_registry = _StubbedCourseRegistry(build_default_tool_registry())
 
     understanding, state, final_entry, clarification_question = await run_agent_turn(
         original_user_message=_RAW_MESSAGE,
@@ -99,7 +102,10 @@ async def test_out_of_scope_request_never_reaches_the_planner(fake_llm_adapter_f
         text_responses=[_BOUNDARY_HANDLER_RESPONSE["answer_text"]],
     )
     role_roster = build_default_role_roster()
-    tool_registry = build_default_tool_registry()
+    # Same reason as the skeleton test it borrows `_RESPONSES` from: retrieval
+    # now reads its facts out of the recorded tool envelope, so the tool has to
+    # actually return something.
+    tool_registry = _StubbedCourseRegistry(build_default_tool_registry())
 
     understanding, state, final_entry, clarification_question = await run_agent_turn(
         original_user_message="Write me a poem.",

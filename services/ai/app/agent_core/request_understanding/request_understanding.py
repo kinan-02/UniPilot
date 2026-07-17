@@ -37,6 +37,11 @@ REQUEST_UNDERSTANDING_OUTPUT_SCHEMA: dict[str, Any] = {
         "sub_asks": {"type": "array", "items": {"type": "string"}},
         "constraints": {"type": "array", "items": {"type": "string"}},
         "open_questions": {"type": "array", "items": {"type": "string"}},
+        # Deliberately NOT in `required`, unlike its sibling lists. A model that
+        # omits it would fail validation and drop this layer to
+        # `_fallback_output`, trading the whole request's understanding for a
+        # field that is empty on most turns. Absent => [] => no behaviour change.
+        "presuppositions": {"type": "array", "items": {"type": "string"}},
         "implies_action_request": {"type": "boolean"},
         "decline_reason": {"type": ["string", "null"]},
         "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
@@ -94,6 +99,16 @@ def _request_understanding_contract() -> PromptContract:
             "only ever the Planner's job.",
             "When in_scope=true, sub_asks must list every distinct thing asked as its own "
             "self-contained string, and decline_reason must be null.",
+            "presuppositions are claims about the STUDENT'S OWN state that the question "
+            "treats as already true, rather than things it asks about. 'If I fail 00940224 "
+            "this semester, can I still take 00960211?' presupposes 'I am currently taking "
+            "00940224' -- the student may have passed it a year ago, in which case the "
+            "honest answer addresses that, not the hypothetical. List each such claim; a "
+            "verification step is scheduled for them automatically. Only claims about this "
+            "student (enrolled in X, failed Y, in my final year), never claims about the "
+            "catalog -- 'is X a prerequisite for Y' is a question, not a presupposition. "
+            "Most requests have none: return an empty list rather than straining to find "
+            "one.",
             "When in_scope=false, sub_asks/constraints/open_questions must be empty and "
             "decline_reason must be a short internal string summarizing why it was declined.",
             "constraints are boundary conditions that limit what a valid answer can look "
@@ -153,6 +168,72 @@ def build_request_understanding_prompt_registry() -> PromptRegistry:
     registry = build_default_prompt_registry()
     registry.register(_request_understanding_contract())
     return registry
+
+
+def _with_presupposition_check(sub_asks: list[str], presuppositions: list[str]) -> list[str]:
+    """Turn a noticed presupposition into a sub-ask the Planner must plan for.
+
+    The detection above is a model's judgement and cannot be anything else --
+    "if I fail X" implying "I am taking X" is a semantic reading. The
+    CONSEQUENCE does not have to be. The Planner plans from `sub_asks`, so
+    appending here makes verification structurally unavoidable rather than
+    something the prompt politely requests.
+
+    CAUGHT LIVE (2026-07-16, ise_correctness `presupposition_conflict`). Asked
+    "if I fail 00940224 this semester, will I still be able to take 00960211?",
+    this layer emitted exactly one sub-ask -- "determine if 00960211 has 00940224
+    as a prerequisite" -- and `open_questions: []`. The student had passed
+    00940224 the previous year with an 85 and was not enrolled in it. The
+    premise was the whole question, and it was gone before planning began.
+
+    Every downstream layer then worked perfectly on the wrong question: the
+    Planner planned a catalog lookup, retrieval fetched the catalog, composition
+    composed it, and the turn never once read the student's record. Nothing
+    downstream could have recovered it -- by then the ask genuinely WAS a catalog
+    lookup. So it is fixed here, where the premise is dropped.
+
+    Appended, never substituted: the student's literal question still deserves
+    its answer. The point is to answer it *and* say the premise is false.
+
+    Asks for a STATUS, not for a verdict on the claim -- and that distinction is
+    the whole fix. The first version of this sub-ask said "verify whether each of
+    these claims actually holds". Measured live (2026-07-16) it worked exactly as
+    written, and the answer was still harmful:
+
+        claim     "The student is currently enrolled in 00940224 this semester."
+        1b2       reads the semester plan -> empty -> claim is FALSE
+        1b        reads completed courses -> 00940224, grade 85.0, 2025-1
+        Planner   composition depends_on ['1b2','1c','1d','1e','1f']   <- 1b dropped
+        answer    "you are not enrolled in 00940224 ... you will likely need to
+                   take it in a future Winter semester"
+
+    The student had passed it. "Whether the claim holds" is a boolean, and the
+    empty semester plan answered it completely -- so the Planner dropped the
+    completed-course record from composition's dependencies, CORRECTLY: once the
+    claim is falsified, evidence about it is evidence for nothing. The old
+    wording made the decisive fact irrelevant by construction, and its trailing
+    "address their real situation" named no record, no field, and nothing a
+    Planner could schedule.
+
+    A status cannot be spent that way. It is the sub-ask's deliverable rather
+    than support for a verdict, so it has to reach the answer; and naming both
+    records ("already completed" and "currently enrolled") forces the plan to
+    read both instead of stopping at the first one that refutes the wording.
+    """
+    if not presuppositions:
+        return sub_asks
+    claims = "; ".join(presuppositions)
+    return [
+        *sub_asks,
+        (
+            f"The student's question assumes the following about their own record: {claims}. "
+            "Establish and report the student's ACTUAL status for every course named in those "
+            "assumptions -- both whether they have already COMPLETED it (with the grade and "
+            "semester) and whether they are CURRENTLY ENROLLED in it. State that actual status in "
+            "the answer whenever it differs from what the question assumed, and answer their "
+            "question in light of the real status rather than the assumed one."
+        ),
+    ]
 
 
 def _render_user_goal(sub_asks: list[str]) -> str:
@@ -260,6 +341,9 @@ class RequestUnderstandingReasoningBlock(BaseReasoningBlock):
         sub_asks = [str(item) for item in (normalized.get("sub_asks") or []) if str(item).strip()]
         constraints = [str(item) for item in (normalized.get("constraints") or []) if str(item).strip()]
         open_questions = [str(item) for item in (normalized.get("open_questions") or []) if str(item).strip()]
+        presuppositions = [
+            str(item) for item in (normalized.get("presuppositions") or []) if str(item).strip()
+        ]
         implies_action_request = bool(normalized.get("implies_action_request", False))
         decline_reason = normalized.get("decline_reason")
         try:
@@ -277,17 +361,23 @@ class RequestUnderstandingReasoningBlock(BaseReasoningBlock):
         if not in_scope and not (isinstance(decline_reason, str) and decline_reason.strip()):
             return self._fallback_output(block_input, extra_warning="in_scope_false_without_usable_decline_reason")
 
+        # The verification sub-ask is folded in BEFORE `user_goal` is rendered
+        # from `sub_asks`, so the premise-check is part of the goal the Planner
+        # reads rather than a footnote it can skip.
+        effective_sub_asks = _with_presupposition_check(sub_asks, presuppositions) if in_scope else []
+
         return RequestUnderstandingReasoningBlockOutput(
             status="completed",
             schema_valid=True,
             result=normalized,
             confidence=confidence,
             in_scope=in_scope,
-            user_goal=_render_user_goal(sub_asks) if in_scope else None,
+            user_goal=_render_user_goal(effective_sub_asks) if in_scope else None,
             decline_reason=decline_reason if not in_scope else None,
-            sub_asks=sub_asks if in_scope else [],
+            sub_asks=effective_sub_asks,
             constraints=constraints if in_scope else [],
             open_questions=open_questions if in_scope else [],
+            presuppositions=presuppositions if in_scope else [],
             implies_action_request=implies_action_request if in_scope else False,
         )
 

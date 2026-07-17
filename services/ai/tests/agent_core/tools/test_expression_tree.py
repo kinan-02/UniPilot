@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from app.agent_core.tools.primitives.expression_tree import (
+    FACTS_DEFECT_PREFIX,
     ExpressionNode,
     evaluate_expression,
     validate_expression_tree,
@@ -202,6 +203,38 @@ def test_validate_rejects_sum_over_a_field_absent_from_the_records():
     assert any("creditsEarned" in error for error in errors), errors
 
 
+def test_records_with_no_numeric_field_at_all_is_a_facts_defect_not_an_expression_error():
+    """When the records carry no numbers whatsoever, the expression is not the
+    thing that's wrong -- the data is.
+
+    Live (2026-07-16, ise_correctness `credits_remaining`): `requiredCourses`
+    came back as 29 records keyed on exactly `(id, nodeType)`. No credits. The
+    expression that tried to sum credits over them was semantically CORRECT, and
+    the bounded repair loop spent its attempts rewriting it anyway, because a
+    missing field and a misnamed one arrived as the same error. Repair was told
+    to switch to one of `numeric fields available: []`.
+
+    No edit to the expression can fix this, so it must be reported as what it is
+    and never sent to repair -- distinct from
+    `test_sum_non_numeric_field_value_fails_closed`, where real numeric fields
+    exist and switching to one IS the fix.
+    """
+    node = ExpressionNode(op="sum", of=ExpressionNode(ref="requiredCourses"), field="credits")
+    facts = {
+        "requiredCourses": [
+            {"id": "00940345", "nodeType": "course"},
+            {"id": "00940704", "nodeType": "course"},
+        ]
+    }
+
+    errors = validate_expression_tree(node, facts=facts)
+
+    assert any(error.startswith(FACTS_DEFECT_PREFIX) for error in errors), errors
+    # It names what the records DO carry, so the caller can see what retrieval
+    # actually fetched -- and that `credits` was never among it.
+    assert any("id" in error and "nodeType" in error for error in errors), errors
+
+
 def test_validate_allows_aggregate_over_a_list_ref():
     node = ExpressionNode(op="sum", of=ExpressionNode(ref="completedCourses"), field="creditsEarned")
     facts = {"completedCourses": [{"creditsEarned": 4.0}]}
@@ -277,3 +310,120 @@ def test_credits_remaining_multi_level_tree_validate_and_evaluate():
         "sum(ref:completed_courses.credits_earned) = 5.5",
         "160 - 5.5 = 154.5",
     ]
+
+
+# --- Groundedness: an expression must read the facts it was handed ----------
+# Regression for the 2026-07-16 ise_correctness laundering chain: a fabricated
+# in-model total (63.5; the real total is 62.5) was fed back as a literal, so
+# the engine computed a flawless 155 - 63.5 = 91.5 and the wrong number reached
+# the student wearing the calculator's authority.
+
+
+def test_all_const_expression_is_rejected_when_facts_were_supplied():
+    # The exact tree from the live run.
+    node = ExpressionNode(op="subtract", left=ExpressionNode(const=155), right=ExpressionNode(const=63.5))
+    facts = {"totalCreditsRequired": 155.0, "completedCourses": [{"creditsEarned": 4.0}]}
+
+    errors = validate_expression_tree(node, facts=facts)
+
+    assert errors, "an expression that reads none of its facts must not validate"
+    assert "reads none of the supplied facts" in errors[0]
+    # The repair pass needs somewhere concrete to go.
+    assert "completedCourses" in errors[0]
+
+
+def test_all_const_expression_is_allowed_when_no_facts_were_supplied():
+    # Nothing to ignore, so there is nothing to catch -- the rule must not fire.
+    node = ExpressionNode(op="subtract", left=ExpressionNode(const=155), right=ExpressionNode(const=63.5))
+
+    assert validate_expression_tree(node, facts={}) == []
+
+
+def test_a_single_ref_anywhere_grounds_the_tree():
+    # const operands stay legal next to a ref -- only a tree with NO ref at all
+    # is ungrounded.
+    node = ExpressionNode(
+        op="compare",
+        left=ExpressionNode(ref="totalCreditsRequired"),
+        comparator=">=",
+        right=ExpressionNode(const=100),
+    )
+
+    assert validate_expression_tree(node, facts={"totalCreditsRequired": 155.0}) == []
+
+
+def test_groundedness_is_not_reported_on_a_structurally_invalid_tree():
+    # A bad ref is the actionable error; adding "no refs" on top would be noise.
+    node = ExpressionNode(op="subtract", left=ExpressionNode(ref="nope"), right=ExpressionNode(const=1))
+
+    errors = validate_expression_tree(node, facts={"real": 1})
+
+    assert len(errors) == 1
+    assert "not found in facts" in errors[0]
+
+
+# --- Arithmetic operand coercion -------------------------------------------
+#
+# CAUGHT LIVE (2026-07-16, `credits_remaining`). The degree's total credits
+# reached the calculator as the STRING "155": an interpretation step read it off
+# the ISE track wiki page, and an interpretation's `answer` is a string by
+# schema. Every number ever read out of prose arrives this way.
+
+
+def test_subtract_accepts_a_number_that_arrived_as_a_string_from_prose():
+    facts = {"total": "155", "earned": 62.5}
+    node = ExpressionNode(op="subtract", left=ExpressionNode(ref="total"), right=ExpressionNode(ref="earned"))
+
+    result, _trace, errors = evaluate_expression(node, facts)
+
+    assert errors == []
+    assert result == 92.5
+
+
+def test_compare_does_not_coerce_so_a_course_number_keeps_its_leading_zeros():
+    """A course number IS a numeric string. Coercing `"00940224"` to 940224.0
+    would silently destroy the leading zeros that every prerequisite and
+    requirement match keys on -- which is why coercion lives in arithmetic
+    operand position only, where intent is unambiguous, and never here.
+    """
+    facts = {"course": "00940224"}
+    node = ExpressionNode(
+        op="compare",
+        comparator="==",
+        left=ExpressionNode(ref="course"),
+        right=ExpressionNode(const="00940224"),
+    )
+
+    result, _trace, errors = evaluate_expression(node, facts)
+
+    assert errors == []
+    assert result is True
+
+
+def test_a_non_numeric_operand_error_names_the_operand_and_what_it_resolved_to():
+    """An error a model cannot act on is retried verbatim.
+
+    Live, `non_numeric_operand: subtract` named neither operand; the model
+    re-emitted the identical expression, and the Planner then replanned it into
+    a third identical failure.
+    """
+    facts = {"1d": {"answer": "155"}, "1e": 62.5}
+    node = ExpressionNode(op="subtract", left=ExpressionNode(ref="1d"), right=ExpressionNode(ref="1e"))
+
+    _result, _trace, errors = evaluate_expression(node, facts)
+
+    assert len(errors) == 1
+    error = errors[0]
+    assert "non_numeric_operand: subtract" in error
+    assert "ref '1d'" in error, "the failing operand must be named"
+    assert "dict" in error, "and what it actually resolved to"
+    assert "1e" in error, "available facts guide the repair"
+
+
+def test_a_genuinely_non_numeric_string_still_fails():
+    facts = {"semester": "2025-1", "n": 1}
+    node = ExpressionNode(op="add", left=ExpressionNode(ref="semester"), right=ExpressionNode(ref="n"))
+
+    _result, _trace, errors = evaluate_expression(node, facts)
+
+    assert any("non_numeric_operand" in e for e in errors)

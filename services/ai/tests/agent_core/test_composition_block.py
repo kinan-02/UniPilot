@@ -6,20 +6,40 @@ All scenarios exercised through the public `run_composition_subagent` entry poin
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
 from app.agent_core.subagents.composition_block import run_composition_subagent
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.planning.state import CertaintyTag, StateEntry
 
 
-def _context_package() -> SubagentContextPackage:
+def _entry(step_id: str, *, basis: str = "official_record", status: str = "succeeded") -> StateEntry:
+    """One piece of evidence an answer gets composed from. `confidence=1.0` is
+    the codebase-wide convention for a tool result (`get_entity`,
+    `check_eligibility` and friends all emit it) -- the epistemics live in
+    `basis`, which is exactly why an answer's grounding has to be read from
+    there rather than from a confidence number."""
+    return StateEntry(
+        entry_id=f"{step_id}-0",
+        step_id=step_id,
+        role="retrieval",
+        status=status,
+        output_schema_name="generic_step_output_v1",
+        data={"credits_completed": 84.5},
+        certainty=CertaintyTag(basis=basis, confidence=1.0),
+        produced_at=datetime.now(timezone.utc),
+    )
+
+
+def _context_package(dependency_state: list[StateEntry] | None = None) -> SubagentContextPackage:
     return SubagentContextPackage(
         rendered_prompt="Compose the final answer.",
         structured_fields=StepInstructionFields(goal="Write an answer.", description="Write it."),
-        dependency_state=[],
+        dependency_state=dependency_state if dependency_state is not None else [],
         tool_grant=[],  # Composition has no tool access
         output_schema_name="generic_step_output_v1",
         output_schema={"type": "object"},
@@ -97,14 +117,14 @@ async def test_happy_path_returns_succeeded(fake_llm_adapter_factory) -> None:
     )
 
     result = await run_composition_subagent(
-        context_package=_context_package(),
+        context_package=_context_package([_entry("s1")]),
         llm_adapter=llm_adapter,
         block_id="test-block",
     )
 
     assert result.status == "succeeded"
     assert result.result == {"answer_text": "The retake policy allows 2 retakes."}
-    assert result.certainty == CertaintyTag(basis="llm_interpretation", confidence=1.0)
+    assert result.certainty == CertaintyTag(basis="llm_interpretation", confidence=0.9)
     assert not result.warnings
     assert not result.tool_audit_trail
     assert len(llm_adapter._responses) == 0
@@ -237,15 +257,128 @@ async def test_subagent_result_shape_parity(fake_llm_adapter_factory) -> None:
     )
 
     result = await run_composition_subagent(
-        context_package=_context_package(),
+        context_package=_context_package([_entry("s1")]),
         llm_adapter=llm_adapter,
         block_id="test-block",
     )
 
     assert result.status == "succeeded"
     assert result.certainty.basis == "llm_interpretation"
-    assert result.certainty.confidence == 1.0
+    assert result.certainty.confidence == 0.9
     assert result.assumptions == []
     assert result.warnings == []
     assert result.tool_audit_trail == []
     assert not result.needs_another_round
+
+
+@pytest.mark.asyncio
+async def test_answer_resting_on_an_inferred_fact_is_not_high_confidence(fake_llm_adapter_factory) -> None:
+    """F1's shipping symptom, in one test.
+
+    Live (2026-07-16, ise_correctness `credits_remaining`): a deterministic
+    credit calculation failed, the replan routed the work to `interpretation`,
+    which did the arithmetic in-model, and the answer -- "44.5 credits
+    remaining ... high-confidence estimate (95%)" -- shipped banded "high".
+    It was wrong. Composition stamped a flat `confidence=1.0` on every
+    successful answer, so `certainty_band` could not tell an answer read off an
+    official record from one invented by a language model.
+
+    An answer is only as grounded as the weakest fact under it: one
+    `llm_interpretation` entry in the evidence is enough to cost it "high".
+    """
+    llm_adapter = fake_llm_adapter_factory(responses=[{"answer_text": "You have 44.5 credits remaining."}])
+
+    result = await run_composition_subagent(
+        context_package=_context_package(
+            [
+                _entry("s1", basis="official_record"),
+                _entry("s2", basis="llm_interpretation"),  # the in-model arithmetic
+            ]
+        ),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.certainty.confidence == 0.6, (
+        "an answer resting on in-model arithmetic was banded the same as one read "
+        "straight off an official record"
+    )
+
+
+@pytest.mark.asyncio
+async def test_answer_composed_from_nothing_is_low_confidence(fake_llm_adapter_factory) -> None:
+    """Prose with no evidence under it at all is the least grounded thing the
+    system can emit -- it must never outrank an answer built from records."""
+    llm_adapter = fake_llm_adapter_factory(responses=[{"answer_text": "I believe it is 44.5."}])
+
+    result = await run_composition_subagent(
+        context_package=_context_package([]),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.status == "succeeded"
+    assert result.certainty.confidence == 0.3
+
+
+@pytest.mark.asyncio
+async def test_an_unresolved_failed_step_costs_the_answer_its_high_band(fake_llm_adapter_factory) -> None:
+    """A step that never succeeded is a HOLE in the evidence, and prose written
+    over a hole is not grounded -- however well-grounded everything around it is.
+
+    CAUGHT LIVE (2026-07-16, ise_correctness `credits_remaining`), by the very
+    fix this tests. Step `1e` deterministically summed credits earned (62.5,
+    `official_record`). Step `1f` was to subtract it from the degree total and
+    FAILED outright (`non_numeric_operand: subtract needs two numbers`, because
+    `1d` handed it the string 'totalCreditsRequired: 155'). Composition then
+    reported "Remaining credits needed: 92.5" anyway -- arithmetic it did
+    in-model, standing in for the deterministic step that had just died. That is
+    the F1 incident exactly; the model simply happened to be right this time.
+
+    It shipped banded "high" because grounding was read off the SUCCEEDED
+    entries only, so the one failure that forced the guess was the one thing
+    invisible to the check.
+
+    Distinct from a superseded retry (next test): `1f` had no successful
+    attempt, so nothing filled the hole.
+    """
+    llm_adapter = fake_llm_adapter_factory(responses=[{"answer_text": "You have 92.5 credits remaining."}])
+
+    result = await run_composition_subagent(
+        context_package=_context_package(
+            [
+                _entry("1e", basis="official_record"),  # the credits sum that worked
+                _entry("1f", basis="official_record", status="failed"),  # the subtraction that didn't
+            ]
+        ),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.certainty.confidence == 0.6, (
+        "an answer that covered for a failed calculation with its own in-model arithmetic "
+        "was banded as though every number in it had been computed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_failed_attempt_does_not_drag_down_a_grounded_answer(fake_llm_adapter_factory) -> None:
+    """`PlanExecutionState` is append-only: a step retried after a replan leaves
+    its failed first attempt in state forever. That attempt contributed nothing
+    to the answer, so it must not cost the answer its grounding -- only
+    `succeeded` entries are evidence."""
+    llm_adapter = fake_llm_adapter_factory(responses=[{"answer_text": "You have completed 84.5 credits."}])
+
+    result = await run_composition_subagent(
+        context_package=_context_package(
+            [
+                _entry("s1", basis="llm_interpretation", status="failed"),  # superseded
+                _entry("s1", basis="official_record"),  # the successful retry
+            ]
+        ),
+        llm_adapter=llm_adapter,
+        block_id="test-block",
+    )
+
+    assert result.certainty.confidence == 0.9

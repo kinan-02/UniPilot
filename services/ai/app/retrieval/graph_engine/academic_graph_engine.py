@@ -592,6 +592,51 @@ class AcademicGraphEngine:
             )
         return hits
 
+    def retrieve_page_chunks(
+        self, slug: str, query: str, *, limit: int = 3, settings: Any | None = None
+    ) -> list[dict[str, Any]]:
+        """Top-`limit` heading-segmented sections of ONE wiki page, reranked
+        against `query`.
+
+        `search_wiki` searches the whole corpus; this scopes retrieval to a
+        single already-known page. `interpret_text` uses it so it reads only the
+        section(s) that answer its question instead of the entire page -- which
+        both wastes decode tokens and, worse, could SILENTLY TRUNCATE the answer
+        out of view past the `_MAX_SOURCE_CHARS` cut when it sat late on a long
+        page. Same chunk loader + reranker as `search_wiki`, just filtered to the
+        page by its slug (`Path(chunk.source_file).stem`).
+
+        Returns `[]` (never raises) when the engine has no wiki root, the page
+        has no chunks, or the slug matches nothing -- the caller falls back to
+        the whole-page read, so scoping can only ever narrow, never break.
+        """
+        if not self._loaded or not self._wiki_root:
+            return []
+        if not (query or "").strip():
+            return []
+
+        from app.retrieval.obsidian_wiki_indexer import load_wiki_chunks
+        from app.retrieval.profiles import get_profile
+        from app.retrieval.reranker import rerank_chunks
+
+        chunks = load_wiki_chunks(self._wiki_root)
+        page_chunks = [chunk for chunk in chunks if Path(chunk.source_file).stem == slug]
+        if not page_chunks:
+            return []
+
+        ranked = rerank_chunks(
+            page_chunks,
+            query=query,
+            limit=limit,
+            profile=get_profile("fallback_academic_search"),
+            wiki_root=self._wiki_root,
+            settings=settings,
+        )
+        return [
+            {"slug": slug, "sectionTitle": chunk.section_title, "content": chunk.content, "score": score}
+            for chunk, score in ranked
+        ]
+
     def resolve_slugs_from_query(self, query: str, *, max_slugs: int = 4) -> list[str]:
         from app.retrieval.entity_slug_registry import resolve_entity_slugs
 

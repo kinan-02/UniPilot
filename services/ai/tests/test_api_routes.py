@@ -11,6 +11,7 @@ validation, and response-shape mapping onto what `services/api`'s
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -181,6 +182,79 @@ async def test_advise_route_blocked_needs_clarification(monkeypatch):
     data = response.json()["data"]
     assert data["response"]["answer"] == "Which semester do you mean?"
     assert data["retrieval_agent"]["status"] == "blocked_needs_clarification"
+
+
+def _final_advisor_from_stream(body: str) -> dict:
+    """The `advisor` payload carried by the stream's terminal `final` event."""
+    for line in body.splitlines():
+        if not line.startswith("data: "):
+            continue
+        event = json.loads(line[len("data: ") :])
+        if event.get("type") == "final":
+            return event["data"]["advisor"]
+    raise AssertionError(f"stream produced no `final` event; body was:\n{body}")
+
+
+async def test_advise_stream_backfills_a_blank_answer_from_the_streamed_text(monkeypatch):
+    """The legitimate half of the stream's recovery block: when composition
+    streams plain text but its final entry can't be parsed into one
+    (`data={}` -> answer ""), the accumulated chunks become the answer.
+
+    Pinned so the F5 fix (see the next test) can't quietly take the real
+    recovery down with the laundering it sits next to."""
+
+    async def fake_run_agent_turn(*, streaming_queue=None, **_kwargs):
+        await streaming_queue.put("Course 234218 is Some Course.")
+        return (
+            SimpleNamespace(in_scope=True, decline_reason=None),
+            PlanExecutionState(plan_id="p1"),
+            _fake_final_entry(answer_text="", status="succeeded"),
+            None,
+        )
+
+    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
+
+    response = client.post("/advise/stream", json={"question": "What course is 234218?", "user_id": "u1"})
+
+    assert response.status_code == 200
+    advisor = _final_advisor_from_stream(response.text)
+    assert advisor["answer"] == "Course 234218 is Some Course."
+
+
+async def test_advise_stream_does_not_launder_a_failed_status_into_succeeded(monkeypatch):
+    """Recovering an ANSWER from the streamed text says nothing about whether
+    RETRIEVAL succeeded -- the two facts are unrelated, and the stream path must
+    not rewrite the second because it managed the first.
+
+    Regression for F5: the recovery block ended with
+    `if advisor["retrievalStatus"] == "failed": advisor["retrievalStatus"] = "succeeded"`,
+    so a turn whose retrieval genuinely failed was reported to the frontend as a
+    clean success -- on the streaming path only. The non-streaming `/advise`
+    reported the same turn honestly, which is why the two paths disagreed.
+    """
+
+    async def fake_run_agent_turn(*, streaming_queue=None, **_kwargs):
+        await streaming_queue.put("Here is my best guess at an answer.")
+        return (
+            SimpleNamespace(in_scope=True, decline_reason=None),
+            PlanExecutionState(plan_id="p1"),
+            _fake_final_entry(answer_text="", status="failed"),
+            None,
+        )
+
+    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
+
+    response = client.post("/advise/stream", json={"question": "How many credits do I have left?", "user_id": "u1"})
+
+    assert response.status_code == 200
+    advisor = _final_advisor_from_stream(response.text)
+    # The answer is still recovered...
+    assert advisor["answer"] == "Here is my best guess at an answer."
+    # ...but the turn is still reported as what it actually was.
+    assert advisor["retrievalStatus"] == "failed", (
+        "a failed turn was reported to the frontend as succeeded -- the streamed-text "
+        "backfill recovered the answer text and then rewrote an unrelated status"
+    )
 
 
 def test_advise_route_rejects_invalid_internal_service_token(monkeypatch):

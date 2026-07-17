@@ -55,6 +55,12 @@ class RequestUnderstandingReasoningBlockOutput(BaseReasoningBlockOutput):
     sub_asks: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
+    # Claims the question takes for granted about the student's OWN state, which
+    # it cannot be answered honestly without checking. A non-empty list
+    # deterministically adds a verification sub-ask (see
+    # `_PRESUPPOSITION_SUB_ASK`), so this is not merely descriptive -- it changes
+    # the plan.
+    presuppositions: list[str] = Field(default_factory=list)
     implies_action_request: bool = False
 
 

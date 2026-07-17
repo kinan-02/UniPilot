@@ -36,6 +36,14 @@ _AGGREGATE_OPS = ("sum", "count", "average")
 _BINARY_ARITHMETIC_OPS = ("add", "subtract", "multiply", "divide")
 _OPERATORS = frozenset({*_AGGREGATE_OPS, *_BINARY_ARITHMETIC_OPS, "compare"})
 
+# Marks an error that NO edit to the expression can fix: the facts themselves
+# lack what any correct expression would have to read. Every other error here is
+# a defect in the tree and a repair pass can act on it; these are a defect in the
+# DATA, and a repair pass can only burn attempts rewriting an expression that was
+# already right. Callers' repair loops must branch on this rather than retrying
+# (see `calculation_validation_block._draft_valid_expression`).
+FACTS_DEFECT_PREFIX = "facts_defect:"
+
 
 class ExpressionNode(BaseModel):
     """Exactly one of `const`/`ref`/`op` is set per node. Which other fields
@@ -83,6 +91,57 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, Number) and not isinstance(value, bool)
 
 
+def _as_arithmetic_number(value: Any) -> Any | None:
+    """A number, or a string that is wholly one. `None` when it is neither.
+
+    Applied ONLY in arithmetic operand position, never to `compare`. Live
+    (2026-07-16, `credits_remaining`) the degree's total credits reached the
+    calculator as the STRING "155" -- an interpretation step read it off the ISE
+    track wiki page, and `InterpretationReasoningBlock`'s `answer` is a string by
+    schema, so every number ever read out of prose arrives this way. Refusing to
+    subtract it means prose-sourced numbers can never be computed with at all.
+
+    Deliberately not applied to `compare`, and deliberately not applied when
+    promoting facts. A course number IS a numeric string -- `"00940224"` --
+    and coercing it to 940224.0 would silently destroy the leading zeros that
+    every prerequisite and requirement match keys on. Arithmetic position is
+    unambiguous about intent (nobody subtracts course numbers); equality is not.
+    """
+    if isinstance(value, bool):
+        return None
+    if _is_number(value):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except (ValueError, AttributeError):
+            return None
+    return None
+
+
+def _describe_operand(node: Any, value: Any) -> str:
+    """Name what an operand WAS and what it resolved TO.
+
+    `non_numeric_operand: subtract` named neither. Live (2026-07-16,
+    `credits_remaining`) the model got that back, had nothing to act on, and
+    re-emitted the identical expression -- then the Planner replanned the step
+    and it failed the same way a third time. An error a model cannot act on is
+    retried verbatim.
+    """
+    if node is None:
+        source = "missing operand"
+    elif getattr(node, "ref", None) is not None:
+        source = f"ref {node.ref!r}"
+    elif getattr(node, "const", None) is not None:
+        source = "const"
+    else:
+        source = "sub-expression"
+    rendered = repr(value)
+    if len(rendered) > 60:
+        rendered = f"{rendered[:57]}..."
+    return f"{source} -> {type(value).__name__} {rendered}"
+
+
 def _matches_filter(record: dict[str, Any], record_filter: dict[str, Any]) -> bool:
     return all(record.get(key) == value for key, value in record_filter.items())
 
@@ -93,6 +152,13 @@ def _describe_leaf(node: ExpressionNode) -> str:
     if node.ref is not None:
         return f"ref:{node.ref}"
     return f"op:{node.op}"
+
+
+def _tree_has_ref(node: ExpressionNode) -> bool:
+    """True when any node anywhere in the tree reads a supplied fact."""
+    if node.ref is not None:
+        return True
+    return any(child is not None and _tree_has_ref(child) for child in (node.of, node.left, node.right))
 
 
 def _validate_node(
@@ -185,10 +251,22 @@ def _validate_node(
                     numeric_fields = sorted(
                         {key for record in records for key, value in record.items() if _is_number(value)}
                     )
-                    errors.append(
-                        f"{node_path}.field: '{node.field}' is not a numeric field on the "
-                        f"'{of_ref}' records; numeric fields available: {numeric_fields}"
-                    )
+                    if numeric_fields:
+                        errors.append(
+                            f"{node_path}.field: '{node.field}' is not a numeric field on the "
+                            f"'{of_ref}' records; numeric fields available: {numeric_fields}"
+                        )
+                    else:
+                        # Nothing to switch TO. The records carry no numbers at
+                        # all, so the expression was never the thing that was
+                        # wrong -- see FACTS_DEFECT_PREFIX.
+                        present_keys = sorted({key for record in records for key in record})
+                        errors.append(
+                            f"{FACTS_DEFECT_PREFIX} '{of_ref}' has {len(records)} records and not one "
+                            f"carries a numeric field, so op '{op}' has nothing to aggregate. Keys "
+                            f"present on those records: {present_keys}. No edit to this expression can "
+                            f"fix that -- '{node.field}' was never retrieved."
+                        )
         if op in ("sum", "average") and not node.field:
             errors.append(f"{node_path}: 'field' is required for op '{op}'")
         return
@@ -272,6 +350,42 @@ def validate_expression_tree(
         counter=counter,
         errors=errors,
     )
+    # An expression that reads NONE of the facts it was handed is not a
+    # calculation over that data -- it is a transcription of numbers the model
+    # already had in mind, and the deterministic engine would rubber-stamp it.
+    #
+    # CAUGHT LIVE (2026-07-16, ise_correctness `credits_remaining`). Retrieval
+    # smuggled an in-model sum (`total_credits_earned: 63.5`; the real total is
+    # 62.5) out through an out-of-contract `metadata` key. The plausibility
+    # checker then read that number, declared the engine's CORRECT 62.5
+    # implausible, and its critique -- "the fix is to ... reach 63.5" -- reached
+    # the Planner, which instructed "use the corrected value of 63.5". The next
+    # step evaluated:
+    #
+    #     {"op": "subtract", "left": {"const": 155}, "right": {"const": 63.5}}
+    #
+    # ...which is arithmetically flawless and completely ungrounded. It laundered
+    # the hallucination THROUGH the engine, so 91.5 emerged wearing the
+    # calculator's authority and was published to the student as "verified and
+    # confirmed". Every operand a literal, not one fact consulted.
+    #
+    # The plausibility contract already names this ("it hardcodes a `const` for a
+    # quantity that should have been computed from a fact") and the checker still
+    # passed it -- which is the whole lesson: this is decidable in code, so decide
+    # it in code. Same instinct as `subagents/fact_projection.py` and the bounds
+    # above.
+    #
+    # Only when `facts` is non-empty: a genuinely fact-free calculation has
+    # nothing to ignore, so there is nothing to catch. Only on an otherwise-valid
+    # tree, so a structural error is reported first and this never adds noise to
+    # a tree that could not have run anyway.
+    if not errors and facts and not _tree_has_ref(node):
+        errors.append(
+            "root: expression reads none of the supplied facts (every operand is a literal const). "
+            "A calculation over the student's data must read that data with a ref -- a const is for a "
+            "literal you were given, never for a total you worked out yourself. "
+            f"Facts available: {sorted(facts.keys())}"
+        )
     return errors
 
 
@@ -335,9 +449,17 @@ def _eval_node(node: ExpressionNode, facts: dict[str, Any], trace: list[str], er
         right = _eval_node(node.right, facts, trace, errors) if node.right is not None else None
         if errors:
             return None
-        if not _is_number(left) or not _is_number(right):
-            errors.append(f"non_numeric_operand: {op}")
+        left_number = _as_arithmetic_number(left)
+        right_number = _as_arithmetic_number(right)
+        if left_number is None or right_number is None:
+            errors.append(
+                f"non_numeric_operand: {op} needs two numbers. "
+                f"left: {_describe_operand(node.left, left)}. "
+                f"right: {_describe_operand(node.right, right)}. "
+                f"Facts available: {sorted(facts.keys())}"
+            )
             return None
+        left, right = left_number, right_number
 
         if op == "add":
             result, symbol = left + right, "+"
@@ -385,4 +507,4 @@ def evaluate_expression(node: ExpressionNode, facts: dict[str, Any]) -> tuple[An
     return value, trace, errors
 
 
-__all__ = ["ExpressionNode", "validate_expression_tree", "evaluate_expression"]
+__all__ = ["FACTS_DEFECT_PREFIX", "ExpressionNode", "validate_expression_tree", "evaluate_expression"]

@@ -24,7 +24,6 @@ is no second call site for its own name (enforced structurally; see
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.context_builder import build_subagent_context_package
@@ -33,9 +32,9 @@ from app.agent_core.orchestrator.specialist_router import RoutedSubStep, route_s
 from app.agent_core.orchestrator.state_index import build_state_index
 from app.agent_core.orchestrator.task_handler_success_check import check_success_criteria
 from app.agent_core.planning.rewrite import compute_plan_graph
-from app.agent_core.reasoning_effort import TurnReasoningConfig
 from app.agent_core.reasoning_blocks.schemas import LLMCallParameters
 from app.agent_core.planning.schemas import PlanStep, RoleName
+from app.agent_core.turn_context import TurnContext
 from app.agent_core.planning.state import (
     CertaintyTag,
     NestedExecutionTrace,
@@ -43,7 +42,6 @@ from app.agent_core.planning.state import (
     PlanExecutionState,
     StateEntry,
 )
-from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.roles.schemas import RoleDefinition
 
 
@@ -57,6 +55,7 @@ def _dependencies_are_clean(dependency_entries: list[StateEntry]) -> bool:
     outcome could have changed its routing.
     """
     return all(entry.status == "succeeded" for entry in dependency_entries)
+from app.agent_core.response_language import response_language_directive
 from app.agent_core.subagents.calculation_validation_block import run_calculation_validation_subagent
 from app.agent_core.subagents.composition_block import run_composition_subagent
 from app.agent_core.subagents.interpretation_block import run_interpretation_subagent
@@ -69,9 +68,6 @@ from app.agent_core.subagents.schemas import (
     StepPrepOutput,
     SubagentResult,
 )
-from app.agent_core.tools.call_cache import ToolCallCache
-from app.agent_core.tools.registry import ToolRegistry
-from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
 
 _PIPELINE_INCOMPLETE_WARNING = "task_handler_pipeline_incomplete"
 _SUB_STEP_UNMET_MARKER = "pipeline_sub_step_success_criteria_not_met"
@@ -90,16 +86,7 @@ async def run_task_handler(
     *,
     step: PlanStep,
     state: PlanExecutionState,
-    role_roster: dict[RoleName, RoleDefinition],
-    tool_registry: ToolRegistry,
-    llm_adapter: LLMAdapter,
-    original_user_message: str,
-    user_id: str,
-    plan_id: str,
-    streaming_queue: asyncio.Queue[str] | None = None,
-    tool_call_cache: ToolCallCache | None = None,
-    unresolvable_registry: UnresolvableEntityRegistry | None = None,
-    reasoning_config: TurnReasoningConfig | None = None,
+    ctx: TurnContext,
     precomputed_route: list[RoutedSubStep] | None = None,
 ) -> StateEntry:
     """Routes the step to a specialist pipeline and executes it ONCE. It never
@@ -129,10 +116,10 @@ async def run_task_handler(
         route = await route_step(
             step=step,
             dependency_context=build_state_index(dependency_entries),
-            llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-{step.step_id}-router",
-            user_id=user_id,
-            role_roster=role_roster,
+            llm_adapter=ctx.llm,
+            block_id=ctx.block_id(step.step_id, "router"),
+            user_id=ctx.user_id,
+            role_roster=ctx.roles,
         )
         pipeline = route.pipeline
 
@@ -146,19 +133,14 @@ async def run_task_handler(
             step=step,
             step_prep_output=_sub_step_prep(
                 sub,
-                user_id=user_id,
+                user_id=ctx.user_id,
                 context_requirements=_resolve_sub_step_context_requirements(sub=sub, state=state, step=step),
+                original_user_message=ctx.original_user_message,
             ),
-            role=role_roster[sub.specialist],
+            role=ctx.roles[sub.specialist],
             state=state,
-            tool_registry=tool_registry,
-            llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-{step.step_id}",
-            user_id=user_id,
-            streaming_queue=streaming_queue,
-            tool_call_cache=tool_call_cache,
-            unresolvable_registry=unresolvable_registry,
-            reasoning_config=reasoning_config,
+            ctx=ctx,
+            block_id=ctx.block_id(step.step_id),
         )
         status = result.status
         warnings = list(result.warnings)
@@ -166,8 +148,8 @@ async def run_task_handler(
             criteria_met, unmet = await check_success_criteria(
                 step=step,
                 result=result,
-                llm_adapter=llm_adapter,
-                block_id=f"{plan_id}-{step.step_id}-success-check",
+                llm_adapter=ctx.llm,
+                block_id=ctx.block_id(step.step_id, "success-check"),
             )
             if not criteria_met:
                 status = "partial"
@@ -184,14 +166,7 @@ async def run_task_handler(
         step=step,
         pipeline=list(pipeline),
         private_state=private_state,
-        role_roster=role_roster,
-        tool_registry=tool_registry,
-        llm_adapter=llm_adapter,
-        plan_id=plan_id,
-        user_id=user_id,
-        tool_call_cache=tool_call_cache,
-        unresolvable_registry=unresolvable_registry,
-        reasoning_config=reasoning_config,
+        ctx=ctx,
     )
     return _entry_from_pipeline(
         step=step,
@@ -208,19 +183,17 @@ async def _dispatch_single_specialist(
     step_prep_output: StepPrepOutput,
     role: RoleDefinition,
     state: PlanExecutionState,
-    tool_registry: ToolRegistry,
-    llm_adapter: LLMAdapter,
+    ctx: TurnContext,
     block_id: str,
-    user_id: str,
-    streaming_queue: asyncio.Queue[str] | None = None,
-    tool_call_cache: ToolCallCache | None = None,
-    unresolvable_registry: UnresolvableEntityRegistry | None = None,
-    reasoning_config: TurnReasoningConfig | None = None,
 ) -> SubagentResult:
     """The context_builder -> run_subagent chain, wrapped as one non-recursive
     helper -- used by BOTH the atomic fast path and every pipeline sub-step.
     Generic over whichever `PlanExecutionState` it's given (the shared
-    top-level `state`, or a task handler's own private one)."""
+    top-level `state`, or a task handler's own private one).
+
+    This is the dispatch boundary: `ctx` stops here and each specialist is
+    handed only what it actually uses. See `turn_context.TurnContext` for why
+    the leaves keep their narrow signatures instead of taking the whole turn."""
     context_package = build_subagent_context_package(step_prep=step_prep_output, role=role, state=state)
     # Safety net: a composition specialist has zero tool access -- it works ONLY
     # from the upstream results it is handed. If dependency resolution yielded
@@ -235,57 +208,58 @@ async def _dispatch_single_specialist(
             certainty=CertaintyTag(basis="llm_interpretation", confidence=0.0),
             warnings=[_COMPOSITION_EMPTY_CONTEXT_MARKER],
         )
+    reasoning_config = ctx.reasoning
     if role.name == "calculation_validation":
         return await run_calculation_validation_subagent(
             context_package=context_package,
-            tool_registry=tool_registry,
-            llm_adapter=llm_adapter,
+            tool_registry=ctx.tools,
+            llm_adapter=ctx.llm,
             block_id=block_id,
             llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout, max_retries=reasoning_config.subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "retrieval":
         return await run_retrieval_subagent(
             context_package=context_package,
-            tool_registry=tool_registry,
-            llm_adapter=llm_adapter,
+            tool_registry=ctx.tools,
+            llm_adapter=ctx.llm,
             block_id=block_id,
-            tool_call_cache=tool_call_cache,
-            unresolvable_registry=unresolvable_registry,
+            tool_call_cache=ctx.cache,
+            unresolvable_registry=ctx.unresolvable,
             llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout, max_retries=reasoning_config.static_subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "interpretation":
         return await run_interpretation_subagent(
             context_package=context_package,
-            tool_registry=tool_registry,
-            llm_adapter=llm_adapter,
+            tool_registry=ctx.tools,
+            llm_adapter=ctx.llm,
             block_id=block_id,
-            tool_call_cache=tool_call_cache,
-            unresolvable_registry=unresolvable_registry,
+            tool_call_cache=ctx.cache,
+            unresolvable_registry=ctx.unresolvable,
             llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout, max_retries=reasoning_config.subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "simulation_planning":
         return await run_simulation_planning_subagent(
             context_package=context_package,
-            tool_registry=tool_registry,
-            llm_adapter=llm_adapter,
+            tool_registry=ctx.tools,
+            llm_adapter=ctx.llm,
             block_id=block_id,
-            tool_call_cache=tool_call_cache,
-            unresolvable_registry=unresolvable_registry,
+            tool_call_cache=ctx.cache,
+            unresolvable_registry=ctx.unresolvable,
             llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.subagent_thinking_enabled, reasoning_effort=reasoning_config.subagent_reasoning_effort, timeout=reasoning_config.subagent_timeout, max_retries=reasoning_config.subagent_max_retries) if reasoning_config else None,
         )
     if role.name == "composition":
         return await run_composition_subagent(
             context_package=context_package,
-            llm_adapter=llm_adapter,
+            llm_adapter=ctx.llm,
             block_id=block_id,
-            streaming_queue=streaming_queue,
+            streaming_queue=ctx.stream,
             llm_call_params=LLMCallParameters(thinking_enabled=reasoning_config.static_subagent_thinking_enabled, reasoning_effort=reasoning_config.static_subagent_reasoning_effort, timeout=reasoning_config.static_subagent_timeout, max_retries=reasoning_config.static_subagent_max_retries) if reasoning_config else None,
         )
     return await run_subagent(
         role=role,
         context_package=context_package,
-        tool_registry=tool_registry,
-        llm_adapter=llm_adapter,
+        tool_registry=ctx.tools,
+        llm_adapter=ctx.llm,
         block_id=block_id,
     )
 
@@ -337,13 +311,19 @@ def _resolve_sub_step_context_requirements(
     return resolved or list(step.depends_on)
 
 
-def _sub_step_prep(sub: RoutedSubStep, *, user_id: str, context_requirements: list[str]) -> StepPrepOutput:
+def _sub_step_prep(
+    sub: RoutedSubStep, *, user_id: str, context_requirements: list[str], original_user_message: str = ""
+) -> StepPrepOutput:
     specific_instructions = [*sub.specific_instructions, _user_id_instruction(user_id)]
     return StepPrepOutput(
         instruction_fields=StepInstructionFields(
             goal=sub.objective,
             description=sub.objective,
             specific_instructions=specific_instructions,
+            # A pipeline can end in a composition sub-step, so it needs the same
+            # code-decided language directive the synthesis path gets -- see
+            # `response_language`. Harmless on a retrieval sub-step.
+            tone_language_notes=response_language_directive(original_user_message),
         ),
         context_requirements=context_requirements,
         reasoning_params=ReasoningParamsOverride(),
@@ -399,14 +379,7 @@ async def _execute_pipeline_once(
     step: PlanStep,
     pipeline: list[RoutedSubStep],
     private_state: PlanExecutionState,
-    role_roster: dict[RoleName, RoleDefinition],
-    tool_registry: ToolRegistry,
-    llm_adapter: LLMAdapter,
-    plan_id: str,
-    user_id: str,
-    tool_call_cache: ToolCallCache | None = None,
-    unresolvable_registry: UnresolvableEntityRegistry | None = None,
-    reasoning_config: TurnReasoningConfig | None = None,
+    ctx: TurnContext,
 ) -> bool:
     """Dispatches one pipeline layer-by-layer (siblings within a layer run
     concurrently), appending each sub-step's entry to `private_state`. Returns
@@ -420,15 +393,8 @@ async def _execute_pipeline_once(
         return await _dispatch_pipeline_sub_step(
             sub=sub_by_id[sub_step_id],
             private_state=private_state,
-            role_roster=role_roster,
-            tool_registry=tool_registry,
-            llm_adapter=llm_adapter,
-            plan_id=plan_id,
             step=step,
-            user_id=user_id,
-            tool_call_cache=tool_call_cache,
-            unresolvable_registry=unresolvable_registry,
-            reasoning_config=reasoning_config,
+            ctx=ctx,
         )
 
     all_succeeded = True
@@ -447,15 +413,8 @@ async def _dispatch_pipeline_sub_step(
     *,
     sub: RoutedSubStep,
     private_state: PlanExecutionState,
-    role_roster: dict[RoleName, RoleDefinition],
-    tool_registry: ToolRegistry,
-    llm_adapter: LLMAdapter,
-    plan_id: str,
     step: PlanStep,
-    user_id: str,
-    tool_call_cache: ToolCallCache | None = None,
-    unresolvable_registry: UnresolvableEntityRegistry | None = None,
-    reasoning_config: TurnReasoningConfig | None = None,
+    ctx: TurnContext,
 ) -> StateEntry:
     """One specialist sub-step. Its specialist type is ALREADY decided by the
     router, so -- unlike the old nested path -- there is no per-sub-step
@@ -465,20 +424,16 @@ async def _dispatch_pipeline_sub_step(
         step=sub_plan_step,
         step_prep_output=_sub_step_prep(
             sub,
-            user_id=user_id,
+            user_id=ctx.user_id,
             context_requirements=_resolve_sub_step_context_requirements(
                 sub=sub, state=private_state, step=step
             ),
+            original_user_message=ctx.original_user_message,
         ),
-        role=role_roster[sub.specialist],
+        role=ctx.roles[sub.specialist],
         state=private_state,
-        tool_registry=tool_registry,
-        llm_adapter=llm_adapter,
-        block_id=f"{plan_id}-{step.step_id}-{sub.sub_step_id}",
-        user_id=user_id,
-        tool_call_cache=tool_call_cache,
-        unresolvable_registry=unresolvable_registry,
-        reasoning_config=reasoning_config,
+        ctx=ctx,
+        block_id=ctx.block_id(step.step_id, sub.sub_step_id),
     )
     unmet_criteria: list[str] = []
     criteria_met = False
@@ -486,8 +441,8 @@ async def _dispatch_pipeline_sub_step(
         criteria_met, unmet_criteria = await check_success_criteria(
             step=sub_plan_step,
             result=result,
-            llm_adapter=llm_adapter,
-            block_id=f"{plan_id}-{step.step_id}-{sub.sub_step_id}-success-check",
+            llm_adapter=ctx.llm,
+            block_id=ctx.block_id(step.step_id, sub.sub_step_id, "success-check"),
         )
     status = result.status if criteria_met else "partial"
     warnings = (

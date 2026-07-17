@@ -24,7 +24,36 @@ class LLMAdapterError(RuntimeError):
 
     Callers (namely `ReasoningBlock`) are expected to catch this and fail
     safely rather than letting it propagate and crash the agent.
+
+    `str(...)` is deliberately the bare failure CODE and nothing else --
+    callers dispatch on it (`str(exc) in _PARSE_FAILURE_CODES`), so folding
+    the cause into the message would silently break that matching. The
+    triggering exception rides on `cause` instead, rendered by `detail` for
+    logs and live-eval traces.
+
+    `detail` exists because the code alone is not diagnosable. A live-eval run
+    (2026-07-16) showed seven `llm_call_failed`s the logs could not explain:
+    every one was really `RuntimeError: Event loop is closed` from a cached
+    client reused across pytest's per-test event loops, but the code swallowed
+    that and the investigation had to reproduce it by hand to find out.
     """
+
+    def __init__(self, code: str, *, cause: BaseException | None = None) -> None:
+        super().__init__(code)
+        self.code = code
+        self.cause = cause
+
+    @property
+    def detail(self) -> str:
+        """The code plus the `__cause__` chain beneath it, outermost first."""
+        parts = [self.code]
+        seen: set[int] = set()
+        exc: BaseException | None = self.cause
+        while exc is not None and id(exc) not in seen:
+            seen.add(id(exc))
+            parts.append(f"{type(exc).__module__}.{type(exc).__name__}: {exc}")
+            exc = exc.__cause__
+        return " <- ".join(parts)
 
 
 @runtime_checkable
@@ -166,7 +195,7 @@ class ChatLLMAdapter:
                 response = await llm.ainvoke(messages)
         except Exception as exc:
             logger.exception("reasoning_llm_adapter_call_failed")
-            raise LLMAdapterError("llm_call_failed") from exc
+            raise LLMAdapterError("llm_call_failed", cause=exc) from exc
 
         outcome = parse_llm_json_detailed(_response_text_content(response))
         if raw_model_text_out is not None:
@@ -220,7 +249,7 @@ class ChatLLMAdapter:
             response = await llm.ainvoke(messages)
         except Exception as exc:
             logger.exception("reasoning_llm_adapter_call_failed")
-            raise LLMAdapterError("llm_call_failed") from exc
+            raise LLMAdapterError("llm_call_failed", cause=exc) from exc
 
         return _response_text_content(response)
 

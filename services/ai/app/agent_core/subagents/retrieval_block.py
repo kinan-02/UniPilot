@@ -20,6 +20,7 @@ from app.agent_core.reasoning.llm_adapter import LLMAdapter, LLMAdapterError
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
+from app.agent_core.subagents.fact_projection import build_call_handles, project_facts
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
 from app.agent_core.subagents.tool_round import execute_tool_round
 from app.agent_core.tools.call_cache import ToolCallCache
@@ -60,6 +61,82 @@ _RETRIEVAL_OUTPUT_SCHEMA: dict[str, Any] = {
     "required": ["certainty_basis", "confidence", "facts"],
 }
 
+# What the MODEL emits. `_RETRIEVAL_OUTPUT_SCHEMA` above stays exactly as it
+# was -- it is the shape the rest of the pipeline consumes (`state_index`, the
+# calculation block's `_unwrap_fact_envelope`) and the shape
+# `_salvage_on_round_call_failure` hand-builds. Projection changes who AUTHORS a
+# fact, never what downstream receives, so the two shapes are now distinct:
+# selectors in, facts out.
+#
+# `facts` is an ARRAY here on purpose, and that is load-bearing beyond taste:
+# `result_normalizer._recover_facts_list_and_missing_certainty` rewrites a list
+# into an object only for a property the schema declares object-typed. Declaring
+# selectors as an array is what keeps that recovery -- which keys by `key` and
+# reads `value` -- from mangling a selector list that deliberately has no
+# `value`.
+#
+# Deliberately NOT `additionalProperties: False`. A model that bolts a stray
+# `"value": 63.5` onto a selector is harmless: `project_facts` reads only
+# key/from/path, so the number is inert and never reaches state. Forbidding it
+# in the schema would instead turn a harmless extra key into a hard validation
+# error and a repair loop -- and out-of-schema keys were measured live at ~10
+# per run. The guarantee lives in the resolver, not the schema.
+_RETRIEVAL_SELECTOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "from": {"type": "string"},
+                    "path": {"type": "string"},
+                },
+                "required": ["key", "from", "path"],
+            },
+        },
+        "source_ref": {
+            "type": ["object", "null"],
+            "properties": {
+                "page": {"type": "string"},
+                "section": {"type": ["string", "null"]},
+                "reasoning_path": {"type": ["string", "null"]},
+            },
+            "required": ["page"],
+        },
+        "assumptions": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["facts"],
+}
+
+# Weakest-first. A step is only as certain as the least certain call it read --
+# the same min-aggregation convention `compose_answer._aggregate_certainty` and
+# `result_normalizer._flatten_fact_list_to_object` already use.
+_BASIS_STRENGTH: tuple[str, ...] = (
+    "official_record",
+    "wiki_derived",
+    "predicted_pattern",
+    "llm_interpretation",
+    "hypothetical_simulation",
+)
+
+
+def _weakest_basis(bases: list[str]) -> str:
+    """The certainty a projected step actually earned, taken from the envelopes
+    of the calls it read rather than from the model's say-so.
+
+    Falls back to `llm_interpretation` only when no referenced envelope declared
+    a basis at all -- which is the same conservative default
+    `result_normalizer` applies, but reached only when nothing better is known
+    rather than whenever the model happened to omit the field.
+    """
+    known = [basis for basis in bases if basis in _BASIS_STRENGTH]
+    if not known:
+        return "llm_interpretation"
+    return max(known, key=_BASIS_STRENGTH.index)
+
+
 _MAX_ROUNDS = 3
 
 # Confidence stamped on a step that had to finalize on already-gathered tool
@@ -79,24 +156,28 @@ def _retrieval_round_contract() -> PromptContract:
             "You are the Retrieval Agent. You resolve and fetch facts using get_entity, "
             "search_knowledge, and traverse_relationship, plus higher-level tools that bundle "
             "several of those into one call. You may iterate if what you find is ambiguous. "
-            "You return facts plus their source and confidence -- never commentary or "
-            "explanation prose."
+            "You do not carry data: you POINT AT it. Your result names, for each fact, which "
+            "recorded call holds it and where inside that call it lives -- the value itself is "
+            "read out of the recorded tool result for you. Never commentary or explanation prose."
         ),
         instructions=[
-            "You may decide, interpret, and judge freely, but you may never directly assert a "
-            "computed or structural fact in your output without it coming from a tool call result "
-            "already present in task_context or requested via tool_requests.",
-            "Return facts with their source and confidence, never bare prose.",
-            "When a tool result already returns a clean, directly-usable value (a semester "
-            "identifier, a course code, a GPA, a date, an enum-like label), use that exact value "
-            "as the fact's value and a short semantic label matching the tool's own field name "
-            "(e.g. 'currentSemester', 'courseCode') as its key. Never paraphrase a clean "
-            "structured value into a full natural-language sentence, and never use the sentence "
-            "itself as the fact's key -- a downstream success-criteria check or calculation step "
-            "needs the exact raw value to match or compute against, and a prose rewrite (e.g. "
-            "turning currentSemester='Spring Semester 2025/2026' into 'The current academic "
-            "semester is Spring Semester 2025/2026.') silently discards that shape even though it "
-            "reads as a fully valid answer to a human.",
+            "Each entry in `facts` is a SELECTOR, never a value: {\"key\": <short label you "
+            "choose>, \"from\": <a call_N handle from tool_results>, \"path\": <dotted path into "
+            "that call's recorded result, e.g. \"data.completedCourses\">}. There is no `value` "
+            "field. You are not copying the data out; you are saying where it already is.",
+            "Give each fact a short semantic label matching the tool's own field name (e.g. "
+            "'currentSemester', 'courseCode') as its `key`. Never use a whole sentence as a key -- "
+            "a downstream success-criteria check or calculation step matches on the label.",
+            "A selector is a PATH -- it walks to a location and stops. It cannot sum, count, "
+            "filter, compare, or combine. If the step needs a total, a tally, a subset, or a "
+            "derived yes/no, you cannot produce it: select the RAW records it would be derived "
+            "from and let the calculation step derive it. Handing over the raw list is the "
+            "complete and correct answer to 'how many credits has the student earned' -- the "
+            "arithmetic is not yours, and a total you worked out in your head is exactly the "
+            "error this design exists to make impossible.",
+            "Point at the deepest path that holds the whole answer, and no deeper. If a document "
+            "already groups what you need (e.g. `data.academicPath`), select that one path rather "
+            "than picking its fields apart.",
             "If a granted tool's own name/description already bundles the multi-step chain you'd "
             "otherwise assemble by hand (e.g. get_course_profile instead of get_entity followed by "
             "several traverse_relationship calls; get_track_requirements instead of get_entity "
@@ -114,11 +195,11 @@ def _retrieval_round_contract() -> PromptContract:
             "variant after variant -- one search resolves it; retried guesses only burn rounds.",
             "If a search is ambiguous, request another tool call round rather than guessing.",
             "A record that was fetched successfully but has a field that is null/unset (e.g. a "
-            "student profile with no declared program) is a CONFIDENT, fully resolved fact -- 'this "
-            "field is genuinely absent' -- not an ambiguous or incomplete search. Finalize with that "
-            "null value and high confidence rather than spending another round re-fetching the same "
-            "record or searching elsewhere for a value the source has already confirmed does not "
-            "exist.",
+            "student profile with no declared program), or a list that came back empty (e.g. a "
+            "semester plan with no enrolments), is a CONFIDENT, fully resolved fact -- 'this is "
+            "genuinely absent' -- not an ambiguous or incomplete search. Select that path and "
+            "finalize rather than spending another round re-fetching the same record or searching "
+            "elsewhere for a value the source has already confirmed does not exist.",
             "Output must be either a tool request (status='need_tools', provide tool_requests) OR "
             "a final result (status='ready', provide result matching the required schema).",
         ],
@@ -130,7 +211,13 @@ def _retrieval_round_contract() -> PromptContract:
         default_temperature=0.1,
         safety_rules=[
             "Do not expose chain-of-thought, hidden reasoning, or private notes.",
-            "Do not fabricate a fact that no tool call actually returned.",
+            # Kept as a statement of intent, not as the enforcement. Asking a
+            # model not to fabricate is what the old citation guard effectively
+            # did, and it could only ever catch a model that confessed. A
+            # selector has no value field, so this rule is now true by
+            # construction rather than by compliance.
+            "Never select a path for data a tool did not return; if the answer is not in a "
+            "recorded result, request the tool that would fetch it.",
         ],
     )
 
@@ -204,7 +291,7 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
                         "required": ["tool_name", "arguments"],
                     },
                 },
-                "result": _RETRIEVAL_OUTPUT_SCHEMA,
+                "result": _RETRIEVAL_SELECTOR_SCHEMA,
             },
             "required": ["status"],
         }
@@ -225,10 +312,18 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
                 except Exception:
                     available_tools_with_schemas.append({"name": t_name})
 
+            # Handles are the reference space a selector's `from` names. The
+            # underlying result key is `f"{tool_name}:{json.dumps(arguments)}"`
+            # -- faithful, and far too fiddly to ask a model to echo back
+            # exactly; making it reproduce one would reintroduce, in the
+            # reference, the very transcription selectors exist to remove.
+            handles = build_call_handles(tool_results_so_far)
             payload = {
                 "objective": block_input.objective,
                 "task_context": block_input.task_context,
-                "tool_results_so_far": tool_results_so_far,
+                "tool_results": {
+                    handle: tool_results_so_far[key] for handle, key in handles.items()
+                },
                 "available_tools": available_tools_with_schemas,
             }
             if is_final_round:
@@ -292,14 +387,14 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
                     rounds_used=round_num,
                 )
 
-            candidate = self._normalize_result(candidate_result, output_schema=_RETRIEVAL_OUTPUT_SCHEMA)
-            validation = self._validate_schema(candidate, _RETRIEVAL_OUTPUT_SCHEMA)
+            candidate = self._normalize_result(candidate_result, output_schema=_RETRIEVAL_SELECTOR_SCHEMA)
+            validation = self._validate_schema(candidate, _RETRIEVAL_SELECTOR_SCHEMA)
 
             if not validation.valid:
                 repair_outcome = await self._repair_schema(
                     initial_result=candidate,
                     initial_errors=validation.errors,
-                    output_schema=_RETRIEVAL_OUTPUT_SCHEMA,
+                    output_schema=_RETRIEVAL_SELECTOR_SCHEMA,
                     max_attempts=2,
                     block_input=block_input,
                     telemetry=telemetry,
@@ -312,14 +407,64 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
                     )
                 candidate = repair_outcome.result
 
-            candidate, ungrounded = _drop_ungrounded_facts(candidate, tool_audit_trail)
+            # Runs at this one point, AFTER any schema repair, so a repair pass
+            # cannot re-introduce what it strips. The old second guard
+            # (`_drop_ungrounded_facts`) is gone: it adjudicated a
+            # model-authored `source` string, and projection means no such
+            # string exists to adjudicate.
+            candidate, out_of_contract = _drop_out_of_contract_keys(candidate, _RETRIEVAL_SELECTOR_SCHEMA)
 
+            outcome = project_facts(candidate.get("facts"), tool_results_so_far, handles)
+
+            # A step that resolved nothing produced nothing, and must not report
+            # otherwise. CAUGHT LIVE (2026-07-16, `presupposition_conflict` step
+            # 1a): every fact was thrown away and the step still returned
+            # `succeeded` at confidence 0.9, so the Planner recorded a success,
+            # never re-fetched, and the student's degree context vanished from
+            # the turn without a single visible symptom. Failing sends it to the
+            # Monitor, which replans with the whole plan in view -- the recovery
+            # path this orchestrator is built around.
+            if not outcome.facts:
+                return self._retrieval_failed_output(
+                    reason=f"no_facts_projected: {'; '.join(outcome.errors[:5]) or 'no selectors returned'}",
+                    tool_audit_trail=tool_audit_trail,
+                    rounds_used=round_num,
+                )
+
+            confidence = min(outcome.confidences) if outcome.confidences else 1.0
+            projected = {
+                "certainty_basis": _weakest_basis(outcome.bases),
+                "confidence": confidence,
+                "source_ref": candidate.get("source_ref"),
+                "assumptions": candidate.get("assumptions") or [],
+                "facts": outcome.facts,
+            }
+
+            # Defensive, exactly as the salvage path validates its own
+            # hand-built result: this dict is assembled here, so a future change
+            # to either schema can never silently start emitting a shape
+            # downstream cannot read.
+            projected_validation = self._validate_schema(projected, _RETRIEVAL_OUTPUT_SCHEMA)
+            if not projected_validation.valid:
+                logger.error(
+                    "retrieval_projected_result_invalid errors=%s", projected_validation.errors[:5]
+                )
+                return self._retrieval_failed_output(
+                    reason=f"projected_result_invalid: {'; '.join(projected_validation.errors[:3])}",
+                    tool_audit_trail=tool_audit_trail,
+                    rounds_used=round_num,
+                )
+
+            # Partial resolution is a real result plus a visible caveat -- some
+            # selectors landed, so the step has facts, but the ones that missed
+            # are surfaced rather than quietly absent.
             return _RetrievalBlockOutput(
                 status="completed",
                 schema_valid=True,
-                result=candidate,
-                confidence=candidate.get("confidence", 1.0),
-                warnings=[f"retrieval_dropped_ungrounded_fact: {key}" for key in ungrounded],
+                result=projected,
+                confidence=confidence,
+                warnings=[f"retrieval_selector_unresolved: {error}" for error in outcome.errors]
+                + [f"retrieval_dropped_out_of_contract_key: {key}" for key in out_of_contract],
                 tool_audit_trail=tool_audit_trail,
                 rounds_used=round_num,
             )
@@ -409,85 +554,56 @@ class RetrievalReasoningBlock(BaseReasoningBlock):
         return self._retrieval_failed_output(reason=f"reasoning_block_failed: {reason}")
 
 
-def _drop_ungrounded_facts(
-    candidate: dict[str, Any], tool_audit_trail: list[ToolInvocationRecord]
+def _drop_out_of_contract_keys(
+    candidate: dict[str, Any], output_schema: dict[str, Any]
 ) -> tuple[dict[str, Any], list[str]]:
-    """Drop facts whose `source` names no tool this block actually called.
+    """Project the result onto the keys the schema actually declares.
 
-    Retrieval FETCHES; it cannot compute. The specialist router is already told
-    so verbatim ("Never route a derivation to retrieval; retrieval cannot
-    compute") -- but nothing enforced it, and the retrieval prompt's own
-    `facts`/`source`/`confidence` shape gives a model a comfortable place to
-    write down a number it worked out in its head.
+    Projection closed the front door: `facts` entries are selectors, so a
+    fabricated number cannot be written into one. This closes the side door --
+    a top-level key the schema never declared.
 
-    Measured live (2026-07-16, ise_correctness `credits_remaining`) it did
-    exactly that:
+    CAUGHT LIVE (2026-07-16, ise_correctness). Retrieval returned the 17
+    completed courses perfectly, then appended a key that appears nowhere in
+    `_RETRIEVAL_OUTPUT_SCHEMA`:
 
-        {"key": "totalCreditsEarned", "value": 63.0,
-         "source": "sum of creditsEarned across all 17 completed courses",
-         "confidence": 1.0}
+        "metadata": {"total_courses": 17, "total_credits_earned": 63.5}
 
-    The real total is 62.5. The plan already had a `calculation_validation`
-    step, which computed 62.5 correctly -- so both numbers sat in state and
-    composition published the wrong one. The agent had the right answer and
-    still got it wrong, because a fabricated fact is indistinguishable from a
-    fetched one once it is in the state index.
+    No tool computed that total (`get_entity` returns the raw list and nothing
+    else); the model summed the list in its head and got it wrong -- the real
+    total is 62.5. `metadata` carries no `source`, so the groundedness guard had
+    nothing to judge and never looked at it anyway; the schema declares no
+    `additionalProperties: false`, so it validated cleanly; and it inherited the
+    block's `certainty_basis: official_record` / `confidence: 1.0`. A guess wore
+    an official record's badge all the way to the student, and that same run's
+    plausibility checker then trusted it over the deterministic engine.
 
-    The tell is `source`. A fetched fact names a TOOL (`get_course_profile`);
-    that one names a sentence describing mental arithmetic. We do not need a
-    model to judge this: `tool_audit_trail` is the record of what was actually
-    called, so groundedness is decidable in code -- the same reason
-    `check_success_criteria` stopped asking an LLM.
+    Measured across that run, the model put SEVEN distinct undeclared keys on
+    retrieval results (`metadata`, `status`, `notes`, `missing`, `warnings`,
+    `certainty`, `source`) in 10 places. That volume is why this PROJECTS rather
+    than validates: adding `additionalProperties: false` to the schema would fire
+    `_repair_schema` on nearly every retrieval, buying loops and latency to fix a
+    shape we are about to discard anyway. Dropping is decidable in code, costs no
+    LLM call, and cannot loop.
 
-    Substring match, not equality: a model writes `get_entity` as
-    `get_entity(student_profile)` or `get_entity: completed_courses`, and all of
-    those are honest citations of a call that happened. Only a `source` naming
-    NO invoked tool is dropped.
+    Verified before writing this: `run_retrieval_subagent` reads only
+    `certainty_basis`, `confidence`, `source_ref`, `assumptions` and `facts`, and
+    the block itself reads only `confidence` -- every one a declared key. Nothing
+    downstream consumes an undeclared one, so nothing real is lost.
 
-    Conservative on purpose, in three ways.
-
-    With an empty audit trail (a salvage path, a cache-only round) nothing is
-    dropped: this exists to catch the fabricated fact standing amongst real
-    ones, not to adjudicate a block that called no tools at all.
-
-    A fact carrying no `source` at all is kept. `facts` is declared only
-    `{"type": "object"}`, so a bare `{"degreeId": "x"}` is a legal and common
-    shape -- there is no citation there to judge, and dropping it would discard
-    genuinely fetched data because the model was terse. This guard adjudicates
-    CITATIONS, not facts.
-
-    And it reads `facts` as a DICT, because that is the only shape that reaches
-    it. This code originally checked `isinstance(facts, list)` -- the shape the
-    model emits -- and so returned immediately on every call and never once
-    fired in production, including on the very run this docstring quotes.
-    `facts` is declared `{"type": "object"}`, so by the time a candidate arrives
-    here `_flatten_fact_list_to_object` has already keyed the list by label
-    (`_normalize_result` -> `_validate_schema` -> here). The old unit tests
-    handed the helper a list directly and stayed green throughout.
+    The dropped key NAME is surfaced as a warning; the value never is. That is
+    deliberate -- see `_implausible_output` in the calculation block, where
+    letting a model's prose (carrying exactly this fabricated 63.5) reach the
+    Planner turned a hallucination into an instruction.
     """
-    facts = candidate.get("facts")
-    called = {record.tool_name for record in tool_audit_trail if getattr(record, "tool_name", None)}
-    if not isinstance(facts, dict) or not called:
+    allowed = set((output_schema.get("properties") or {}).keys())
+    if not allowed:
         return candidate, []
-
-    kept: dict[str, Any] = {}
-    dropped: list[str] = []
-    for key, fact in facts.items():
-        source = fact.get("source") if isinstance(fact, dict) else None
-        if not isinstance(source, str) or not source.strip():
-            kept[key] = fact
-        elif any(tool_name in source for tool_name in called):
-            kept[key] = fact
-        else:
-            dropped.append(str(key))
-
+    dropped = [key for key in candidate if key not in allowed]
     if not dropped:
         return candidate, []
-
-    logger.warning(
-        "retrieval_dropped_ungrounded_facts keys=%s cited_tools=%s", dropped, sorted(called)
-    )
-    return {**candidate, "facts": kept}, dropped
+    logger.warning("retrieval_dropped_out_of_contract_keys keys=%s declared=%s", dropped, sorted(allowed))
+    return {key: value for key, value in candidate.items() if key in allowed}, dropped
 
 
 async def run_retrieval_subagent(

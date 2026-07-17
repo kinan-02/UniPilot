@@ -11,7 +11,11 @@ LLM output, so it can't independently drift from the structured fields.
 from __future__ import annotations
 
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
-from app.agent_core.request_understanding.request_understanding import _render_user_goal, understand_request
+from app.agent_core.request_understanding.request_understanding import (
+    _render_user_goal,
+    _with_presupposition_check,
+    understand_request,
+)
 
 _MESSAGE = "What am I missing to graduate?"
 
@@ -46,6 +50,109 @@ async def test_single_sub_ask_happy_path(fake_llm_adapter_factory):
     # _TIMEOUT_SECONDS) and leaves max_retries unset.
     assert adapter.calls[0]["timeout"] == 30.0
     assert adapter.calls[0]["max_retries"] is None
+
+
+# --- Presuppositions -------------------------------------------------------
+# Regression for the 2026-07-16 `presupposition_conflict` case, where the whole
+# personal premise of the question was normalized away before planning began.
+
+_CONFLICT_MESSAGE = "If I fail course 00940224 this semester, will I still be able to take 00960211?"
+
+
+async def test_a_presupposition_adds_a_verification_sub_ask(fake_llm_adapter_factory):
+    """Detecting the premise is the model's job; acting on it is not.
+
+    The live failure: this exact question produced the single catalog sub-ask
+    below and nothing else, so the turn never read the student's record and never
+    noticed they had passed 00940224 a year earlier.
+    """
+    adapter = fake_llm_adapter_factory([
+        _response(
+            sub_asks=["Determine if 00960211 has 00940224 as a prerequisite."],
+            presuppositions=["The student is currently enrolled in 00940224."],
+        )
+    ])
+
+    output = await understand_request(
+        original_user_message=_CONFLICT_MESSAGE, llm_adapter=adapter, block_id="blk-1"
+    )
+
+    assert output.presuppositions == ["The student is currently enrolled in 00940224."]
+    # Appended, never substituted -- the literal question still gets answered.
+    assert len(output.sub_asks) == 2
+    assert output.sub_asks[0] == "Determine if 00960211 has 00940224 as a prerequisite."
+    injected = output.sub_asks[1]
+    assert "The student is currently enrolled in 00940224." in injected
+    # The Planner plans from user_goal too, so the check must be visible there.
+    assert "ACTUAL status" in (output.user_goal or "")
+
+
+def test_the_injected_sub_ask_asks_for_a_status_not_a_verdict_on_the_claim():
+    """The distinction the live run turned into harmful advice.
+
+    "Verify whether the claim holds" is a BOOLEAN. Live (2026-07-16) the empty
+    semester plan answered it completely -- so the Planner dropped the
+    completed-course record from composition's dependencies, correctly: once a
+    claim is falsified, evidence about it is evidence for nothing. The turn told
+    a student to retake a course they had passed with an 85.
+
+    Naming both records is what forces the plan to read both instead of stopping
+    at the first one that refutes the wording.
+    """
+    injected = _with_presupposition_check(["literal ask"], ["The student is enrolled in 00940224."])[1]
+
+    assert "COMPLETED" in injected, "the record that held the decisive fact must be named"
+    assert "CURRENTLY ENROLLED" in injected, "and the one the old wording stopped at"
+    assert "grade and semester" in injected, "a status, not a yes/no"
+    # The old wording's failure mode: a verdict the plan can discharge and move on.
+    assert "whether each of these claims" not in injected
+
+
+def test_no_presupposition_injects_nothing():
+    assert _with_presupposition_check(["only ask"], []) == ["only ask"]
+
+
+async def test_no_presupposition_leaves_the_sub_asks_untouched(fake_llm_adapter_factory):
+    # Most requests presuppose nothing; they must not grow a spurious step.
+    adapter = fake_llm_adapter_factory([_response()])
+
+    output = await understand_request(original_user_message=_MESSAGE, llm_adapter=adapter, block_id="blk-1")
+
+    assert output.presuppositions == []
+    assert output.sub_asks == ["Determine remaining graduation requirements."]
+
+
+async def test_a_model_that_omits_presuppositions_still_succeeds(fake_llm_adapter_factory):
+    # The field is optional on purpose: requiring it would drop a whole request's
+    # understanding to the fallback over a field that is empty on most turns.
+    response = _response()
+    response.pop("presuppositions", None)
+    adapter = fake_llm_adapter_factory([response])
+
+    output = await understand_request(original_user_message=_MESSAGE, llm_adapter=adapter, block_id="blk-1")
+
+    assert output.schema_valid is True
+    assert output.presuppositions == []
+    assert output.sub_asks == ["Determine remaining graduation requirements."]
+
+
+async def test_presuppositions_are_dropped_when_out_of_scope(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory([
+        _response(
+            in_scope=False,
+            sub_asks=[],
+            decline_reason="not academic advising",
+            presuppositions=["something"],
+        )
+    ])
+
+    output = await understand_request(
+        original_user_message="write me a poem", llm_adapter=adapter, block_id="blk-1"
+    )
+
+    assert output.in_scope is False
+    assert output.presuppositions == []
+    assert output.sub_asks == []
 
 
 async def test_multiple_sub_asks_render_into_joined_user_goal(fake_llm_adapter_factory):

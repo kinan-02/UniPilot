@@ -1,16 +1,20 @@
 """Tests for `RetrievalReasoningBlock`/`run_retrieval_subagent`
 (docs/agent/agent_plans/RETRIEVAL_REASONING_BLOCK_PLAN.md).
 
-All scenarios exercised through the public `run_retrieval_subagent`
-entry point.
+All scenarios exercised through the public `run_retrieval_subagent` entry point.
+
+Retrieval emits SELECTORS, not values (see `subagents/fact_projection.py`), so
+these drive a stubbed tool layer that returns a known envelope -- a selector has
+to have something real to point at, and a test whose tool call fails is testing
+the error path, not the happy one.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-import pytest
-
+from app.agent_core.planning.state import CertaintyTag
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.subagents.retrieval_block import (
     _DEGRADED_FINALIZE_CONFIDENCE,
@@ -19,7 +23,18 @@ from app.agent_core.subagents.retrieval_block import (
 )
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
 from app.agent_core.tools.default_registry import build_default_tool_registry
+from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolRegistry
+
+# What the stubbed `get_entity` returns. Shaped like the real thing: the payload
+# under `data`, and a certainty the TOOL declares -- `get_entity` really does
+# return `CertaintyTag(basis="official_record", confidence=1.0)` for a Mongo
+# entity, which is the value projection reads instead of asking the model.
+_COURSE_ENVELOPE = ToolOutputEnvelope(
+    ok=True,
+    data={"courseNumber": "123456", "credits": 3.0, "prereqs": {"logic": "OR", "courses": ["111", "222"]}},
+    certainty=CertaintyTag(basis="official_record", confidence=1.0),
+)
 
 
 class _NeedToolsThenTransientFailAdapter:
@@ -72,59 +87,52 @@ def _context_package(tool_grant=("get_entity", "search_knowledge", "traverse_rel
 
 
 class _CountingToolRegistry:
-    def __init__(self, inner: ToolRegistry) -> None:
+    """Real descriptors (so argument validation still runs), stubbed callables.
+
+    The default registry's `get_entity` reaches Mongo, which no unit test has --
+    every call would come back `ok=False`, and a selector into a failed envelope
+    tests the error path. Stubbing the callable keeps the input model, the grant
+    check, and the audit trail real while making the DATA deterministic.
+    """
+
+    def __init__(self, inner: ToolRegistry, *, envelope: ToolOutputEnvelope = _COURSE_ENVELOPE) -> None:
         self._inner = inner
         self.call_count = 0
+        self._envelope = envelope
 
     def get(self, name: str):
         descriptor = self._inner.get(name)
-        original_callable = descriptor.callable
 
-        async def _counting_callable(payload):
+        async def _stub_callable(_payload):
             self.call_count += 1
-            return await original_callable(payload)
+            return self._envelope
 
-        return descriptor.model_copy(update={"callable": _counting_callable})
+        return descriptor.model_copy(update={"callable": _stub_callable})
 
     def has(self, name: str) -> bool:
         return self._inner.has(name)
 
 
-def _ready_result(facts=None, basis="wiki_derived"):
+def _need_get_entity(entity_id: str = "123456") -> dict[str, Any]:
     return {
-        "status": "ready",
-        "result": {
-            "certainty_basis": basis,
-            "confidence": 1.0,
-            "facts": facts or {"found": True},
-        }
+        "status": "need_tools",
+        "tool_requests": [
+            {"tool_name": "get_entity", "arguments": {"entity_id": entity_id, "entity_type": "course"}}
+        ],
     }
 
 
-async def test_round_1_ready_completes_immediately(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([_ready_result()])
-    registry = _CountingToolRegistry(build_default_tool_registry())
-
-    result = await run_retrieval_subagent(
-        context_package=_context_package(),
-        tool_registry=registry,
-        llm_adapter=adapter,
-        block_id="blk-1",
-    )
-
-    assert result.status == "succeeded"
-    assert registry.call_count == 0
-    assert len(adapter.calls) == 1
+def _ready_selecting(*selectors: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    """A finalize round: the model points at data, it never carries it."""
+    result: dict[str, Any] = {
+        "facts": list(selectors) or [{"key": "courseNumber", "from": "call_1", "path": "data.courseNumber"}]
+    }
+    result.update(extra)
+    return {"status": "ready", "result": result}
 
 
 async def test_one_round_of_tool_calls_then_ready_happy_path(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([
-        {
-            "status": "need_tools",
-            "tool_requests": [{"tool_name": "get_entity", "arguments": {"entity_id": "123456", "entity_type": "course"}}]
-        },
-        _ready_result({"key": "value"})
-    ])
+    adapter = fake_llm_adapter_factory([_need_get_entity(), _ready_selecting()])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
     result = await run_retrieval_subagent(
@@ -138,6 +146,148 @@ async def test_one_round_of_tool_calls_then_ready_happy_path(fake_llm_adapter_fa
     assert registry.call_count == 1
     assert len(adapter.calls) == 2
     assert len(result.tool_audit_trail) == 1
+    # The value came out of the recorded envelope, not out of the model.
+    assert result.result["facts"]["courseNumber"]["value"] == "123456"
+
+
+async def test_the_value_is_read_from_the_envelope_not_taken_from_the_model(fake_llm_adapter_factory):
+    """CAUGHT LIVE (2026-07-16, `credits_remaining`).
+
+    Retrieval used to author the values, and authored `totalCreditsEarned: 63.0`
+    -- a 17-number sum done in its head, wrong (the truth is 62.5), stamped
+    confidence 1.0 and indistinguishable from a fetched fact once in state.
+
+    A selector has no `value` field. Even if the model bolts one on, projection
+    reads only key/from/path, so the number it made up cannot reach state.
+    """
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        _ready_selecting(
+            {
+                "key": "credits",
+                "from": "call_1",
+                "path": "data.credits",
+                "value": 63.0,  # a lie, bolted onto a selector
+            }
+        ),
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert result.result["facts"]["credits"]["value"] == 3.0, "the envelope's value must win"
+    assert "63.0" not in json.dumps(result.result, default=str)
+
+
+async def test_a_nested_object_is_selected_by_one_path(fake_llm_adapter_factory):
+    """`academicPath` is a real nested object on the student profile, so grouped
+    data needs no composite selector -- one fact, one path."""
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        _ready_selecting({"key": "prereqs", "from": "call_1", "path": "data.prereqs"}),
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.result["facts"]["prereqs"]["value"] == {"logic": "OR", "courses": ["111", "222"]}
+
+
+async def test_certainty_is_taken_from_the_tool_that_served_the_data(fake_llm_adapter_factory):
+    """CAUGHT LIVE (2026-07-16, `presupposition_conflict` step 1a).
+
+    The result omitted `certainty_basis`, so `result_normalizer`'s defaults
+    backfilled `llm_interpretation` -- tagging a plain `get_entity` read as model
+    guesswork while the tool had already declared `official_record` at 1.0. The
+    envelope knew; nobody asked it. Now nobody asks the model.
+    """
+    adapter = fake_llm_adapter_factory([_need_get_entity(), _ready_selecting()])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.certainty.basis == "official_record"
+    assert result.certainty.confidence == 1.0
+    assert result.result["facts"]["courseNumber"]["source"].startswith("get_entity(")
+
+
+async def test_a_step_that_resolves_nothing_fails_instead_of_reporting_success(fake_llm_adapter_factory):
+    """CAUGHT LIVE (2026-07-16, `presupposition_conflict` step 1a).
+
+    Every fact was thrown away and the step still returned `succeeded` at
+    confidence 0.9 with `facts: {}`. The Planner recorded a success, never
+    re-fetched, and the student's degree context vanished from the turn with no
+    visible symptom. A step that produced nothing must say so, so the Monitor
+    can replan.
+    """
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        _ready_selecting({"key": "totalCreditsEarned", "from": "call_1", "path": "data.totalCreditsEarned"}),
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "failed"
+    assert any("no_facts_projected" in w for w in result.warnings)
+    assert any("does not exist" in w for w in result.warnings)
+
+
+async def test_a_ready_with_no_tool_calls_has_nothing_to_point_at(fake_llm_adapter_factory):
+    """Retrieval FETCHES. A finalize that called no tool has, by construction,
+    nothing to select from -- and previously would have returned whatever facts
+    the model felt like inventing. There is no handle to name, so it fails."""
+    adapter = fake_llm_adapter_factory([_ready_selecting()])
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "failed"
+    assert registry.call_count == 0
+    assert any("no_facts_projected" in w for w in result.warnings)
+
+
+async def test_a_partially_resolved_step_keeps_what_landed_and_surfaces_what_did_not(fake_llm_adapter_factory):
+    adapter = fake_llm_adapter_factory([
+        _need_get_entity(),
+        _ready_selecting(
+            {"key": "courseNumber", "from": "call_1", "path": "data.courseNumber"},
+            {"key": "bogus", "from": "call_1", "path": "data.nope"},
+        ),
+    ])
+
+    result = await run_retrieval_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "succeeded"
+    assert set(result.result["facts"]) == {"courseNumber"}
+    assert any("retrieval_selector_unresolved" in w and "bogus" in w for w in result.warnings)
 
 
 async def test_tool_called_twice_in_same_round_with_different_arguments_does_not_clobber(fake_llm_adapter_factory):
@@ -146,10 +296,14 @@ async def test_tool_called_twice_in_same_round_with_different_arguments_does_not
             "status": "need_tools",
             "tool_requests": [
                 {"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}},
-                {"tool_name": "get_entity", "arguments": {"entity_id": "222", "entity_type": "course"}}
-            ]
+                {"tool_name": "get_entity", "arguments": {"entity_id": "222", "entity_type": "course"}},
+            ],
         },
-        _ready_result()
+        # Two distinct calls -> two distinct handles.
+        _ready_selecting(
+            {"key": "first", "from": "call_1", "path": "data.courseNumber"},
+            {"key": "second", "from": "call_2", "path": "data.courseNumber"},
+        ),
     ])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
@@ -162,18 +316,19 @@ async def test_tool_called_twice_in_same_round_with_different_arguments_does_not
 
     assert result.status == "succeeded"
     assert registry.call_count == 2
-    
     assert len(result.tool_audit_trail) == 2
     args = [t.arguments for t in result.tool_audit_trail]
     assert any(a.get("entity_id") == "111" for a in args)
     assert any(a.get("entity_id") == "222" for a in args)
+    assert set(result.result["facts"]) == {"first", "second"}
+
 
 async def test_malformed_tool_requests_repaired_before_execution(fake_llm_adapter_factory):
-    # A live-eval run found the model routinely emitting tool_requests with
-    # the wrong keys (e.g. "name"/"params" instead of "tool_name"/
-    # "arguments"). Previously that request just silently failed inside
-    # execute_tool_round, wasting the whole round. Now the round output goes
-    # through the same validate/repair loop the final result already gets.
+    # A live-eval run found the model routinely emitting tool_requests with the
+    # wrong keys (e.g. "name"/"params" instead of "tool_name"/"arguments").
+    # Previously that request just silently failed inside execute_tool_round,
+    # wasting the whole round. Now the round output goes through the same
+    # validate/repair loop the final result already gets.
     adapter = fake_llm_adapter_factory([
         {
             "status": "need_tools",
@@ -185,7 +340,7 @@ async def test_malformed_tool_requests_repaired_before_execution(fake_llm_adapte
             "status": "need_tools",
             "tool_requests": [{"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}}],
         },
-        _ready_result(),
+        _ready_selecting(),
     ])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
@@ -197,9 +352,6 @@ async def test_malformed_tool_requests_repaired_before_execution(fake_llm_adapte
     )
 
     assert result.status == "succeeded"
-    # The repaired request reached the real tool call (registry.call_count
-    # only increments on an actual invocation) instead of being skipped as
-    # unresolvable, which is what happened before this fix.
     assert registry.call_count == 1
     assert len(result.tool_audit_trail) == 1
     assert result.tool_audit_trail[0].tool_name == "get_entity"
@@ -212,11 +364,11 @@ async def test_tool_not_in_grant_skipped_without_aborting_round(fake_llm_adapter
         {
             "status": "need_tools",
             "tool_requests": [
-                {"tool_name": "search_knowledge", "arguments": {"query": "q"}}, # Not granted
-                {"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}}  # Granted
-            ]
+                {"tool_name": "search_knowledge", "arguments": {"query": "q"}},  # Not granted
+                {"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}},  # Granted
+            ],
         },
-        _ready_result()
+        _ready_selecting(),
     ])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
@@ -229,9 +381,7 @@ async def test_tool_not_in_grant_skipped_without_aborting_round(fake_llm_adapter
 
     assert result.status == "succeeded"
     assert registry.call_count == 1  # Only get_entity was actually executed
-    
     assert len(result.tool_audit_trail) == 2
-    # search_knowledge should be ok=False
     assert result.tool_audit_trail[0].tool_name == "search_knowledge"
     assert result.tool_audit_trail[0].output_ok is False
 
@@ -241,8 +391,10 @@ async def test_tool_call_that_raises_skipped_without_aborting_round(fake_llm_ada
         def get(self, name: str):
             descriptor = self._inner.get(name)
             if name == "search_knowledge":
+
                 async def _throw(*args, **kwargs):
                     raise RuntimeError("simulated error")
+
                 return descriptor.model_copy(update={"callable": _throw})
             return super().get(name)
 
@@ -251,10 +403,12 @@ async def test_tool_call_that_raises_skipped_without_aborting_round(fake_llm_ada
             "status": "need_tools",
             "tool_requests": [
                 {"tool_name": "search_knowledge", "arguments": {"query": "q"}},
-                {"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}}
-            ]
+                {"tool_name": "get_entity", "arguments": {"entity_id": "111", "entity_type": "course"}},
+            ],
         },
-        _ready_result()
+        # search_knowledge raised, so its envelope is the failure shape and
+        # call_2 is the one with real data.
+        _ready_selecting({"key": "courseNumber", "from": "call_2", "path": "data.courseNumber"}),
     ])
     registry = ThrowingRegistry(build_default_tool_registry())
 
@@ -273,10 +427,7 @@ async def test_tool_call_that_raises_skipped_without_aborting_round(fake_llm_ada
 
 async def test_round_budget_exhausted_forces_finalize_and_fails_closed_if_no_result(fake_llm_adapter_factory):
     # Model always wants more tools, never status=ready
-    responses = [
-        {"status": "need_tools", "tool_requests": []} for _ in range(_MAX_ROUNDS)
-    ]
-    # The last round is forced to finalize, but the model ignores it and returns no result
+    responses = [{"status": "need_tools", "tool_requests": []} for _ in range(_MAX_ROUNDS)]
     adapter = fake_llm_adapter_factory(responses)
     registry = _CountingToolRegistry(build_default_tool_registry())
 
@@ -290,7 +441,7 @@ async def test_round_budget_exhausted_forces_finalize_and_fails_closed_if_no_res
     assert result.status == "failed"
     assert len(adapter.calls) == _MAX_ROUNDS
     assert any("round_budget_exhausted" in w for w in result.warnings)
-    
+
     # Check that the last round's prompt actually included the finalize instruction
     last_prompt = adapter.calls[-1]["user_prompt"]
     assert "NO MORE TOOL CALLS" in last_prompt
@@ -298,16 +449,10 @@ async def test_round_budget_exhausted_forces_finalize_and_fails_closed_if_no_res
 
 async def test_malformed_result_on_finalize_triggers_repair(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory([
-        {
-            "status": "ready",
-            "result": {"certainty_basis": "official_record"} # Missing required 'confidence' and 'facts'
-        },
+        _need_get_entity(),
+        {"status": "ready", "result": {}},  # missing required 'facts'
         # Repair call response
-        {
-            "certainty_basis": "official_record",
-            "confidence": 1.0,
-            "facts": {"found": True}
-        }
+        {"facts": [{"key": "courseNumber", "from": "call_1", "path": "data.courseNumber"}]},
     ])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
@@ -319,18 +464,15 @@ async def test_malformed_result_on_finalize_triggers_repair(fake_llm_adapter_fac
     )
 
     assert result.status == "succeeded"
-    assert len(adapter.calls) == 2
-    repair_prompt = adapter.calls[1]["user_prompt"]
+    assert len(adapter.calls) == 3
+    repair_prompt = adapter.calls[2]["user_prompt"]
     assert "schema validation" in repair_prompt
 
 
 async def test_repair_exhausted_fails_closed(fake_llm_adapter_factory):
-    bad_response = {
-        "status": "ready",
-        "result": {"certainty_basis": "official_record"} # Missing 'facts'
-    }
-    bad_repair = {"certainty_basis": "official_record"}
-    adapter = fake_llm_adapter_factory([bad_response, bad_repair, bad_repair])
+    bad_response = {"status": "ready", "result": {}}  # missing 'facts'
+    bad_repair: dict[str, Any] = {}
+    adapter = fake_llm_adapter_factory([_need_get_entity(), bad_response, bad_repair, bad_repair])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
     result = await run_retrieval_subagent(
@@ -345,11 +487,15 @@ async def test_repair_exhausted_fails_closed(fake_llm_adapter_factory):
 
 
 async def test_transient_llm_failure_mid_loop_salvages_accumulated_tool_results():
-    """A transient `llm_call_failed` on a round's LLM call, AFTER earlier
-    rounds already fetched facts, must finalize on those facts instead of
-    discarding the whole step. Regression for the multi_prereq live-eval case
-    where a mid-loop transport blip failed step 1a with an empty audit trail
-    and forced an expensive Planner re-plan.
+    """A transient `llm_call_failed` on a round's LLM call, AFTER earlier rounds
+    already fetched facts, must finalize on those facts instead of discarding the
+    whole step. Regression for the multi_prereq live-eval case where a mid-loop
+    transport blip failed step 1a with an empty audit trail and forced an
+    expensive Planner re-plan.
+
+    The salvage path hand-builds the OUTPUT shape directly (it has no model round
+    to emit selectors), which is why `_RETRIEVAL_OUTPUT_SCHEMA` survives
+    projection unchanged.
     """
     adapter = _NeedToolsThenTransientFailAdapter(
         [{"tool_name": "get_entity", "arguments": {"entity_id": "123456", "entity_type": "course"}}]
@@ -379,9 +525,9 @@ async def test_transient_llm_failure_mid_loop_salvages_accumulated_tool_results(
 
 
 async def test_transient_llm_failure_before_any_tools_fails_closed():
-    """When the transient failure hits before any tool has run, there is
-    nothing to salvage, so the step must still fail closed rather than
-    fabricate an empty-facts answer."""
+    """When the transient failure hits before any tool has run, there is nothing
+    to salvage, so the step must still fail closed rather than fabricate an
+    empty-facts answer."""
     adapter = _AlwaysTransientFailAdapter()
     registry = _CountingToolRegistry(build_default_tool_registry())
 
@@ -398,7 +544,7 @@ async def test_transient_llm_failure_before_any_tools_fails_closed():
 
 
 async def test_returns_subagent_result_shape_matching_generic_paths_output(fake_llm_adapter_factory):
-    adapter = fake_llm_adapter_factory([_ready_result()])
+    adapter = fake_llm_adapter_factory([_need_get_entity(), _ready_selecting()])
     registry = _CountingToolRegistry(build_default_tool_registry())
 
     result = await run_retrieval_subagent(
@@ -416,75 +562,24 @@ async def test_returns_subagent_result_shape_matching_generic_paths_output(fake_
     assert result.needs_another_round is False
 
 
-# ── Fact grounding ───────────────────────────────────────────────────────────
-#
-# Retrieval FETCHES; it cannot compute. Measured live (2026-07-16) it computed
-# anyway -- a 17-number sum done in its head, wrong (63.0; truth 62.5), stamped
-# confidence 1.0, and indistinguishable from a fetched fact once in state. The
-# tell is `source`: a real fact cites a TOOL, that one cited a sentence.
+# --- Out-of-contract keys --------------------------------------------------
+# Projection closed the `facts` door; this closes the side door the model went
+# round it by. Drives the real entry point, because the guard only runs inside
+# the normalize/validate/repair path.
 
 
-def _need_get_entity() -> dict[str, Any]:
-    """Round 1: make a real `get_entity` call, so the audit trail names a tool.
+async def test_out_of_contract_metadata_key_is_dropped(fake_llm_adapter_factory):
+    """The exact payload from the 2026-07-16 `completed_courses` run.
 
-    Groundedness is only decidable against a trail that recorded something --
-    with no tool called, the guard deliberately abstains.
-    """
-    return {
-        "status": "need_tools",
-        "tool_requests": [
-            {"tool_name": "get_entity", "arguments": {"entity_id": "123456", "entity_type": "course"}}
-        ],
-    }
-
-
-async def test_fabricated_fact_is_dropped_on_the_shape_the_model_actually_emits(fake_llm_adapter_factory):
-    """The regression the previous unit tests could not see.
-
-    They called `_drop_ungrounded_facts` directly with `facts` as a LIST, and
-    passed. But nothing hands this guard a list: `facts` is declared
-    `{"type": "object"}`, so `_flatten_fact_list_to_object` has already turned
-    the model's list into a dict keyed by label by the time the guard runs
-    (`_normalize_result` -> `_validate_schema` -> guard). The guard opened with
-    `if not isinstance(facts, list): return candidate, []` -- so it returned
-    immediately, every call, and had never once fired in production.
-
-    Measured live (2026-07-16, `credits_remaining`): this exact fact reached
-    state with `warnings: []` and `tool_audit_trail: ['get_entity']` -- a trail
-    naming a tool, a source naming none -- and composition published 63.0. The
-    student's real total is 62.5; the model's own transcribed list, one field
-    above, sums to 62.5.
-
-    So this test feeds the list the model really emits and drives the real
-    entry point, which is the only way the flattening is in the path at all.
-    This file's docstring already said every scenario goes through
-    `run_retrieval_subagent`; those three tests were the only ones that did not,
-    and they were the ones that lied.
+    The model appended a key that appears in no schema, carrying an aggregate no
+    tool computed (the 17 courses total 62.5, not 63.5), which then inherited the
+    block's `official_record`/1.0 and outranked the deterministic calculator.
+    Selectors mean it can no longer put a number in `facts` -- this proves it
+    cannot put one beside `facts` either.
     """
     adapter = fake_llm_adapter_factory([
         _need_get_entity(),
-        {
-            "status": "ready",
-            "result": {
-                "certainty_basis": "official_record",
-                "confidence": 1.0,
-                # A list, exactly as the live run's retrieval emitted it.
-                "facts": [
-                    {
-                        "key": "completedCourses",
-                        "value": [{"courseNumber": "00940224", "creditsEarned": 4.0}],
-                        "source": "get_entity completed_courses for user 6a586297a1a0209ebc175675",
-                        "confidence": 1.0,
-                    },
-                    {
-                        "key": "totalCreditsEarned",
-                        "value": 63.0,
-                        "source": "sum of creditsEarned across all 17 completed courses",
-                        "confidence": 1.0,
-                    },
-                ],
-            },
-        },
+        _ready_selecting(metadata={"total_courses": 17, "total_credits_earned": 63.5}),
     ])
 
     result = await run_retrieval_subagent(
@@ -495,30 +590,24 @@ async def test_fabricated_fact_is_dropped_on_the_shape_the_model_actually_emits(
     )
 
     assert result.status == "succeeded"
-    facts = result.result["facts"]
-    assert "totalCreditsEarned" not in facts, (
-        "retrieval cannot compute; a fact citing mental arithmetic must not survive"
-    )
-    assert "completedCourses" in facts, "the fetched fact beside it must be untouched"
-    assert any("totalCreditsEarned" in w for w in result.warnings)
+    assert "metadata" not in result.result
+    # The fabricated total must be gone from the payload entirely, not merely
+    # moved -- it is the number that reached the student.
+    assert "63.5" not in json.dumps(result.result, default=str)
+    assert any("retrieval_dropped_out_of_contract_key: metadata" in w for w in result.warnings)
+    # ...and the genuinely fetched data is untouched.
+    assert "courseNumber" in result.result["facts"]
 
 
-async def test_a_cited_tool_survives_the_model_dressing_up_the_name(fake_llm_adapter_factory):
-    """Substring, not equality: `get_entity(student_profile)` is an honest
-    citation of a call that happened, and must not be mistaken for a fabrication."""
+async def test_declared_keys_all_survive_the_projection(fake_llm_adapter_factory):
+    """The projection must strip only what the contract never promised."""
     adapter = fake_llm_adapter_factory([
         _need_get_entity(),
-        {
-            "status": "ready",
-            "result": {
-                "certainty_basis": "official_record",
-                "confidence": 1.0,
-                "facts": [
-                    {"key": "degreeId", "value": "x", "source": "get_entity(student_profile)", "confidence": 1.0},
-                    {"key": "grade", "value": 85, "source": "get_entity: completed_courses", "confidence": 1.0},
-                ],
-            },
-        },
+        _ready_selecting(
+            source_ref={"page": "some-page", "section": None, "reasoning_path": None},
+            assumptions=["assumed the spring term"],
+            notes="chatter that is not in the contract",
+        ),
     ])
 
     result = await run_retrieval_subagent(
@@ -529,65 +618,8 @@ async def test_a_cited_tool_survives_the_model_dressing_up_the_name(fake_llm_ada
     )
 
     assert result.status == "succeeded"
-    assert set(result.result["facts"]) == {"degreeId", "grade"}
-    assert result.warnings == []
-
-
-async def test_a_fact_carrying_no_source_at_all_is_kept(fake_llm_adapter_factory):
-    """`facts` is only `{"type": "object"}` -- a bare `{"degreeId": "x"}` with no
-    per-fact `source` is a legal, common shape. There is no citation to judge
-    there, so the guard must abstain: dropping it would discard genuinely
-    fetched data on the grounds that the model was terse.
-
-    The guard adjudicates CITATIONS, not facts. Only a source that names
-    something, where that something is no tool we called, is a fabrication tell.
-    """
-    adapter = fake_llm_adapter_factory([
-        _need_get_entity(),
-        {
-            "status": "ready",
-            "result": {
-                "certainty_basis": "official_record",
-                "confidence": 1.0,
-                "facts": {"degreeId": "6a477d511f64e5fd20129b44", "currentSemesterCode": "2025-2"},
-            },
-        },
-    ])
-
-    result = await run_retrieval_subagent(
-        context_package=_context_package(),
-        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
-        llm_adapter=adapter,
-        block_id="blk-1",
-    )
-
-    assert result.status == "succeeded"
-    assert set(result.result["facts"]) == {"degreeId", "currentSemesterCode"}
-    assert result.warnings == []
-
-
-async def test_nothing_is_dropped_when_no_tool_was_recorded(fake_llm_adapter_factory):
-    """Conservative by design: an empty audit trail is a salvage/cache path, not
-    evidence of fabrication. This guard exists to catch the invented fact standing
-    amongst real ones -- not to adjudicate a block that recorded no calls."""
-    adapter = fake_llm_adapter_factory([
-        {
-            "status": "ready",
-            "result": {
-                "certainty_basis": "wiki_derived",
-                "confidence": 1.0,
-                "facts": [{"key": "k", "value": 1, "source": "somewhere", "confidence": 1.0}],
-            },
-        },
-    ])
-
-    result = await run_retrieval_subagent(
-        context_package=_context_package(),
-        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
-        llm_adapter=adapter,
-        block_id="blk-1",
-    )
-
-    assert result.status == "succeeded"
-    assert "k" in result.result["facts"]
-    assert result.warnings == []
+    assert "notes" not in result.result
+    assert set(result.result) == {"certainty_basis", "confidence", "source_ref", "assumptions", "facts"}
+    # These are read by `run_retrieval_subagent` -- dropping one silently
+    # downgrades every downstream certainty judgement.
+    assert result.assumptions == ["assumed the spring term"]

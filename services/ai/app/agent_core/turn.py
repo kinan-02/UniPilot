@@ -20,10 +20,8 @@ from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.request_understanding.request_understanding import understand_request
 from app.agent_core.request_understanding.schemas import RequestUnderstandingReasoningBlockOutput
 from app.agent_core.roles.schemas import RoleDefinition
-from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
-from app.agent_core.orchestrator.replan_ledger import ReplanLedger
-from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry
+from app.agent_core.turn_context import TurnContext
 from app.agent_core.boundary_handler.boundary_handler import run_boundary_handler
 from app.agent_core.complexity_classifier.complexity_classifier import classify_complexity
 from app.agent_core.reasoning_effort import build_reasoning_config
@@ -87,39 +85,28 @@ async def run_agent_turn(
         llm_adapter=llm_adapter,
         block_id=f"{plan_id}-complexity-classifier",
     )
-    reasoning_config = build_reasoning_config(cognitive_complexity)
-
-    # One cache per turn, never a module-level global or caller-supplied
-    # value -- created fresh here so concurrent turns/requests can never
-    # see each other's cached tool results.
-    tool_call_cache = ToolCallCache()
-    # One registry per turn -- when a get_entity/search_knowledge call
-    # comes back conclusively empty, the term is recorded as a dead end
-    # and surfaced as a structured field on PlannerInvocationInput so the
-    # Planner never re-schedules the same search.
-    unresolvable_registry = UnresolvableEntityRegistry()
-    # One ledger per turn -- counts how many times each step objective has been
-    # flagged for replan, so a repeatedly-failing region is surfaced to the
-    # Planner as an `exhausted_step` (conclude/clarify) instead of thrashing.
-    replan_ledger = ReplanLedger()
-    state, final_entry, clarification_question = await run_plan_to_completion(
-        user_goal=understanding.user_goal or original_user_message,
-        original_user_message=original_user_message,
-        user_id=user_id,
-        llm_adapter=llm_adapter,
-        role_roster=role_roster,
-        tool_registry=tool_registry,
+    # The turn's wiring, constructed once, here. `TurnContext` defaults the tool
+    # cache / unresolvable registry / replan ledger to a fresh instance each,
+    # which is exactly what this function used to do by hand -- see its docstring
+    # for why that per-turn freshness is an invariant rather than an accident.
+    ctx = TurnContext(
         plan_id=plan_id,
+        user_id=user_id,
+        original_user_message=original_user_message,
+        llm=llm_adapter,
+        tools=tool_registry,
+        roles=role_roster,
+        reasoning=build_reasoning_config(cognitive_complexity),
+        stream=streaming_queue,
+    )
+    state, final_entry, clarification_question = await run_plan_to_completion(
+        ctx=ctx,
+        user_goal=understanding.user_goal or original_user_message,
         max_planner_invocations=max_planner_invocations,
-        reasoning_config=reasoning_config,
         sub_asks=understanding.sub_asks,
         constraints=understanding.constraints,
         open_questions=understanding.open_questions,
         implies_action_request=understanding.implies_action_request,
-        streaming_queue=streaming_queue,
-        tool_call_cache=tool_call_cache,
-        unresolvable_registry=unresolvable_registry,
-        replan_ledger=replan_ledger,
     )
     return understanding, state, final_entry, clarification_question
 

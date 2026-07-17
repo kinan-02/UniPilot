@@ -15,8 +15,51 @@ only test the fake LLM's canned string, not the architecture.
 from __future__ import annotations
 
 from app.agent_core.orchestrator.loop import run_plan_to_completion
+from app.agent_core.turn_context import TurnContext
+from app.agent_core.planning.state import CertaintyTag
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.default_registry import build_default_tool_registry
+from app.agent_core.tools.envelope import ToolOutputEnvelope
+
+
+class _StubbedCourseRegistry:
+    """Real descriptors, one stubbed `get_entity` that actually returns a course.
+
+    Until retrieval emitted SELECTORS, this test drove the real
+    `build_default_tool_registry()` -- whose `get_entity` needs Mongo, which this
+    test does not have, and so returned
+    `ok=False, error="entity_not_found: course:234218", data=None` on every run.
+    The test stayed green regardless, because the fake LLM's canned round-2
+    response simply asserted `facts: {"course_id": "234218", "name": "Some
+    Course"}` and nothing verified that any tool had produced them. The
+    architecture's "actual completion criterion" was being met by a fabricated
+    fact.
+
+    Projection reads the value out of the recorded envelope, so a failed tool now
+    surfaces as a failed step -- which is the point. Stubbing the callable keeps
+    the descriptor, the input model, the grant check and the audit trail real,
+    and makes the DATA exist.
+    """
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def get(self, name: str):
+        descriptor = self._inner.get(name)
+        if name != "get_entity":
+            return descriptor
+
+        async def _stub(_payload):
+            return ToolOutputEnvelope(
+                ok=True,
+                data={"course_id": "234218", "name": "Some Course"},
+                certainty=CertaintyTag(basis="wiki_derived", confidence=0.9),
+            )
+
+        return descriptor.model_copy(update={"callable": _stub})
+
+    def has(self, name: str) -> bool:
+        return self._inner.has(name)
 
 _RESPONSES = [
     # 1. Planner invocation 1 -- one step: retrieval. Flat, matching
@@ -70,13 +113,19 @@ _RESPONSES = [
     # 4. Step 1 subagent, round 2 -- finalizes with the tool result in hand.
     # One combined decide-and-finalize call, unlike the old generic path's
     # separate "not final" + "final" passes.
+    #
+    # SELECTORS, not values: the model names where each fact lives in call_1's
+    # recorded envelope and `fact_projection` reads it out. `certainty_basis`
+    # and `confidence` are absent on purpose -- they come from the tool's own
+    # CertaintyTag now, not from anything the model asserts.
     {
         "status": "ready",
         "result": {
-            "certainty_basis": "wiki_derived",
-            "confidence": 0.9,
             "assumptions": [],
-            "facts": {"course_id": "234218", "name": "Some Course"},
+            "facts": [
+                {"key": "course_id", "from": "call_1", "path": "data.course_id"},
+                {"key": "name", "from": "call_1", "path": "data.name"},
+            ],
         },
     },
     # NB: the task handler's success-criteria check is DETERMINISTIC now (no
@@ -132,16 +181,18 @@ _RESPONSES = [
 async def test_two_step_plan_holds_together_end_to_end(fake_llm_adapter_factory):
     adapter = fake_llm_adapter_factory(_RESPONSES)
     role_roster = build_default_role_roster()
-    tool_registry = build_default_tool_registry()
+    tool_registry = _StubbedCourseRegistry(build_default_tool_registry())
 
     state, final_entry, clarification_question = await run_plan_to_completion(
+        ctx=TurnContext(
+            plan_id="test-plan-1",
+            user_id="test-user-1",
+            original_user_message="What course is 234218?",
+            llm=adapter,
+            tools=tool_registry,
+            roles=role_roster,
+        ),
         user_goal="What course is 234218?",
-        original_user_message="What course is 234218?",
-        user_id="test-user-1",
-        llm_adapter=adapter,
-        role_roster=role_roster,
-        tool_registry=tool_registry,
-        plan_id="test-plan-1",
     )
 
     # 1. Exactly 2 entries, correct step_id/role/certainty.basis.
@@ -166,6 +217,68 @@ async def test_two_step_plan_holds_together_end_to_end(fake_llm_adapter_factory)
 
     # Every queued response was consumed in order, nothing left over.
     assert adapter._responses == []
+
+
+async def test_an_empty_composition_step_is_not_returned_as_the_answer(fake_llm_adapter_factory):
+    """A composition entry that says nothing is not an answer.
+
+    CAUGHT LIVE (2026-07-16, ise_correctness `offering_pattern`): the composition
+    step came back `partial` with `data={}` from task_handler's
+    empty-dependency-context guard, the loop returned it because it was the last
+    entry and its role was composition, and the student got a blank reply. The
+    turn falls through to synthesis instead, which composes over the WHOLE state
+    -- in that run a sibling step had the data the answer needed.
+    """
+    responses = [
+        *_RESPONSES[:-1],
+        {"answer_text": ""},  # the composition step says nothing
+        {"answer_text": "Recovered by composing over the whole state."},  # synthesis fallback
+    ]
+    adapter = fake_llm_adapter_factory(responses)
+
+    _state, final_entry, _clarification = await run_plan_to_completion(
+        ctx=TurnContext(
+            plan_id="test-plan-empty-composition",
+            user_id="test-user-1",
+            original_user_message="What course is 234218?",
+            llm=adapter,
+            tools=_StubbedCourseRegistry(build_default_tool_registry()),
+            roles=build_default_role_roster(),
+        ),
+        user_goal="What course is 234218?",
+    )
+
+    assert final_entry is not None
+    assert final_entry.data["answer_text"] == "Recovered by composing over the whole state."
+
+
+def test_the_no_answer_message_is_real_prose_in_the_students_language():
+    """The last-resort text, when even synthesis composes nothing.
+
+    Tested directly on the helpers rather than through the loop: reaching that
+    branch end-to-end means driving an empty `answer_text` through the
+    composition block's schema-repair loop, and a test that has to predict that
+    loop's call count asserts on the repair budget, not on this behaviour. The
+    branch above (`_answer_text` gating the early return) is what the
+    integration test covers.
+    """
+    from app.agent_core.orchestrator.loop import _answer_text_from, _no_answer_message
+
+    # The gate itself: these are all "no answer".
+    assert _answer_text_from({}) == ""
+    assert _answer_text_from({"answer_text": ""}) == ""
+    assert _answer_text_from({"answer_text": "   "}) == ""
+    assert _answer_text_from(None) == ""
+    assert _answer_text_from({"answer_text": "real"}) == "real"
+
+    english = _no_answer_message("What course is 234218?")
+    assert "could not determine" in english
+    # Actionable, not just apologetic -- the student needs somewhere to go next.
+    assert "academic advisor" in english
+
+    hebrew = _no_answer_message("איזה קורס הוא 234218?")
+    assert hebrew != english, "a Hebrew student must not be answered in English"
+    assert "לא הצלחתי" in hebrew
 
 
 async def test_step_2_context_slice_is_bounded_to_its_own_dependency(fake_llm_adapter_factory):

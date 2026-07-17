@@ -14,6 +14,7 @@ import asyncio
 
 from app.agent_core.planning.state import PlanExecutionState
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
+from app.agent_core.response_language import response_language_directive
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.subagents.composition_block import run_composition_subagent
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage, SubagentResult
@@ -36,6 +37,7 @@ async def compose_answer(
     tool_registry: ToolRegistry,
     llm_adapter: LLMAdapter,
     block_id: str,
+    original_user_message: str = "",
     streaming_queue: asyncio.Queue[str] | None = None,
 ) -> SubagentResult:
     if composition_role.tool_grant_ceiling:
@@ -46,6 +48,11 @@ async def compose_answer(
         structured_fields=StepInstructionFields(
             goal=user_goal,
             description="Compose a grounded final answer from the accumulated plan-execution state.",
+            # Decided from the student's own message, never inferred from the
+            # retrieved context -- see `response_language`. `user_goal` is no
+            # substitute: it is Request Understanding's rendering of the ask, so
+            # it can be English even when the student wrote Hebrew.
+            tone_language_notes=response_language_directive(original_user_message),
         ),
         dependency_state=list(state.entries),
         tool_grant=[],

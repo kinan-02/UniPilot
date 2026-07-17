@@ -112,6 +112,64 @@ async def test_invalid_draft_bad_ref_triggers_one_repair_call_with_the_exact_err
     assert "not found in facts" in repair_prompt
 
 
+async def test_a_facts_defect_fails_immediately_instead_of_burning_repair_attempts(fake_llm_adapter_factory):
+    """A defect in the DATA must not be sent to a repair pass that can only
+    edit the EXPRESSION.
+
+    Live (2026-07-16, ise_correctness `credits_remaining`): `requiredCourses`
+    came back as records keyed on exactly `(id, nodeType)` -- no credits. The
+    expression summing credits over them was semantically correct, so every
+    repair attempt was spent rewriting the one thing that wasn't broken, and the
+    step still died. Repair was literally told to switch to one of
+    `numeric fields available: []`.
+
+    Contrast `test_repair_exhausted_fails_closed_without_ever_calling_the_tool`:
+    a bad ref IS repairable, so it earns its attempts. This must cost exactly the
+    one draft call.
+    """
+    entry = StateEntry(
+        entry_id="s1-0",
+        step_id="s1",
+        role="retrieval",
+        status="succeeded",
+        output_schema_name="generic_step_output_v1",
+        # The real shape a retrieval step publishes: values under `data["facts"]`,
+        # each in its `{key, value, source, confidence}` envelope.
+        data={
+            "facts": {
+                "requiredCourses": {
+                    "key": "requiredCourses",
+                    "value": [{"id": "00940345", "nodeType": "course"}],
+                    "source": "get_entity(program)",
+                    "confidence": 1.0,
+                }
+            }
+        },
+        certainty=CertaintyTag(basis="official_record", confidence=1.0),
+        produced_at=datetime.now(timezone.utc),
+    )
+    draft = {"op": "sum", "of": {"ref": "requiredCourses"}, "field": "credits"}
+    adapter = fake_llm_adapter_factory([draft] * (_MAX_REPAIR_ATTEMPTS + 1))
+    registry = _CountingToolRegistry(build_default_tool_registry())
+    context_package = _context_package()
+    context_package.dependency_state.append(entry)
+
+    result = await run_calculation_validation_subagent(
+        context_package=context_package,
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "failed"
+    assert registry.call_count == 0
+    assert len(adapter.calls) == 1, (
+        "a facts defect was sent to the repair loop -- repair can only rewrite the "
+        "expression, and the expression was never what was wrong"
+    )
+    assert any("facts_defect" in warning for warning in result.warnings), result.warnings
+
+
 async def test_repair_exhausted_fails_closed_without_ever_calling_the_tool(fake_llm_adapter_factory):
     bad_response = {"op": "add", "left": {"ref": "missing_fact"}, "right": {"const": 1}}
     adapter = fake_llm_adapter_factory([bad_response] * (_MAX_REPAIR_ATTEMPTS + 1))
@@ -248,6 +306,101 @@ async def test_implausible_after_the_redraft_budget_is_marked_partial(fake_llm_a
     # The last computed number is still returned, for transparency in the replan.
     assert result.result == {"type": "expression", "result": 2, "trace": ["1 + 1 = 2"]}
     assert registry.call_count == 2
+
+
+async def test_implausible_warning_publishes_the_flaw_category_not_the_critique(fake_llm_adapter_factory):
+    """The critique is one model's guess; the warning is read as guidance.
+
+    Regression for the 2026-07-16 `credits_remaining` laundering chain: the
+    checker's prose ("...the fix is to ensure the sum ... reach 63.5") became
+    `warnings[0]`, the Planner read it and instructed "use the corrected value of
+    63.5", and a hallucinated total was published as verified fact. The prose
+    must stay in the re-draft loop and the log; only the category is publishable.
+    """
+    dangerous_critique = (
+        "the computed result (62.5) is inconsistent with the provided facts: the metadata "
+        "explicitly states total_credits_earned is 63.5. The fix is to ensure the sum reaches 63.5."
+    )
+    adapter = fake_llm_adapter_factory(
+        [
+            {"op": "add", "left": {"const": 2}, "right": {"const": 3}},
+            {"plausible": False, "reason": dangerous_critique, "flaw": "inconsistent_magnitude"},
+            {"op": "add", "left": {"const": 1}, "right": {"const": 1}},
+            {"plausible": False, "reason": dangerous_critique, "flaw": "inconsistent_magnitude"},
+        ]
+    )
+
+    result = await run_calculation_validation_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "partial"
+    assert result.warnings == ["calculation_implausible: inconsistent_magnitude"]
+    published = " ".join(result.warnings)
+    assert "63.5" not in published, "a fabricated number must never leave this block in a warning"
+    assert "The fix is to" not in published, "the critique must not read as an instruction to the Planner"
+    # ...but the re-draft still gets the full critique, or it cannot act on it.
+    assert dangerous_critique in adapter.calls[2]["user_prompt"]
+
+
+async def test_unknown_or_missing_flaw_falls_back_to_unspecified(fake_llm_adapter_factory):
+    # `flaw` is optional (the schema is additionalProperties:False and a malformed
+    # verdict fails open) -- a model that omits it must still produce a usable,
+    # payload-free warning rather than a crash or a leaked reason.
+    adapter = fake_llm_adapter_factory(
+        [
+            {"op": "add", "left": {"const": 2}, "right": {"const": 3}},
+            {"plausible": False, "reason": "wrong subset"},
+            {"op": "add", "left": {"const": 1}, "right": {"const": 1}},
+            {"plausible": False, "reason": "wrong subset"},
+        ]
+    )
+
+    result = await run_calculation_validation_subagent(
+        context_package=_context_package(),
+        tool_registry=_CountingToolRegistry(build_default_tool_registry()),
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.warnings == ["calculation_implausible: unspecified"]
+
+
+async def test_a_redraft_that_changes_nothing_stops_instead_of_rechecking(fake_llm_adapter_factory):
+    """Nothing changed, so nothing can change.
+
+    Observed live (2026-07-16, `credits_remaining`): the re-draft reproduced the
+    previous expression verbatim, and the block spent a second, byte-identical
+    plausibility call to be told the same thing.
+    """
+    same = {"op": "add", "left": {"const": 2}, "right": {"const": 3}}
+    adapter = fake_llm_adapter_factory(
+        [
+            same,  # draft
+            {"plausible": False, "reason": "wrong subset", "flaw": "wrong_aggregate"},
+            same,  # re-draft: identical -> no progress possible
+        ]
+    )
+    registry = _CountingToolRegistry(build_default_tool_registry())
+
+    result = await run_calculation_validation_subagent(
+        context_package=_context_package(),
+        tool_registry=registry,
+        llm_adapter=adapter,
+        block_id="blk-1",
+    )
+
+    assert result.status == "partial"
+    assert result.warnings == ["calculation_implausible: wrong_aggregate"]
+    # draft + plausibility + re-draft, and then it stops: no second evaluation,
+    # no second plausibility call.
+    assert len(adapter.calls) == 3
+    assert registry.call_count == 1
+    # The number from the only expression that ran is still returned.
+    assert result.result == {"type": "expression", "result": 5, "trace": ["2 + 3 = 5"]}
 
 
 async def test_plausibility_checker_error_fails_open_and_keeps_the_result():

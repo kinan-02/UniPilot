@@ -29,9 +29,30 @@ from app.agent_core.subagents.schemas import (
     SubagentResult,
 )
 from app.agent_core.tools.default_registry import build_default_tool_registry
+from app.agent_core.turn_context import TurnContext
 
 ROLE_ROSTER = build_default_role_roster()
 TOOL_REGISTRY = build_default_tool_registry()
+
+
+def _ctx(**overrides) -> TurnContext:
+    """The turn wiring these tests don't care about.
+
+    `llm` is a bare object(): every LLM-touching collaborator on this path
+    (`route_step`, `check_success_criteria`, `_dispatch_single_specialist`) is
+    monkeypatched, so a real adapter would never be called -- and if one ever
+    were, `object()` fails loudly rather than quietly doing something."""
+    return TurnContext(
+        **{
+            "plan_id": "p1",
+            "user_id": "test-user-1",
+            "original_user_message": "hello",
+            "llm": object(),
+            "tools": TOOL_REGISTRY,
+            "roles": ROLE_ROSTER,
+            **overrides,
+        }
+    )
 
 
 def _step(step_id="1a", depends_on=None, success_criteria=None, assumptions=None) -> PlanStep:
@@ -124,12 +145,7 @@ async def _run(monkeypatch, step, *, state=None, route, dispatch=None, check=Non
     entry = await run_task_handler(
         step=step,
         state=state,
-        role_roster=ROLE_ROSTER,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=object(),
-        original_user_message="hello",
-        user_id="test-user-1",
-        plan_id="p1",
+        ctx=_ctx(),
         precomputed_route=precomputed_route,
     )
     return entry, route_dependency_contexts
@@ -390,11 +406,7 @@ async def test_pipeline_pre_seeds_parent_dependency_data_not_just_graph_shape(mo
             RoutedSubStep(sub_step_id="s2", specialist="retrieval", objective="use s1", depends_on=["s1"], success_criteria=[])
         ],
         private_state=private_state,
-        role_roster=ROLE_ROSTER,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=object(),
-        plan_id="p1",
-        user_id="test-user-1",
+        ctx=_ctx(),
     )
 
     assert len(captured_states) == 1
@@ -458,10 +470,8 @@ async def test_dispatch_single_specialist_routes_calculation_validation_role_to_
         step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["calculation_validation"],
         state=state,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
+        ctx=_ctx(llm=adapter),
         block_id="p1-1a",
-        user_id="test-user-1",
     )
 
     assert calls == {"calculation_validation": 1, "generic": 0}
@@ -498,10 +508,8 @@ async def test_dispatch_single_specialist_routes_retrieval_role_to_dedicated_blo
         step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["retrieval"],
         state=state,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
+        ctx=_ctx(llm=adapter),
         block_id="p1-1a",
-        user_id="test-user-1",
     )
 
     assert calls == {"retrieval": 1, "generic": 0}
@@ -538,10 +546,8 @@ async def test_dispatch_single_specialist_routes_interpretation_role_to_dedicate
         step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["interpretation"],
         state=state,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
+        ctx=_ctx(llm=adapter),
         block_id="p1-1a",
-        user_id="test-user-1",
     )
 
     assert calls == {"interpretation": 1, "generic": 0}
@@ -578,10 +584,8 @@ async def test_dispatch_single_specialist_routes_simulation_planning_role_to_ded
         step_prep_output=_dummy_step_prep_output(),
         role=ROLE_ROSTER["simulation_planning"],
         state=state,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
+        ctx=_ctx(llm=adapter),
         block_id="p1-1a",
-        user_id="test-user-1",
     )
 
     assert calls == {"simulation_planning": 1, "generic": 0}
@@ -620,10 +624,8 @@ async def test_dispatch_single_specialist_routes_composition_role_to_dedicated_b
         step_prep_output=_dummy_step_prep_output(context_requirements=["dep1"]),
         role=ROLE_ROSTER["composition"],
         state=state,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
+        ctx=_ctx(llm=adapter),
         block_id="p1-1a",
-        user_id="test-user-1",
     )
 
     assert calls == {"composition": 1, "generic": 0}
@@ -719,10 +721,8 @@ async def test_dispatch_single_specialist_composition_with_empty_context_returns
         step_prep_output=_dummy_step_prep_output(context_requirements=["missing"]),
         role=ROLE_ROSTER["composition"],
         state=state,
-        tool_registry=TOOL_REGISTRY,
-        llm_adapter=adapter,
+        ctx=_ctx(llm=adapter),
         block_id="p1-1a",
-        user_id="test-user-1",
     )
 
     assert called["composition"] == 0

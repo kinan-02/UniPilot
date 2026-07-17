@@ -41,7 +41,11 @@ from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegis
 from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetry
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
-from app.agent_core.tools.primitives.expression_tree import ExpressionNode, validate_expression_tree
+from app.agent_core.tools.primitives.expression_tree import (
+    FACTS_DEFECT_PREFIX,
+    ExpressionNode,
+    validate_expression_tree,
+)
 from app.agent_core.tools.registry import ToolNotFoundError, ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -60,11 +64,29 @@ _MAX_REPAIR_ATTEMPTS = 2
 _MAX_PLAUSIBILITY_REDRAFTS = 1
 _TOOL_NAME = "apply_deterministic_rule"
 
+# The flaw vocabulary, taken from the cases the plausibility contract already
+# names. A closed enum exists so the step's PUBLIC warning can say what was
+# wrong without quoting the checker -- see `_implausible_output`.
+_FLAW_CATEGORIES = (
+    "spurious_filter",
+    "wrong_field",
+    "wrong_aggregate",
+    "hardcoded_const",
+    "inconsistent_magnitude",
+    "other",
+)
+_FLAW_UNSPECIFIED = "unspecified"
+
 _PLAUSIBILITY_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "plausible": {"type": "boolean"},
         "reason": {"type": "string"},
+        # Optional, not required: this schema is `additionalProperties: False`
+        # and a malformed verdict fails OPEN, so demanding a new field would turn
+        # a model that omits it into a silently-skipped check. Absent =>
+        # `_FLAW_UNSPECIFIED`.
+        "flaw": {"type": "string", "enum": list(_FLAW_CATEGORIES)},
     },
     "required": ["plausible", "reason"],
     "additionalProperties": False,
@@ -186,9 +208,16 @@ def _calculation_plausibility_contract() -> PromptContract:
         ),
         instructions=[
             "Judge intent-vs-expression, never the arithmetic -- assume the engine summed/subtracted correctly.",
+            "NEVER recompute the result yourself, and never treat a total that merely appears in "
+            "`facts` as more authoritative than the engine's own computation. The engine read the "
+            "records; a total sitting in the facts may be one the engine is there to replace.",
+            "When plausible=false, set `flaw` to the category that fits: spurious_filter, "
+            "wrong_field, wrong_aggregate, hardcoded_const, inconsistent_magnitude, or other. "
+            "It is the only part of your verdict the rest of the system acts on.",
             "In `reason`, name the concrete flaw and, when you can, the fix (e.g. 'drop the "
             "courseNumber filter -- the objective asks for the total across all completed courses'), "
-            "so a re-draft has something specific to correct.",
+            "so a re-draft has something specific to correct. Describe the FLAW, never a target "
+            "number to reach.",
             "When genuinely unsure, prefer plausible=true -- do not block a reasonable computation "
             "over a stylistic quibble.",
             "Return only valid JSON matching the required schema.",
@@ -276,6 +305,12 @@ def _build_redraft_user_prompt(
     return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
 
+def _is_facts_defect(errors: list[str]) -> bool:
+    """True when the facts, not the expression, are what's wrong -- so no repair
+    pass can help (see `expression_tree.FACTS_DEFECT_PREFIX`)."""
+    return any(error.startswith(FACTS_DEFECT_PREFIX) for error in errors)
+
+
 def _parse_and_validate_tree(
     candidate: dict[str, Any] | None, facts: dict[str, Any]
 ) -> tuple[ExpressionNode | None, list[str]]:
@@ -338,6 +373,7 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
         last_data: dict[str, Any] = {}
         last_record: ToolInvocationRecord | None = None
         plausibility_reason = ""
+        plausibility_flaw = _FLAW_UNSPECIFIED
         for attempt in range(_MAX_PLAUSIBILITY_REDRAFTS + 1):
             envelope, record = await self._execute_expression(node, block_input, descriptor)
             last_record = record
@@ -348,7 +384,7 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
                 )
             last_data = envelope.data or {}
 
-            plausible, plausibility_reason = await self._check_result_plausibility(
+            plausible, plausibility_reason, plausibility_flaw = await self._check_result_plausibility(
                 block_input,
                 expression=node.model_dump(exclude_none=True),
                 result=last_data,
@@ -359,19 +395,30 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
             if attempt >= _MAX_PLAUSIBILITY_REDRAFTS:
                 break
 
+            previous_dump = node.model_dump(exclude_none=True)
             redraft_node, _ = await self._draft_valid_expression(
                 block_input,
                 telemetry,
                 critique=plausibility_reason,
-                previous=node.model_dump(exclude_none=True),
+                previous=previous_dump,
             )
             if redraft_node is None:
                 break  # could not produce a valid alternative -- keep the flagged result
+            if redraft_node.model_dump(exclude_none=True) == previous_dump:
+                # The re-draft reproduced the expression verbatim, so re-evaluating
+                # it would buy the identical result and the identical critique.
+                # Observed live (2026-07-16, `credits_remaining`): two byte-identical
+                # plausibility calls, the second pure waste. Nothing changed, so
+                # nothing can change -- stop and keep the flagged number.
+                logger.warning("calculation_validation_redraft_made_no_change flaw=%s", plausibility_flaw)
+                break
             node = redraft_node
 
         # Budget spent (or the re-draft failed to validate): we DO have a number,
         # but it is flagged implausible -> the wrapper maps this to partial.
-        return self._implausible_output(last_data, node=node, reason=plausibility_reason, record=last_record)
+        return self._implausible_output(
+            last_data, node=node, reason=plausibility_reason, flaw=plausibility_flaw, record=last_record
+        )
 
     async def _draft_valid_expression(
         self,
@@ -409,7 +456,12 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
         node, errors = _parse_and_validate_tree(candidate, block_input.facts)
 
         attempts = 0
-        while node is None and attempts < _MAX_REPAIR_ATTEMPTS:
+        # A facts defect is not repairable HERE: the repair contract's own
+        # instruction is "fix only the structural/reference errors listed; do not
+        # change what the expression computes", and what this expression computes
+        # was never the problem -- the data it was handed lacks the field. Live,
+        # every attempt was spent rewriting the one thing that was already right.
+        while node is None and attempts < _MAX_REPAIR_ATTEMPTS and not _is_facts_defect(errors):
             attempts += 1
             repair_contract = self._resolve_prompt_contract(CALCULATION_VALIDATION_REPAIR_V1)
             repair_params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, repair_contract)
@@ -457,11 +509,16 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
         expression: dict[str, Any],
         result: dict[str, Any],
         telemetry: RunTelemetry,
-    ) -> tuple[bool, str]:
+    ) -> tuple[bool, str, str]:
         """Targeted LLM check: does `expression` correctly answer the objective,
         or is it a valid-but-wrong computation? Fails OPEN (plausible) on any
         checker error or malformed verdict -- a flaky checker must never discard
-        a real computed result."""
+        a real computed result.
+
+        Returns `(plausible, reason, flaw)`. `reason` is the checker's own prose:
+        useful for a re-draft and for the log, and NEVER safe to publish -- see
+        `_implausible_output`. `flaw` is the closed-vocabulary category that is.
+        """
         contract = self._resolve_prompt_contract(CALCULATION_PLAUSIBILITY_V1)
         params = self._resolve_llm_call_parameters(block_input.llm_call_parameters, contract)
         try:
@@ -476,15 +533,18 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
             )
         except LLMAdapterError:
             logger.warning("calculation_validation_plausibility_check_unavailable")
-            return True, "plausibility_check_unavailable"
+            return True, "plausibility_check_unavailable", _FLAW_UNSPECIFIED
 
         normalized = self._normalize_result(call_result.parsed, output_schema=_PLAUSIBILITY_OUTPUT_SCHEMA)
         if not self._validate_schema(normalized, _PLAUSIBILITY_OUTPUT_SCHEMA).valid:
-            return True, "plausibility_check_malformed"
+            return True, "plausibility_check_malformed", _FLAW_UNSPECIFIED
         plausible = normalized.get("plausible")
         if not isinstance(plausible, bool):
-            return True, "plausibility_check_malformed"
-        return plausible, str(normalized.get("reason") or "")
+            return True, "plausibility_check_malformed", _FLAW_UNSPECIFIED
+        flaw = normalized.get("flaw")
+        if flaw not in _FLAW_CATEGORIES:
+            flaw = _FLAW_UNSPECIFIED
+        return plausible, str(normalized.get("reason") or ""), flaw
 
     def _completed_output(
         self, data: dict[str, Any], *, node: ExpressionNode, record: ToolInvocationRecord | None
@@ -500,19 +560,53 @@ class CalculationValidationReasoningBlock(BaseReasoningBlock):
         )
 
     def _implausible_output(
-        self, data: dict[str, Any], *, node: ExpressionNode, reason: str, record: ToolInvocationRecord | None
+        self,
+        data: dict[str, Any],
+        *,
+        node: ExpressionNode,
+        reason: str,
+        flaw: str,
+        record: ToolInvocationRecord | None,
     ) -> _CalculationValidationBlockOutput:
         """A correctly-evaluated result the plausibility check still judged the
         WRONG computation after the re-draft budget was spent. Keep the number
         (`completed`, so it is not discarded) but flag it;
         `run_calculation_validation_subagent` maps the flag to a `partial` step
-        so the orchestrator replans rather than reporting it as fact."""
+        so the orchestrator replans rather than reporting it as fact.
+
+        The warning names the flaw CATEGORY and nothing else. `reason` -- the
+        checker's own prose -- is logged, never published, because publishing it
+        is what broke the 2026-07-16 `credits_remaining` run.
+
+        The engine had already computed the right answer, 62.5. The checker,
+        anchored on a hallucinated `total_credits_earned: 63.5` that retrieval
+        had smuggled through an out-of-contract `metadata` key, called 62.5
+        implausible and wrote: "the computed result (62.5) is inconsistent with
+        the provided facts ... The fix is to ensure the sum ... reach 63.5."
+        That sentence became `warnings[0]`, entered the state index, and the
+        Planner -- reading it as guidance rather than as one model's guess --
+        instructed the next step to "use the corrected value of 63.5". An
+        untrusted critique had become an instruction, and 91.5 went to the
+        student described as "verified and confirmed".
+
+        So: this block keeps its number (it always did -- that part was never
+        broken), and its critique stays inside the re-draft loop that can act on
+        it. A category is decidable and carries no payload; prose carries
+        whatever the model put in it. `_drop_out_of_contract_keys` publishes
+        dropped key NAMES for the same reason.
+        """
+        logger.warning(
+            "calculation_validation_implausible flaw=%s reason=%s expression=%s",
+            flaw,
+            reason,
+            node.model_dump(exclude_none=True),
+        )
         return _CalculationValidationBlockOutput(
             status="completed",
             schema_valid=True,
             result=data,
             confidence=0.3,
-            warnings=[f"calculation_implausible: {reason}"],
+            warnings=[f"calculation_implausible: {flaw}"],
             expression_used=node.model_dump(exclude_none=True),
             trace=list(data.get("trace") or []),
             tool_audit_trail=[record] if record else [],
@@ -584,18 +678,69 @@ def _promote_inner_facts(data: Any, facts: dict[str, Any], *, depth: int = 0) ->
             _promote_inner_facts(sub, facts, depth=depth + 1)
 
 
+# A calculation publishes its answer as `result`; an interpretation publishes
+# its answer as `answer`. Neither wraps it in a `facts` map, which is the only
+# thing `_promote_inner_facts` reaches into.
+_SCALAR_STEP_KEYS = ("result", "answer")
+
+
+def _scalar_step_value(data: Any) -> Any:
+    """What a step ANSWERED, if it answered with a single value.
+
+    CAUGHT LIVE (2026-07-16, `credits_remaining`). The turn had both numbers it
+    needed and could not put them together:
+
+        1e  calculation    -> {"type": "expression", "result": 62.5, "trace": [...]}
+        1d  interpretation -> {"certainty_basis": "wiki_derived", "answer": "155", ...}
+        1f  calculation    -> subtract(ref "1d", ref "1e")  ->  non_numeric_operand
+
+    `ref` is a single-hop `facts[ref]` lookup, so each ref bound to the whole
+    entry dict rather than the number one level inside it. There was no
+    expression the model could have written -- it wrote the only sensible one,
+    twice, and the Planner replanned it into a third identical failure.
+
+    Retrieval never hit this because its output DOES have a `facts` map, which
+    `_promote_inner_facts` flattens to the top level -- which is why
+    `sum(ref:completedCourses)` worked in the same run. So the system could
+    compute from fetched data but never from a computation, making any two-stage
+    arithmetic (sum the courses, then subtract) unreachable. Composition then
+    did the subtraction in prose and published it, which is the exact
+    hand-arithmetic every other guard in this codebase exists to stop.
+
+    Binding `facts["1e"]` to `62.5` is also what the model already assumes: it
+    writes `{"ref": "1e"}` unprompted, because that is the intuitive reading.
+
+    NOT coerced to a number here. `"155"` stays a string until an arithmetic
+    operand position asks for one (`expression_tree._as_arithmetic_number`) -- a
+    course number like `"00940224"` is also a numeric string, and coercing at
+    promotion would destroy the leading zeros every `compare` keys on.
+    """
+    if not isinstance(data, dict):
+        return data
+    for key in _SCALAR_STEP_KEYS:
+        if key in data:
+            return data[key]
+    return data
+
+
 def _flatten_dependency_facts(dependency_state: list[StateEntry]) -> dict[str, Any]:
     """Flatten a calc-validation step's dependencies into the single-hop `facts`
     map the expression evaluator binds `ref`s against.
 
-    Each dependency is keyed by its `step_id`; its actual fetched values are
-    promoted to the top level via `_promote_inner_facts` (which reaches through
-    both a direct `data["facts"]` map and a routed pipeline's nested
-    `data["sub_results"]`), so a fact fetched as `completedCourses` is directly
-    ref-able as `{"ref": "completedCourses"}`."""
+    Each dependency is keyed by its `step_id`, bound to the single value it
+    answered with when it has one (`_scalar_step_value`) -- so a prior
+    calculation is ref-able as `{"ref": "1e"}` -> `62.5` rather than as the
+    whole entry dict, which is what made two-stage arithmetic impossible.
+
+    Its actual fetched values are additionally promoted to the top level via
+    `_promote_inner_facts` (which reaches through both a direct `data["facts"]`
+    map and a routed pipeline's nested `data["sub_results"]`), so a fact fetched
+    as `completedCourses` is directly ref-able as `{"ref": "completedCourses"}`.
+    Promotion uses `setdefault`, so it can never overwrite a `step_id` binding.
+    """
     facts: dict[str, Any] = {}
     for entry in dependency_state:
-        facts[entry.step_id] = entry.data
+        facts[entry.step_id] = _scalar_step_value(entry.data)
         _promote_inner_facts(entry.data, facts)
     return facts
 
