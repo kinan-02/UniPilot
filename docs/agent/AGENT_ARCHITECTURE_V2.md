@@ -944,3 +944,110 @@ Pre-rewrite checklist:
 
 **Status: GO.** The checklist is satisfied. Start the rewrite; validate the what-if chain (§17.3)
 as the very first thing after the core loop stands, since it is the last place a surprise can hide.
+
+---
+
+## 18. The rewrite — landed, and its live correctness eval (2026-07-18)
+
+The rewrite was executed on branch `rewrite/agent-v2`. This section records what shipped and
+what the full 6-case live eval (the same ISE fixture student the spike used) then revealed.
+
+### 18.1 What shipped
+
+- **The loop package** `services/ai/app/agent_core/loop/`: `working_set` (WorkingSet + immutable
+  Fact + prompt rendering), `constitution` (lean tier-1 prompt + tool-attached notes), `front_door`
+  (decompose into concrete premise sub-asks), `fact_admission` (surface/compute/**select** +
+  const-block), `answer_boundary` (deterministic grounding backstop + completeness gate),
+  `arg_refs` (argument binding), and `runner` (the loop + budgets + governors + graceful
+  conclusion). `run_agent_loop` is the entry point.
+- **`select` shipped as a fact-admission operation**, not a registry `ToolDescriptor`: it filters
+  an already-grounded working-set fact and must inherit its basis/confidence, which a
+  model-authored-args registry tool cannot do. It is the Computed-kind analogue of `project_facts`
+  for *which* record.
+- **`/advise` runs on the loop** (§11 contract unchanged: `services/api` + the frontend untouched);
+  `course_ids`/`sources` derived in code from the loop's tool audit; streaming replaced with typed
+  `chunk`+`final` events (the untyped-queue backfill hack deleted).
+- **Argument binding (§17.3 fix)** — see 18.2.
+
+### 18.2 The what-if chain was inexpressible — found statically, fixed with arg-binding
+
+The §17.3 residual risk turned out to be an **expressibility** gap, found by static analysis for
+zero model spend: `mutate_state`.base_state and `check_eligibility`/`simulate`.state are *fetched
+objects the model cannot type*, and the loop had no way to bind a tool argument to a grounded fact.
+Fix: a tool argument of the exact form `{"ref": factKey}` resolves in code to that grounded fact's
+value before dispatch (`loop/arg_refs.py`) — the tool-input analogue of `surface_fact`. Grounding
+holds end-to-end. The what-if chain now threads a grounded altered state through
+`mutate_state → check_eligibility`, proven by a scripted end-to-end test.
+
+### 18.3 Live eval round 1 — the grounding floor holds; wandering is the new failure mode
+
+All 6 `ise_correctness` cases run through `run_agent_loop` on GPT-5-mini
+(`tests/agent_core/test_v2_ise_correctness.py`):
+
+| case | outcome | claims | turns/calls/s |
+|---|---|---|---|
+| credits_remaining | answered | 8/8 | 6 / 8 / 37 |
+| eligibility_00960211 | answered | 4/4 | 7 / 9 / 53 |
+| presupposition_conflict | budget_exhausted | 3/5 | 12 / 14 / 148 |
+| offering_pattern | budget_exhausted | 3/4 | 12 / 13 / 86 |
+| completed_courses | clarified | 5/6 | 5 / 6 / 54 |
+| action_boundary | budget_exhausted | 3/4 | 11 / 12 / 176 |
+
+- **The grounding floor held 6/6 — zero ungrounded numerals, including the `92.5` case V1
+  fabricated.** The architectural thesis (grounding by substrate) is validated live on the demo
+  model across the full suite.
+- **The new primary failure mode is wandering, exactly as §7 predicted** — not fabrication. Three
+  cases hit the budget despite having the answer's facts in hand (presupposition_conflict had the
+  selected grade 85; the completeness gate correctly rejected its cop-out first). The no-progress
+  governor missed it because redundant re-surfacing under new keys *looks* like progress.
+- **Two substrate gaps surfaced:** (a) list projection — `surface_fact` cannot index a list and a
+  list slot was rejected as non-scalar, so "list my courses" was unanswerable; (b) a semantic
+  mapping gap (term-index 3 → summer) sent `offering_pattern` searching.
+
+### 18.4 Fixes applied (from the round-1 evidence)
+
+1. **Forced compose-from-facts on exhaustion** (`runner._forced_compose`): one bounded LLM call
+   composing from ONLY the grounded facts, through the same backstop — recovers the "had the answer,
+   ran out of turns" cases. This is §7's "graceful degradation" made real.
+2. **List-slot rendering** (`answer_boundary.resolve_final`): a list of scalars slots
+   comma-separated, still grounded — this is the §17.2 "extend the backstop coverage" item, for
+   lists.
+3. **Answer-rejection cap** (`runner`, `REJECTION_LIMIT`): a wanderer that makes fact-progress but
+   keeps rejecting its own draft (which no-progress cannot catch) is bounded before it burns the
+   budget — the §7 governor the eval proved necessary.
+4. Constitution now documents list enumeration (`select` with a field, no `where`) and that
+   `surface_fact` paths cannot index a list.
+
+### 18.5 Live eval round 2 (with 18.4 fixes)
+
+| case | round 1 | round 2 | change |
+|---|---|---|---|
+| credits_remaining | answered 8/8 | answered 8/8 | held |
+| eligibility_00960211 | answered 4/4 | answered 4/4 | held |
+| completed_courses | clarified 5/6 | **answered 6/6** | **fixed** (list enumeration + rendering) |
+| action_boundary | budget 3/4 | **answered 4/4** | **fixed** (forced compose + rejection cap) |
+| offering_pattern | budget 3/4 | answered 3/4 | concludes now, but still misses the code |
+| presupposition_conflict | budget 3/5 | budget 3/5 | unchanged (hardest case) |
+
+- **Correctness went 2/6 → 4/6; grounding held 6/6 in both runs** (zero fabrication across 12
+  case-runs). The thesis is validated twice over.
+- **completed_courses fixed cleanly**: `select(field=courseNumber)` enumerated all 17 codes and the
+  list slot rendered them — 4 turns, 15s.
+- **action_boundary fixed**: the forced compose + rejection cap turned a wandering budget-exhaust
+  into a grounded boundary answer that never claims to have registered.
+- **Two refinements the round exposed (still open):**
+  1. **Forced compose bypasses the completeness gate.** It runs only the grounding backstop, so it
+     shipped an `offering_pattern` answer that omitted the course code `00960211` (grounded but
+     incomplete). Fix: have the forced compose insist on the question's key entities, or run a
+     light completeness check on the composed draft.
+  2. **The completeness gate can't distinguish "didn't look" from "looked; no such record."**
+     `presupposition_conflict` asks for the student's *this-semester* status of a course that was
+     already passed *last* semester — there is no this-semester entry. Every honest draft ("not
+     enrolled this semester; passed in 2025-1 with 85") was rejected as a cop-out, looping to
+     budget. The gate rule "never accept 'could not determine' for the student's own record" is too
+     strict when the record legitimately has no such entry. It also has a real knowledge gap
+     (term-index → season) that sent it in circles. This remains the single hardest case.
+
+**Verdict:** the V2 loop grounds every fact live on the demo model and answers the majority of the
+suite correctly; the remaining two failures are a completeness-gate refinement and a term→season
+knowledge gap, both bounded and non-architectural.
