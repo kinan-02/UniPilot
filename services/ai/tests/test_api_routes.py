@@ -1,42 +1,72 @@
 """FastAPI route tests for the AI service.
 
-`/retrieve`, `/advise`, `/infer` were removed with the retired advisor HTTP
-surface. `/advise` is now `agent_core`'s own live entry point
-(`app/routes/advise.py`) -- these tests exercise it with `run_agent_turn`
-monkeypatched (the underlying chain has its own extensive coverage in
-`tests/agent_core/`; this file proves the HTTP-layer wiring: auth, request
-validation, and response-shape mapping onto what `services/api`'s
-`advisor_service.py` already parses).
+`/advise` is `agent_core`'s live entry point (`app/routes/advise.py`), now
+driven by the V2 agent loop. These tests exercise it with `run_agent_loop`
+monkeypatched (the loop itself has its own coverage in `tests/agent_core/loop/`);
+this file proves the HTTP-layer wiring: auth, request validation, and the
+response-shape mapping onto what `services/api`'s `advisor_service.py` parses.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 import app.routes.advise as advise_module
-from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry, ToolInvocationRecord
+from app.agent_core.loop import AgentLoopResult
+from app.agent_core.loop.working_set import Fact
+from app.agent_core.planning.state import ToolInvocationRecord
 from app.dependencies.internal_auth import require_internal_service_token
 from app.main import app
-from app.routes.advise import _derive_course_ids
+from app.routes.advise import _derive_course_ids, _derive_sources
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
 def _bypass_internal_auth_by_default():
-    """Most tests below exercise business logic, not auth -- override the
-    internal-service-token gate to a no-op so they aren't coupled to whether
-    a real INTERNAL_SERVICE_TOKEN happens to be resolvable from the ambient
-    environment. test_advise_route_rejects_invalid_internal_service_token
-    removes this override for its own duration to test the real gate."""
+    """Most tests exercise business logic, not auth -- override the
+    internal-service-token gate to a no-op. The dedicated auth test removes this
+    override for its own duration."""
     app.dependency_overrides[require_internal_service_token] = lambda: None
     yield
     app.dependency_overrides.pop(require_internal_service_token, None)
+
+
+def _course(entity_id: str, ok: bool = True) -> ToolInvocationRecord:
+    return ToolInvocationRecord(
+        tool_name="get_entity", arguments={"entity_type": "course", "entity_id": entity_id}, output_ok=ok
+    )
+
+
+def _fake_result(
+    *,
+    outcome: str = "answered",
+    answer: str = "An answer.",
+    facts: dict[str, Fact] | None = None,
+    audit: list[ToolInvocationRecord] | None = None,
+) -> AgentLoopResult:
+    return AgentLoopResult(
+        outcome=outcome,
+        answer=answer,
+        ungrounded_numbers=[],
+        sub_asks=[],
+        facts=facts or {},
+        audit=audit or [],
+        turns=3,
+        llm_calls=5,
+        wall_clock_s=1.0,
+    )
+
+
+def _patch_loop(monkeypatch, result: AgentLoopResult) -> None:
+    async def _fake_run_agent_loop(**_kwargs) -> AgentLoopResult:
+        return result
+
+    monkeypatch.setattr(advise_module, "run_agent_loop", _fake_run_agent_loop)
 
 
 def test_health_returns_service_payload():
@@ -48,89 +78,51 @@ def test_health_returns_service_payload():
     assert "academic_graph" in body
 
 
-def _entry_with_tool_calls(*records: ToolInvocationRecord) -> StateEntry:
-    return StateEntry(
-        entry_id="s1-0",
-        step_id="s1",
-        role="retrieval",
-        status="succeeded",
-        output_schema_name="generic_step_output_v1",
-        data={},
-        certainty=CertaintyTag(basis="official_record", confidence=0.9),
-        tool_audit_trail=list(records),
-        produced_at=datetime.now(timezone.utc),
-    )
+# -- audit-derived provenance (grounded in real tool calls) -------------------
 
 
 def test_derive_course_ids_only_counts_successful_course_get_entity_calls():
-    state = PlanExecutionState(plan_id="p1")
-    state.append(
-        _entry_with_tool_calls(
-            ToolInvocationRecord(
-                tool_name="get_entity", arguments={"entity_type": "course", "entity_id": "234218"}, output_ok=True
-            ),
-            # Wrong entity_type -- excluded.
-            ToolInvocationRecord(
-                tool_name="get_entity", arguments={"entity_type": "program", "entity_id": "program-alonim"}, output_ok=True
-            ),
-            # Failed call -- excluded even though entity_type matches.
-            ToolInvocationRecord(
-                tool_name="get_entity", arguments={"entity_type": "course", "entity_id": "999999"}, output_ok=False
-            ),
-            # Not get_entity at all -- excluded.
-            ToolInvocationRecord(tool_name="search_knowledge", arguments={"query": "course"}, output_ok=True),
-        )
-    )
-    state.append(
-        _entry_with_tool_calls(
-            ToolInvocationRecord(
-                tool_name="get_entity", arguments={"entity_type": "course", "entity_id": "114234"}, output_ok=True
-            ),
-            # Duplicate of the first entry's course -- deduplicated.
-            ToolInvocationRecord(
-                tool_name="get_entity", arguments={"entity_type": "course", "entity_id": "234218"}, output_ok=True
-            ),
-        )
-    )
-
-    assert _derive_course_ids(state) == ["114234", "234218"]
+    audit = [
+        _course("234218"),
+        # Wrong entity_type -- excluded.
+        ToolInvocationRecord(
+            tool_name="get_entity", arguments={"entity_type": "program", "entity_id": "program-alonim"}, output_ok=True
+        ),
+        _course("999999", ok=False),  # failed -- excluded
+        ToolInvocationRecord(tool_name="search_knowledge", arguments={"query": "course"}, output_ok=True),
+        _course("114234"),
+        _course("234218"),  # duplicate -- deduplicated
+    ]
+    assert _derive_course_ids(audit) == ["114234", "234218"]
 
 
 def test_derive_course_ids_returns_empty_for_no_tool_calls():
-    state = PlanExecutionState(plan_id="p1")
-    state.append(_entry_with_tool_calls())
-    assert _derive_course_ids(state) == []
+    assert _derive_course_ids([]) == []
 
 
-def _fake_final_entry(*, answer_text: str, confidence: float = 0.9, status: str = "succeeded") -> SimpleNamespace:
-    return SimpleNamespace(
-        data={"answer_text": answer_text},
-        certainty=SimpleNamespace(confidence=confidence),
-        status=status,
-        tool_audit_trail=[],
-    )
+def test_derive_sources_surfaces_wiki_fetches_and_search_queries():
+    audit = [
+        ToolInvocationRecord(
+            tool_name="get_entity", arguments={"entity_type": "track", "entity_id": "track-ise"}, output_ok=True
+        ),
+        ToolInvocationRecord(tool_name="search_knowledge", arguments={"query": "grade appeal"}, output_ok=True),
+        _course("234218"),  # a course fetch is NOT a source
+    ]
+    assert _derive_sources(audit) == ["search: grade appeal", "track-ise"]
+
+
+# -- /advise wiring -----------------------------------------------------------
 
 
 async def test_advise_route_happy_path(monkeypatch):
-    state = PlanExecutionState(plan_id="p1")
-    state.append(
-        _entry_with_tool_calls(
-            ToolInvocationRecord(
-                tool_name="get_entity", arguments={"entity_type": "course", "entity_id": "234218"}, output_ok=True
-            )
-        )
+    _patch_loop(
+        monkeypatch,
+        _fake_result(
+            answer="Course 234218 is Some Course.",
+            facts={"c": Fact("v", "src", "official_record", 0.95)},
+            audit=[_course("234218")],
+        ),
     )
-
-    async def fake_run_agent_turn(**_kwargs):
-        return (
-            SimpleNamespace(in_scope=True, decline_reason=None),
-            state,
-            _fake_final_entry(answer_text="Course 234218 is Some Course.", confidence=0.85),
-            None,
-        )
-
-    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
-
     response = client.post("/advise", json={"question": "What course is 234218?", "user_id": "u1"})
 
     assert response.status_code == 200
@@ -145,47 +137,31 @@ async def test_advise_route_happy_path(monkeypatch):
     assert data["retrieval_agent"]["status"] == "succeeded"
 
 
-async def test_advise_route_out_of_scope_decline(monkeypatch):
-    async def fake_run_agent_turn(**_kwargs):
-        return (
-            SimpleNamespace(in_scope=False, decline_reason="I can only help with academic advising questions."),
-            PlanExecutionState(plan_id="p1"),
-            _fake_final_entry(answer_text="I can only help with academic advising questions.", confidence=0.95),
-            None,
-        )
-
-    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
-
-    response = client.post("/advise", json={"question": "Write me a poem.", "user_id": "u1"})
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["response"]["answer"] == "I can only help with academic advising questions."
-    assert data["response"]["course_ids"] == []
-    assert data["retrieval_agent"]["status"] == "out_of_scope"
-
-
-async def test_advise_route_blocked_needs_clarification(monkeypatch):
-    async def fake_run_agent_turn(**_kwargs):
-        return (
-            SimpleNamespace(in_scope=True, decline_reason=None),
-            PlanExecutionState(plan_id="p1"),
-            None,
-            "Which semester do you mean?",
-        )
-
-    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
-
+async def test_advise_route_clarified_maps_to_blocked_status(monkeypatch):
+    _patch_loop(monkeypatch, _fake_result(outcome="clarified", answer="Which semester do you mean?"))
     response = client.post("/advise", json={"question": "What about next semester?", "user_id": "u1"})
 
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["response"]["answer"] == "Which semester do you mean?"
+    assert data["response"]["confidence"] == "low"
     assert data["retrieval_agent"]["status"] == "blocked_needs_clarification"
 
 
+async def test_advise_route_budget_exhausted_maps_to_incomplete(monkeypatch):
+    _patch_loop(monkeypatch, _fake_result(outcome="budget_exhausted", answer="I wasn't able to fully resolve..."))
+    response = client.post("/advise", json={"question": "hard question", "user_id": "u1"})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["retrieval_agent"]["status"] == "incomplete"
+    assert data["response"]["confidence"] == "low"
+
+
+# -- /advise/stream typed-event wiring (§11) ----------------------------------
+
+
 def _final_advisor_from_stream(body: str) -> dict:
-    """The `advisor` payload carried by the stream's terminal `final` event."""
     for line in body.splitlines():
         if not line.startswith("data: "):
             continue
@@ -195,66 +171,23 @@ def _final_advisor_from_stream(body: str) -> dict:
     raise AssertionError(f"stream produced no `final` event; body was:\n{body}")
 
 
-async def test_advise_stream_backfills_a_blank_answer_from_the_streamed_text(monkeypatch):
-    """The legitimate half of the stream's recovery block: when composition
-    streams plain text but its final entry can't be parsed into one
-    (`data={}` -> answer ""), the accumulated chunks become the answer.
-
-    Pinned so the F5 fix (see the next test) can't quietly take the real
-    recovery down with the laundering it sits next to."""
-
-    async def fake_run_agent_turn(*, streaming_queue=None, **_kwargs):
-        await streaming_queue.put("Course 234218 is Some Course.")
-        return (
-            SimpleNamespace(in_scope=True, decline_reason=None),
-            PlanExecutionState(plan_id="p1"),
-            _fake_final_entry(answer_text="", status="succeeded"),
-            None,
-        )
-
-    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
-
+async def test_advise_stream_emits_chunk_then_final(monkeypatch):
+    _patch_loop(
+        monkeypatch,
+        _fake_result(answer="Course 234218 is Some Course.", audit=[_course("234218")]),
+    )
     response = client.post("/advise/stream", json={"question": "What course is 234218?", "user_id": "u1"})
 
     assert response.status_code == 200
+    lines = [json.loads(l[len("data: ") :]) for l in response.text.splitlines() if l.startswith("data: ")]
+    assert any(e.get("type") == "chunk" and e.get("text") == "Course 234218 is Some Course." for e in lines)
     advisor = _final_advisor_from_stream(response.text)
     assert advisor["answer"] == "Course 234218 is Some Course."
+    assert advisor["courseIds"] == ["234218"]
+    assert advisor["retrievalStatus"] == "succeeded"
 
 
-async def test_advise_stream_does_not_launder_a_failed_status_into_succeeded(monkeypatch):
-    """Recovering an ANSWER from the streamed text says nothing about whether
-    RETRIEVAL succeeded -- the two facts are unrelated, and the stream path must
-    not rewrite the second because it managed the first.
-
-    Regression for F5: the recovery block ended with
-    `if advisor["retrievalStatus"] == "failed": advisor["retrievalStatus"] = "succeeded"`,
-    so a turn whose retrieval genuinely failed was reported to the frontend as a
-    clean success -- on the streaming path only. The non-streaming `/advise`
-    reported the same turn honestly, which is why the two paths disagreed.
-    """
-
-    async def fake_run_agent_turn(*, streaming_queue=None, **_kwargs):
-        await streaming_queue.put("Here is my best guess at an answer.")
-        return (
-            SimpleNamespace(in_scope=True, decline_reason=None),
-            PlanExecutionState(plan_id="p1"),
-            _fake_final_entry(answer_text="", status="failed"),
-            None,
-        )
-
-    monkeypatch.setattr(advise_module, "run_agent_turn", fake_run_agent_turn)
-
-    response = client.post("/advise/stream", json={"question": "How many credits do I have left?", "user_id": "u1"})
-
-    assert response.status_code == 200
-    advisor = _final_advisor_from_stream(response.text)
-    # The answer is still recovered...
-    assert advisor["answer"] == "Here is my best guess at an answer."
-    # ...but the turn is still reported as what it actually was.
-    assert advisor["retrievalStatus"] == "failed", (
-        "a failed turn was reported to the frontend as succeeded -- the streamed-text "
-        "backfill recovered the answer text and then rewrote an unrelated status"
-    )
+# -- auth + validation (unchanged) --------------------------------------------
 
 
 def test_advise_route_rejects_invalid_internal_service_token(monkeypatch):
