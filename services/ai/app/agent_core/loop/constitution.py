@@ -106,12 +106,16 @@ results into grounded facts and end the turn -- use these, never invent others:
       A leaf is {{"ref":"factKey"}} or {{"const": <a literal you were explicitly given, NEVER a
       total you worked out>}}. An all-const expression is rejected.
 
-  - select: pull the record(s) matching a field value out of a LIST-valued fact, or one field of it.
+  - select: pull record(s) matching a field value out of a LIST-valued fact, or read one field.
       {{"tool":"select","arguments":{{"key":"status_x","from_fact":"completed","where":{{"courseNumber":"00940224"}},"field":"grade"}}}}
       This is how you answer "the student's status/grade on course X": filter their completed-courses
       list by courseNumber and read the grade. Omit "field" to get the whole matching record. NO MATCH
-      (empty result) is itself a grounded answer -- the course is not in that list. The selected value
-      is grounded, so you can slot it straight into a final answer.
+      (empty result) is itself a grounded answer -- the course is not in that list.
+      To ENUMERATE a field across ALL records (e.g. list every completed course code), use a "field"
+      and NO "where": {{"tool":"select","arguments":{{"key":"all_codes","from_fact":"completed","field":"courseNumber"}}}}
+      returns the list of every record's courseNumber. (surface_fact paths CANNOT index a list -- no
+      [0], no .0. -- so `select` is the only way to read into list records.) A list of scalar values
+      slots into a final answer, rendered comma-separated. The selected value is grounded either way.
 
   - final_answer (ends the turn): numbers/codes MUST be slots filled from fact refs.
       {{"tool":"final_answer","arguments":{{"prose":"You still need {{gap}} credits.","fact_refs":{{"gap":"gap"}}}}}}

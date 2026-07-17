@@ -58,8 +58,16 @@ def resolve_final(
         ref = fact_refs.get(slot)
         if ref in facts:
             value = facts[ref].value
+            # A list of scalars renders comma-separated -- this is how a "list my
+            # courses" answer slots an enumerated fact (e.g. select(field=...) over
+            # the completed-courses list). Still grounded: every element traces to
+            # the fact. A list/dict of records stays non-scalar (select a field).
+            if isinstance(value, list) and all(not isinstance(item, (dict, list)) for item in value):
+                rendered_value = ", ".join(str(item) for item in value)
+                slotted_values.append(rendered_value)
+                return rendered_value
             if isinstance(value, (dict, list)):
-                unresolved.append(f"{slot}->non-scalar {type(value).__name__} (select a field)")
+                unresolved.append(f"{slot}->non-scalar {type(value).__name__} (select a scalar field)")
                 return match.group(0)
             rendered_value = str(value)
             slotted_values.append(rendered_value)

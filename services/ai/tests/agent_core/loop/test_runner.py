@@ -64,11 +64,14 @@ class _FakeAdapter:
         *,
         sub_asks: list[str],
         completeness: list[dict[str, Any]] | None = None,
+        compose: dict[str, Any] | None = None,
     ) -> None:
         self._turns = list(turns)
         self._sub_asks = sub_asks
         self._completeness = list(completeness or [])
+        self._compose = compose
         self.gate_calls = 0
+        self.compose_calls = 0
 
     async def complete_json(self, *, system_prompt: str, user_prompt: str, **kwargs: Any) -> dict[str, Any]:
         if "break a Technion student's question" in system_prompt:
@@ -76,6 +79,9 @@ class _FakeAdapter:
         elif "verify whether a DRAFT answer" in system_prompt:
             self.gate_calls += 1
             resp = self._completeness.pop(0) if self._completeness else {"unaddressed": []}
+        elif "OUT of tool budget" in system_prompt:
+            self.compose_calls += 1
+            resp = self._compose or {"prose": "", "fact_refs": {}}
         else:
             resp = self._turns.pop(0)
         raw = kwargs.get("raw_model_text_out")
@@ -199,6 +205,65 @@ async def test_what_if_chain_threads_state_via_arg_refs(monkeypatch):
     assert received["state"] == {"completedCourses": [{**c, "status": "failed"} for c in _COMPLETED]}
     assert result.facts["eligible"].value is False
     assert result.answer == "Eligibility after failing 00940224: False."
+
+
+_EMPTY = {"thought": "stuck", "tool_calls": []}
+
+
+async def test_forced_compose_recovers_answer_from_grounded_facts_on_exhaustion(monkeypatch):
+    """The loop had the facts (earned) but wandered out of turns -- the forced
+    compose-from-facts recovers a grounded answer instead of punting."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["earned?"],
+        compose={"prose": "You have earned {earned} credits.", "fact_refs": {"earned": "earned"}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.outcome == "answered"
+    assert result.answer == "You have earned 9.5 credits."
+    assert adapter.compose_calls == 1
+
+
+async def test_forced_compose_punts_when_it_cannot_ground(monkeypatch):
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["earned?"],
+        compose={"prose": "You have earned 999 credits.", "fact_refs": {}},  # bare number -> rejected
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.outcome == "budget_exhausted"
+    assert "wasn't able to fully resolve" in result.answer
+
+
+async def test_answer_rejection_cap_forces_conclusion(monkeypatch):
+    """The wanderer that MAKES fact-progress but keeps rejecting its own answer --
+    no-progress can't catch it (each turn surfaces a new fact), so the rejection
+    cap must. Each turn surfaces a fresh key + emits an ungrounded final answer."""
+    bad = {"tool": "final_answer", "arguments": {"prose": "The answer is 999.", "fact_refs": {}}}
+    turns = [{"thought": "fetch", "tool_calls": [_FETCH]}]
+    for i in range(runner.REJECTION_LIMIT + 3):
+        surface = {"tool": "surface_fact", "arguments": {"key": f"k{i}", "from": "call_1", "path": "data.completedCourses"}}
+        turns.append({"thought": f"progress+reject {i}", "tool_calls": [surface, bad]})
+    adapter = _FakeAdapter(turns=turns, sub_asks=["something"])
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("a question with no numbers", "u1", _stub_registry())
+
+    assert result.outcome == "budget_exhausted"  # forced compose can't ground -> punt
+    assert result.turns == runner.REJECTION_LIMIT + 1  # one fetch turn, then REJECTION_LIMIT reject turns
+    assert result.turns < runner.MAX_TURNS  # capped well before the full budget
 
 
 async def test_no_progress_governor_forces_graceful_conclusion(monkeypatch):

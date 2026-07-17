@@ -51,11 +51,32 @@ def test_unresolved_slot_is_flagged():
     assert any(p.startswith("unresolved_slot:") for p in problems)
 
 
-def test_non_scalar_slot_is_rejected():
+def test_non_scalar_record_slot_is_rejected():
     _, problems = resolve_final(
         "q",
         _facts(rec={"grade": 85}),
         "Your record is {rec}.",
         {"rec": "rec"},
+    )
+    assert any("non-scalar" in p for p in problems)
+
+
+def test_list_of_scalars_slot_renders_comma_separated():
+    rendered, problems = resolve_final(
+        "Which courses have I completed?",
+        _facts(codes=["00940224", "00960211", "00110001"]),
+        "You completed: {codes}.",
+        {"codes": "codes"},
+    )
+    assert rendered == "You completed: 00940224, 00960211, 00110001."
+    assert problems == []  # every listed code is grounded via the slot
+
+
+def test_list_of_records_slot_is_still_rejected():
+    _, problems = resolve_final(
+        "q",
+        _facts(recs=[{"courseNumber": "00940224"}]),
+        "Your courses: {recs}.",
+        {"recs": "recs"},
     )
     assert any("non-scalar" in p for p in problems)

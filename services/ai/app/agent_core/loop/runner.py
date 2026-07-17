@@ -22,7 +22,7 @@ from app.agent_core.loop.arg_refs import resolve_arg_refs
 from app.agent_core.loop.constitution import build_constitution, build_tool_catalog
 from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface
 from app.agent_core.loop.front_door import decompose
-from app.agent_core.loop.working_set import Fact, Terminal, WorkingSet, render_working_set
+from app.agent_core.loop.working_set import Fact, Terminal, WorkingSet, render_working_set, summarize_value
 from app.agent_core.planning.state import ToolInvocationRecord
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
 from app.agent_core.subagents.fact_projection import build_call_handles, describe_call
@@ -35,7 +35,19 @@ from app.agent_core.tools.registry import ToolRegistry
 MAX_TURNS = 12
 WALL_CLOCK_S = 150.0
 NO_PROGRESS_LIMIT = 3
+# How many rejected final answers (grounding backstop or completeness gate) before
+# we stop letting the model re-try and force a conclusion. The live eval's
+# wanderers spent their whole budget re-rejecting their own drafts (§16 follow-up).
+REJECTION_LIMIT = 4
 TURN_TIMEOUT_S = 90.0
+
+_FORCED_COMPOSE_SYSTEM = """You are OUT of tool budget and must answer NOW, using ONLY the grounded
+facts already gathered -- no more tools, no invented values. Output ONLY a final_answer JSON:
+{"prose": "...", "fact_refs": {"slot": "factKey", ...}}.
+Every number, grade, code, semester, or status in the prose MUST be a {slot} filled from fact_refs
+(a bare number is rejected). A list-valued fact renders as its comma-separated values.
+Address every sub-ask the facts let you address; for anything the facts do not cover, say honestly
+you could not determine it. Answer the student directly and completely from what you have."""
 
 # Reasoning params for the demo model (GPT-5-mini): thinking ON, medium effort,
 # temperature 1.0 (GPT-5 reasoning models reject temperature != 1).
@@ -154,14 +166,51 @@ async def _process_turn(
     return None, progress, audit
 
 
-def _graceful_conclusion(ws: WorkingSet) -> str:
-    """Budget-exhaustion answer (§7): honest, never silent, never fabricated. It
-    names the open sub-asks and points to the secretariat rather than guessing."""
+def _punt_message(ws: WorkingSet) -> str:
+    """Last-resort honest conclusion when even a forced compose can't ground an
+    answer: names the open sub-asks and points to the secretariat, never guesses."""
     parts = ["I wasn't able to fully resolve your question within my working limits."]
     if ws.sub_asks:
         parts.append("Open items: " + "; ".join(ws.sub_asks) + ".")
     parts.append("Please check with your faculty secretariat for a definitive answer.")
     return " ".join(parts)
+
+
+async def _forced_compose(
+    adapter: ChatLLMAdapter, ws: WorkingSet, *, temperature: float, reasoning_effort: str
+) -> str | None:
+    """Graceful degradation (§7), one bounded LLM call: compose a final answer
+    from ONLY the facts already grounded. The live eval showed the loop often
+    HAD the answer's facts (a selected grade, an eligibility result) but wandered
+    out of budget before composing -- this recovers those. Runs the same grounding
+    backstop, so a compose that slips an ungrounded number is rejected (-> punt)."""
+    if not ws.facts:
+        return None
+    facts_desc = "\n".join(
+        f"  {key} = {summarize_value(fact.value)} (basis: {fact.basis})" for key, fact in ws.facts.items()
+    )
+    sub_asks = "\n".join(f"  - {s}" for s in ws.sub_asks) or "  (none)"
+    user_prompt = (
+        f"QUESTION: {ws.question}\n\nSUB-ASKS:\n{sub_asks}\n\n"
+        f"GROUNDED FACTS (the ONLY values you may use):\n{facts_desc}\n\n"
+        "Emit the final_answer JSON now."
+    )
+    try:
+        out = await adapter.complete_json(
+            system_prompt=_FORCED_COMPOSE_SYSTEM,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            thinking_enabled=True,
+            reasoning_effort=reasoning_effort,
+            timeout=TURN_TIMEOUT_S,
+        )
+    except LLMAdapterError:
+        return None
+    prose = str(out.get("prose") or "")
+    rendered, ungrounded = resolve_final(ws.question, ws.facts, prose, out.get("fact_refs") or {})
+    if prose and not ungrounded:
+        return rendered
+    return None
 
 
 async def run_agent_loop(
@@ -185,6 +234,7 @@ async def run_agent_loop(
     ws.sub_asks = front_door.sub_asks
 
     no_progress = 0
+    answer_rejections = 0
     turn = 0
     for turn in range(1, MAX_TURNS + 1):
         if time.monotonic() - started > WALL_CLOCK_S:
@@ -211,9 +261,11 @@ async def run_agent_loop(
         transcript.append({"turn": turn, "thought": action.get("thought"), "calls": calls})
         terminal, progress, turn_audit = await _process_turn(ws, calls, registry, cache)
         audit.extend(turn_audit)
+        rejected_this_turn = False
         for call in calls:  # surface any grounding rejection onto the transcript
             if call.get("_rejected_ungrounded"):
                 transcript[-1].setdefault("rejected_ungrounded", call["_rejected_ungrounded"])
+                rejected_this_turn = True
 
         if terminal is not None:
             if terminal.kind == "answered" and ws.sub_asks:
@@ -232,11 +284,24 @@ async def run_agent_loop(
                         "Fetch what's needed to address them, then answer again."
                     )
                     transcript[-1].setdefault("completeness_rejected", unaddressed)
-                    continue
+                    answer_rejections += 1
+                    if answer_rejections < REJECTION_LIMIT:
+                        continue
+                    ws.observe(f"answer-rejection limit reached ({REJECTION_LIMIT}); composing from grounded facts.")
+                    break
             return AgentLoopResult(
                 terminal.kind, terminal.text, terminal.ungrounded, ws.sub_asks, ws.facts,
                 audit, turn, llm_calls, time.monotonic() - started, transcript,
             )
+
+        # Anti-wander (§7): a repeatedly self-rejected final answer means the model
+        # is stuck composing, not making progress -- cap it before it burns the
+        # whole budget re-rejecting its own drafts.
+        if rejected_this_turn:
+            answer_rejections += 1
+            if answer_rejections >= REJECTION_LIMIT:
+                ws.observe(f"answer-rejection limit reached ({REJECTION_LIMIT}); composing from grounded facts.")
+                break
 
         # No-progress governor (§7): a turn that admits no new fact and records no
         # new successful fetch counts toward the cap that forces conclusion.
@@ -245,8 +310,20 @@ async def run_agent_loop(
             ws.observe(f"no-progress limit reached ({NO_PROGRESS_LIMIT} turns); concluding.")
             break
 
+    # Graceful degradation (§7): try one bounded compose from the facts already
+    # grounded before punting -- the loop often HAS the answer, just ran out of
+    # turns to say it.
+    composed: str | None = None
+    if ws.facts:
+        llm_calls += 1
+        composed = await _forced_compose(adapter, ws, temperature=temperature, reasoning_effort=reasoning_effort)
+    if composed is not None:
+        return AgentLoopResult(
+            "answered", composed, [], ws.sub_asks, ws.facts,
+            audit, turn, llm_calls, time.monotonic() - started, transcript,
+        )
     return AgentLoopResult(
-        "budget_exhausted", _graceful_conclusion(ws), [], ws.sub_asks, ws.facts,
+        "budget_exhausted", _punt_message(ws), [], ws.sub_asks, ws.facts,
         audit, turn, llm_calls, time.monotonic() - started, transcript,
     )
 
