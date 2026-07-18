@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import math
 import re
-from collections import Counter
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Iterable
 
 from app.retrieval.obsidian_wiki_indexer import WikiChunk
@@ -12,6 +11,7 @@ from app.retrieval.profiles import RerankBoosts, RetrievalProfile, get_rerank_bo
 
 if TYPE_CHECKING:
     from app.config import Settings
+    from app.retrieval.corpus_index import CorpusIndex
 
 _TOKEN = re.compile(r"[\w\u0590-\u05FF]+", re.UNICODE)
 _WIKI_LINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]]+)?\]\]")
@@ -42,34 +42,52 @@ def embedding_text(chunk: WikiChunk) -> str:
     )
 
 
-def bm25_score(chunk: WikiChunk, query_tokens: list[str]) -> float:
+def bm25_score(
+    chunk: WikiChunk,
+    query_tokens: list[str],
+    *,
+    corpus: "CorpusIndex | None" = None,
+) -> float:
+    """BM25 over the chunk, plus this corpus's own domain boosts.
+
+    `corpus` supplies the document frequencies and mean length that BM25
+    needs; without one it degrades to neutral IDF and no length
+    normalization, which is what callers scoring chunks outside the indexed
+    corpus get.
+
+    The section-title and course-number boosts stay additive on top: they are
+    domain signals about *where* a term matched, which BM25 has no notion of.
+    Course-number matching is exact -- it was `token in number`, so a query
+    token "0044" scored against every course in the 0044xxxx faculty.
+    """
     if not query_tokens:
         return 0.0
 
-    haystack = " ".join(
-        [
-            chunk.page_title,
-            chunk.section_title,
-            chunk.content,
-            " ".join(chunk.course_numbers_mentioned),
-        ]
-    ).lower()
-    haystack_tokens = tokenize(haystack)
-    if not haystack_tokens:
-        return 0.0
+    from app.retrieval.corpus_index import build_chunk_stats
+    from app.retrieval.wiki_vector_index import chunk_vector_id
 
-    doc_freq = Counter(haystack_tokens)
-    score = 0.0
+    active_corpus = corpus if corpus is not None else _empty_corpus()
+    stats = (
+        active_corpus.stats_for(chunk_vector_id(chunk), chunk)
+        if corpus is not None
+        else build_chunk_stats(chunk)
+    )
+    score = active_corpus.bm25(stats, query_tokens)
+
+    section_tokens = set(tokenize(chunk.section_title))
     for token in query_tokens:
-        tf = doc_freq.get(token, 0)
-        if tf:
-            score += 1.0 + math.log(1.0 + tf)
-        if token in chunk.section_title.lower():
+        if token in section_tokens:
             score += 2.0
-        for number in chunk.course_numbers_mentioned:
-            if token == number.lower() or token in number:
-                score += 3.0
+        if token in stats.course_numbers:
+            score += 3.0
     return score
+
+
+@lru_cache(maxsize=1)
+def _empty_corpus() -> "CorpusIndex":
+    from app.retrieval.corpus_index import CorpusIndex
+
+    return CorpusIndex()
 
 
 def _normalize_bm25(raw_score: float) -> float:
@@ -93,22 +111,26 @@ def _normalize_bm25(raw_score: float) -> float:
     return raw_score / (raw_score + _BM25_SATURATION_K)
 
 
-def semantic_similarity_score(
-    chunk: WikiChunk,
-    query_tokens: list[str],
-    *,
-    query: str | None = None,
-    semantic_override: float | None = None,
-) -> float:
-    if semantic_override is not None:
-        return max(0.0, semantic_override)
-    if not query_tokens:
+def semantic_similarity_score(*, semantic_override: float | None = None) -> float:
+    """The embedding half of the hybrid score: real cosine, or nothing.
+
+    This used to fall back to lexical token overlap whenever no vector was
+    available, which meant a single ranking could mix two incomparable
+    scales. Measured over 114 candidates for one query: real cosine ran
+    0.257-0.747 (median 0.559) while the lexical stand-in ran 0.200-0.900
+    (median 0.400) and did not correlate -- higher than the true score for
+    29% of chunks, lower for the rest. Chunks were being reordered against
+    each other on different axes, and because the stand-in is itself
+    keyword-derived, a Pinecone outage silently double-counted keywords
+    under a profile that believed it was weighting 60/40 hybrid.
+
+    Returning 0.0 keeps every chunk on one axis. When no candidate has a
+    vector, every chunk gets 0.0 and the ranking collapses to pure keyword
+    order -- monotone in the keyword score, so genuinely BM25-only.
+    """
+    if semantic_override is None:
         return 0.0
-    doc_tokens = set(tokenize(embedding_text(chunk)))
-    if not doc_tokens:
-        return 0.0
-    overlap = sum(1 for token in query_tokens if token in doc_tokens)
-    return overlap / max(1, len(set(query_tokens)))
+    return max(0.0, semantic_override)
 
 
 def apply_metadata_boosts(
@@ -188,15 +210,11 @@ def hybrid_score_chunk(
     user_context: dict[str, Any] | None = None,
     boosts: RerankBoosts | None = None,
     semantic_override: float | None = None,
+    corpus: "CorpusIndex | None" = None,
 ) -> float:
     query_tokens = tokenize(query)
-    keyword = _normalize_bm25(bm25_score(chunk, query_tokens))
-    semantic = semantic_similarity_score(
-        chunk,
-        query_tokens,
-        query=query,
-        semantic_override=semantic_override,
-    )
+    keyword = _normalize_bm25(bm25_score(chunk, query_tokens, corpus=corpus))
+    semantic = semantic_similarity_score(semantic_override=semantic_override)
     score = (
         profile.hybrid_keyword_weight_normalized * keyword
         + profile.hybrid_vector_weight_normalized * semantic
@@ -220,9 +238,16 @@ def rerank_chunks(
     entities: dict[str, Any] | None = None,
     user_context: dict[str, Any] | None = None,
     page_scoped: bool = False,
+    semantic_scores: dict[str, float] | None = None,
     settings: "Settings | None" = None,
 ) -> list[tuple[WikiChunk, float]]:
     """Rank `chunks` against `query` on BM25 plus embedding similarity.
+
+    `semantic_scores` are cosine scores the caller already has, keyed by
+    `chunk_vector_id` -- pass whatever `query_semantic_candidates` returned.
+    Only candidates absent from it are fetched. Verified safe to mix:
+    Pinecone's own cosine and a locally recomputed one agree to within 4e-4
+    (float32 storage precision).
 
     Set `page_scoped` only when `chunks` is *every* indexed chunk of the
     source files it spans -- see `score_page_scoped_chunks` for why a subset
@@ -230,6 +255,7 @@ def rerank_chunks(
     directly instead of a fetch of every candidate vector.
     """
     from app.config import get_settings
+    from app.retrieval.corpus_index import get_corpus_index
     from app.retrieval.embedding_service import cosine_similarity, embed_query_cached
     from app.retrieval.profiles import get_profile
     from app.retrieval.wiki_vector_index import (
@@ -239,45 +265,49 @@ def rerank_chunks(
     )
 
     active_profile = profile or get_profile("fallback_academic_search")
-    candidate_limit = max(active_profile.rerankCandidateLimit, limit)
     chunk_list = list(chunks)
     semantic_by_chunk_id: dict[int, float] = {}
     settings = settings or get_settings()
+    # IDF must come from the whole corpus, not the candidate slice -- over 114
+    # candidates a corpus-common term would look rare and get weighted up.
+    corpus = get_corpus_index(settings.resolved_academic_wiki_path() or "")
 
-    # Either way this is ONE Pinecone round trip for the whole candidate set,
-    # never a call per chunk. There is no live "embed every candidate"
-    # fallback: if Pinecone is unreachable both paths return empty and scoring
-    # drops to its keyword component. Embedding ~60 candidate documents per
-    # call instead would turn an outage into a latency and cost cliff on
-    # every query.
+    # At most ONE Pinecone round trip, never a call per chunk. There is no
+    # live "embed every candidate" fallback: if Pinecone is unreachable
+    # nothing is scored, every chunk gets semantic 0.0, and the ranking
+    # collapses to pure keyword order. Embedding ~60 candidate documents per
+    # call instead would turn an outage into a latency and cost cliff.
     if settings.wiki_vector_index_enabled() and chunk_list:
         if page_scoped:
-            scores_by_vector_id = score_page_scoped_chunks(
-                chunk_list,
-                query=query,
-                settings=settings,
-            )
-            for chunk in chunk_list:
-                score = scores_by_vector_id.get(chunk_vector_id(chunk))
-                if score is not None:
-                    semantic_by_chunk_id[id(chunk)] = score
+            known = score_page_scoped_chunks(chunk_list, query=query, settings=settings)
         else:
-            query_vector = embed_query_cached(
-                query,
-                settings.resolved_embedding_api_key(),
-                settings.resolved_embedding_base_url(),
-                settings.resolved_embedding_model(),
-            )
-            if query_vector:
-                vectors = fetch_chunk_vectors(chunk_list, settings=settings)
-                query_values = list(query_vector)
-                for chunk in chunk_list:
-                    chunk_vector = vectors.get(chunk_vector_id(chunk))
-                    if chunk_vector:
-                        semantic_by_chunk_id[id(chunk)] = cosine_similarity(
-                            query_values,
-                            list(chunk_vector),
-                        )
+            known = dict(semantic_scores or {})
+            # `search_wiki` hands over the scores Pinecone already returned for
+            # its semantic half, so only the keyword-only remainder needs
+            # fetching -- roughly halving a payload that was the single
+            # biggest cost in the pipeline (2105ms for 114 ids).
+            missing = [c for c in chunk_list if chunk_vector_id(c) not in known]
+            if missing:
+                query_vector = embed_query_cached(
+                    query,
+                    settings.resolved_embedding_api_key(),
+                    settings.resolved_embedding_base_url(),
+                    settings.resolved_embedding_model(),
+                )
+                if query_vector:
+                    vectors = fetch_chunk_vectors(missing, settings=settings)
+                    query_values = list(query_vector)
+                    for chunk in missing:
+                        chunk_vector = vectors.get(chunk_vector_id(chunk))
+                        if chunk_vector:
+                            known[chunk_vector_id(chunk)] = cosine_similarity(
+                                query_values,
+                                list(chunk_vector),
+                            )
+        for chunk in chunk_list:
+            score = known.get(chunk_vector_id(chunk))
+            if score is not None:
+                semantic_by_chunk_id[id(chunk)] = score
 
     scored = [
         (
@@ -289,13 +319,17 @@ def rerank_chunks(
                 entities=entities,
                 user_context=user_context,
                 semantic_override=semantic_by_chunk_id.get(id(chunk)),
+                corpus=corpus,
             ),
         )
         for chunk in chunk_list
     ]
     scored = [(chunk, score) for chunk, score in scored if score > 0]
     scored.sort(key=lambda item: item[1], reverse=True)
-    return scored[:candidate_limit][: max(1, limit)]
+    # `rerankCandidateLimit` bounded a wider slice that no longer exists: it is
+    # always >= `limit`, so slicing by it before slicing by `limit` never
+    # removed anything. The candidate pool is bounded upstream now.
+    return scored[: max(1, limit)]
 
 
 def extract_wiki_links(chunk: WikiChunk) -> list[str]:

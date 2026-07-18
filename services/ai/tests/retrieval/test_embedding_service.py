@@ -228,6 +228,85 @@ def test_rerank_defaults_to_fetch_for_arbitrary_candidate_sets(monkeypatch):
     )
 
 
+def test_rerank_reuses_supplied_scores_and_fetches_only_the_remainder(monkeypatch):
+    """`search_wiki` already holds Pinecone's cosine for its semantic half.
+
+    Re-fetching those vectors to recompute the identical number was the
+    single biggest cost in the pipeline (2105ms for 114 ids).
+    """
+    from app.retrieval.wiki_vector_index import chunk_vector_id
+
+    _enable_semantic_search(monkeypatch)
+    chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
+    already_known = {chunk_vector_id(chunks[0]): 0.8}
+    fetched: list[int] = []
+
+    def _fake_fetch(candidate_chunks, **_kwargs):
+        candidates = list(candidate_chunks)
+        fetched.append(len(candidates))
+        # Whatever is fetched must be the chunks WITHOUT a supplied score.
+        assert all(chunk_vector_id(c) not in already_known for c in candidates)
+        return {}
+
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.fetch_chunk_vectors", _fake_fetch)
+    monkeypatch.setattr(
+        "app.retrieval.embedding_service.embed_query_cached",
+        lambda *_args, **_kwargs: (1.0, 0.0),
+    )
+
+    rerank_chunks(
+        chunks,
+        query="requirements",
+        limit=2,
+        profile=get_profile("requirement_explanation"),
+        semantic_scores=already_known,
+    )
+
+    assert fetched == [len(chunks) - 1]
+
+
+def test_rerank_skips_the_fetch_entirely_when_all_scores_are_supplied(monkeypatch):
+    from app.retrieval.wiki_vector_index import chunk_vector_id
+
+    _enable_semantic_search(monkeypatch)
+    chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
+
+    def _explode(*_args, **_kwargs):
+        raise AssertionError("no fetch is needed when every score was supplied")
+
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.fetch_chunk_vectors", _explode)
+
+    assert rerank_chunks(
+        chunks,
+        query="requirements",
+        limit=2,
+        profile=get_profile("requirement_explanation"),
+        semantic_scores={chunk_vector_id(c): 0.5 for c in chunks},
+    )
+
+
+def test_missing_semantic_score_contributes_zero_not_lexical_overlap():
+    """A ranking must not mix cosine with a keyword-derived stand-in.
+
+    Measured over 114 real candidates, the retired lexical fallback ran
+    0.200-0.900 against a true cosine range of 0.257-0.747 and did not
+    correlate -- higher for 29% of chunks, lower for the rest.
+    """
+    from app.retrieval.reranker import semantic_similarity_score
+
+    assert semantic_similarity_score(semantic_override=None) == 0.0
+    assert semantic_similarity_score(semantic_override=0.62) == pytest.approx(0.62)
+    assert semantic_similarity_score(semantic_override=-0.3) == 0.0
+
+
+def test_rerank_respects_limit_even_when_more_candidates_score(monkeypatch):
+    _enable_semantic_search(monkeypatch)
+    monkeypatch.setenv("PINECONE_API_KEY", "")
+    get_settings.cache_clear()
+    chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
+    assert len(rerank_chunks(chunks, query="requirements", limit=1)) == 1
+
+
 def test_rerank_falls_back_to_keywords_without_pinecone(monkeypatch):
     """Pinecone unconfigured must still rank, on BM25 alone."""
     monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
