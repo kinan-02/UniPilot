@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 
 NOT_IMPLEMENTED = "not_implemented"
 

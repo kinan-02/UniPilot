@@ -21,7 +21,8 @@ import pytest
 
 from app.agent_core.orchestrator import loop as loop_module
 from app.agent_core.planning.schemas import PlanGraph, PlannerInvocationOutput, PlanStep, RoleName
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import StateEntry
 from app.agent_core.subagents.schemas import SubagentResult
 from app.agent_core.turn_context import TurnContext
 

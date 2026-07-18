@@ -38,7 +38,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.composites.compare_plans import ComparePlansInput, run_compare_plans
 from app.agent_core.tools.composites.student_state import resolve_student_state
 from app.agent_core.tools.envelope import ToolOutputEnvelope

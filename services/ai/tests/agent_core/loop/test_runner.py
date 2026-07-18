@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import app.agent_core.loop.runner as runner
 from app.agent_core.loop.runner import run_agent_loop
 from app.agent_core.loop.working_set import Fact, WorkingSet
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor, ToolRegistry
 

@@ -20,7 +20,8 @@ from app.agent_core.orchestrator import task_handler as task_handler_module
 from app.agent_core.orchestrator.specialist_router import RoutedSubStep, SpecialistRouterOutput
 from app.agent_core.orchestrator.task_handler import run_task_handler
 from app.agent_core.planning.schemas import PlanStep
-from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.subagents.schemas import (
     ReasoningParamsOverride,

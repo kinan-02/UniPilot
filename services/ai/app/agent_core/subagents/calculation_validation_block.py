@@ -34,7 +34,8 @@ from typing import Any, Literal
 
 from pydantic import Field, ValidationError
 
-from app.agent_core.planning.state import CertaintyTag, StateEntry, ToolInvocationRecord
+from app.agent_core.certainty import CertaintyTag, ToolInvocationRecord
+from app.agent_core.planning.state import StateEntry
 from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter, LLMAdapterError
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry

@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import StateEntry
 from app.agent_core.subagents.calculation_validation_block import (
     _flatten_dependency_facts,
     _unwrap_fact_envelope,

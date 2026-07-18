@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.agent_core.loop import AgentLoopResult, run_agent_loop
-from app.agent_core.planning.state import ToolInvocationRecord
+from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.config import get_settings
 from app.core.responses import success_response

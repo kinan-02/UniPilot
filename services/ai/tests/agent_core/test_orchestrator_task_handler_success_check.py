@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from app.agent_core.orchestrator.task_handler_success_check import check_success_criteria
 from app.agent_core.planning.schemas import PlanStep
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.subagents.schemas import SubagentResult
 
 

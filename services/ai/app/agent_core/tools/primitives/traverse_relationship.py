@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor
 from app.retrieval.graph_engine.graph_registry import graph_registry

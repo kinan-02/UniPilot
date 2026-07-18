@@ -38,7 +38,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.composites.get_track_requirements import (
     GetTrackRequirementsInput,
     run_get_track_requirements,

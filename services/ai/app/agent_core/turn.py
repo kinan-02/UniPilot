@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.loop import DEFAULT_MAX_PLANNER_INVOCATIONS, run_plan_to_completion
 from app.agent_core.planning.schemas import RoleName
-from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.request_understanding.request_understanding import understand_request
 from app.agent_core.request_understanding.schemas import RequestUnderstandingReasoningBlockOutput

@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import StateEntry
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.subagents.calculation_validation_block import (
     _MAX_REPAIR_ATTEMPTS,

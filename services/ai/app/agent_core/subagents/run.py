@@ -9,7 +9,7 @@ vocabulary, missing tool-audit-trail, and coarse-only confidence don't map
 
 from __future__ import annotations
 
-from app.agent_core.planning.state import CertaintyTag, SourceRef, ToolInvocationRecord
+from app.agent_core.certainty import CertaintyTag, SourceRef, ToolInvocationRecord
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptRegistry
 from app.agent_core.reasoning.reasoning_block import ReasoningBlock

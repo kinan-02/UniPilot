@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.subagents.retrieval_block import (
     _DEGRADED_FINALIZE_CONFIDENCE,

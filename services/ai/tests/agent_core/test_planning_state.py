@@ -5,14 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.agent_core.planning.schemas import PlanGraph
-from app.agent_core.planning.state import (
-    CertaintyTag,
-    NestedExecutionTrace,
-    NestedStepTrace,
-    PlanExecutionState,
-    StateEntry,
-    ToolInvocationRecord,
-)
+from app.agent_core.certainty import CertaintyTag, ToolInvocationRecord
+from app.agent_core.planning.state import NestedExecutionTrace, NestedStepTrace, PlanExecutionState, StateEntry
 
 
 def _entry(step_id: str, entry_id: str | None = None) -> StateEntry:

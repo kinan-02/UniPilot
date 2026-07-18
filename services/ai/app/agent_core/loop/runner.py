@@ -25,7 +25,7 @@ from app.agent_core.loop.constitution import build_constitution, build_tool_cata
 from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface, project_mapped_records
 from app.agent_core.loop.front_door import decompose
 from app.agent_core.loop.working_set import Fact, Terminal, WorkingSet, render_working_set, summarize_value
-from app.agent_core.planning.state import ToolInvocationRecord
+from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
 from app.agent_core.subagents.fact_projection import build_call_handles, describe_call
 from app.agent_core.subagents.tool_round import execute_tool_round

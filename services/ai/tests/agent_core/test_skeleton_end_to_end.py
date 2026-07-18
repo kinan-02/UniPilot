@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from app.agent_core.orchestrator.loop import run_plan_to_completion
 from app.agent_core.turn_context import TurnContext
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.agent_core.tools.envelope import ToolOutputEnvelope
@@ -285,7 +285,8 @@ async def test_step_2_context_slice_is_bounded_to_its_own_dependency(fake_llm_ad
     """2. Step 2's dependency_state contains exactly step 1's entry and
     nothing else -- proves bounded slicing, not "some context.\""""
     from app.agent_core.orchestrator.context_builder import build_subagent_context_package
-    from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
+    from app.agent_core.certainty import CertaintyTag
+    from app.agent_core.planning.state import PlanExecutionState, StateEntry
     from app.agent_core.subagents.schemas import StepInstructionFields, StepPrepOutput
     from datetime import datetime, timezone
 

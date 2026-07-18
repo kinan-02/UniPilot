@@ -12,43 +12,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.agent_core.certainty import CertaintyBasis, CertaintyTag, SourceRef, ToolInvocationRecord
 from app.agent_core.planning.schemas import PlanGraph, RoleName
 
-CertaintyBasis = Literal[
-    "official_record",
-    "wiki_derived",
-    "predicted_pattern",
-    "llm_interpretation",
-    "hypothetical_simulation",
-]
-
 StepStatus = Literal["succeeded", "partial", "failed"]
-
-
-class SourceRef(BaseModel):
-    page: str
-    section: str | None = None
-    reasoning_path: str | None = None
-
-
-class CertaintyTag(BaseModel):
-    basis: CertaintyBasis
-    confidence: float = Field(ge=0.0, le=1.0)
-    source_ref: SourceRef | None = None
-
-
-class ToolInvocationRecord(BaseModel):
-    """One entry in a subagent's tool-call audit trail."""
-
-    tool_name: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
-    output_ok: bool
-    output_certainty: CertaintyTag | None = None
-    # True when this call was served from the turn-scoped `ToolCallCache`
-    # instead of actually invoking the tool -- lets logs/audits distinguish
-    # a real call from a reused one (found necessary while investigating why
-    # one call's arguments recurred dozens of times across a single turn).
-    from_cache: bool = False
 
 
 class NestedStepTrace(BaseModel):

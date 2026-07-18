@@ -10,7 +10,8 @@ from __future__ import annotations
 import pytest
 from datetime import datetime, timezone
 
-from app.agent_core.planning.state import CertaintyTag, PlanExecutionState, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.roles.schemas import RoleDefinition
 from app.agent_core.subagents.schemas import SubagentResult

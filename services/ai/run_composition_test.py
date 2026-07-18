@@ -2,7 +2,8 @@ import asyncio
 from datetime import datetime, timezone
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
 from app.agent_core.synthesis.synthesis import compose_answer
-from app.agent_core.planning.state import PlanExecutionState, StateEntry, CertaintyTag
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import PlanExecutionState, StateEntry
 from app.agent_core.roles.roster import build_default_role_roster
 from app.agent_core.tools.registry import ToolRegistry
 

@@ -14,7 +14,8 @@ from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER
 from app.agent_core.subagents.composition_block import run_composition_subagent
 from app.agent_core.subagents.schemas import StepInstructionFields, SubagentContextPackage
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import StateEntry
 
 
 def _entry(step_id: str, *, basis: str = "official_record", status: str = "succeeded") -> StateEntry:

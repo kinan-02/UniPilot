@@ -35,13 +35,8 @@ from app.agent_core.planning.rewrite import compute_plan_graph
 from app.agent_core.reasoning_blocks.schemas import LLMCallParameters
 from app.agent_core.planning.schemas import PlanStep, RoleName
 from app.agent_core.turn_context import TurnContext
-from app.agent_core.planning.state import (
-    CertaintyTag,
-    NestedExecutionTrace,
-    NestedStepTrace,
-    PlanExecutionState,
-    StateEntry,
-)
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import NestedExecutionTrace, NestedStepTrace, PlanExecutionState, StateEntry
 from app.agent_core.roles.schemas import RoleDefinition
 
 

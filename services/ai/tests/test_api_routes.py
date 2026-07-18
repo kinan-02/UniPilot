@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 import app.routes.advise as advise_module
 from app.agent_core.loop import AgentLoopResult
 from app.agent_core.loop.working_set import Fact
-from app.agent_core.planning.state import ToolInvocationRecord
+from app.agent_core.certainty import ToolInvocationRecord
 from app.dependencies.internal_auth import require_internal_service_token
 from app.main import app
 from app.routes.advise import _derive_course_ids, _derive_sources

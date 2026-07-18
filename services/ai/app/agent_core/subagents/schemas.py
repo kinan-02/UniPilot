@@ -6,7 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyTag, StateEntry, ToolInvocationRecord
+from app.agent_core.certainty import CertaintyTag, ToolInvocationRecord
+from app.agent_core.planning.state import StateEntry
 
 
 class StepInstructionFields(BaseModel):

@@ -28,7 +28,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from app.agent_core.planning.state import CertaintyTag, ToolInvocationRecord
+from app.agent_core.certainty import CertaintyTag, ToolInvocationRecord
 from app.agent_core.reasoning.grounding import build_shared_grounding_block
 from app.agent_core.reasoning.llm_adapter import LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry

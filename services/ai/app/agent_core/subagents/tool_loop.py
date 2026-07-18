@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 
-from app.agent_core.planning.state import ToolInvocationRecord
+from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.reasoning.reasoning_block import ReasoningBlock
 from app.agent_core.reasoning.schemas import ReasoningBlockInput, ReasoningBlockOutput
 from app.agent_core.tools.registry import ToolNotFoundError, ToolRegistry

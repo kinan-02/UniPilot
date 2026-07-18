@@ -26,7 +26,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyBasis, CertaintyTag
+from app.agent_core.certainty import CertaintyBasis, CertaintyTag
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER

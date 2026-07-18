@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.primitives.expression_tree import (
     ExpressionNode,

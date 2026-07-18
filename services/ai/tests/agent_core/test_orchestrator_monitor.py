@@ -8,7 +8,8 @@ import pytest
 
 from app.agent_core.orchestrator.monitor import evaluate_step_result
 from app.agent_core.planning.schemas import PlanStep
-from app.agent_core.planning.state import CertaintyTag, NestedExecutionTrace, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import NestedExecutionTrace, StateEntry
 
 
 def _step(**overrides) -> PlanStep:

@@ -16,7 +16,8 @@ from app.agent_core.reasoning_blocks.base import BaseReasoningBlock, RunTelemetr
 from app.agent_core.reasoning_blocks.schemas import BaseReasoningBlockInput, BaseReasoningBlockOutput, LLMCallParameters
 from app.agent_core.roles.prompts import COMPOSITION_AGENT_V1, build_prompt_registry_with_roles
 from app.agent_core.subagents.schemas import SubagentContextPackage, SubagentResult
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import StateEntry
 
 _COMPOSITION_OUTPUT_SCHEMA_NAME = "composition_agent_output_v1"
 

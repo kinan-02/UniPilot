@@ -19,7 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.registry import ToolDescriptor
 from app.config import get_settings

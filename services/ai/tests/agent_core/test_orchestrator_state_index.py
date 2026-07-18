@@ -7,7 +7,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.agent_core.orchestrator.state_index import build_state_index, certainty_band
-from app.agent_core.planning.state import CertaintyTag, StateEntry
+from app.agent_core.certainty import CertaintyTag
+from app.agent_core.planning.state import StateEntry
 
 
 def _entry(step_id: str, confidence: float) -> StateEntry:
