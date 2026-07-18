@@ -1090,3 +1090,41 @@ gap needs either a stronger model or deeper work (a stricter anti-re-derivation 
 composition step that can't bind a record to a scalar slot), which is beyond "validate the rewrite."
 Net: the V2 thesis — grounding by substrate — is proven; correctness on the demo model is
 good-but-variance-bounded, not perfect.
+
+### 18.7 The structural fix — count information, not keys (round 7)
+
+Rounds 4–6 were prompt-tuning (decomposer wording, gate phrasing, constitution nudges) — the exact
+layered-design instinct this architecture rejects. The right question was structural: *what code
+bug lets the loop wander?* The answer: **the no-progress governor counted new fact KEYS, not new
+INFORMATION.** Every budget-exhaustion across the six rounds had one shape — the model re-derived a
+value it already held under a fresh key name (`select` the record, then its grade, then the record
+again), each looking like a new fact, so the governor never fired and the loop burned all 12 turns
+re-deriving, with nothing left to recover at the answer boundary. A prompt cannot fix that; it is a
+defect in how progress is measured.
+
+**Fix (structural):** facts are admitted by **derivation signature** — the *operation* (a selector's
+handle+path, a select spec, an expression), not the resulting value. Re-performing a derivation
+already done still stores the fact (so a `fact_ref` resolves) but is **not progress**, so the
+no-progress governor fires within a few turns, the loop concludes early *with budget to spare*, and
+the forced compose answers from the facts in hand. The signature keys on the operation, never the
+value, so two fields sharing a value (two booleans from one call) are never collapsed
+(`WorkingSet.admit_derivation`, unit-tested).
+
+**Round 7 — the falsifiable prediction held:**
+
+| case | outcome | turns | claims |
+|---|---|---|---|
+| credits_remaining | answered | 8 | 8/8 |
+| eligibility_00960211 | answered | 4 | 3/4 |
+| presupposition_conflict | answered | 9 | 5/5 |
+| offering_pattern | answered | 5 | 4/4 |
+| completed_courses | answered | 5 | 6/6 |
+| action_boundary | answered | 11 | 4/4 |
+
+**Zero `budget_exhausted` — all six cases concluded** (prior runs had 2–3 budget-outs).
+`presupposition_conflict` passed; correctness **5/6**. The single miss, `eligibility` at 3/4, is now
+a *concluded, grounded* answer that is merely terse (omits the prerequisite it satisfied) — an
+answer-verbosity nuance, not a robustness failure. The lesson generalizes the architecture: the
+wandering was retired by making re-derivation structurally a no-op, exactly as fabrication was
+retired by making an ungrounded number structurally unrepresentable. **Structural beat prompt,
+again.**
