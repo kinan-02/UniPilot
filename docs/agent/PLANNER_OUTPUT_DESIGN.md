@@ -1,5 +1,10 @@
 # Planner output design
 
+> **RETIRED (V1).** Describes the deleted V1 Planner (`agent_core/planning/`). The live system is the V2 agent loop in `services/ai`
+> — see [AGENT_ARCHITECTURE_V2.md](AGENT_ARCHITECTURE_V2.md). Code this document
+> describes was deleted in the V1 teardown (2026-07-18); it is kept for design
+> rationale only.
+
 **This document locks in the design of the Planner's input/output contract** — arrived at through a ground-up design discussion that deliberately set aside the current skeleton implementation (`services/ai/app/agent_core/planning/`, `orchestrator/`) and reasoned from first principles: given only Request Understanding's output as input, and given that the Orchestrator is the Planner's only consumer, what should the Planner actually produce? Like [`AGENT_VISION.md`](AGENT_VISION.md), it preserves the reasoning and the specific mistakes each decision was chosen to avoid, not just the conclusions — several of those mistakes were caught by re-examining an already-agreed design, not on the first pass.
 
 This document describes a **target design**, not the current implementation. Auditing the current skeleton against this document (and correcting it) is separate, later work.

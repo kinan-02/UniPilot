@@ -1,5 +1,10 @@
 # Calculation-Validation reasoning block & expression-tree implementation plan
 
+> **RETIRED (V1).** Describes the deleted V1 calculation-validation block; the expression_tree primitive it produced is still live. The live system is the V2 agent loop in `services/ai`
+> — see [AGENT_ARCHITECTURE_V2.md](AGENT_ARCHITECTURE_V2.md). Code this document
+> describes was deleted in the V1 teardown (2026-07-18); it is kept for design
+> rationale only.
+
 **Status: implemented** (commits `646c044` Part 1, `97c5663` Part 2 -- full unit test suite green,
 zero new regressions). Live-eval verification against the credits-remaining scenario (Part 3 step 4)
 is still outstanding. This document is the plan for two

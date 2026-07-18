@@ -1,5 +1,10 @@
 # Planner reasoning-block design
 
+> **RETIRED (V1).** Describes the deleted V1 Planner reasoning block. The live system is the V2 agent loop in `services/ai`
+> — see [AGENT_ARCHITECTURE_V2.md](AGENT_ARCHITECTURE_V2.md). Code this document
+> describes was deleted in the V1 teardown (2026-07-18); it is kept for design
+> rationale only.
+
 **This document locks in the design of the Planner's internal reasoning-block architecture** —
 how the Planner actually calls an LLM, not what it produces (that's `PLANNER_OUTPUT_DESIGN.md`,
 which this document assumes and builds on). Like that document, it preserves the reasoning and the

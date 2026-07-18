@@ -1,5 +1,10 @@
 # UniPilot Agent — current state
 
+> **RETIRED (V1).** Describes the retired `services/agent` conversational system and the `/agent` UI, both deleted. The live system is the V2 agent loop in `services/ai`
+> — see [AGENT_ARCHITECTURE_V2.md](AGENT_ARCHITECTURE_V2.md). Code this document
+> describes was deleted in the V1 teardown (2026-07-18); it is kept for design
+> rationale only.
+
 How the live agent system works (as of 2026-07-04). Full design contract: [`Agent_spec.md`](../../Agent_spec.md). RAG tuning: [`RAG_FINE_TUNING_SPEC.md`](RAG_FINE_TUNING_SPEC.md), results: [`RAG_EVALUATION_RESULTS.md`](RAG_EVALUATION_RESULTS.md).
 
 ## What it is

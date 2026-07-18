@@ -16,15 +16,14 @@ Simulation and async AI recommendation features are not implemented yet.
 |---------|------|-----------|
 | `web` | React SPA — **primary UI** (proxies `/api` to backend) | `WEB_PORT` (default **3000**) |
 | `api` | FastAPI REST API — the only backend clients ever talk to | `API_PORT` (default **8000**) |
-| `agent` | Internal conversational agent (intent, retrieval, reasoning, LLM workflows) behind `/agent/conversations/*` — `api` forwards message-sending to it and streams its SSE response straight through | none |
 | `transcript-parser` | Internal Technion transcript PDF extraction | none |
 | `data-engineering` | Internal staging / promotion CLI | none |
 | `worker` | Internal async job stub | none |
-| `ai` | Internal inference stub | none |
+| `ai` | Internal academic advisor — the V2 agent loop behind `/advisor/ask` (grounded reasoning over the catalog/wiki with certainty tagging) | none |
 | `mongo` | Persistence (`mongo_data` volume) | none |
 | `redis` | Rate limits / future queue | none |
 
-The `agent` service has its own direct read-only MongoDB access for catalog/student data plus full read+write on its own `agent_conversations`/`agent_messages`/`agent_runs`/`agent_steps`/`agent_tool_calls`/`agent_action_proposals` collections. It never performs the actual write for a proposed action (save a plan, commit a transcript import) — those stay in `api`'s existing confirm/reject flow. See [`docs/agent/CURRENT_STATE.md`](docs/agent/CURRENT_STATE.md) for the full request-flow diagram.
+The `ai` service has its own direct read-only MongoDB access for catalog/student data and reaches back into `api` for computation that stays there (`/internal/*`). It never performs the actual write for a proposed action (save a plan, commit a transcript import) — those stay in `api`'s existing confirm/reject flow. See [`docs/agent/AGENT_ARCHITECTURE_V2.md`](docs/agent/AGENT_ARCHITECTURE_V2.md) for the agent loop's design.
 
 Open the app at [http://localhost:3000](http://localhost:3000) after `docker compose up --build`. The web container proxies API calls to the internal `api` service.
 
@@ -108,13 +107,13 @@ pytest
 
 See [services/outlook-mcp/README.md](services/outlook-mcp/README.md) for OAuth setup and MCP tool usage.
 
-Agent service (internal; intent/retrieval/reasoning/LLM workflows):
+AI service (internal; the V2 agent loop, retrieval, tool primitives):
 
 ```bash
-cd services/agent
+cd services/ai
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest
+pytest            # live LLM tests are deselected by default (-m "not live")
 ```
 
 ### Full-stack verification (local)
@@ -205,9 +204,9 @@ The web UI defaults to **Hebrew** (RTL) with an in-app language switcher (Hebrew
 | Progress | `GET /graduation-progress`, `GET /graduation-progress/curriculum-graph` |
 | Plans | `POST /semester-plans/generate`, `POST /semester-plans/suggest-courses`, `POST /semester-plans/suggest-schedule`, `POST/PUT/DELETE /semester-plans`, `POST /semester-plans/:id/versions` |
 | Risks | `POST /academic-risks/analyze`, `GET /academic-risks`, `GET /academic-risks/:id` |
-| Agent | `POST/GET /agent/conversations`, `POST .../messages` (JSON + SSE), action confirm/reject |
+| Advisor | `POST /advisor/ask`, `POST /advisor/ask/stream` (SSE) — forwarded to the `ai` service's agent loop |
 
-Full contract: `docs/API_SPEC.md`. API version **1.0.0**. Agent overview: `docs/agent/CURRENT_STATE.md`.
+Full contract: `docs/API_SPEC.md`. API version **1.0.0**. Agent design: `docs/agent/AGENT_ARCHITECTURE_V2.md`.
 
 ### Quick start flow
 
