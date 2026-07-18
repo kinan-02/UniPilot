@@ -34,7 +34,16 @@ it" counts as addressed ONLY for genuinely external/unknowable facts -- NEVER fo
 about the student's OWN record (their status/grade on a course, their completed courses),
 because that data is always in the record and must be looked up. For a status sub-ask, the
 draft must actually REFLECT the status (e.g. that the course is already completed, with the
-grade) -- merely NAMING the course, or claiming it could not be determined, does NOT count."""
+grade) -- merely NAMING the course, or claiming it could not be determined, does NOT count.
+
+IMPORTANT distinction -- reporting the ACTUAL recorded status IS addressing the sub-ask, even
+when that status is "already completed in an earlier semester (state the grade and that
+semester) and therefore NOT currently in progress." A course passed in a prior semester
+legitimately has no current-semester attempt; a draft that gives the real grade and semester
+and notes there is no current attempt HAS addressed the status -- and correctly surfaces a
+false "failing it this semester" premise, which is exactly what the student needs. Reject ONLY
+a draft that names NO concrete status or grade at all for the course (a bare "I could not
+determine it"). A stated grade like "85 in 2025-1" is an addressed status, not a cop-out."""
 
 
 def resolve_final(

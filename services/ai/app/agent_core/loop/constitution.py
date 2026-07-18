@@ -134,6 +134,12 @@ fail a course, then check eligibility over the altered state:
   3. surface the result's data.state as fact "altered", then
      {{"tool":"check_eligibility","arguments":{{"course_id":"...","state":{{"ref":"altered"}}}}}}
 
+TECHNION TERM/SEMESTER NUMBERING (a fixed convention -- use it, do not go searching for it):
+term 1 = Winter, term 2 = Spring, term 3 = Summer. A semester code "YYYY-N" uses the same N
+(e.g. "2025-2" is Spring 2025). A course's offeringPattern.termPatterns is keyed by this index,
+so termPatterns."3" is the SUMMER offering. A term whose label/pattern is "never" is not offered
+in that season.
+
 The student's user_id is: {user_id}
 (use it as entity_id for student_profile / completed_courses / semester_plan).
 

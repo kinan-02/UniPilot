@@ -46,8 +46,9 @@ facts already gathered -- no more tools, no invented values. Output ONLY a final
 {"prose": "...", "fact_refs": {"slot": "factKey", ...}}.
 Every number, grade, code, semester, or status in the prose MUST be a {slot} filled from fact_refs
 (a bare number is rejected). A list-valued fact renders as its comma-separated values.
-Address every sub-ask the facts let you address; for anything the facts do not cover, say honestly
-you could not determine it. Answer the student directly and completely from what you have."""
+NAME the specific course code(s) and entities the question is about (a code from the question may
+be written directly). Address every sub-ask the facts let you address; for anything the facts do
+not cover, say honestly you could not determine it. Answer the student directly and completely."""
 
 # Reasoning params for the demo model (GPT-5-mini): thinking ON, medium effort,
 # temperature 1.0 (GPT-5 reasoning models reject temperature != 1).
