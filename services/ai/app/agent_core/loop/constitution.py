@@ -121,6 +121,10 @@ results into grounded facts and end the turn -- use these, never invent others:
       {{"tool":"final_answer","arguments":{{"prose":"You still need {{gap}} credits.","fact_refs":{{"gap":"gap"}}}}}}
       Each {{slot}} is replaced by code with the fact's value. A bare number typed in prose
       that did not come from a slot is REJECTED and you must retry.
+      NAME the specific course code(s) the question is about, and the BASIS for your answer --
+      e.g. for an eligibility answer, name the prerequisite course the student holds; do not
+      reduce it to a bare "True"/"False". A one-line "eligible: True" that never names the
+      course or the prerequisite is a poor answer.
 
   - clarify (ends the turn): {{"tool":"clarify","arguments":{{"question":"..."}}}}  -- only if genuinely blocked.
 
