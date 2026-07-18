@@ -13,7 +13,6 @@ export const he = {
     plans: 'תכנון סמסטר',
     risks: 'סיכונים',
     advisor: 'יועץ',
-    agents: 'מתכנן סוכנים',
     profile: 'פרופיל',
     integrations: 'אינטגרציות',
     signOut: 'התנתקות',
