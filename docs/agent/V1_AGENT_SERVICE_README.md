@@ -1,4 +1,12 @@
-# UniPilot Agent Service
+# UniPilot Agent Service (V1 — RETIRED)
+
+> **Historical reference only.** This is the design README of the retired
+> `services/agent` conversational-agent service, salvaged verbatim before that
+> service was deleted in the V1 teardown (2026-07-18). The live conversational
+> path is now the V2 agent loop in `services/ai` — see
+> [AGENT_ARCHITECTURE_V2.md](AGENT_ARCHITECTURE_V2.md). Nothing described below
+> is running; paths like `services/agent/...` and the `/agent` page no longer
+> exist. Kept for the design rationale it records.
 
 Internal-only conversational agent service: intent classification, context
 retrieval (Mongo + wiki RAG), the shared LLM reasoning runtime, the Task
