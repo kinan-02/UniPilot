@@ -97,6 +97,12 @@ services/agent/data/cache/wiki_embedding_index.json
 services/agent/data/cache/wiki_embedding_index.compact.pkl.gz
 services/agent/data/cache/wiki_embedding_index.meta.json
 services/agent/data/cache/backups/
+
+# services/ai never had these rules, which is why its copy WAS committed --
+# a 47MB pickle now permanently in history (b90865a). Wiki vectors live in
+# Pinecone since dc1a432, so nothing should write here again; the pattern is
+# kept broad so a regenerated cache cannot be committed by accident.
+services/*/data/cache/
 .mcp.json
 CLAUDE.md
 .claude-flow
