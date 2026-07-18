@@ -103,6 +103,9 @@ class Terminal:
     kind: str  # "answered" | "clarified"
     text: str
     ungrounded: list[str]
+    # The refs the accepted answer stood on, carried so the readability pass can
+    # prove its rewrite dropped none of them.
+    fact_refs: dict[str, Any] = field(default_factory=dict)
 
 
 def summarize_value(value: Any) -> str:

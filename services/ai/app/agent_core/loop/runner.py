@@ -19,9 +19,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.agent_core.loop.answer_boundary import completeness_gate, resolve_final
+from app.agent_core.loop.answer_boundary import completeness_gate, polish_answer, resolve_final
 from app.agent_core.loop.arg_refs import resolve_arg_refs
 from app.agent_core.loop.constitution import build_constitution, build_tool_catalog
+from app.agent_core.loop.course_names import course_display_name
 from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface, project_mapped_records
 from app.agent_core.loop.front_door import decompose
 from app.agent_core.loop.working_set import Fact, Terminal, WorkingSet, render_working_set, summarize_value
@@ -41,6 +42,23 @@ NO_PROGRESS_LIMIT = 3
 # we stop letting the model re-try and force a conclusion. The live eval's
 # wanderers spent their whole budget re-rejecting their own drafts (§16 follow-up).
 REJECTION_LIMIT = 4
+# Attempts at the exhaustion compose. The second exists only for a model that
+# returns EMPTY prose -- observed six times in the 2026-07-18 live run, once
+# costing a correct grounded answer. An ungrounded compose does not retry.
+_FORCED_COMPOSE_ATTEMPTS = 2
+# The readability pass (§9.3) is built, guarded, and OFF. It fails closed -- every
+# guard discards the rewrite and ships the accepted draft -- so enabling it cannot
+# produce a wrong answer. What is unproven is its VALUE: across the 2026-07-18
+# live runs it damaged an answer in each one (stripped a certainty hedge, dropped
+# the course being discussed twice, duplicated a list, leaked "predicted_pattern
+# with confidence 0.95" to a student), every time breaking a rule its own prompt
+# stated. Four guards now catch those, but the eval cannot SEE phrasing damage --
+# grade_filter_above_90 scored 8/8 while emitting a duplicated list -- so a clean
+# scorecard is not evidence the pass is behaving. It also costs ~+1 LLM call per
+# answer and ~+20% wall clock. Turn this on once the eval scores readability
+# (duplicate phrases, entity retention, vocabulary, hedge presence); until then it
+# would be a feature whose regressions only surface when a human reads the output.
+POLISH_ENABLED = False
 TURN_TIMEOUT_S = 90.0
 # Sub-loops (§6) exist for CONTEXT ISOLATION only -- a subtask whose raw material
 # would flood the parent's reasoning trace. Depth is capped in code to forbid
@@ -324,7 +342,7 @@ def _apply_meta_call(ws: WorkingSet, call: dict[str, Any]) -> tuple[Terminal | N
             ws.observe(f"final_answer REJECTED: numerals {ungrounded} trace to no fact; slot-fill or drop them.")
             call["_rejected_ungrounded"] = ungrounded
             return None, 0
-        return Terminal("answered", rendered, ungrounded), 0
+        return Terminal("answered", rendered, ungrounded, args.get("fact_refs") or {}), 0
     return None, 0
 
 
@@ -370,12 +388,31 @@ async def _process_turn(
     return None, progress, audit
 
 
+def _readable_value(value: str) -> str:
+    """`00940224` -> `Data Structures and Algorithms (00940224)`.
+
+    The floor renders fact values itself rather than going through
+    `resolve_final`, so it would otherwise be the one user-visible answer still
+    shipping bare codes -- which is exactly what it did ship.
+    """
+    name = course_display_name(value)
+    return f"{name} ({value})" if name else value
+
+
+def _join_sub_asks(sub_asks: list[str]) -> str:
+    """Sub-asks are phrased as questions, so a naive join + '.' rendered '?.'."""
+    return "; ".join(s.rstrip(" .?!") for s in sub_asks)
+
+
 def _punt_message(ws: WorkingSet) -> str:
     """Last-resort honest conclusion when even a forced compose can't ground an
-    answer: names the open sub-asks and points to the secretariat, never guesses."""
+    answer: names the open sub-asks and points to the secretariat, never guesses.
+
+    Here the sub-asks really ARE open -- no fact was grounded at all -- which is
+    what separates this from the assembler floor below."""
     parts = ["I wasn't able to fully resolve your question within my working limits."]
     if ws.sub_asks:
-        parts.append("Open items: " + "; ".join(ws.sub_asks) + ".")
+        parts.append("Open items: " + _join_sub_asks(ws.sub_asks) + ".")
     parts.append("Please check with your faculty secretariat for a definitive answer.")
     return " ".join(parts)
 
@@ -394,29 +431,48 @@ def _assemble_from_facts(ws: WorkingSet) -> str | None:
         if isinstance(value, list):
             if not value or isinstance(value[0], (dict, list)):
                 continue
-            rendered = ", ".join(str(item) for item in value)
+            rendered = ", ".join(_readable_value(str(item)) for item in value)
         else:
-            rendered = str(value)
+            rendered = _readable_value(str(value))
         lines.append(f"- {key}: {rendered}")
     if not lines:
         return None
-    parts = ["I couldn't fully compose an answer, but here is what I did determine from your record:"]
+    # Framing matters here, because these facts are often the COMPLETE answer.
+    # The floor cannot tell -- the gate that decides coverage is an LLM call and
+    # the budget is spent -- so it states what it determined and flags the
+    # coverage it could not confirm. It must not announce a failure it cannot
+    # establish: the live run listed the three correct course codes and then
+    # declared that same question "Still open", sending the user to the
+    # secretariat for an answer sitting in the line above.
+    parts = ["Here is what I determined from your record:"]
     parts.extend(lines)
     if ws.sub_asks:
-        parts.append("Still open: " + "; ".join(ws.sub_asks) + ". Please check with your faculty secretariat.")
+        parts.append(
+            "I ran out of working budget before I could confirm this fully covers: "
+            + _join_sub_asks(ws.sub_asks)
+            + ". If anything is missing, your faculty secretariat can confirm it."
+        )
     return "\n".join(parts)
 
 
 async def _forced_compose(
     adapter: ChatLLMAdapter, ws: WorkingSet, *, temperature: float, reasoning_effort: str
-) -> str | None:
-    """Graceful degradation (§7), one bounded LLM call: compose a final answer
-    from ONLY the facts already grounded. The live eval showed the loop often
-    HAD the answer's facts (a selected grade, an eligibility result) but wandered
-    out of budget before composing -- this recovers those. Runs the same grounding
-    backstop, so a compose that slips an ungrounded number is rejected (-> punt)."""
+) -> tuple[str | None, int]:
+    """Graceful degradation (§7): compose a final answer from ONLY the facts
+    already grounded, returning `(answer, llm_calls_spent)`. The live eval showed
+    the loop often HAD the answer's facts (a selected grade, an eligibility
+    result) but wandered out of budget before composing -- this recovers those.
+    Runs the same grounding backstop, so a compose that slips an ungrounded
+    number is rejected (-> floor).
+
+    Retries ONCE, and only on empty prose. In the 2026-07-18 run the model
+    returned well-formed but empty responses on six turns, and a single empty
+    compose was enough to discard a correct, fully grounded answer. An UNGROUNDED
+    compose is not retried: the backstop caught an attempt to fabricate, and
+    asking again is just another roll of the same dice.
+    """
     if not ws.facts:
-        return None
+        return None, 0
     facts_desc = "\n".join(
         f"  {key} = {summarize_value(fact.value)} (basis: {fact.basis})" for key, fact in ws.facts.items()
     )
@@ -426,22 +482,26 @@ async def _forced_compose(
         f"GROUNDED FACTS (the ONLY values you may use):\n{facts_desc}\n\n"
         "Emit the final_answer JSON now."
     )
-    try:
-        out = await adapter.complete_json(
-            system_prompt=_FORCED_COMPOSE_SYSTEM,
-            user_prompt=user_prompt,
-            temperature=temperature,
-            thinking_enabled=True,
-            reasoning_effort=reasoning_effort,
-            timeout=TURN_TIMEOUT_S,
-        )
-    except LLMAdapterError:
-        return None
-    prose = str(out.get("prose") or "")
-    rendered, ungrounded = resolve_final(ws.question, ws.facts, prose, out.get("fact_refs") or {})
-    if prose and not ungrounded:
-        return rendered
-    return None
+    calls = 0
+    for _ in range(_FORCED_COMPOSE_ATTEMPTS):
+        calls += 1
+        try:
+            out = await adapter.complete_json(
+                system_prompt=_FORCED_COMPOSE_SYSTEM,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                thinking_enabled=True,
+                reasoning_effort=reasoning_effort,
+                timeout=TURN_TIMEOUT_S,
+            )
+        except LLMAdapterError:
+            return None, calls
+        prose = str(out.get("prose") or "")
+        if not prose:
+            continue  # said nothing at all -- worth one more ask
+        rendered, ungrounded = resolve_final(ws.question, ws.facts, prose, out.get("fact_refs") or {})
+        return (rendered if not ungrounded else None), calls
+    return None, calls
 
 
 def _normalize_output_facts(spec: Any) -> list[str]:
@@ -523,7 +583,7 @@ async def _run_subtask(
     )
     child_ws.facts = seeded
     child_ws.sub_asks = [objective]
-    child_result = await _drive(child_ws, ctx, depth + 1, run_completeness=False)
+    child_result = await _drive(child_ws, ctx, depth + 1, run_completeness=False, run_polish=False)
     parent_ws.observe(f"sub-loop [{objective[:60]}] -> {child_result.outcome} in {child_result.turns} turn(s)")
 
     promoted = 0
@@ -545,14 +605,20 @@ async def _run_subtask(
 
 
 async def _drive(
-    ws: WorkingSet, ctx: _LoopContext, depth: int, *, run_completeness: bool
+    ws: WorkingSet, ctx: _LoopContext, depth: int, *, run_completeness: bool, run_polish: bool
 ) -> AgentLoopResult:
     """The reasoning loop core (§4, §7), shared by the root loop and every
     sub-loop. Runs turns until a terminal or exhaustion, governed against
     wandering, then degrades gracefully. Termination draws down the SHARED budget
     (`ctx.budget`), so a sub-loop's turns debit the parent's. `run_completeness`
     is off for sub-loops -- their completeness is structural (did they produce the
-    requested output facts), checked by the promotion step in `_run_subtask`."""
+    requested output facts), checked by the promotion step in `_run_subtask`.
+
+    `run_polish` is off for sub-loops too, and for a different reason: a child's
+    answer is not read by a human, it is parsed for the facts it promotes to the
+    parent. Rewriting it for readability would spend a call making a machine-read
+    string prettier, and give a rewrite the chance to disturb what the parent
+    reads."""
     transcript: list[dict[str, Any]] = []
     audit: list[ToolInvocationRecord] = []
     started = time.monotonic()
@@ -612,8 +678,22 @@ async def _drive(
                         continue
                     ws.observe(f"answer-rejection limit reached ({REJECTION_LIMIT}); composing from grounded facts.")
                     break
+            # Readability pass, LAST: the answer is grounded and complete, and
+            # only its phrasing is left. Runs after the completeness gate so a
+            # draft that gets rejected is never polished, and its result is
+            # re-validated -- a rewrite that fabricates or drops a fact is
+            # discarded and this answer ships unchanged.
+            answer_text = terminal.text
+            if terminal.kind == "answered" and run_polish:
+                ctx.budget.llm_calls += 1
+                polished = await polish_answer(
+                    ctx.adapter, ws.question, ws.facts, terminal.text, terminal.fact_refs,
+                    temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort,
+                )
+                transcript.append({"turn": turn, "polish": {"applied": polished is not None}})
+                answer_text = polished or terminal.text
             return AgentLoopResult(
-                terminal.kind, terminal.text, terminal.ungrounded, ws.sub_asks, ws.facts,
+                terminal.kind, answer_text, terminal.ungrounded, ws.sub_asks, ws.facts,
                 audit, turn, ctx.budget.llm_calls, time.monotonic() - started, transcript,
             )
 
@@ -631,11 +711,22 @@ async def _drive(
         # and-correct (#1): re-orient on a wasted turn rather than only counting, so
         # the model breaks a repeat instead of spinning to exhaustion.
         if progress == 0:
-            ws.observe(
-                "that turn added NO new information -- do something DIFFERENT next: drill an object "
-                "into a scalar leaf, `select` a field, `compute` over facts you hold, or compose the "
-                "final_answer now from those facts."
-            )
+            # An EMPTY action and an unproductive one are different failures, and
+            # only one of them is the model's own blind spot: told to "do something
+            # DIFFERENT", a model that emitted nothing has nothing to differ from.
+            # Six such turns occurred in the 2026-07-18 run.
+            if not calls:
+                ws.observe(
+                    "your last turn returned no tool_calls at all -- nothing ran, and no time is "
+                    "left to waste. Emit ONE JSON object with a NON-EMPTY tool_calls array, or "
+                    "compose the final_answer now from the facts you already hold."
+                )
+            else:
+                ws.observe(
+                    "that turn added NO new information -- do something DIFFERENT next: drill an object "
+                    "into a scalar leaf, `select` a field, `compute` over facts you hold, or compose the "
+                    "final_answer now from those facts."
+                )
         no_progress = no_progress + 1 if progress == 0 else 0
         if no_progress >= NO_PROGRESS_LIMIT:
             ws.observe(f"no-progress limit reached ({NO_PROGRESS_LIMIT} turns); concluding.")
@@ -646,8 +737,15 @@ async def _drive(
     # turns to say it.
     composed: str | None = None
     if ws.facts:
-        ctx.budget.llm_calls += 1
-        composed = await _forced_compose(ctx.adapter, ws, temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort)
+        composed, compose_calls = await _forced_compose(
+            ctx.adapter, ws, temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort
+        )
+        ctx.budget.llm_calls += compose_calls
+        # Without this the compose is invisible: a run that silently dropped a
+        # grounded answer read exactly like one that never had facts to compose.
+        transcript.append(
+            {"turn": turn, "forced_compose": {"attempts": compose_calls, "composed": composed is not None}}
+        )
     if composed is not None:
         # §9.2: even the exhaustion answer is checked for completeness -- but here
         # we cannot loop to close a gap (the budget is spent), so we ship the
@@ -712,7 +810,7 @@ async def run_agent_loop(
             [], [], {}, [], 0, budget.llm_calls, time.monotonic() - started, [],
         )
     ws.sub_asks = front_door.sub_asks
-    return await _drive(ws, ctx, 0, run_completeness=True)
+    return await _drive(ws, ctx, 0, run_completeness=True, run_polish=POLISH_ENABLED)
 
 
 __all__ = [

@@ -67,7 +67,12 @@ class _FakeAdapter:
         completeness: list[dict[str, Any]] | None = None,
         compose: dict[str, Any] | None = None,
         front_door: dict[str, Any] | None = None,
+        polish: dict[str, Any] | None = None,
     ) -> None:
+        # Default: the readability pass declines (empty response -> the accepted
+        # answer ships unchanged), so tests that are not about phrasing assert
+        # the composed answer exactly as before.
+        self._polish = polish
         self._turns = list(turns)
         self._sub_asks = sub_asks
         self._completeness = list(completeness or [])
@@ -75,6 +80,11 @@ class _FakeAdapter:
         self._front_door = front_door
         self.gate_calls = 0
         self.compose_calls = 0
+        self.polish_calls = 0
+        # Loop-turn user prompts, so a test can assert what an observation
+        # actually told the model (observations only reach it via the next
+        # turn's rendered working set).
+        self.turn_prompts: list[str] = []
 
     async def complete_json(self, *, system_prompt: str, user_prompt: str, **kwargs: Any) -> dict[str, Any]:
         if "triage and decompose" in system_prompt:
@@ -82,10 +92,19 @@ class _FakeAdapter:
         elif "verify whether a DRAFT answer" in system_prompt:
             self.gate_calls += 1
             resp = self._completeness.pop(0) if self._completeness else {"unaddressed": []}
+        elif "rewrite an academic advisor" in system_prompt:
+            self.polish_calls += 1
+            resp = self._polish if self._polish is not None else {}
         elif "OUT of tool budget" in system_prompt:
             self.compose_calls += 1
-            resp = self._compose or {"prose": "", "fact_refs": {}}
+            # A list drives successive compose attempts (retry cases); a dict is
+            # returned for every attempt, as before.
+            if isinstance(self._compose, list):
+                resp = self._compose.pop(0) if self._compose else {"prose": "", "fact_refs": {}}
+            else:
+                resp = self._compose or {"prose": "", "fact_refs": {}}
         else:
+            self.turn_prompts.append(user_prompt)
             resp = self._turns.pop(0)
         raw = kwargs.get("raw_model_text_out")
         if raw is not None:
@@ -100,6 +119,7 @@ def _install(monkeypatch, adapter: _FakeAdapter) -> None:
 _FETCH = {"tool": "get_entity", "arguments": {"entity_type": "completed_courses", "entity_id": "u1"}}
 _SURFACE = {"tool": "surface_fact", "arguments": {"key": "completed", "from": "call_1", "path": "data.completedCourses"}}
 _COMPUTE = {"tool": "compute", "arguments": {"key": "earned", "expression": {"op": "sum", "of": {"ref": "completed"}, "field": "creditsEarned"}}}
+_SELECT_CODES = {"tool": "select", "arguments": {"key": "codes", "from_fact": "completed", "field": "courseNumber"}}
 _ANSWER = {"tool": "final_answer", "arguments": {"prose": "You have earned {earned} credits.", "fact_refs": {"earned": "earned"}}}
 
 
@@ -207,7 +227,9 @@ async def test_what_if_chain_threads_state_via_arg_refs(monkeypatch):
     # The tool received the RESOLVED altered state (grounded object), not a {"ref": ...}.
     assert received["state"] == {"completedCourses": [{**c, "status": "failed"} for c in _COMPLETED]}
     assert result.facts["eligible"].value is False
-    assert result.answer == "Eligibility after failing 00940224: False."
+    # The FACT stays a real bool; only its rendering is worded ("the student is
+    # True" reached a student in the live eval).
+    assert result.answer == "Eligibility after failing 00940224: no."
 
 
 _EMPTY = {"thought": "stuck", "tool_calls": []}
@@ -252,6 +274,248 @@ async def test_assembler_floor_ships_grounded_facts_when_compose_fails(monkeypat
     assert "9.5" in result.answer  # the grounded 'earned' fact, shipped by the floor
     assert "determine" in result.answer  # the assembler preamble, not the bare punt
     assert result.ungrounded_numbers == []
+
+
+# -- empty-action handling and compose resilience ------------------------------
+#
+# The 2026-07-18 live eval lost a CORRECT answer this way. `grade_filter_above_90`
+# ran `select where grade > 90` on turn 2 and held exactly the right three codes.
+# Turns 3-5 then came back as well-formed JSON with an EMPTY tool_calls array --
+# no adapter error, nothing to record -- the no-progress governor fired correctly
+# at its limit of 3, and then the single forced compose also returned empty prose,
+# so the whole grounded answer was discarded for the floor's "I couldn't fully
+# compose an answer". Six such empty turns occurred across the 11-case run.
+
+
+async def test_an_empty_action_is_named_rather_than_read_as_an_unproductive_turn(monkeypatch):
+    """The generic no-progress nudge tells the model to "do something DIFFERENT",
+    which presumes it acted. A turn that emitted NO tool_calls needs to be told
+    that -- it is the one thing the model cannot see about its own last output."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["earned?"],
+        compose={"prose": "You earned {earned}.", "fact_refs": {"earned": "earned"}},
+    )
+    _install(monkeypatch, adapter)
+
+    await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    prompts = " ".join(adapter.turn_prompts)
+    assert "no tool_calls" in prompts
+
+
+async def test_forced_compose_retries_once_when_the_model_returns_nothing(monkeypatch):
+    """One empty response must not cost a grounded answer the loop is holding."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["earned?"],
+        compose=[
+            {"prose": "", "fact_refs": {}},  # the observed degenerate response
+            {"prose": "You have earned {earned} credits.", "fact_refs": {"earned": "earned"}},
+        ],
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.outcome == "answered"
+    assert result.answer == "You have earned 9.5 credits."
+    assert adapter.compose_calls == 2
+
+
+async def test_ungrounded_compose_is_not_retried(monkeypatch):
+    """Retry exists for a model that said NOTHING. A compose that slipped an
+    ungrounded number was correctly rejected by the backstop -- re-rolling it
+    would just be another chance to fabricate, so it falls straight to the floor."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["earned?"],
+        compose={"prose": "You have earned 999 credits.", "fact_refs": {}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.outcome == "budget_exhausted"
+    assert adapter.compose_calls == 1
+
+
+async def test_a_failed_forced_compose_leaves_a_trace(monkeypatch):
+    """The forced compose ran, produced nothing, and left no record -- so a run
+    that silently dropped its answer looked identical to one that never tried."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["earned?"],
+        compose={"prose": "", "fact_refs": {}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert any(step.get("forced_compose") for step in result.transcript)
+
+
+async def test_polish_is_off_by_default(monkeypatch):
+    """Shipped OFF: it fails closed, so it cannot produce a wrong answer, but it
+    damaged an answer in every live run it was in and the eval cannot see
+    phrasing damage. Enable it once readability is scored, not before."""
+    assert runner.POLISH_ENABLED is False
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               {"thought": "answer", "tool_calls": [_ANSWER]}],
+        sub_asks=["earned?"],
+        polish={"prose": "Rewritten {e}.", "fact_refs": {"e": "earned"}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.answer == "You have earned 9.5 credits."
+    assert adapter.polish_calls == 0
+
+
+async def test_polish_rewrites_the_shipped_answer(monkeypatch):
+    monkeypatch.setattr(runner, "POLISH_ENABLED", True)
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               {"thought": "answer", "tool_calls": [
+                   {"tool": "final_answer",
+                    "arguments": {"prose": "earned={earned}", "fact_refs": {"earned": "earned"}}}]}],
+        sub_asks=["earned?"],
+        polish={"prose": "You have earned {e} credits so far.", "fact_refs": {"e": "earned"}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.answer == "You have earned 9.5 credits so far."
+    assert adapter.polish_calls == 1
+    assert any(step.get("polish", {}).get("applied") for step in result.transcript)
+
+
+async def test_a_polish_that_fabricates_never_reaches_the_user(monkeypatch):
+    monkeypatch.setattr(runner, "POLISH_ENABLED", True)
+    """End-to-end version of the safety contract: the rewrite types a number that
+    traces to no fact, so the ACCEPTED draft ships instead. Grounding is not
+    negotiable just because the rewrite reads better."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               {"thought": "answer", "tool_calls": [
+                   {"tool": "final_answer",
+                    "arguments": {"prose": "earned={earned}", "fact_refs": {"earned": "earned"}}}]}],
+        sub_asks=["earned?"],
+        polish={"prose": "You have earned 42 credits and need 113 more.", "fact_refs": {}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.answer == "earned=9.5"
+    assert "42" not in result.answer
+    assert result.ungrounded_numbers == []
+    assert any(step.get("polish") == {"applied": False} for step in result.transcript)
+
+
+async def test_sub_loops_are_not_polished(monkeypatch):
+    monkeypatch.setattr(runner, "POLISH_ENABLED", True)
+    """A child's answer is parsed for promoted facts, not read by a human."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               {"thought": "answer", "tool_calls": [
+                   {"tool": "final_answer",
+                    "arguments": {"prose": "earned={earned}", "fact_refs": {"earned": "earned"}}}]}],
+        sub_asks=["earned?"],
+    )
+    _install(monkeypatch, adapter)
+
+    await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert adapter.polish_calls == 1  # the root answer only
+
+
+async def test_floor_names_course_codes_like_every_other_answer(monkeypatch):
+    """The floor renders fact values directly instead of going through
+    `resolve_final`, so it missed the code->name enrichment -- and the floor is
+    exactly what shipped "above_90_codes: 00940704, 00940219, 03240033" to a
+    user. A degraded answer is still an answer someone reads."""
+    import app.agent_core.loop.runner as runner_module
+
+    monkeypatch.setattr(
+        runner_module, "course_display_name", lambda code: {"00940224": "Data Structures"}.get(code)
+    )
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "select", "tool_calls": [_SELECT_CODES]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["which courses?"],
+        compose={"prose": "", "fact_refs": {}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("Which courses have I completed?", "u1", _stub_registry())
+
+    assert "Data Structures (00940224)" in result.answer
+
+
+async def test_floor_does_not_declare_an_answered_sub_ask_still_open(monkeypatch):
+    """In the live run the floor shipped the three correct course codes and then
+    said "Still open: which courses did I score above 90 in?" -- it had just
+    answered that. The floor cannot know whether its facts cover a sub-ask (the
+    gate that decides is an LLM call, and the budget is gone), so it must not
+    assert they don't. Uncertainty about coverage is honest; claimed failure is
+    not, and it tells a user to go to the secretariat for what they already have."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["How many credits have I earned?"],
+        compose={"prose": "", "fact_refs": {}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert "9.5" in result.answer
+    assert "Still open" not in result.answer
+    assert "couldn't fully compose" not in result.answer
+
+
+async def test_floor_and_punt_do_not_double_punctuate_a_sub_ask(monkeypatch):
+    """Sub-asks are questions, so joining them and appending '.' produced '?.'."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "fetch", "tool_calls": [_FETCH]},
+               {"thought": "surface", "tool_calls": [_SURFACE]},
+               {"thought": "compute", "tool_calls": [_COMPUTE]},
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY],
+        sub_asks=["How many credits have I earned?"],
+        compose={"prose": "", "fact_refs": {}},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert "?." not in result.answer
 
 
 async def test_punt_when_no_facts_were_grounded_at_all(monkeypatch):

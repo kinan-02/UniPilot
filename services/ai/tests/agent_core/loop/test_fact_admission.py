@@ -279,6 +279,20 @@ def test_grain_hint_on_record_list_points_to_select():
     assert "select" in hint
 
 
+def test_grain_hint_does_not_forbid_passing_an_object_to_a_tool():
+    """The hint exists for objects headed for an ANSWER, but it fired on every
+    dict and flatly said "do NOT re-surface the object itself". In the live
+    presupposition_conflict case the object was a mutated STATE, whose whole
+    point is to be handed to `check_eligibility(state={"ref": ...})` -- so the
+    nudge forbade the one correct move and the loop spun for five turns trying
+    other shapes. Scalar-leaf guidance is right for answers; it must not read as
+    a ban on the legitimate tool-input use."""
+    hint = _grain_hint("data.state", {"completedCourses": [{"courseNumber": "00940224"}]})
+    assert "OBJECT" in hint
+    assert "do NOT re-surface" not in hint
+    assert "tool" in hint  # names passing it on as an input
+
+
 def test_grain_hint_silent_for_answer_usable_values():
     assert _grain_hint("data.x", ["00940224", "00960211"]) == ""  # list of scalars slots fine
     assert _grain_hint("data.x", 92.5) == ""  # scalar

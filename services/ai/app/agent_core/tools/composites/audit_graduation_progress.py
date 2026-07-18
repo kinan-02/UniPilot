@@ -112,7 +112,10 @@ async def run_audit_graduation_progress(payload: AuditGraduationProgressInput) -
     completed_required = sorted(set(required_course_ids) & completed)
     remaining_required = sorted(set(required_course_ids) - completed)
 
-    warnings: list[str] = list(track_result.warnings)
+    # This audit is course-count based (see the module docstring), so a track page
+    # that states no credit total takes nothing away from it -- carrying that
+    # warning here would only cast doubt on a complete, correct result.
+    warnings: list[str] = [w for w in track_result.warnings if w != "total_credits_not_parsed"]
 
     facts = {
         "requiredCourses": [

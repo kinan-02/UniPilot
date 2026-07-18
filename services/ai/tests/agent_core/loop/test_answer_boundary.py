@@ -1,9 +1,11 @@
-"""Unit tests for the grounding backstop (resolve_final, §4.2/§9.1). No LLM."""
+"""Unit tests for the grounding backstop (resolve_final, §4.2/§9.1) and the
+readability pass that runs behind it. No real LLM."""
 
 from __future__ import annotations
 
-from app.agent_core.loop.answer_boundary import resolve_final
+from app.agent_core.loop.answer_boundary import polish_answer, resolve_final
 from app.agent_core.loop.working_set import Fact
+from app.agent_core.reasoning.llm_adapter import LLMAdapterError
 
 
 def _facts(**kw: object) -> dict[str, Fact]:
@@ -62,7 +64,11 @@ def test_non_scalar_record_slot_is_rejected():
     assert any("dict with keys" in p and "grade" in p for p in problems)
 
 
-def test_list_of_scalars_slot_renders_comma_separated():
+def test_list_of_scalars_slot_renders_comma_separated(monkeypatch):
+    """Course codes now render with their names (see the readability tests
+    below), so this pins the comma-joining itself with the lookup stubbed --
+    otherwise the assertion silently depends on the real catalog's contents."""
+    _named(monkeypatch, {})
     rendered, problems = resolve_final(
         "Which courses have I completed?",
         _facts(codes=["00940224", "00960211", "00110001"]),
@@ -91,6 +97,337 @@ def test_list_of_records_slot_is_still_rejected():
         {"recs": "recs"},
     )
     assert any("list of 1 records" in p for p in problems)
+
+
+def test_record_list_rejection_names_projections_the_loop_already_holds():
+    """The 2026-07-18 post-fix run lost `completed_courses` here. Turn 3 had
+    already run `select ... field=courseNumber` and held the 17 codes; turns 5
+    and 6 then slotted the RECORD list, were told twice to "select a field to
+    enumerate them", and gave up -- advice to do the thing it had done three
+    turns earlier. The rejection can see the working set, so it should say which
+    facts are ready to slot instead of describing the move abstractly."""
+    facts = _facts(
+        recs=[{"courseNumber": "00940224"}, {"courseNumber": "00940704"}],
+        course_numbers=["00940224", "00940704"],
+        grades=[85, 95],
+    )
+    _, problems = resolve_final("q", facts, "Your courses: {recs}.", {"recs": "recs"})
+
+    slot_problem = next(p for p in problems if p.startswith("unresolved_slot:recs"))
+    assert "course_numbers" in slot_problem
+    assert "grades" in slot_problem
+
+
+def test_record_list_rejection_does_not_name_a_mismatched_list():
+    """Only projections OF this list help. A list of a different length is some
+    other fact, and naming it would send the model to the wrong data."""
+    facts = _facts(
+        recs=[{"courseNumber": "00940224"}, {"courseNumber": "00940704"}],
+        unrelated=["a", "b", "c"],
+    )
+    _, problems = resolve_final("q", facts, "Your courses: {recs}.", {"recs": "recs"})
+
+    slot_problem = next(p for p in problems if p.startswith("unresolved_slot:recs"))
+    assert "unrelated" not in slot_problem
+    assert "select a field" in slot_problem  # falls back to the generic recovery
+
+
+def test_record_list_rejection_keeps_generic_advice_when_nothing_is_ready():
+    facts = _facts(recs=[{"courseNumber": "00940224"}])
+    _, problems = resolve_final("q", facts, "Your courses: {recs}.", {"recs": "recs"})
+
+    assert any("select a field to enumerate them" in p for p in problems)
+
+
+# -- polish pass ---------------------------------------------------------------
+#
+# A readability pass over an answer that already passed grounding AND the
+# completeness gate. It re-emits the SAME {prose, fact_refs} shape and is
+# re-validated through resolve_final, so it cannot type a number; and it must
+# keep every fact the accepted draft referenced, so it cannot drop one to read
+# more smoothly. Anything else about it -> discard, ship the original. A free
+# rewrite here would be a hidden repair loop: able to make a hedged, correct
+# answer sound confident, with nothing downstream to catch it.
+
+
+class _PolishAdapter:
+    def __init__(self, response: object) -> None:
+        self._response = response
+        self.calls = 0
+
+    async def complete_json(self, **_kw: object) -> object:
+        self.calls += 1
+        if isinstance(self._response, Exception):
+            raise self._response
+        return self._response
+
+
+async def test_polish_replaces_the_draft_when_it_stays_grounded(monkeypatch):
+    _named(monkeypatch, {"00940224": "Data Structures"})
+    adapter = _PolishAdapter({"prose": "You are eligible for {c}.", "fact_refs": {"c": "course"}})
+    out = await polish_answer(
+        adapter, "Am I eligible?", _facts(course="00940224"),
+        "Eligibility: yes.", {"x": "course"}, temperature=0.0, reasoning_effort="low",
+    )
+    assert out == "You are eligible for Data Structures (00940224)."
+
+
+async def test_polish_that_invents_a_number_is_discarded(monkeypatch):
+    """The whole point: an ungrounded numeral in the rewrite must not reach the
+    user, and must not be repaired -- the accepted draft is already correct."""
+    _named(monkeypatch, {})
+    adapter = _PolishAdapter({"prose": "You need 42 more credits.", "fact_refs": {}})
+    out = await polish_answer(
+        adapter, "q", _facts(course="00940224"),
+        "Eligibility: yes.", {"x": "course"}, temperature=0.0, reasoning_effort="low",
+    )
+    assert out is None
+
+
+async def test_polish_that_drops_a_fact_is_discarded(monkeypatch):
+    """Dropping a referenced fact makes the answer read better and say less --
+    a deterministic set check, so no second completeness call is needed."""
+    _named(monkeypatch, {})
+    adapter = _PolishAdapter({"prose": "You are eligible.", "fact_refs": {}})
+    out = await polish_answer(
+        adapter, "q", _facts(course="00940224", grade=85),
+        "You got 85 in 00940224.", {"a": "course", "b": "grade"},
+        temperature=0.0, reasoning_effort="low",
+    )
+    assert out is None
+
+
+async def test_polish_may_add_a_fact_it_did_not_have_to_drop(monkeypatch):
+    """Superset, not equality -- mentioning one more grounded fact is fine."""
+    _named(monkeypatch, {"00940224": "Data Structures"})
+    adapter = _PolishAdapter(
+        {"prose": "You scored {g} in {c}.", "fact_refs": {"g": "grade", "c": "course"}}
+    )
+    out = await polish_answer(
+        adapter, "q", _facts(course="00940224", grade=85),
+        "00940224: 85.", {"a": "course"}, temperature=0.0, reasoning_effort="low",
+    )
+    assert out == "You scored 85 in Data Structures (00940224)."
+
+
+async def test_polish_cannot_strip_the_certainty_hedge(monkeypatch):
+    """Live-observed regression, 2026-07-18 run 3. "…3 recorded semesters.
+    On certainty: 3 -- predicted from recent offering history (not a guaranteed
+    future schedule)." came back as "…3 recorded semesters. The spring pattern is
+    marked reliable." -- calibrated uncertainty traded for reassurance.
+
+    Re-deriving the note from the rewrite's own slots was the mistake: the
+    rewrite controlled the derivation. The note is now lifted off, withheld from
+    the model, and re-attached verbatim."""
+    _named(monkeypatch, {})
+    facts = {"count": Fact(3, "src", "predicted_pattern", 0.95)}
+    draft, _ = resolve_final("q", facts, "Offered in {c} semesters.", {"c": "count"})
+    assert "On certainty" in draft  # precondition
+
+    adapter = _PolishAdapter(
+        {"prose": "It ran {c} times. The pattern is reliable.", "fact_refs": {"c": "count"}}
+    )
+    out = await polish_answer(
+        adapter, "q", facts, draft, {"c": "count"}, temperature=0.0, reasoning_effort="low"
+    )
+    assert out is not None
+    assert "On certainty: 3 -- predicted from recent offering history" in out
+
+
+async def test_polish_never_sees_the_hedge_it_must_not_touch(monkeypatch):
+    _named(monkeypatch, {})
+    facts = {"count": Fact(3, "src", "predicted_pattern", 0.95)}
+    draft, _ = resolve_final("q", facts, "Offered in {c} semesters.", {"c": "count"})
+    seen: dict[str, str] = {}
+
+    class _Capture(_PolishAdapter):
+        async def complete_json(self, **kw: object) -> object:
+            seen["user"] = str(kw.get("user_prompt"))
+            return await super().complete_json(**kw)
+
+    adapter = _Capture({"prose": "Ran {c} times.", "fact_refs": {"c": "count"}})
+    await polish_answer(
+        adapter, "q", facts, draft, {"c": "count"}, temperature=0.0, reasoning_effort="low"
+    )
+    assert "On certainty" not in seen["user"]
+
+
+async def test_a_ref_declared_but_never_written_does_not_count_as_kept(monkeypatch):
+    """The other half of the same live failure: the rewrite declared the fact in
+    fact_refs, wrote no {slot} for it, and passed a naive set check -- shipping
+    "It has been offered in spring…" with the course silently gone."""
+    _named(monkeypatch, {})
+    adapter = _PolishAdapter(
+        {"prose": "It has been offered in spring.", "fact_refs": {"c": "course"}}
+    )
+    out = await polish_answer(
+        adapter, "q", _facts(course="00960211"),
+        "Course 00960211 is offered in spring.", {"c": "course"},
+        temperature=0.0, reasoning_effort="low",
+    )
+    assert out is None
+
+
+async def test_polish_cannot_replace_a_named_course_with_this_course(monkeypatch):
+    """Live-observed twice. Run 4: "Course 00960211 is not offered in summer"
+    came back as "This course is marked never for the summer semester" -- the
+    subject gone. A code reaching the draft from the QUESTION is never in
+    fact_refs, so the ref check cannot see it; codes are compared on the text."""
+    _named(monkeypatch, {})
+    adapter = _PolishAdapter({"prose": "This course is not offered in summer.", "fact_refs": {}})
+    out = await polish_answer(
+        adapter, "Is 00960211 offered in summer?", {},
+        "Course 00960211 is not offered in summer.", {},
+        temperature=0.0, reasoning_effort="low",
+    )
+    assert out is None
+
+
+async def test_polish_cannot_leak_internal_vocabulary(monkeypatch):
+    """Run 4 shipped "based on predicted_pattern with confidence 0.95" to a
+    student -- with "no internal vocabulary" already in the prompt. A rule the
+    model can simply not follow is not a guarantee."""
+    _named(monkeypatch, {})
+    for leak in (
+        "Marked never, based on predicted_pattern with confidence 0.95.",
+        "This is from the official_record.",
+    ):
+        adapter = _PolishAdapter({"prose": leak, "fact_refs": {}})
+        out = await polish_answer(
+            adapter, "q", {}, "It is not offered.", {}, temperature=0.0, reasoning_effort="low"
+        )
+        assert out is None, leak
+
+
+async def test_polish_is_told_which_language_to_write_in(monkeypatch):
+    """A rewrite is exactly where a language switch creeps in: the facts are full
+    of Hebrew course names even when the student wrote English. The draft's own
+    language is not stated anywhere in the polish input, so the directive has to
+    be."""
+    _named(monkeypatch, {})
+    seen: dict[str, str] = {}
+
+    class _Capture(_PolishAdapter):
+        async def complete_json(self, **kw: object) -> object:
+            seen["user"] = str(kw.get("user_prompt"))
+            return await super().complete_json(**kw)
+
+    adapter = _Capture({"prose": "ok {c}", "fact_refs": {"c": "course"}})
+    await polish_answer(
+        adapter, "Am I eligible?", _facts(course="00940224"),
+        "draft", {"x": "course"}, temperature=0.0, reasoning_effort="low",
+    )
+    assert "Write the answer in English" in seen["user"]
+
+    await polish_answer(
+        adapter, "האם אני זכאי?", _facts(course="00940224"),
+        "draft", {"x": "course"}, temperature=0.0, reasoning_effort="low",
+    )
+    assert "Write the answer in Hebrew" in seen["user"]
+
+
+async def test_polish_failure_never_breaks_the_answer(monkeypatch):
+    """One attempt, no retry. An adapter error or empty prose falls back."""
+    _named(monkeypatch, {})
+    for response in (LLMAdapterError("llm_call_failed"), {"prose": "", "fact_refs": {}}, {}):
+        adapter = _PolishAdapter(response)
+        out = await polish_answer(
+            adapter, "q", _facts(course="00940224"),
+            "Eligibility: yes.", {"x": "course"}, temperature=0.0, reasoning_effort="low",
+        )
+        assert out is None
+        assert adapter.calls == 1
+
+
+# -- scalar rendering ----------------------------------------------------------
+
+
+def test_empty_list_renders_as_none_not_as_nothing():
+    """The live eval shipped "Missing prerequisites are ." -- an empty list
+    joined to the empty string, leaving a sentence with a hole in it."""
+    rendered, problems = resolve_final(
+        "q", _facts(missing=[]), "Missing prerequisites are {missing}.", {"missing": "missing"}
+    )
+    assert rendered == "Missing prerequisites are none."
+    assert problems == []
+
+
+def test_booleans_render_as_words_not_python_literals():
+    """"For course 00960211, the student is True." -- `str(True)` reaching prose."""
+    yes, _ = resolve_final("q", _facts(ok=True), "Eligible: {ok}.", {"ok": "ok"})
+    no, _ = resolve_final("q", _facts(ok=False), "Eligible: {ok}.", {"ok": "ok"})
+    assert yes == "Eligible: yes."
+    assert no == "Eligible: no."
+
+
+def test_booleans_inside_a_list_render_as_words_too():
+    rendered, _ = resolve_final("q", _facts(flags=[True, False]), "Flags: {flags}.", {"flags": "flags"})
+    assert rendered == "Flags: yes, no."
+
+
+# -- course-code readability --------------------------------------------------
+#
+# 7 of 10 answers in the 2026-07-18 run shipped bare 8-digit codes ("The courses
+# on your record with a final grade above 90 are: 00940704, 00940219, 03240033").
+# Names are looked up in code, never composed: the backstop checks numerals only,
+# so a typed name is unvalidated, and a convincing fake name on a real code is
+# worse than no name.
+
+
+def _named(monkeypatch, mapping: dict[str, str]) -> None:
+    import app.agent_core.loop.answer_boundary as module
+
+    monkeypatch.setattr(module, "course_display_name", lambda code: mapping.get(code))
+
+
+def test_slotted_course_code_renders_with_its_name(monkeypatch):
+    _named(monkeypatch, {"00940224": "Data Structures and Algorithms"})
+    rendered, problems = resolve_final(
+        "q", _facts(course="00940224"), "You completed {course}.", {"course": "course"}
+    )
+    assert rendered == "You completed Data Structures and Algorithms (00940224)."
+    assert problems == []
+
+
+def test_every_code_in_a_slotted_list_is_named(monkeypatch):
+    _named(monkeypatch, {"00940704": "Intro to Data Engineering", "00940219": "Software Engineering"})
+    rendered, problems = resolve_final(
+        "q", _facts(codes=["00940704", "00940219"]), "Your top courses: {codes}.", {"codes": "codes"}
+    )
+    assert rendered == "Your top courses: Intro to Data Engineering (00940704), Software Engineering (00940219)."
+    assert problems == []
+
+
+def test_a_name_containing_digits_does_not_read_as_an_ungrounded_number(monkeypatch):
+    """The trap. "Algebra 1M2" puts 1 and 2 into the prose, and the backstop
+    flags any numeral not traceable to a slotted fact -- so enrichment applied
+    after the value was recorded would reject the loop's own correct answer."""
+    _named(monkeypatch, {"01040065": "Algebra 1M2"})
+    rendered, problems = resolve_final(
+        "q", _facts(course="01040065"), "You took {course}.", {"course": "course"}
+    )
+    assert rendered == "You took Algebra 1M2 (01040065)."
+    assert problems == []
+
+
+def test_unknown_code_degrades_to_the_bare_code(monkeypatch):
+    """49 course pages carry no title; a missing name costs readability, never
+    correctness."""
+    _named(monkeypatch, {})
+    rendered, problems = resolve_final(
+        "q", _facts(course="00940224"), "You completed {course}.", {"course": "course"}
+    )
+    assert rendered == "You completed 00940224."
+    assert problems == []
+
+
+def test_non_course_values_are_never_renamed(monkeypatch):
+    """A grade and a credit total must not be looked up as course codes."""
+    _named(monkeypatch, {"00940224": "Data Structures and Algorithms"})
+    rendered, _ = resolve_final(
+        "q", _facts(grade=85, credits=92.5), "Grade {grade}, {credits} left.", {"grade": "grade", "credits": "credits"}
+    )
+    assert rendered == "Grade 85, 92.5 left."
 
 
 def test_predicted_fact_appends_a_certainty_note():

@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -63,10 +63,12 @@ pytestmark = [
     pytest.mark.skipif(not agent_llm_available(), reason="no LLM credentials configured (OPENAI_API_KEY)"),
 ]
 
-_LOG_DIR = Path(
-    "/private/tmp/claude-501/-Users-tymoribrahim-Desktop-UniPilot/"
-    "5c6a7dbc-d28f-441c-ae9f-d244b9efd3f0/scratchpad"
-)
+# Alongside every other live-eval artefact (see live_eval_logging.py); gitignored
+# per-run, so history accumulates locally without landing in the repo. This was an
+# absolute path into one machine's session scratchpad, which silently wrote nowhere
+# useful for anyone else -- and run-over-run comparison is the whole point of keeping
+# the scorecard.
+_LOG_DIR = Path(__file__).resolve().parent / "live_eval_logs"
 
 # Phrases that would be a false claim of having performed the registration action.
 _REGISTRATION_CLAIMS = (
@@ -224,6 +226,19 @@ def _print_case(case_name: str, question: str, result, claims: dict[str, bool]) 
         if "error" in step:
             print(f"  turn {step['turn']}: LLM ERROR {step['error']}")
             continue
+        if "polish" in step:
+            # Without this the readability pass is invisible: run 3 shipped a
+            # rewrite that dropped the certainty hedge and the course code, and
+            # the log gave no way to tell whether polish had even applied.
+            print(f"  [polish] applied={step['polish']['applied']}")
+            continue
+        if "forced_compose" in step:
+            # Not a turn -- the exhaustion compose. It carries no thought, so
+            # without this it printed as a phantom "turn N: None" and read as one
+            # more empty turn than actually happened.
+            fc = step["forced_compose"]
+            print(f"  [forced compose] attempts={fc['attempts']} composed={fc['composed']}")
+            continue
         print(f"  turn {step['turn']}: {step.get('thought')}")
         for call in step.get("calls", []):
             payload = json.dumps(call.get("arguments") or {}, ensure_ascii=False, default=str)
@@ -268,8 +283,10 @@ async def test_v2_ise_correctness(ise_student: IseStudent) -> None:
         print(f"  {row['case']:<26} {row['outcome']:<10} "
               f"{passed}/{total} claims  ({row['turns']}t {row['llm_calls']}c {row['wall_clock_s']}s)")
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
-    (_LOG_DIR / "v2_ise_correctness.json").write_text(json.dumps(scorecard, ensure_ascii=False, indent=2, default=str))
-    print(f"\n  scorecard written to {_LOG_DIR / 'v2_ise_correctness.json'}")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    scorecard_path = _LOG_DIR / f"v2_ise_correctness-{stamp}.json"
+    scorecard_path.write_text(json.dumps(scorecard, ensure_ascii=False, indent=2, default=str))
+    print(f"\n  scorecard written to {scorecard_path}")
 
     # HARD gate: the loop's one structural promise -- every case grounds every
     # number. Correctness claims above are reported, not asserted, so one run

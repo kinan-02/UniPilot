@@ -94,12 +94,20 @@ def _grain_hint(path: str | None, value: Any) -> str:
     without drilling in -- a no-progress spin straight to budget exhaustion. The
     grounding substrate already made fabrication impossible; this makes a known
     dead-end self-healing, turning "stuck" into a guided next step, in code rather
-    than by prompt-tuning the model's choices."""
+    than by prompt-tuning the model's choices.
+
+    The same run showed the opposite failure, though: presupposition_conflict
+    surfaced a MUTATED STATE object -- whose entire purpose is to be passed whole
+    into `check_eligibility(state={"ref": ...})` -- and the flat "do NOT
+    re-surface the object itself" told it not to. It spent five turns trying
+    other shapes. So the hint steers ANSWER use toward a scalar leaf while
+    naming the tool-input use it must not block."""
     if isinstance(value, dict) and value:
         leaf = f"{path}.{sorted(value)[0]}" if path else "one of its fields"
         return (
-            f" -- OBJECT: to use a value from it in an answer, surface a scalar leaf "
-            f"(e.g. path '{leaf}'); do NOT re-surface the object itself"
+            f" -- OBJECT: not directly usable IN AN ANSWER. To state a value from it, "
+            f"surface a scalar leaf (e.g. path '{leaf}') rather than this object again. "
+            f"Passing it whole as a tool argument (e.g. a state) is fine as-is"
         )
     if isinstance(value, list) and value and isinstance(value[0], dict):
         return (

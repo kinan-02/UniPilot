@@ -191,3 +191,29 @@ async def test_track_requirements_warnings_propagate(use_real_academic_engine, m
     assert result.ok is True
     assert result.data["totalRequiredCourses"] == 0
     assert "required_courses_unavailable" in result.warnings
+
+
+async def test_the_credit_parse_warning_does_not_leak_into_a_course_count_audit(
+    use_real_academic_engine, monkeypatch
+):
+    """This tool audits required-COURSE completion and states up front that it
+    runs no credit-sum audit. 16 of 67 track pages state no credit total, so
+    passing that warning through would attach an unrelated caveat to a perfectly
+    good course audit -- and give the model a reason to distrust it."""
+    import app.agent_core.tools.composites.audit_graduation_progress as module
+
+    async def _fake_track_requirements(*_a, **_k):
+        return ToolOutputEnvelope(
+            ok=True,
+            data={"trackSlug": "track-materials-engineering", "track": {}, "requiredCourses": []},
+            warnings=["total_credits_not_parsed", "required_courses_unavailable"],
+        )
+
+    monkeypatch.setattr(module, "run_get_track_requirements", _fake_track_requirements)
+
+    result = await run_audit_graduation_progress(
+        AuditGraduationProgressInput(track_slug="track-materials-engineering")
+    )
+    assert result.ok is True
+    assert "total_credits_not_parsed" not in result.warnings
+    assert "required_courses_unavailable" in result.warnings
