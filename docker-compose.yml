@@ -206,8 +206,14 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-MB5R2CF-azure/text-embedding-3-small}
       EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
       EMBEDDING_INDEX_ENABLED: ${EMBEDDING_INDEX_ENABLED:-true}
-      EMBEDDING_INDEX_CACHE_PATH: ${EMBEDDING_INDEX_CACHE_PATH:-/app/data/cache/wiki_embedding_index.json}
       EMBEDDING_INDEX_BATCH_SIZE: ${EMBEDDING_INDEX_BATCH_SIZE:-64}
+      PINECONE_API_KEY: ${PINECONE_API_KEY:-}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-unipilot-wiki}
+      PINECONE_NAMESPACE: ${PINECONE_NAMESPACE:-}
+      PINECONE_CLOUD: ${PINECONE_CLOUD:-aws}
+      PINECONE_REGION: ${PINECONE_REGION:-us-east-1}
+      PINECONE_DIMENSION: ${PINECONE_DIMENSION:-1536}
+      PINECONE_TIMEOUT_SECONDS: ${PINECONE_TIMEOUT_SECONDS:-10}
     volumes:
       - ./services/data-engineering/data/catalog_valut/catalog_valut/wiki:/app/data/academic/wiki:ro
       - ./services/data-engineering/data/raw/technion:/app/data/raw/technion:ro

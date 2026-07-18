@@ -538,7 +538,7 @@ class AcademicGraphEngine:
         from app.retrieval.obsidian_wiki_indexer import load_wiki_chunks
         from app.retrieval.profiles import get_profile
         from app.retrieval.reranker import rerank_chunks
-        from app.retrieval.wiki_vector_index import chunk_cache_key, query_semantic_candidates
+        from app.retrieval.wiki_vector_index import chunk_vector_id, query_semantic_candidates
 
         chunks = load_wiki_chunks(self._wiki_root)
         if not chunks:
@@ -553,14 +553,16 @@ class AcademicGraphEngine:
         # 1. Literal keyword-match count -- catches exact course codes,
         #    acronyms, and rare terms that a semantic match can miss or
         #    under-rank.
-        # 2. Full-corpus semantic search via the precomputed embedding index
-        #    (`WikiVectorIndex.semantic_scores`) -- pure in-memory dot
-        #    products over already-computed vectors, ~1.3s measured over the
-        #    full ~12.5k-chunk corpus (no per-chunk API calls). This is what
+        # 2. Full-corpus semantic search against the Pinecone index
+        #    (`query_semantic_candidates`) -- one top-K query over vectors
+        #    stored remotely, so the cost is a single bounded round trip
+        #    rather than a scan of the ~12.5k-chunk corpus. This is what
         #    catches verbose natural-language queries whose wording doesn't
         #    literally overlap the right chunk -- the literal-match filter
         #    alone was confirmed missing real, correctly-indexed pages for
-        #    exactly this kind of query.
+        #    exactly this kind of query. Returns [] (never raises) when
+        #    embeddings or Pinecone are unconfigured, leaving filter 1 to
+        #    carry the pool on its own.
         candidate_by_key: dict[str, Any] = {}
         match_counts = [
             (chunk, _chunk_token_match_count(chunk, tokens)) for chunk in chunks
@@ -568,7 +570,7 @@ class AcademicGraphEngine:
         match_counts = [(chunk, count) for chunk, count in match_counts if count > 0]
         match_counts.sort(key=lambda item: item[1], reverse=True)
         for chunk, _count in match_counts[:_WIKI_SEARCH_CANDIDATE_POOL_CAP]:
-            candidate_by_key[chunk_cache_key(chunk)] = chunk
+            candidate_by_key[chunk_vector_id(chunk)] = chunk
 
         semantic_hits = query_semantic_candidates(
             query=query,
@@ -577,7 +579,7 @@ class AcademicGraphEngine:
             settings=settings,
         )
         for chunk, _score in semantic_hits:
-            candidate_by_key.setdefault(chunk_cache_key(chunk), chunk)
+            candidate_by_key.setdefault(chunk_vector_id(chunk), chunk)
 
         if not candidate_by_key:
             return []
@@ -588,7 +590,6 @@ class AcademicGraphEngine:
             query=query,
             limit=limit,
             profile=get_profile("fallback_academic_search"),
-            wiki_root=self._wiki_root,
             settings=settings,
         )
         hits: list[dict[str, Any]] = []
@@ -644,7 +645,6 @@ class AcademicGraphEngine:
             query=query,
             limit=limit,
             profile=get_profile("fallback_academic_search"),
-            wiki_root=self._wiki_root,
             settings=settings,
         )
         return [

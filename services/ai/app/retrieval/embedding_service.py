@@ -117,22 +117,3 @@ def embed_documents(
         return None
 
 
-def build_semantic_score_map(
-    *,
-    query: str,
-    document_texts: list[str],
-    settings: Settings | None = None,
-) -> dict[int, float] | None:
-    """Embed query + documents and return cosine scores keyed by document index."""
-    if not document_texts:
-        return None
-
-    vectors = embed_documents([query, *document_texts], settings=settings)
-    if not vectors or len(vectors) != len(document_texts) + 1:
-        return None
-
-    query_vector = vectors[0]
-    return {
-        index: cosine_similarity(query_vector, document_vector)
-        for index, document_vector in enumerate(vectors[1:])
-    }

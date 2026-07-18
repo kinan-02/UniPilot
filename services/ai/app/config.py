@@ -29,8 +29,7 @@ _REPO_ROOT = _resolve_repo_root()
 
 # Real, checked-out academic data lives in the sibling data-engineering
 # service, not under services/ai itself -- used as a local-dev fallback
-# below, the same way resolved_embedding_index_cache_path() already falls
-# back off its own /app/... default. Found necessary the hard way: every
+# below. Found necessary the hard way: every
 # live-eval run this session (executed directly via pytest, not through
 # Docker) silently had zero working academic_wiki_path/academic_technion_
 # raw_dir data, since those two Settings fields default to Docker-only
@@ -94,9 +93,23 @@ class Settings(BaseSettings):
     embedding_model: str | None = None
     embedding_enabled: bool = True
     embedding_index_enabled: bool = True
-    embedding_index_cache_path: str | None = None
     embedding_index_batch_size: int = 64
-    embedding_index_cache_backup_count: int = 3
+
+    # Wiki chunk vectors live in Pinecone, not on disk. The previous on-disk
+    # index was a 47MB artifact under /app/data/cache with no compose volume
+    # backing it, so every container rebuild wiped it and forced a full
+    # re-embed of ~12.5k chunks on next boot.
+    pinecone_api_key: str | None = None
+    pinecone_index_name: str = "unipilot-wiki"
+    pinecone_namespace: str = ""
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+    # `text-embedding-3-small` is 1536-dim; must match resolved_embedding_model().
+    pinecone_dimension: int = 1536
+    # Every SDK call is bounded, per this codebase's history of unbounded
+    # embedding calls outliving their caller's own asyncio timeout (see
+    # embedding_service._EMBEDDING_TIMEOUT_SECONDS).
+    pinecone_timeout_seconds: float = 10.0
 
     # -- agent_core reasoning port (services/agent/app/agent/reasoning) additions below --
 
@@ -178,22 +191,31 @@ class Settings(BaseSettings):
     def embeddings_available(self) -> bool:
         return bool(self.embedding_enabled and self.resolved_embedding_api_key())
 
-    def resolved_embedding_index_cache_path(self) -> str:
-        configured = (self.embedding_index_cache_path or "").strip()
-        local_default = str(_APP_ROOT / "data" / "cache" / "wiki_embedding_index.json")
-        if configured:
-            if configured.startswith("/app/") and self.environment != "production":
-                return local_default
-            return configured
-        if self.environment == "production":
-            return "/app/data/cache/wiki_embedding_index.json"
-        return local_default
+    def resolved_pinecone_api_key(self) -> str:
+        return (self.pinecone_api_key or "").strip()
+
+    def resolved_pinecone_index_name(self) -> str:
+        return (self.pinecone_index_name or "").strip() or "unipilot-wiki"
+
+    def resolved_pinecone_namespace(self) -> str:
+        """Namespace isolating one wiki corpus inside the index ('' is Pinecone's default)."""
+        return (self.pinecone_namespace or "").strip()
+
+    def pinecone_available(self) -> bool:
+        return bool(self.resolved_pinecone_api_key() and self.resolved_pinecone_index_name())
 
     def wiki_vector_index_enabled(self) -> bool:
-        return bool(self.embedding_index_enabled and self.embeddings_available())
+        """Semantic search needs BOTH halves: embed the query, then search Pinecone.
 
-    def resolved_embedding_index_cache_backup_count(self) -> int:
-        return max(0, int(self.embedding_index_cache_backup_count or 3))
+        Either half missing degrades retrieval to BM25-only rather than
+        failing the request -- the same graceful path that already ran
+        whenever EMBEDDING_API_KEY was unset.
+        """
+        return bool(
+            self.embedding_index_enabled
+            and self.embeddings_available()
+            and self.pinecone_available()
+        )
 
     def is_agent_reasoning_structured_output_enabled(self) -> bool:
         return bool(self.agent_reasoning_structured_output_enabled)

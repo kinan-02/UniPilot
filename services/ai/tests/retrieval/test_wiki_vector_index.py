@@ -1,66 +1,316 @@
-"""Tests for wiki vector index helpers (no live embedding API)."""
+"""Tests for the Pinecone-backed wiki vector index (never touches the network)."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from typing import Any
 
 import pytest
 
 from app.config import get_settings
 from app.retrieval.obsidian_wiki_indexer import WikiChunk, load_wiki_chunks, reset_wiki_index_cache
+from app.retrieval.vector_store import VectorStoreError
 from app.retrieval.wiki_vector_index import (
-    IndexedWikiChunk,
-    WikiVectorIndex,
-    backup_index_cache,
-    canonical_wiki_root,
-    chunk_cache_key,
+    chunk_metadata,
+    chunk_vector_id,
     estimate_index_build_cost,
     estimate_query_embedding_cost,
-    format_index_cache_loaded_message,
-    load_index_from_cache,
+    fetch_chunk_vectors,
     query_semantic_candidates,
     reset_wiki_vector_index_runtime_cache,
-    restore_index_cache_from_backup,
-    save_index_to_cache,
-    verify_index_cache,
-    _backup_latest_path,
-    _compact_cache_path,
 )
 
+# A Hebrew section heading, as ~every real page in this corpus has. This is
+# what makes the id scheme load-bearing rather than cosmetic.
+_HEBREW_SECTION = "פרטי הקורס בעברית"
 
-def setup_function() -> None:
-    get_settings.cache_clear()
+_WIKI_PAGE = f"""---
+title: Discrete Math
+---
+# Discrete Math
+## Description
+Students learn discrete mathematics for DDS in this section of the page.
+## {_HEBREW_SECTION}
+תיאור הקורס בעברית עם מספיק תוכן כדי להיחשב מקטע לאינדוקס.
+"""
+
+
+class _FakeVectorStore:
+    """In-memory stand-in implementing the `VectorStore` protocol."""
+
+    def __init__(
+        self,
+        vectors: dict[str, tuple[float, ...]] | None = None,
+        *,
+        matches: list[tuple[str, float]] | None = None,
+        fail: bool = False,
+    ) -> None:
+        self.vectors = dict(vectors or {})
+        self._matches = matches
+        self.fail = fail
+        self.query_calls: list[tuple[tuple[float, ...], int]] = []
+        self.fetch_calls: list[list[str]] = []
+
+    def query(
+        self,
+        vector: Sequence[float],
+        *,
+        limit: int,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[tuple[str, float]]:
+        if self.fail:
+            raise VectorStoreError("pinecone_query_failed: simulated")
+        self.query_calls.append((tuple(vector), limit))
+        matches = self._matches if self._matches is not None else [
+            (vector_id, 0.9) for vector_id in self.vectors
+        ]
+        return matches[:limit]
+
+    def fetch(self, ids: Sequence[str]) -> dict[str, tuple[float, ...]]:
+        if self.fail:
+            raise VectorStoreError("pinecone_fetch_failed: simulated")
+        self.fetch_calls.append(list(ids))
+        wanted = set(ids)
+        return {k: v for k, v in self.vectors.items() if k in wanted}
+
+
+def _write_wiki(tmp_path: Path) -> Path:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "00940345.md").write_text(_WIKI_PAGE, encoding="utf-8")
     reset_wiki_index_cache()
     reset_wiki_vector_index_runtime_cache()
+    return wiki
 
 
-def test_chunk_cache_key_is_stable():
-    chunk = WikiChunk(
+def _enable_semantic_search(monkeypatch) -> None:
+    monkeypatch.setenv("EMBEDDING_API_KEY", "test-embedding-key")
+    monkeypatch.setenv("PINECONE_API_KEY", "test-pinecone-key")
+    monkeypatch.setenv("PINECONE_INDEX_NAME", "test-index")
+    get_settings.cache_clear()
+
+
+def _use_store(monkeypatch, store: _FakeVectorStore) -> None:
+    monkeypatch.setattr(
+        "app.retrieval.wiki_vector_index.get_vector_store",
+        lambda **_kwargs: store,
+    )
+
+
+def _stub_query_embedding(monkeypatch, vector: tuple[float, ...] = (1.0, 0.0)) -> None:
+    monkeypatch.setattr(
+        "app.retrieval.wiki_vector_index.embed_query_cached",
+        lambda *_args, **_kwargs: vector,
+    )
+
+
+def _chunk(section_title: str = "Description") -> WikiChunk:
+    return WikiChunk(
         source_file="courses/009-dds/00940345.md",
         page_title="Discrete Math",
-        section_title="Description",
-        heading_path=("Discrete Math", "Description"),
-        content="Students learn discrete mathematics.",
+        section_title=section_title,
+        heading_path=("Discrete Math", section_title),
+        content="Students learn discrete mathematics for DDS.",
     )
-    assert chunk_cache_key(chunk) == chunk_cache_key(chunk)
+
+
+# -- id scheme -----------------------------------------------------------
+
+
+def test_vector_id_is_ascii_for_hebrew_section_titles():
+    """Pinecone rejects non-ASCII record ids, and this corpus is mostly Hebrew.
+
+    The retired on-disk cache keyed chunks by
+    `source_file::section_title::digest`, which is not a legal id here.
+    """
+    vector_id = chunk_vector_id(_chunk(_HEBREW_SECTION))
+    assert vector_id.isascii()
+    assert len(vector_id) == 64
+    assert len(vector_id) <= 512
+
+
+def test_vector_id_is_stable_across_calls():
+    assert chunk_vector_id(_chunk()) == chunk_vector_id(_chunk())
+
+
+def test_vector_id_changes_when_content_changes():
+    """Content-addressing is what lets a reindex detect and prune stale vectors."""
+    original = _chunk()
+    edited = WikiChunk(
+        source_file=original.source_file,
+        page_title=original.page_title,
+        section_title=original.section_title,
+        heading_path=original.heading_path,
+        content=original.content + " Now with an extra sentence.",
+    )
+    assert chunk_vector_id(original) != chunk_vector_id(edited)
+
+
+def test_vector_ids_differ_across_sections_of_one_page():
+    assert chunk_vector_id(_chunk("Description")) != chunk_vector_id(_chunk("Sources"))
+
+
+# -- metadata ------------------------------------------------------------
+
+
+def test_metadata_omits_empty_values():
+    """Pinecone rejects null metadata values outright."""
+    metadata = chunk_metadata(_chunk())
+    assert "catalog_year" not in metadata
+    assert "faculty" not in metadata
+    assert "course_numbers" not in metadata
+    assert all(value is not None for value in metadata.values())
+
+
+def test_metadata_carries_the_readable_identity_dropped_from_the_id():
+    metadata = chunk_metadata(_chunk(_HEBREW_SECTION))
+    assert metadata["source_file"] == "courses/009-dds/00940345.md"
+    assert metadata["section_title"] == _HEBREW_SECTION
+    assert metadata["page_title"] == "Discrete Math"
+
+
+def test_metadata_stringifies_course_number_lists():
+    chunk = WikiChunk(
+        source_file="courses/x.md",
+        page_title="X",
+        section_title="Description",
+        heading_path=("X",),
+        content="body",
+        course_numbers_mentioned=("00940345", "00440105"),
+        catalog_year=2025,
+    )
+    metadata = chunk_metadata(chunk)
+    assert metadata["course_numbers"] == ["00940345", "00440105"]
+    assert metadata["catalog_year"] == 2025
+
+
+# -- query path ----------------------------------------------------------
+
+
+def test_query_returns_empty_when_pinecone_unconfigured(tmp_path, monkeypatch):
+    """The BM25-only degradation path — no key means no semantic hits, no error."""
+    wiki = _write_wiki(tmp_path)
+    monkeypatch.setenv("EMBEDDING_API_KEY", "test-embedding-key")
+    monkeypatch.setenv("PINECONE_API_KEY", "")
+    get_settings.cache_clear()
+    assert query_semantic_candidates(query="discrete", wiki_root=str(wiki), limit=3) == []
+
+
+def test_query_returns_empty_when_embeddings_unconfigured(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    monkeypatch.setenv("EMBEDDING_API_KEY", "")
+    monkeypatch.setenv("PINECONE_API_KEY", "test-pinecone-key")
+    get_settings.cache_clear()
+    assert query_semantic_candidates(query="discrete", wiki_root=str(wiki), limit=3) == []
+
+
+def test_query_hydrates_hits_from_disk(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    assert chunks
+    target = chunks[0]
+    store = _FakeVectorStore(matches=[(chunk_vector_id(target), 0.87)])
+    _use_store(monkeypatch, store)
+    _stub_query_embedding(monkeypatch)
+
+    results = query_semantic_candidates(query="discrete", wiki_root=str(wiki), limit=3)
+
+    assert len(results) == 1
+    chunk, score = results[0]
+    assert chunk.page_title == target.page_title
+    assert chunk.content == target.content
+    assert score == pytest.approx(0.87)
+
+
+def test_query_drops_vectors_whose_chunk_no_longer_exists(tmp_path, monkeypatch):
+    """A stale Pinecone id must not crash or fabricate a chunk — just vanish."""
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    live_id = chunk_vector_id(chunks[0])
+    store = _FakeVectorStore(matches=[(live_id, 0.9), ("deadbeef" * 8, 0.8)])
+    _use_store(monkeypatch, store)
+    _stub_query_embedding(monkeypatch)
+
+    results = query_semantic_candidates(query="discrete", wiki_root=str(wiki), limit=5)
+
+    assert len(results) == 1
+    assert results[0][0].page_title == chunks[0].page_title
+
+
+def test_query_degrades_to_empty_when_store_fails(tmp_path, monkeypatch):
+    """Pinecone being down degrades retrieval to BM25 — it does not raise."""
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    _use_store(monkeypatch, _FakeVectorStore(fail=True))
+    _stub_query_embedding(monkeypatch)
+
+    assert query_semantic_candidates(query="discrete", wiki_root=str(wiki), limit=3) == []
+
+
+def test_query_skipped_when_embedding_returns_nothing(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    store = _FakeVectorStore()
+    _use_store(monkeypatch, store)
+    monkeypatch.setattr(
+        "app.retrieval.wiki_vector_index.embed_query_cached",
+        lambda *_args, **_kwargs: None,
+    )
+
+    assert query_semantic_candidates(query="discrete", wiki_root=str(wiki), limit=3) == []
+    assert store.query_calls == []
+
+
+# -- fetch path (reranker) ----------------------------------------------
+
+
+def test_fetch_chunk_vectors_uses_one_batched_call(tmp_path, monkeypatch):
+    """The reranker must not make a round trip per candidate chunk."""
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    assert len(chunks) >= 2
+    store = _FakeVectorStore({chunk_vector_id(c): (1.0, 0.0) for c in chunks})
+    _use_store(monkeypatch, store)
+
+    vectors = fetch_chunk_vectors(chunks, settings=get_settings())
+
+    assert len(store.fetch_calls) == 1
+    assert len(store.fetch_calls[0]) == len(chunks)
+    assert set(vectors) == {chunk_vector_id(c) for c in chunks}
+
+
+def test_fetch_chunk_vectors_empty_when_disabled(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    monkeypatch.setenv("PINECONE_API_KEY", "")
+    get_settings.cache_clear()
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    assert fetch_chunk_vectors(chunks, settings=get_settings()) == {}
+
+
+def test_fetch_chunk_vectors_empty_on_store_failure(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    _use_store(monkeypatch, _FakeVectorStore(fail=True))
+    assert fetch_chunk_vectors(chunks, settings=get_settings()) == {}
+
+
+def test_fetch_chunk_vectors_empty_for_no_chunks(monkeypatch):
+    _enable_semantic_search(monkeypatch)
+    assert fetch_chunk_vectors([], settings=get_settings()) == {}
+
+
+# -- cost estimates ------------------------------------------------------
 
 
 def test_estimate_index_build_cost_without_api(tmp_path, monkeypatch):
-    wiki = tmp_path / "wiki"
-    wiki.mkdir()
-    (wiki / "course.md").write_text(
-        """---
-title: Test Course
----
-# Test Course
-This is a sufficiently long course description for chunk indexing in tests.
-""",
-        encoding="utf-8",
-    )
+    wiki = _write_wiki(tmp_path)
     monkeypatch.setenv("ACADEMIC_WIKI_PATH", str(wiki))
     get_settings.cache_clear()
-    reset_wiki_index_cache()
     estimate = estimate_index_build_cost(wiki_root=str(wiki))
     assert estimate["chunkCount"] >= 1
     assert estimate["estimatedInputTokens"] > 0
@@ -69,149 +319,3 @@ This is a sufficiently long course description for chunk indexing in tests.
 def test_estimate_query_embedding_cost():
     estimate = estimate_query_embedding_cost(query_count=331)
     assert estimate["estimatedInputTokens"] == 331 * 12
-
-
-def test_corrupt_compact_cache_is_removed(tmp_path):
-    cache_file = tmp_path / "cache.json"
-    compact = cache_file.with_name(f"{cache_file.stem}.compact.pkl.gz")
-    compact.write_bytes(b"not-a-valid-gzip")
-    loaded = load_index_from_cache(
-        cache_file,
-        wiki_root=str(tmp_path / "wiki"),
-        model="test-model",
-    )
-    assert loaded is None
-    assert not compact.is_file()
-
-
-def _build_test_index(tmp_path: Path) -> tuple[Path, Path, WikiVectorIndex]:
-    wiki = tmp_path / "wiki"
-    wiki.mkdir()
-    (wiki / "00940345.md").write_text(
-        """---
-title: Discrete Math
----
-# Discrete Math
-## Description
-Students learn discrete mathematics for DDS.
-""",
-        encoding="utf-8",
-    )
-    chunks = list(load_wiki_chunks(str(wiki)))
-    assert chunks
-    chunk = chunks[0]
-    index = WikiVectorIndex.from_entries(
-        model="test-model",
-        wiki_root=str(wiki.resolve()),
-        entries=[
-            IndexedWikiChunk(key=chunk_cache_key(chunk), chunk=chunk, vector=(1.0, 0.0))
-        ],
-    )
-    cache_file = tmp_path / "cache.json"
-    return wiki, cache_file, index
-
-
-def test_cache_roundtrip(tmp_path):
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    loaded = load_index_from_cache(cache_file, wiki_root=str(wiki), model="test-model")
-    assert loaded is not None
-    assert len(loaded.entries) == 1
-
-
-def test_cache_loads_with_relative_or_absolute_wiki_root(tmp_path):
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    loaded = load_index_from_cache(
-        cache_file,
-        wiki_root=str(wiki),
-        model="test-model",
-    )
-    assert loaded is not None
-    assert loaded.wiki_root == canonical_wiki_root(str(wiki))
-
-
-def test_save_creates_backup_and_metadata(tmp_path, monkeypatch):
-    monkeypatch.setenv("EMBEDDING_INDEX_CACHE_BACKUP_COUNT", "2")
-    monkeypatch.setattr("app.retrieval.wiki_vector_index._MIN_BACKUP_BYTES", 1)
-    get_settings.cache_clear()
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    compact = _compact_cache_path(cache_file)
-    compact.write_bytes(b"x" * 2048)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    latest = _backup_latest_path(cache_file)
-    meta = cache_file.with_name(f"{cache_file.stem}.meta.json")
-    assert compact.is_file()
-    assert latest.is_file()
-    assert meta.is_file()
-
-
-def test_restore_from_backup_when_primary_corrupt(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.retrieval.wiki_vector_index._MIN_BACKUP_BYTES", 1)
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    backup_index_cache(cache_path=cache_file)
-    compact = _compact_cache_path(cache_file)
-    compact.write_bytes(b"corrupt")
-    loaded = load_index_from_cache(cache_file, wiki_root=str(wiki), model="test-model")
-    assert loaded is not None
-    assert compact.stat().st_size > 100
-
-
-def test_verify_index_cache_reports_status(tmp_path):
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    report = verify_index_cache(cache_path=cache_file, wiki_root=str(wiki), model="test-model")
-    assert report["ok"] is True
-    assert report["entryCount"] == 1
-
-
-def test_manual_backup_and_restore(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.retrieval.wiki_vector_index._MIN_BACKUP_BYTES", 1)
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    compact = _compact_cache_path(cache_file)
-    original_size = compact.stat().st_size
-    backup_path = backup_index_cache(cache_path=cache_file)
-    assert backup_path is not None
-    compact.write_bytes(b"broken")
-    restored = restore_index_cache_from_backup(cache_path=cache_file)
-    assert restored is not None
-    assert compact.stat().st_size == original_size
-    loaded = load_index_from_cache(cache_file, wiki_root=str(wiki), model="test-model")
-    assert loaded is not None
-
-
-def test_format_index_cache_loaded_message(tmp_path):
-    wiki, cache_file, index = _build_test_index(tmp_path)
-    save_index_to_cache(cache_file, index, allow_small=True)
-    message = format_index_cache_loaded_message(index, cache_file)
-    assert "Loaded wiki index from disk (1 chunks," in message
-    assert "KB" in message or "B" in message
-
-
-@patch("app.retrieval.wiki_vector_index.get_wiki_vector_index")
-@patch("app.retrieval.wiki_vector_index.embed_query_cached")
-def test_query_semantic_candidates_uses_index(mock_embed_query_cached, mock_get_index):
-    chunk = WikiChunk(
-        source_file="courses/009-dds/00940345.md",
-        page_title="Discrete Math",
-        section_title="Description",
-        heading_path=("Discrete Math", "Description"),
-        content="Students learn discrete mathematics for DDS.",
-    )
-    from app.retrieval.wiki_vector_index import IndexedWikiChunk
-
-    mock_get_index.return_value = WikiVectorIndex.from_entries(
-        model="test-model",
-        wiki_root="/wiki",
-        entries=[IndexedWikiChunk(key=chunk_cache_key(chunk), chunk=chunk, vector=(1.0, 0.0))],
-    )
-    mock_embed_query_cached.return_value = (1.0, 0.0)
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
-    get_settings.cache_clear()
-    results = query_semantic_candidates(query="discrete math", wiki_root="/wiki", limit=3)
-    monkeypatch.undo()
-    assert results
-    assert results[0][0].page_title == "Discrete Math"

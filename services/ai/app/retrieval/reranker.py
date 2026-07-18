@@ -219,31 +219,26 @@ def rerank_chunks(
     profile: RetrievalProfile | None = None,
     entities: dict[str, Any] | None = None,
     user_context: dict[str, Any] | None = None,
-    wiki_root: str | None = None,
     settings: "Settings | None" = None,
 ) -> list[tuple[WikiChunk, float]]:
     from app.config import get_settings
-    from app.retrieval.cache_warmup import resolve_wiki_root
-    from app.retrieval.embedding_service import (
-        build_semantic_score_map,
-        cosine_similarity,
-        embed_query_cached,
-    )
+    from app.retrieval.embedding_service import cosine_similarity, embed_query_cached
     from app.retrieval.profiles import get_profile
-    from app.retrieval.wiki_vector_index import get_wiki_vector_index
+    from app.retrieval.wiki_vector_index import chunk_vector_id, fetch_chunk_vectors
 
     active_profile = profile or get_profile("fallback_academic_search")
     candidate_limit = max(active_profile.rerankCandidateLimit, limit)
     chunk_list = list(chunks)
     semantic_by_chunk_id: dict[int, float] = {}
     settings = settings or get_settings()
-    resolved_root = resolve_wiki_root(wiki_root) if wiki_root else ""
-    index = (
-        get_wiki_vector_index(wiki_root=resolved_root, settings=settings)
-        if resolved_root and settings.wiki_vector_index_enabled()
-        else None
-    )
-    if index is not None:
+
+    # Candidate vectors come back in ONE batched Pinecone fetch rather than a
+    # lookup per chunk. There is no live "embed every candidate" fallback: if
+    # Pinecone is unreachable, `fetch_chunk_vectors` returns {} and scoring
+    # drops to its keyword component. Embedding ~60 candidate documents per
+    # call instead would turn an outage into a latency and cost cliff on
+    # every query.
+    if settings.wiki_vector_index_enabled() and chunk_list:
         query_vector = embed_query_cached(
             query,
             settings.resolved_embedding_api_key(),
@@ -251,22 +246,15 @@ def rerank_chunks(
             settings.resolved_embedding_model(),
         )
         if query_vector:
+            vectors = fetch_chunk_vectors(chunk_list, settings=settings)
+            query_values = list(query_vector)
             for chunk in chunk_list:
-                chunk_vector = index.vector_for_chunk(chunk)
+                chunk_vector = vectors.get(chunk_vector_id(chunk))
                 if chunk_vector:
                     semantic_by_chunk_id[id(chunk)] = cosine_similarity(
-                        list(query_vector),
-                        chunk_vector,
+                        query_values,
+                        list(chunk_vector),
                     )
-    elif settings.embeddings_available() and chunk_list:
-        score_map = build_semantic_score_map(
-            query=query,
-            document_texts=[embedding_text(chunk) for chunk in chunk_list],
-            settings=settings,
-        )
-        if score_map is not None:
-            for index_pos, chunk in enumerate(chunk_list):
-                semantic_by_chunk_id[id(chunk)] = score_map.get(index_pos, 0.0)
 
     scored = [
         (

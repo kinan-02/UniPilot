@@ -8,7 +8,6 @@ import pytest
 
 from app.config import get_settings
 from app.retrieval.embedding_service import (
-    build_semantic_score_map,
     cosine_similarity,
     embed_query,
     reset_embeddings_client_cache,
@@ -16,6 +15,7 @@ from app.retrieval.embedding_service import (
 from app.retrieval.obsidian_wiki_indexer import chunk_wiki_page
 from app.retrieval.profiles import get_profile
 from app.retrieval.reranker import rerank_chunks
+from app.retrieval.wiki_vector_index import chunk_vector_id
 
 
 SAMPLE_PAGE = """---
@@ -102,44 +102,41 @@ def test_embed_query_cached_sets_an_explicit_timeout(mock_cls):
     assert kwargs["timeout"] == _EMBEDDING_TIMEOUT_SECONDS
 
 
-@patch("app.retrieval.embedding_service.get_embeddings_client")
-def test_build_semantic_score_map(mock_get_client, monkeypatch):
+def _enable_semantic_search(monkeypatch) -> None:
     monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
+    monkeypatch.setenv("PINECONE_API_KEY", "test-pinecone-key")
+    monkeypatch.setenv("PINECONE_INDEX_NAME", "test-index")
     get_settings.cache_clear()
-    client = MagicMock()
-    client.embed_documents.return_value = [
-        [1.0, 0.0],
-        [1.0, 0.0],
-        [0.0, 1.0],
-    ]
-    mock_get_client.return_value = client
-
-    scores = build_semantic_score_map(
-        query="requirements",
-        document_texts=["requirements text", "unrelated text"],
-    )
-    assert scores is not None
-    assert scores[0] == pytest.approx(1.0)
-    assert scores[1] == pytest.approx(0.0)
 
 
-@patch("app.retrieval.embedding_service.build_semantic_score_map")
-@patch("app.config.get_settings")
-def test_rerank_uses_embedding_scores_when_available(mock_get_settings, mock_score_map, monkeypatch):
-    monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
-    get_settings.cache_clear()
-    mock_get_settings.return_value = get_settings()
+def test_rerank_uses_embedding_scores_when_available(monkeypatch):
+    _enable_semantic_search(monkeypatch)
     chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
     # index 0 = "Overview", index 1 = "Requirements" (see chunk_wiki_page's
     # ordering below). Both the keyword match (query "requirements" hits the
-    # "Requirements" section title directly) and the mocked semantic score
-    # favor "Requirements" here -- deliberately not an adversarial mock: with
-    # both signals bounded to comparable scales (see
-    # `reranker._normalize_bm25`), no legitimate weighting could rank a
-    # chunk higher on keywords *and* lower on semantics than its competitor
-    # and still lose, so a mock requiring exactly that outcome would be
-    # testing for a bug, not a feature.
-    mock_score_map.return_value = {0: 0.2, 1: 0.9}
+    # "Requirements" section title directly) and the stubbed vectors favor
+    # "Requirements" here -- deliberately not an adversarial mock: with both
+    # signals bounded to comparable scales (see `reranker._normalize_bm25`),
+    # no legitimate weighting could rank a chunk higher on keywords *and*
+    # lower on semantics than its competitor and still lose, so a mock
+    # requiring exactly that outcome would be testing for a bug, not a
+    # feature.
+    query_vector = (1.0, 0.0)
+    vectors_by_id = {
+        chunk_vector_id(chunks[0]): (0.2, 0.98),  # Overview: near-orthogonal
+        chunk_vector_id(chunks[1]): (1.0, 0.0),  # Requirements: aligned
+    }
+    fetch_calls: list[int] = []
+
+    def _fake_fetch(candidate_chunks, **_kwargs):
+        fetch_calls.append(len(list(candidate_chunks)))
+        return vectors_by_id
+
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.fetch_chunk_vectors", _fake_fetch)
+    monkeypatch.setattr(
+        "app.retrieval.embedding_service.embed_query_cached",
+        lambda *_args, **_kwargs: query_vector,
+    )
     profile = get_profile("requirement_explanation")
 
     ranked = rerank_chunks(
@@ -150,18 +147,23 @@ def test_rerank_uses_embedding_scores_when_available(mock_get_settings, mock_sco
     )
 
     assert ranked
-    mock_score_map.assert_called_once()
+    # One batched fetch for the whole candidate set, not one call per chunk.
+    assert fetch_calls == [len(chunks)]
     assert ranked[0][0].section_title == "Requirements"
 
 
-@patch("app.retrieval.embedding_service.build_semantic_score_map", return_value=None)
-@patch("app.config.get_settings")
-def test_rerank_falls_back_without_embeddings(mock_get_settings, _mock_score_map, monkeypatch):
+def test_rerank_falls_back_to_keywords_without_pinecone(monkeypatch):
+    """Pinecone unconfigured must still rank, on BM25 alone."""
     monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
+    monkeypatch.setenv("PINECONE_API_KEY", "")
     get_settings.cache_clear()
-    mock_get_settings.return_value = get_settings()
     chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
     profile = get_profile("requirement_explanation")
+
+    def _explode(*_args, **_kwargs):
+        raise AssertionError("must not reach Pinecone when it is unconfigured")
+
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.fetch_chunk_vectors", _explode)
 
     ranked = rerank_chunks(
         chunks,

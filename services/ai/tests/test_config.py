@@ -3,10 +3,9 @@
 Found necessary the hard way: every live-eval run this session (executed
 directly via pytest, not through Docker) silently had zero working academic
 data, since `academic_wiki_path`/`academic_technion_raw_dir` default to
-Docker-only `/app/...` paths with no local-dev fallback -- unlike
-`resolved_embedding_index_cache_path()`, which already had one. Every
-course/wiki lookup failed with `academic_graph_unavailable` the entire
-time, not because the referenced course/track genuinely couldn't be found.
+Docker-only `/app/...` paths with no local-dev fallback. Every course/wiki
+lookup failed with `academic_graph_unavailable` the entire time, not
+because the referenced course/track genuinely couldn't be found.
 """
 
 from __future__ import annotations
