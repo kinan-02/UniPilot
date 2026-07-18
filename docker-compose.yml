@@ -34,13 +34,6 @@ services:
       MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
       TECHNION_RAW_DIR: ${TECHNION_RAW_DIR:-/app/data/raw/technion}
       CATALOG_VAULT_WIKI_PATH: ${CATALOG_VAULT_WIKI_PATH:-/app/data/academic/wiki}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.llmod.ai/v1}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-MB5R2CF-azure/text-embedding-3-small}
-      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
-      EMBEDDING_INDEX_ENABLED: ${EMBEDDING_INDEX_ENABLED:-true}
-      EMBEDDING_INDEX_CACHE_PATH: ${EMBEDDING_INDEX_CACHE_PATH:-/app/data/cache/wiki_embedding_index.json}
-      EMBEDDING_INDEX_BATCH_SIZE: ${EMBEDDING_INDEX_BATCH_SIZE:-64}
     volumes:
       - ./services/data-engineering/data/raw/technion:/app/data/raw/technion:ro
       - ./services/data-engineering/data/catalog_valut/catalog_valut/wiki:/app/data/academic/wiki:ro
