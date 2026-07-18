@@ -62,15 +62,27 @@ class WorkingSet:
     tool_results: dict[str, Any] = field(default_factory=dict)
     handles: dict[str, str] = field(default_factory=dict)
     observations: list[str] = field(default_factory=list)
+    derivations: set[str] = field(default_factory=set)
 
-    def add_fact(self, key: str, fact: Fact) -> bool:
-        """Admit a fact. Returns True if it is genuinely new (a key not seen, or
-        a changed value) -- the signal the no-progress governor counts (§7). A
-        re-surface of an identical fact is a no-op for progress accounting.
+    def admit_derivation(self, key: str, fact: Fact, signature: str) -> bool:
+        """Store `fact` under `key` and report whether it is NEW INFORMATION --
+        whether this exact derivation has been performed before. `signature`
+        identifies the OPERATION (a selector's handle+path, a select spec, an
+        expression), never the resulting value -- so two distinct fields that
+        happen to share a value (two booleans from one call) are never collapsed.
+
+        Re-deriving a value already held, under a fresh key, still STORES it (so a
+        later fact_ref resolves) but returns False: it is not progress. This is
+        the structural anti-wander signal the no-progress governor counts (§7) --
+        a model that re-selects a record it already has cannot fool the governor
+        by renaming the fact, which is what let the eval's hardest cases burn
+        their whole budget re-deriving.
         """
-        existing = self.facts.get(key)
         self.facts[key] = fact
-        return existing is None or existing.value != fact.value
+        if signature in self.derivations:
+            return False
+        self.derivations.add(signature)
+        return True
 
     def observe(self, message: str) -> None:
         self.observations.append(message)

@@ -122,6 +122,43 @@ def test_surface_re_admitting_same_fact_is_not_progress():
     assert apply_surface(ws, {"key": "completed", "from": "call_1", "path": "data.completedCourses"}) == 0
 
 
+def test_re_deriving_same_path_under_a_new_key_is_not_progress():
+    # The wandering fix: re-surfacing a value under a fresh key is NOT progress,
+    # but is still stored so a later fact_ref resolves.
+    ws = _working_set_with_completed()
+    assert apply_surface(ws, {"key": "a", "from": "call_1", "path": "data.completedCourses"}) == 1
+    assert apply_surface(ws, {"key": "b", "from": "call_1", "path": "data.completedCourses"}) == 0
+    assert ws.facts["b"].value == _COMPLETED
+
+
+def test_distinct_paths_with_equal_values_both_count_as_progress():
+    # Two different fields that happen to share a value (both True) must NOT be
+    # collapsed -- the signature identifies the operation, not the value.
+    result_key = 'get_entity:{"entity_id": "u1", "entity_type": "x"}'
+    ws = WorkingSet(question="q", user_id="u1")
+    ws.tool_results = {
+        result_key: {
+            "ok": True,
+            "data": {"eligible": True, "schedulable": True},
+            "certainty": {"basis": "official_record", "confidence": 1.0},
+        }
+    }
+    ws.handles = build_call_handles(ws.tool_results)
+    n = apply_surface(ws, {"selectors": [
+        {"key": "elig", "from": "call_1", "path": "data.eligible"},
+        {"key": "sched", "from": "call_1", "path": "data.schedulable"},
+    ]})
+    assert n == 2
+
+
+def test_re_selecting_the_same_spec_is_not_progress():
+    ws = _working_set_with_completed()
+    apply_surface(ws, {"key": "completed", "from": "call_1", "path": "data.completedCourses"})
+    assert apply_select(ws, {"key": "g1", "from_fact": "completed", "where": {"courseNumber": "00940224"}, "field": "grade"}) == 1
+    assert apply_select(ws, {"key": "g2", "from_fact": "completed", "where": {"courseNumber": "00940224"}, "field": "grade"}) == 0
+    assert ws.facts["g2"].value == 85
+
+
 def test_select_on_non_list_fact_fails_closed():
     ws = _working_set_with_completed()
     ws.facts["scalar"] = Fact(42, "src", "computed", 1.0)

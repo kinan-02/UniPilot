@@ -50,18 +50,16 @@ def apply_surface(ws: WorkingSet, args: dict[str, Any]) -> int:
         selectors = [{"key": args.get("key"), "from": args.get("from"), "path": args.get("path")}]
     outcome = project_facts(selectors, ws.tool_results, ws.handles)
     basis_by_handle = _basis_by_handle(ws)
-    selector_basis = {
-        s.get("key"): basis_by_handle.get(s.get("from"), "unknown")
-        for s in selectors
-        if isinstance(s, dict)
-    }
+    selector_by_key = {s.get("key"): s for s in selectors if isinstance(s, dict)}
     new_facts = 0
     for key, fact in outcome.facts.items():
-        admitted = ws.add_fact(
-            key, Fact(fact["value"], fact["source"], selector_basis.get(key, "unknown"), fact["confidence"])
-        )
+        selector = selector_by_key.get(key, {})
+        signature = f"surface:{selector.get('from')}:{selector.get('path')}"
+        basis = basis_by_handle.get(selector.get("from"), "unknown")
+        admitted = ws.admit_derivation(key, Fact(fact["value"], fact["source"], basis, fact["confidence"]), signature)
         new_facts += int(admitted)
-        ws.observe(f"surfaced fact '{key}' = {summarize_value(fact['value'])}")
+        suffix = "" if admitted else " (already derived; no new info)"
+        ws.observe(f"surfaced fact '{key}' = {summarize_value(fact['value'])}{suffix}")
     for err in outcome.errors:
         ws.observe(f"surface_fact error: {err}")
     return new_facts
@@ -129,8 +127,10 @@ def apply_compute(ws: WorkingSet, args: dict[str, Any]) -> int:
 
     refs_used = {k for k in ws.facts if f'"{k}"' in json.dumps(raw_expr)}
     confidence = min((ws.facts[r].confidence for r in refs_used), default=1.0)
-    admitted = ws.add_fact(key, Fact(value, f"compute({'; '.join(trace)})", "computed", confidence))
-    ws.observe(f"computed '{key}' = {value}  [{'; '.join(trace)}]")
+    signature = f"compute:{json.dumps(raw_expr, sort_keys=True, default=str)}"
+    admitted = ws.admit_derivation(key, Fact(value, f"compute({'; '.join(trace)})", "computed", confidence), signature)
+    suffix = "" if admitted else "  (already computed; no new info)"
+    ws.observe(f"computed '{key}' = {value}  [{'; '.join(trace)}]{suffix}")
     return int(admitted)
 
 
@@ -180,8 +180,10 @@ def apply_select(ws: WorkingSet, args: dict[str, Any]) -> int:
 
     value, match_count = filter_records(source.value, where, field)
     label = f"select({from_fact} where {where}" + (f").{field}" if field else ")")
-    admitted = ws.add_fact(key, Fact(value, label, source.basis, source.confidence))
-    ws.observe(f"selected '{key}' = {summarize_value(value)} ({match_count} match(es))")
+    signature = f"select:{from_fact}:{json.dumps(where, sort_keys=True, default=str)}:{field}"
+    admitted = ws.admit_derivation(key, Fact(value, label, source.basis, source.confidence), signature)
+    suffix = "" if admitted else " (already selected; no new info)"
+    ws.observe(f"selected '{key}' = {summarize_value(value)} ({match_count} match(es)){suffix}")
     return int(admitted)
 
 
