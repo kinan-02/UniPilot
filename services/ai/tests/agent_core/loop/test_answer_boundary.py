@@ -72,6 +72,16 @@ def test_list_of_scalars_slot_renders_comma_separated():
     assert problems == []  # every listed code is grounded via the slot
 
 
+def test_none_valued_slot_is_rejected_not_rendered_as_none():
+    _, problems = resolve_final(
+        "q",
+        _facts(sem=None),
+        "The target semester is {sem}.",
+        {"sem": "sem"},
+    )
+    assert any("None" in p for p in problems)
+
+
 def test_list_of_records_slot_is_still_rejected():
     _, problems = resolve_final(
         "q",

@@ -67,6 +67,13 @@ def resolve_final(
         ref = fact_refs.get(slot)
         if ref in facts:
             value = facts[ref].value
+            # A None-valued fact must never render the literal "None" into an
+            # answer (a live eval shipped "target semester None"). Treat it as
+            # unresolved so the draft is rejected and the model drops the slot or
+            # fills it with a real value.
+            if value is None:
+                unresolved.append(f"{slot}->None (fact has no value; drop this slot)")
+                return match.group(0)
             # A list of scalars renders comma-separated -- this is how a "list my
             # courses" answer slots an enumerated fact (e.g. select(field=...) over
             # the completed-courses list). Still grounded: every element traces to

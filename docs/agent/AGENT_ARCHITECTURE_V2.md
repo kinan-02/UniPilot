@@ -1048,6 +1048,39 @@ All 6 `ise_correctness` cases run through `run_agent_loop` on GPT-5-mini
      strict when the record legitimately has no such entry. It also has a real knowledge gap
      (term-index → season) that sent it in circles. This remains the single hardest case.
 
-**Verdict:** the V2 loop grounds every fact live on the demo model and answers the majority of the
-suite correctly; the remaining two failures are a completeness-gate refinement and a term→season
-knowledge gap, both bounded and non-architectural.
+### 18.6 Rounds 3–4 — the failures were the decomposer, not the loop
+
+Round-3 fixes (completeness-gate wording; the fixed term→season mapping; forced-compose must name
+the question's entities) fixed `offering_pattern` but not the two budget cases — and revealed the
+real root cause: the **decomposer**. It echoed "this semester" into the presupposition sub-ask (so
+the model hunted a current-semester record for a course passed *last* semester and never stated the
+real grade), and it inflated `eligibility` into co-requisite / exclusion / department / standing
+sub-asks the question never raised, sending the loop chasing them to budget.
+
+Round-4 fix — decompose at the root (un-scope premise checks to the course's *actual recorded
+status*; enforce minimality: only the sub-asks the question raises):
+
+| case | R1 | R2 | R3 | R4 |
+|---|---|---|---|---|
+| credits_remaining | 8/8 | 8/8 | 8/8 | 8/8 |
+| eligibility_00960211 | 4/4 | 4/4 | budget | 3/4† |
+| **presupposition_conflict** | budget | budget | budget | **5/5** |
+| offering_pattern | budget | budget | 4/4 | 4/4 |
+| completed_courses | 5/6 | 6/6 | 6/6 | 6/6 |
+| action_boundary | budget | 4/4 | 4/4 | 4/4 |
+| **correct** | **2/6** | **4/6** | **4/6** | **5/6** |
+
+Round 4 also ran in **260s vs 575s** — minimality cut the wandering roughly in half.
+`presupposition_conflict`, the hardest adversarial case (and the whole reason the `ise_correctness`
+suite exists), passed for the first time. †The only R4 miss, `eligibility`, over-minimized: it
+answered in 2 turns from `check_eligibility`'s raw flags ("eligible: True") without naming the
+prerequisite 00940224 — a terse-answer quality issue, not a wandering or grounding failure (and it
+answered 4/4 in R1/R2). A follow-on fix rejects `None`-valued slots so an answer can never render
+"target semester None".
+
+**Verdict.** Grounding held **6/6 on every run (24/24 case-runs, zero fabrication)**, and every case
+passed on at least one run — the loop is capable of the whole suite. Correctness climbed 2→4→4→**5**
+of 6 as each fix hit its root cause. The demo model is stochastic at temperature 1.0 (GPT-5 forces
+it), so a single run lands 4–5/6 by luck-of-the-draw on the terse/verbose boundary; the *stable*
+guarantees are the grounding floor and majority-correct, not a deterministic 6/6. The remaining gap
+is answer-quality tuning, not architecture — the V2 thesis is validated.
