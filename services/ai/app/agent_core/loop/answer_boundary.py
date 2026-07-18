@@ -18,12 +18,45 @@ import json
 import re
 from typing import Any
 
-from app.agent_core.loop.working_set import Fact
+from app.agent_core.loop.working_set import AUTHORITATIVE_BASES, Fact
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
 
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _SLOT = re.compile(r"\{(\w+)\}")
+# Markdown ordered-list markers ("1. ", "2) ") at line start are FORMATTING, not
+# factual claims -- exempt them from the numeral backstop so a legitimately
+# enumerated answer isn't rejected for its own bullet numbers. Anything mid-
+# sentence stays checked, so a fabricated "92.5" is still caught.
+_LIST_MARKER = re.compile(r"(?m)^\s*\d+[.)]\s")
 _GATE_TIMEOUT_S = 60.0
+
+# How a qualified (non-authoritative) fact's value is hedged in the answer's
+# certainty note (§4.2) -- keyed by the fact's basis. An official record needs no
+# entry (it renders flat); everything else names why the value is not firm.
+_BASIS_QUALIFIER = {
+    "predicted_pattern": "predicted from recent offering history (not a guaranteed future schedule)",
+    "llm_interpretation": "interpreted from catalog/wiki text (confirm against the official source)",
+    "wiki_derived": "drawn from the program catalog text",
+    "hypothetical_simulation": "from the hypothetical you described (a simulation, not your current record)",
+    "simulated": "from a simulated what-if (not your current record)",
+    "unknown": "from a source of uncertain authority (verify before relying on it)",
+}
+
+
+def _certainty_note(qualified: list[tuple[str, str]]) -> str:
+    """A single trailing hedge sentence naming which slotted values are not firm
+    records and why (§4.2). Empty when every slotted fact is authoritative -- an
+    all-official answer renders flat, a prediction/interpretation renders hedged."""
+    by_basis: dict[str, list[str]] = {}
+    for value, basis in qualified:
+        seen = by_basis.setdefault(basis, [])
+        if value not in seen:
+            seen.append(value)
+    notes = [
+        f"{', '.join(values)} -- {_BASIS_QUALIFIER.get(basis, _BASIS_QUALIFIER['unknown'])}"
+        for basis, values in by_basis.items()
+    ]
+    return "\n\nOn certainty: " + "; ".join(notes) + "." if notes else ""
 
 _COMPLETENESS_SYSTEM = """You verify whether a DRAFT answer addresses every required sub-question.
 Output ONLY JSON: {"unaddressed": ["<verbatim sub-ask>", ...]} -- list each sub-ask the
@@ -61,6 +94,15 @@ def resolve_final(
     """
     slotted_values: list[str] = []
     unresolved: list[str] = []
+    qualified: list[tuple[str, str]] = []  # (rendered_value, basis) for the certainty note
+
+    def _record_scalar(rendered_value: str, ref: str) -> None:
+        slotted_values.append(rendered_value)
+        basis = facts[ref].basis
+        if basis not in AUTHORITATIVE_BASES:
+            qualified.append((rendered_value, basis))
+
+    question_numerals = set(_NUM.findall(question))
 
     def _sub(match: re.Match) -> str:
         slot = match.group(1)
@@ -77,17 +119,43 @@ def resolve_final(
             # A list of scalars renders comma-separated -- this is how a "list my
             # courses" answer slots an enumerated fact (e.g. select(field=...) over
             # the completed-courses list). Still grounded: every element traces to
-            # the fact. A list/dict of records stays non-scalar (select a field).
+            # the fact.
             if isinstance(value, list) and all(not isinstance(item, (dict, list)) for item in value):
                 rendered_value = ", ".join(str(item) for item in value)
-                slotted_values.append(rendered_value)
+                _record_scalar(rendered_value, ref)
                 return rendered_value
-            if isinstance(value, (dict, list)):
-                unresolved.append(f"{slot}->non-scalar {type(value).__name__} (select a scalar field)")
+            # A dict or a list of records is not a single value. Reject with the
+            # concrete recovery (name the fields) so the model can `select` the
+            # scalar it meant instead of shipping "{...}" -- a live eval bound a
+            # whole record to a scalar slot and had no actionable way back.
+            if isinstance(value, dict):
+                # Auto-repair (#2): if the slot NAME matches exactly one scalar field
+                # of the record, read it -- the model's intent is unambiguous. Turns a
+                # record->scalar rejection wander into a direct, grounded fill.
+                field_value = value.get(slot)
+                if field_value is not None and not isinstance(field_value, (dict, list)):
+                    rendered_value = str(field_value)
+                    _record_scalar(rendered_value, ref)
+                    return rendered_value
+                unresolved.append(
+                    f"{slot}->dict with keys {sorted(value.keys())} (not a single value; select one field of it)"
+                )
+                return match.group(0)
+            if isinstance(value, list):
+                unresolved.append(
+                    f"{slot}->list of {len(value)} records (select a field to enumerate them, or add a where to pick one)"
+                )
                 return match.group(0)
             rendered_value = str(value)
-            slotted_values.append(rendered_value)
+            _record_scalar(rendered_value, ref)
             return rendered_value
+        # Auto-repair (#2): the model sometimes binds a slot straight to a literal
+        # code/number from the QUESTION instead of a fact key (fact_refs
+        # {"course": "00960211"}). If that literal is a numeral in the question it is
+        # grounded-by-question -- render it, rather than rejecting into a wander (the
+        # action_boundary failure mode).
+        if isinstance(ref, str) and ref in question_numerals:
+            return ref
         unresolved.append(f"{slot}->{ref}")
         return match.group(0)
 
@@ -96,8 +164,15 @@ def resolve_final(
     for slotted in slotted_values:
         allowed.update(_NUM.findall(slotted))
     allowed.update(_NUM.findall(question))  # echoing a code from the question is fine
-    problems = [tok for tok in _NUM.findall(rendered) if tok not in allowed]
+    # Check numerals against the prose with ordered-list markers stripped, so a
+    # numbered list's own bullet numbers don't read as ungrounded claims.
+    check_target = _LIST_MARKER.sub("", rendered)
+    problems = [tok for tok in _NUM.findall(check_target) if tok not in allowed]
     problems += [f"unresolved_slot:{u}" for u in unresolved]
+    # Only annotate an answer we will actually accept; a rejected draft is
+    # re-composed, so its certainty note would be discarded anyway.
+    if not problems:
+        rendered += _certainty_note(qualified)
     return rendered, problems
 
 

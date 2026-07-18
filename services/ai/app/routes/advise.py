@@ -38,9 +38,12 @@ router = APIRouter(dependencies=[Depends(require_internal_service_token)])
 _TIMEOUT_MESSAGE = "This question is taking longer than expected to analyze -- please try again or ask something more specific."
 
 # Outcome -> the frontend's retrieval_agent.status vocabulary (kept from V1).
+# A declined (out-of-scope) question IS a completed, valid response -- the system
+# answered by politely declining -- so it maps to "succeeded", not an error state.
 _STATUS_BY_OUTCOME = {
     "answered": "succeeded",
     "clarified": "blocked_needs_clarification",
+    "declined": "succeeded",
     "budget_exhausted": "incomplete",
 }
 

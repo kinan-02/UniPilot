@@ -67,6 +67,7 @@ def _mine_course_offering_pattern(entity: str, raw_dir: str) -> dict[str, Any]:
             term_observed[term_index] = term_observed.get(term_index, 0) + 1
 
     term_patterns: dict[str, dict[str, Any]] = {}
+    term_labels: dict[str, str] = {}
     for term_index, total in sorted(term_totals.items()):
         observed = term_observed.get(term_index, 0)
         ratio = observed / total
@@ -77,11 +78,29 @@ def _mine_course_offering_pattern(entity: str, raw_dir: str) -> dict[str, Any]:
         else:
             label = "irregular"
         term_patterns[str(term_index)] = {"label": label, "observed": observed, "total": total}
+        term_labels[str(term_index)] = label
 
     return {
         "factType": "course_offering",
         "entity": entity,
+        # `termPatterns` holds the full record per term; `termLabels` is a SCALAR
+        # projection (term -> label) so a consumer can surface `termLabels.<n>`
+        # directly instead of drilling into a term OBJECT. Both composites that
+        # embed this output (get_course_profile, check_eligibility) inherit it, so
+        # the offering answer has one consistent scalar grain regardless of which
+        # tool the model reached for (§18.11 root fix -- tool-choice can no longer
+        # change the answer's shape).
         "termPatterns": term_patterns,
+        "termLabels": term_labels,
+        # SCALAR count of the semesters this course actually appeared in (sum of
+        # `observed` across term-types) -- the same grain principle as termLabels,
+        # added so "in how many semesters has X been offered?" is a single leaf a
+        # consumer can surface/compare directly, not a sum it must re-derive over
+        # the term OBJECTS. It is what makes `map extract_temporal_pattern over
+        # <codes>, select data.semestersOffered` yield a comparable per-course
+        # count (§19 map primitive), so an argmax over many courses stays in-code
+        # and grounded instead of collapsing into a child loop that gives up.
+        "semestersOffered": sum(term_observed.values()),
         "totalSemestersInHistory": len(catalogs),
     }
 

@@ -13,6 +13,8 @@ it degrades gracefully to an honest conclusion, never silence.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,7 +22,7 @@ from typing import Any
 from app.agent_core.loop.answer_boundary import completeness_gate, resolve_final
 from app.agent_core.loop.arg_refs import resolve_arg_refs
 from app.agent_core.loop.constitution import build_constitution, build_tool_catalog
-from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface
+from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface, project_mapped_records
 from app.agent_core.loop.front_door import decompose
 from app.agent_core.loop.working_set import Fact, Terminal, WorkingSet, render_working_set, summarize_value
 from app.agent_core.planning.state import ToolInvocationRecord
@@ -40,6 +42,16 @@ NO_PROGRESS_LIMIT = 3
 # wanderers spent their whole budget re-rejecting their own drafts (§16 follow-up).
 REJECTION_LIMIT = 4
 TURN_TIMEOUT_S = 90.0
+# Sub-loops (§6) exist for CONTEXT ISOLATION only -- a subtask whose raw material
+# would flood the parent's reasoning trace. Depth is capped in code to forbid
+# runaway recursion; a sub-loop shares (debits) the parent's turn and wall-clock
+# budget, so decomposition can never buy unbounded total work.
+MAX_SUBLOOP_DEPTH = 2
+# `map` (§19) fans one data tool over a grounded list CONCURRENTLY in code. The cap
+# bounds how many concurrent tool calls (and audit records) a single map can fire;
+# the ISE completed set is 17, comfortably under. A longer list must be narrowed
+# first -- an explicit error, never a silent truncation.
+MAX_MAP_FANOUT = 40
 
 _FORCED_COMPOSE_SYSTEM = """You are OUT of tool budget and must answer NOW, using ONLY the grounded
 facts already gathered -- no more tools, no invented values. Output ONLY a final_answer JSON:
@@ -55,12 +67,14 @@ not cover, say honestly you could not determine it. Answer the student directly 
 LOOP_TEMPERATURE = 1.0
 REASONING_EFFORT = "medium"
 
-_META_TOOLS = frozenset({"surface_fact", "surface_facts", "compute", "select", "final_answer", "clarify"})
+_META_TOOLS = frozenset(
+    {"surface_fact", "surface_facts", "compute", "select", "map", "spawn_subtask", "final_answer", "clarify"}
+)
 
 
 @dataclass
 class AgentLoopResult:
-    outcome: str  # "answered" | "clarified" | "budget_exhausted"
+    outcome: str  # "answered" | "clarified" | "declined" | "budget_exhausted"
     answer: str
     ungrounded_numbers: list[str]
     sub_asks: list[str]
@@ -70,6 +84,34 @@ class AgentLoopResult:
     llm_calls: int
     wall_clock_s: float
     transcript: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class LoopBudget:
+    """The shared, debitable budget (§6, §7). One instance is created per request
+    and passed to every loop -- root and any sub-loop -- so a child's turns and
+    wall-clock draw down the SAME counters as the parent. `llm_calls` is a shared
+    tally across the whole tree, reported on the root result."""
+
+    deadline: float  # absolute time.monotonic() by which every loop must stop
+    turns_remaining: int  # decremented by each turn of any loop in the tree
+    llm_calls: int = 0
+
+
+@dataclass
+class _LoopContext:
+    """The per-request substrate a loop and its sub-loops all share: one adapter,
+    one registry, one cache (so a child's fetches hit the parent's cache and vice
+    versa, §6), one constitution, and the shared budget. Only `depth` varies
+    between parent and child, so it is passed alongside, not stored here."""
+
+    adapter: ChatLLMAdapter
+    registry: ToolRegistry
+    cache: ToolCallCache
+    system_prompt: str
+    budget: LoopBudget
+    temperature: float
+    reasoning_effort: str
 
 
 def _split_calls(calls: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -105,14 +147,31 @@ async def _run_data_tools(
         return 0, []
 
     before = set(ws.tool_results)
-    merged, audit = await execute_tool_round(
-        tool_requests=resolved_requests,
-        tool_grant=registry.names(),
-        tool_registry=registry,
-        tool_results_so_far=ws.tool_results,
-        tool_call_cache=cache,
-        log_prefix="agent_loop",
+    grant = registry.names()
+    # Independent calls the model listed together actually RUN concurrently
+    # (§4.1) -- one execute_tool_round per request, gathered. Each starts from the
+    # same result base; the shared cache's per-key lock keeps a duplicated key
+    # safe (only one real invocation), and gather preserves input order so the
+    # merged audit stays deterministic. This is the same concurrency V1's
+    # parallel_dispatch already relied on, now recovered without an up-front plan.
+    rounds = await asyncio.gather(
+        *(
+            execute_tool_round(
+                tool_requests=[request],
+                tool_grant=grant,
+                tool_registry=registry,
+                tool_results_so_far=ws.tool_results,
+                tool_call_cache=cache,
+                log_prefix="agent_loop",
+            )
+            for request in resolved_requests
+        )
     )
+    merged = dict(ws.tool_results)
+    audit: list[ToolInvocationRecord] = []
+    for round_results, round_audit in rounds:
+        merged.update(round_results)
+        audit.extend(round_audit)
     ws.tool_results = merged
     ws.handles = build_call_handles(merged)
     for record in audit:
@@ -123,6 +182,127 @@ async def _run_data_tools(
         if isinstance(merged.get(key), dict) and merged[key].get("ok")
     )
     return new_ok, audit
+
+
+def _as_fact_key(value: Any) -> str | None:
+    """Resolve `map`'s `over` to a fact-key STRING. Accepts a bare key or the
+    system's `{"ref": key}` idiom -- the model generalizes `{"ref": ...}` here from
+    tool-args and spawn inputs (a live run did exactly this), so meeting it where it
+    is beats rejecting a reasonable form. Anything else -> None, so the caller fails
+    closed instead of hashing a dict into a membership test (the live crash)."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and set(value) == {"ref"} and isinstance(value.get("ref"), str):
+        return value["ref"]
+    return None
+
+
+async def _run_map(
+    ws: WorkingSet, call: dict[str, Any], ctx: _LoopContext
+) -> tuple[int, list[ToolInvocationRecord]]:
+    """Run one `map` (§19): fan a single data tool over every scalar in a grounded
+    list fact, CONCURRENTLY in code, and collect the projected results into one new
+    grounded list fact of {entity, value} records -- the map half of map-reduce,
+    the reduce left to `select`/`compute`.
+
+    This is the right grain for uniform aggregation over data (17 course codes ->
+    17 offering-history lookups): ONE model decision, a code-level fan-out over the
+    same concurrent-execution + shared-cache path a normal turn's parallel calls
+    use, and a grounded result -- not a tree of reasoning sub-loops, each burning
+    LLM calls and adding its own variance to make a single deterministic tool call.
+    Returns (progress, audit) -- the mapped calls' audit folds into the parent so
+    course/source derivation sees them, exactly as `_run_data_tools`."""
+    args = call.get("arguments") or {}
+    key = args.get("key")
+    over = _as_fact_key(args.get("over"))
+    tool_name = args.get("tool")
+    arg_name = args.get("arg")
+    static_args = args.get("args") or {}
+    select_path = args.get("select")
+    if not isinstance(key, str) or not over or not isinstance(tool_name, str) or not isinstance(arg_name, str):
+        ws.observe(
+            'map error: needs \'key\' (result fact name), \'over\' (the grounded list fact -- its key as a '
+            'string, or {"ref": key}), \'tool\' (a data-tool name), and \'arg\' (the tool argument each item '
+            "fills) -- all strings."
+        )
+        return 0, []
+    if not isinstance(static_args, dict):
+        ws.observe("map error: 'args' (static arguments applied to every call) must be an object.")
+        return 0, []
+    if select_path is not None and not isinstance(select_path, str):
+        ws.observe("map error: 'select' must be a string path (e.g. 'data.semestersOffered') or omitted.")
+        return 0, []
+    if over not in ws.facts:
+        ws.observe(f"map error: no fact named '{over}' (available: {sorted(ws.facts)})")
+        return 0, []
+    elements = ws.facts[over].value
+    if not isinstance(elements, list) or not elements:
+        ws.observe(f"map error: fact '{over}' is not a non-empty list.")
+        return 0, []
+    if any(isinstance(element, (dict, list)) for element in elements):
+        ws.observe(
+            f"map error: '{over}' must be a list of SCALARS (e.g. course codes). Use `select` with a "
+            "'field' to project a scalar list first."
+        )
+        return 0, []
+    if tool_name in _META_TOOLS or tool_name not in ctx.registry.names():
+        ws.observe(f"map error: 'tool' must be one of the DATA tools, not '{tool_name}'.")
+        return 0, []
+    if len(elements) > MAX_MAP_FANOUT:
+        ws.observe(
+            f"map error: {len(elements)} items exceeds the fan-out cap ({MAX_MAP_FANOUT}); narrow the list first."
+        )
+        return 0, []
+
+    requests = [
+        {"tool_name": tool_name, "arguments": {**static_args, arg_name: element}} for element in elements
+    ]
+    grant = ctx.registry.names()
+    rounds = await asyncio.gather(
+        *(
+            execute_tool_round(
+                tool_requests=[request],
+                tool_grant=grant,
+                tool_registry=ctx.registry,
+                tool_results_so_far=ws.tool_results,
+                tool_call_cache=ctx.cache,
+                log_prefix="agent_loop_map",
+            )
+            for request in requests
+        )
+    )
+    merged = dict(ws.tool_results)
+    audit: list[ToolInvocationRecord] = []
+    for round_results, round_audit in rounds:
+        merged.update(round_results)
+        audit.extend(round_audit)
+    ws.tool_results = merged
+    ws.handles = build_call_handles(merged)
+    # Align each element's result envelope by re-deriving the result key exactly as
+    # tool_round keys it (`{tool}:{json.dumps(args, sort_keys=True, default=str)}`,
+    # tool_round.py) -- deterministic, and robust to duplicate elements.
+    envelopes = [
+        merged.get(f"{request['tool_name']}:{json.dumps(request['arguments'], sort_keys=True, default=str)}")
+        for request in requests
+    ]
+    records, basis, confidence, errors = project_mapped_records(elements, envelopes, select_path)
+    for err in errors:
+        ws.observe(f"map '{key}': skipped {err}")
+    if not records:
+        ws.observe(
+            f"map '{key}' produced no records ({len(elements)} call(s), none yielded "
+            f"{'path ' + select_path if select_path else 'data'})."
+        )
+        return 0, audit
+    source = f"map({tool_name} over {over}" + (f", select {select_path})" if select_path else ")")
+    signature = f"map:{tool_name}:{over}:{select_path}:{json.dumps(static_args, sort_keys=True, default=str)}"
+    admitted = ws.admit_derivation(key, Fact(records, source, basis, confidence), signature)
+    suffix = "" if admitted else " (already mapped; no new info)"
+    ws.observe(
+        f"mapped {tool_name} over {len(elements)} item(s) from '{over}' -> '{key}' = "
+        f"{summarize_value(records)} (basis: {basis}){suffix}"
+    )
+    return int(admitted), audit
 
 
 def _apply_meta_call(ws: WorkingSet, call: dict[str, Any]) -> tuple[Terminal | None, int]:
@@ -149,18 +329,41 @@ def _apply_meta_call(ws: WorkingSet, call: dict[str, Any]) -> tuple[Terminal | N
 
 
 async def _process_turn(
-    ws: WorkingSet, calls: list[dict[str, Any]], registry: ToolRegistry, cache: ToolCallCache
+    ws: WorkingSet, calls: list[dict[str, Any]], ctx: _LoopContext, depth: int
 ) -> tuple[Terminal | None, int, list[ToolInvocationRecord]]:
     """Run data-tool calls first (so a same-turn surface can see them), then the
-    meta-tools in listed order. Returns (terminal, progress, audit)."""
+    meta-tools in listed order. `spawn_subtask` runs a child loop (§6); the rest
+    are the synchronous fact-admission/terminal meta-tools. Returns (terminal,
+    progress, audit)."""
     real_requests, meta_calls = _split_calls(calls)
     progress = 0
     audit: list[ToolInvocationRecord] = []
     if real_requests:
-        tool_progress, audit = await _run_data_tools(ws, real_requests, registry, cache)
+        tool_progress, audit = await _run_data_tools(ws, real_requests, ctx.registry, ctx.cache)
         progress += tool_progress
     for call in meta_calls:
-        terminal, meta_progress = _apply_meta_call(ws, call)
+        try:
+            if call.get("tool") == "spawn_subtask":
+                sub_progress, sub_audit = await _run_subtask(ws, call, ctx, depth)
+                progress += sub_progress
+                audit.extend(sub_audit)
+                continue
+            if call.get("tool") == "map":
+                map_progress, map_audit = await _run_map(ws, call, ctx)
+                progress += map_progress
+                audit.extend(map_audit)
+                continue
+            terminal, meta_progress = _apply_meta_call(ws, call)
+        except Exception as exc:  # noqa: BLE001 -- a malformed meta-call must degrade to a
+            # repairable observation, never crash the whole request: the same "never
+            # raises" contract execute_tool_round holds for data tools (tool_round.py).
+            # A live run aborted an entire eval when `map` hashed a `{"ref": ...}` it
+            # got for `over`; that specific case is now handled, this is the backstop.
+            ws.observe(
+                f"'{call.get('tool')}' failed on malformed input ({type(exc).__name__}); "
+                "fix the arguments and retry, or use a different step."
+            )
+            continue
         progress += meta_progress
         if terminal is not None:
             return terminal, progress, audit
@@ -175,6 +378,33 @@ def _punt_message(ws: WorkingSet) -> str:
         parts.append("Open items: " + "; ".join(ws.sub_asks) + ".")
     parts.append("Please check with your faculty secretariat for a definitive answer.")
     return " ".join(parts)
+
+
+def _assemble_from_facts(ws: WorkingSet) -> str | None:
+    """Deterministic grounded FLOOR (#4): when the model cannot compose an answer
+    but the working set holds usable facts, ship those facts -- grounded by
+    construction, read straight from the fact values (no model, no fabrication) --
+    rather than a bare punt. Skips non-scalar objects (a raw record/dict is not
+    answer-usable). Terse, but never empty when there is something grounded to say."""
+    lines: list[str] = []
+    for key, fact in ws.facts.items():
+        value = fact.value
+        if isinstance(value, dict):
+            continue
+        if isinstance(value, list):
+            if not value or isinstance(value[0], (dict, list)):
+                continue
+            rendered = ", ".join(str(item) for item in value)
+        else:
+            rendered = str(value)
+        lines.append(f"- {key}: {rendered}")
+    if not lines:
+        return None
+    parts = ["I couldn't fully compose an answer, but here is what I did determine from your record:"]
+    parts.extend(lines)
+    if ws.sub_asks:
+        parts.append("Still open: " + "; ".join(ws.sub_asks) + ". Please check with your faculty secretariat.")
+    return "\n".join(parts)
 
 
 async def _forced_compose(
@@ -214,42 +444,134 @@ async def _forced_compose(
     return None
 
 
-async def run_agent_loop(
-    question: str,
-    user_id: str,
-    registry: ToolRegistry,
-    *,
-    temperature: float = LOOP_TEMPERATURE,
-    reasoning_effort: str = REASONING_EFFORT,
+def _normalize_output_facts(spec: Any) -> list[str]:
+    """The fact keys a subtask must return: a list of key names, or a schema dict
+    whose keys are the names."""
+    if isinstance(spec, dict):
+        return [str(k) for k in spec if str(k).strip()]
+    if isinstance(spec, list):
+        return [str(k) for k in spec if str(k).strip()]
+    return []
+
+
+def _resolve_subtask_inputs(
+    inputs: Any, parent_facts: dict[str, Fact]
+) -> tuple[dict[str, Fact], list[str]]:
+    """Seed a child loop's facts from the parent's -- REFS ONLY. Each input value
+    must be {"ref": <a grounded parent fact key>}; a typed literal is rejected, so
+    Invariant A holds across the boundary: a child can only start from values the
+    parent already grounded, never a number the model typed into the spawn."""
+    if not isinstance(inputs, dict):
+        return {}, ['"inputs" must be an object mapping child fact keys to {"ref": parentFactKey}']
+    seeded: dict[str, Fact] = {}
+    errors: list[str] = []
+    for key, value in inputs.items():
+        if isinstance(value, dict) and set(value.keys()) == {"ref"} and isinstance(value.get("ref"), str):
+            src = parent_facts.get(value["ref"])
+            if src is None:
+                errors.append(f"input '{key}' references unknown fact '{value['ref']}' (available: {sorted(parent_facts)})")
+                continue
+            seeded[key] = Fact(src.value, f"subtask_input(from {value['ref']})", src.basis, src.confidence)
+        else:
+            errors.append(f"input '{key}' must be {{\"ref\": <a grounded parent fact key>}}, not a typed literal")
+    return seeded, errors
+
+
+def _child_question(objective: str, output_facts: list[str]) -> str:
+    return (
+        f"{objective}\n\n"
+        f"This is a SUBTASK in an ISOLATED context, with the SAME tools and grounding rules as the main "
+        f"loop. Any GROUNDED FACTS shown to you are real, fully-grounded INPUTS -- a fact shown as "
+        f"'[list of N values: ...]' or '[list of N records: ...]' HOLDS those items: read or filter them "
+        f"with select/compute, and FETCH anything else you need with the data tools (e.g. one call per code). "
+        f"Do NOT answer 'I cannot determine' just because a seeded fact is not already the final answer -- "
+        f"deriving it from your inputs and tools IS the job. When done, ground the fact(s) named EXACTLY "
+        f"{output_facts} (those exact key names) and call final_answer. ONLY those named facts return to the "
+        f"parent; everything else you fetch stays contained here."
+    )
+
+
+async def _run_subtask(
+    parent_ws: WorkingSet, call: dict[str, Any], ctx: _LoopContext, depth: int
+) -> tuple[int, list[ToolInvocationRecord]]:
+    """Run one `spawn_subtask` (§6): a child loop with fresh context (only the
+    resolved `inputs`), the same substrate + shared budget, at depth+1. Its
+    requested `output_facts` are promoted back into the parent as grounded facts
+    (value/basis/confidence preserved). Returns (progress, child_audit) -- the
+    child's tool audit folds into the parent's so course/source derivation sees it."""
+    args = call.get("arguments") or {}
+    objective = str(args.get("objective") or "").strip()
+    output_facts = _normalize_output_facts(args.get("output_facts") or args.get("output_schema"))
+    if not objective or not output_facts:
+        parent_ws.observe("spawn_subtask error: needs 'objective' and 'output_facts' (the fact keys to return).")
+        return 0, []
+    if depth >= MAX_SUBLOOP_DEPTH:
+        parent_ws.observe(
+            f"spawn_subtask REJECTED: sub-loop depth cap ({MAX_SUBLOOP_DEPTH}) reached -- do this inline as normal turns."
+        )
+        return 0, []
+    seeded, errors = _resolve_subtask_inputs(args.get("inputs") or {}, parent_ws.facts)
+    if errors:
+        for err in errors:
+            parent_ws.observe(f"spawn_subtask input error: {err}")
+        return 0, []
+
+    child_ws = WorkingSet(
+        question=_child_question(objective, output_facts),
+        user_id=parent_ws.user_id,
+        language=parent_ws.language,
+    )
+    child_ws.facts = seeded
+    child_ws.sub_asks = [objective]
+    child_result = await _drive(child_ws, ctx, depth + 1, run_completeness=False)
+    parent_ws.observe(f"sub-loop [{objective[:60]}] -> {child_result.outcome} in {child_result.turns} turn(s)")
+
+    promoted = 0
+    for key in output_facts:
+        fact = child_ws.facts.get(key)
+        if fact is None:
+            parent_ws.observe(f"sub-loop did not produce requested fact '{key}'")
+            continue
+        signature = f"subtask:{objective}:{key}"
+        admitted = parent_ws.admit_derivation(
+            key,
+            Fact(fact.value, f"spawn_subtask({objective}) -> {fact.source}", fact.basis, fact.confidence),
+            signature,
+        )
+        suffix = "" if admitted else " (already held)"
+        parent_ws.observe(f"sub-loop produced '{key}' = {summarize_value(fact.value)} (basis: {fact.basis}){suffix}")
+        promoted += int(admitted)
+    return promoted, child_result.audit
+
+
+async def _drive(
+    ws: WorkingSet, ctx: _LoopContext, depth: int, *, run_completeness: bool
 ) -> AgentLoopResult:
-    adapter = ChatLLMAdapter()
-    ws = WorkingSet(question=question, user_id=user_id)
-    cache = ToolCallCache()  # fresh per request -- freshness invariant (§5)
-    system_prompt = build_constitution(user_id, build_tool_catalog(registry))
+    """The reasoning loop core (§4, §7), shared by the root loop and every
+    sub-loop. Runs turns until a terminal or exhaustion, governed against
+    wandering, then degrades gracefully. Termination draws down the SHARED budget
+    (`ctx.budget`), so a sub-loop's turns debit the parent's. `run_completeness`
+    is off for sub-loops -- their completeness is structural (did they produce the
+    requested output facts), checked by the promotion step in `_run_subtask`."""
     transcript: list[dict[str, Any]] = []
     audit: list[ToolInvocationRecord] = []
     started = time.monotonic()
-    llm_calls = 1
-
-    front_door = await decompose(adapter, question, temperature=temperature, reasoning_effort=reasoning_effort)
-    ws.sub_asks = front_door.sub_asks
-
     no_progress = 0
     answer_rejections = 0
     turn = 0
-    for turn in range(1, MAX_TURNS + 1):
-        if time.monotonic() - started > WALL_CLOCK_S:
-            break
+    while ctx.budget.turns_remaining > 0 and time.monotonic() <= ctx.budget.deadline:
+        ctx.budget.turns_remaining -= 1
+        turn += 1
 
         raw_out: list[str] = []
         try:
-            llm_calls += 1
-            action = await adapter.complete_json(
-                system_prompt=system_prompt,
+            ctx.budget.llm_calls += 1
+            action = await ctx.adapter.complete_json(
+                system_prompt=ctx.system_prompt,
                 user_prompt=render_working_set(ws, turn, MAX_TURNS),
-                temperature=temperature,
+                temperature=ctx.temperature,
                 thinking_enabled=True,
-                reasoning_effort=reasoning_effort,
+                reasoning_effort=ctx.reasoning_effort,
                 raw_model_text_out=raw_out,
                 timeout=TURN_TIMEOUT_S,
             )
@@ -260,7 +582,7 @@ async def run_agent_loop(
 
         calls = action.get("tool_calls") or []
         transcript.append({"turn": turn, "thought": action.get("thought"), "calls": calls})
-        terminal, progress, turn_audit = await _process_turn(ws, calls, registry, cache)
+        terminal, progress, turn_audit = await _process_turn(ws, calls, ctx, depth)
         audit.extend(turn_audit)
         rejected_this_turn = False
         for call in calls:  # surface any grounding rejection onto the transcript
@@ -269,15 +591,15 @@ async def run_agent_loop(
                 rejected_this_turn = True
 
         if terminal is not None:
-            if terminal.kind == "answered" and ws.sub_asks:
+            if terminal.kind == "answered" and ws.sub_asks and run_completeness:
                 # §9.2 completeness gate: a grounded answer must still ADDRESS
                 # every sub-ask -- the structural fix the falsified prompt-level
                 # rule could not deliver. Rejection resumes the loop with the
                 # named gap (bounded continuation, §9.3).
-                llm_calls += 1
+                ctx.budget.llm_calls += 1
                 unaddressed = await completeness_gate(
-                    adapter, question, ws.sub_asks, terminal.text,
-                    temperature=temperature, reasoning_effort=reasoning_effort,
+                    ctx.adapter, ws.question, ws.sub_asks, terminal.text,
+                    temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort,
                 )
                 if unaddressed:
                     ws.observe(
@@ -292,7 +614,7 @@ async def run_agent_loop(
                     break
             return AgentLoopResult(
                 terminal.kind, terminal.text, terminal.ungrounded, ws.sub_asks, ws.facts,
-                audit, turn, llm_calls, time.monotonic() - started, transcript,
+                audit, turn, ctx.budget.llm_calls, time.monotonic() - started, transcript,
             )
 
         # Anti-wander (§7): a repeatedly self-rejected final answer means the model
@@ -305,7 +627,15 @@ async def run_agent_loop(
                 break
 
         # No-progress governor (§7): a turn that admits no new fact and records no
-        # new successful fetch counts toward the cap that forces conclusion.
+        # new successful fetch counts toward the cap that forces conclusion. Detect-
+        # and-correct (#1): re-orient on a wasted turn rather than only counting, so
+        # the model breaks a repeat instead of spinning to exhaustion.
+        if progress == 0:
+            ws.observe(
+                "that turn added NO new information -- do something DIFFERENT next: drill an object "
+                "into a scalar leaf, `select` a field, `compute` over facts you hold, or compose the "
+                "final_answer now from those facts."
+            )
         no_progress = no_progress + 1 if progress == 0 else 0
         if no_progress >= NO_PROGRESS_LIMIT:
             ws.observe(f"no-progress limit reached ({NO_PROGRESS_LIMIT} turns); concluding.")
@@ -316,17 +646,82 @@ async def run_agent_loop(
     # turns to say it.
     composed: str | None = None
     if ws.facts:
-        llm_calls += 1
-        composed = await _forced_compose(adapter, ws, temperature=temperature, reasoning_effort=reasoning_effort)
+        ctx.budget.llm_calls += 1
+        composed = await _forced_compose(ctx.adapter, ws, temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort)
     if composed is not None:
+        # §9.2: even the exhaustion answer is checked for completeness -- but here
+        # we cannot loop to close a gap (the budget is spent), so we ship the
+        # grounded answer and HONESTLY name any sub-ask it could not cover, rather
+        # than silently dropping it (the R2 "forced-compose dropped the code" miss).
+        if ws.sub_asks and run_completeness:
+            ctx.budget.llm_calls += 1
+            unaddressed = await completeness_gate(
+                ctx.adapter, ws.question, ws.sub_asks, composed,
+                temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort,
+            )
+            if unaddressed:
+                composed += "\n\nI could not fully address: " + "; ".join(unaddressed) + "."
         return AgentLoopResult(
             "answered", composed, [], ws.sub_asks, ws.facts,
-            audit, turn, llm_calls, time.monotonic() - started, transcript,
+            audit, turn, ctx.budget.llm_calls, time.monotonic() - started, transcript,
         )
+    # Deterministic grounded FLOOR (#4): ship the facts we hold rather than a bare
+    # punt when the model couldn't compose from them.
+    floor = _assemble_from_facts(ws)
     return AgentLoopResult(
-        "budget_exhausted", _punt_message(ws), [], ws.sub_asks, ws.facts,
-        audit, turn, llm_calls, time.monotonic() - started, transcript,
+        "budget_exhausted", floor if floor is not None else _punt_message(ws), [], ws.sub_asks, ws.facts,
+        audit, turn, ctx.budget.llm_calls, time.monotonic() - started, transcript,
     )
 
 
-__all__ = ["AgentLoopResult", "run_agent_loop", "MAX_TURNS", "WALL_CLOCK_S", "NO_PROGRESS_LIMIT"]
+async def run_agent_loop(
+    question: str,
+    user_id: str,
+    registry: ToolRegistry,
+    *,
+    temperature: float = LOOP_TEMPERATURE,
+    reasoning_effort: str = REASONING_EFFORT,
+) -> AgentLoopResult:
+    """The root loop: scope-gate + decompose, then drive at depth 0 with a fresh
+    per-request budget and cache (the freshness invariant, §5). Sub-loops reuse
+    this same driver through `_run_subtask`, sharing the budget and cache."""
+    started = time.monotonic()
+    adapter = ChatLLMAdapter()
+    ws = WorkingSet(question=question, user_id=user_id)
+    cache = ToolCallCache()  # fresh per request -- freshness invariant (§5)
+    system_prompt = build_constitution(user_id, build_tool_catalog(registry))
+    budget = LoopBudget(deadline=started + WALL_CLOCK_S, turns_remaining=MAX_TURNS)
+    ctx = _LoopContext(
+        adapter=adapter,
+        registry=registry,
+        cache=cache,
+        system_prompt=system_prompt,
+        budget=budget,
+        temperature=temperature,
+        reasoning_effort=reasoning_effort,
+    )
+
+    budget.llm_calls += 1
+    front_door = await decompose(adapter, question, temperature=temperature, reasoning_effort=reasoning_effort)
+    if not front_door.in_scope:
+        # §8.1: an out-of-scope question is declined politely BEFORE the loop runs
+        # -- no tools, no wandering, no fabricated deflection.
+        return AgentLoopResult(
+            "declined",
+            front_door.decline_reason or "That falls outside what I can help with as your academic advisor.",
+            [], [], {}, [], 0, budget.llm_calls, time.monotonic() - started, [],
+        )
+    ws.sub_asks = front_door.sub_asks
+    return await _drive(ws, ctx, 0, run_completeness=True)
+
+
+__all__ = [
+    "AgentLoopResult",
+    "LoopBudget",
+    "run_agent_loop",
+    "MAX_TURNS",
+    "WALL_CLOCK_S",
+    "NO_PROGRESS_LIMIT",
+    "MAX_SUBLOOP_DEPTH",
+    "MAX_MAP_FANOUT",
+]

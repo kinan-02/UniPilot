@@ -918,12 +918,19 @@ hypothetical is real — rides on the same chain.
 ### 17.4 Deferred against evidence (not blockers)
 
 - **Sub-loops / `spawn_subtask` (§6, §15):** ship single-loop first; enable on the first real
-  context-flooding case.
-- **Temporal/offering prediction + `predicted_pattern` rendering + the full fail-course-X trace
-  (§10):** validate after the core loop and the what-if chain land — it depends on both.
-- **Clarification threading (§8.2) + out-of-scope Front Door (§8.1):** build from the existing
-  design; low risk, since V1's boundary handler works and is kept. The spike deliberately skips
-  the Front Door (raw question → loop), so these are unexercised but not in doubt.
+  context-flooding case. **DONE (2026-07-18, §18.9)** — the mechanism now ships: `spawn_subtask` runs
+  a child instance of the same loop (`_drive`) in an isolated context, refs-only inputs, shared
+  budget, depth cap ≤ 2, promoting typed grounded facts back to the parent.
+- **Temporal/offering prediction + the full fail-course-X trace (§10):** **offering prediction now
+  wired end-to-end (§18.10):** `extract_temporal_pattern` was always registered and always emitted
+  `predicted_pattern`; what was missing was a point-of-use note steering the model to it, now added,
+  so the prediction flows into a surfaced fact and `predicted_pattern` *rendering* (§18.8) hedges it.
+  The full fail-course-X trace remains the deferred piece.
+- **Out-of-scope Front Door (§8.1): DONE (2026-07-18, §18.8)** — scope is decided in the decomposer
+  call and the runner declines before the loop, failing open. **Clarification threading (§8.2) stays
+  deferred:** it is a cross-service contract change (`conversation_history` on `AdviseRequest`, sent
+  by `services/api`, maintained by the frontend), not a loop change — the AI-side hook is a
+  one-parameter addition when the caller is ready.
 
 ### 17.5 Readiness verdict
 
@@ -1128,3 +1135,314 @@ answer-verbosity nuance, not a robustness failure. The lesson generalizes the ar
 wandering was retired by making re-derivation structurally a no-op, exactly as fabrication was
 retired by making an ungrounded number structurally unrepresentable. **Structural beat prompt,
 again.**
+
+### 18.8 Closing the structural-gap sweep (2026-07-18)
+
+After round 7 we swept for the gaps the six eval cases could not surface, and closed them in code
+(unit-tested; the live eval is the end-to-end confirmation). Each is a place the substrate silently
+did the wrong thing on an input the eval never exercised — exactly where the next production
+surprise hides.
+
+- **The eligibility miss was a tool-output asymmetry, not a loop defect.** `check_eligibility`
+  reported only *missing* prerequisites, so a clean pass (`eligible: true, missing: []`) left the
+  answer with no code to cite — the terse "no missing prerequisites" that failed `mentions 00940224`.
+  The minimality fix (round 4) made the model take the minimal path (`check_eligibility` only) and
+  skip fetching the course profile it had used in rounds 1–2 to name the prereq. **Fix:** the tool
+  now returns `prerequisitesHeld` (the prerequisite codes the student has completed) alongside
+  `missingPrerequisites`, via a new `AcademicGraphEngine.prerequisite_course_ids` that names — never
+  re-evaluates — the AND/OR prerequisites. The verdict still comes solely from `evaluate_eligibility`;
+  the enrichment only gives a grounded answer its basis to cite.
+- **Certainty was carried but never rendered (§4.2).** Every `Fact` had a `basis`, but `resolve_final`
+  slotted the bare value regardless — a predicted offering read as flatly as an official record.
+  **Fix:** an authoritative basis (`official_record` / `computed`-over-authoritative) renders flat; a
+  qualified one (`predicted_pattern` / `llm_interpretation` / `simulated` / `wiki_derived`) appends a
+  one-line "On certainty:" hedge naming which values are not firm and why. And **basis now propagates
+  through `compute`**: a value derived from an interpreted/predicted input inherits that weakest
+  basis instead of the flat `computed`, so a gap computed from an interpreted total renders hedged.
+- **The grounding backstop flagged benign numerals.** It rejected any numeral not traceable to a
+  fact — including a numbered list's own "1." / "2." markers (round 6 rejected a stray `2`). **Fix:**
+  Markdown ordered-list markers are stripped before the numeral check; every mid-sentence number
+  stays checked, so a fabricated `92.5` is still caught.
+- **`select` was equality-only.** "Which courses did I score above 85 in?" was inexpressible.
+  **Fix:** a `where` value may now be a numeric comparison (`{"grade": {"gt": 85}}`; operators
+  gt/gte/lt/lte or symbols, plus ne), failing closed on non-numeric operands.
+- **Forced-compose bypassed the completeness gate.** The exhaustion answer ran only the grounding
+  backstop, so it could ship a silently-incomplete answer (round 2 "dropped the code"). **Fix:** the
+  exhaustion path now runs the completeness gate too and, since it cannot loop to close a gap,
+  honestly names any sub-ask it could not cover rather than dropping it.
+- **The record→scalar guard now names the recovery.** Binding a whole record to a scalar slot is
+  rejected with the available field names (dict) or a "select a field / add a where" hint (list of
+  records), so the model has an actionable way back instead of a bare "non-scalar".
+- **The Front Door scope-gate is wired.** The decomposer decides scope in the *same* call (no extra
+  LLM call); an out-of-scope question returns `in_scope: false` with a student-facing reason and the
+  runner declines *before* the loop runs — no tools, no wandering. It fails **open**: only an
+  explicit `false` declines. New `declined` outcome maps to `succeeded` in the route.
+- **Parallelism is now real, not just claimed (§4.1).** Independent calls the model lists in one turn
+  are dispatched concurrently in the loop's `_run_data_tools` (one `execute_tool_round` per request,
+  gathered), reusing the same per-key cache lock `parallel_dispatch` already relied on. Input order
+  is preserved so the merged audit stays deterministic.
+
+**Deferred, with rationale (not silently dropped):**
+
+- **Clarification threading (§8.2)** stays deferred because it is a *cross-service contract change*,
+  not a loop change: the loop can already emit `clarify`, but hearing the reply needs
+  `conversation_history` on `AdviseRequest`, sent by `services/api` and maintained by the frontend.
+  The AI-side hook is a one-parameter addition when the caller is ready; building the inert half now
+  is speculative plumbing (YAGNI).
+- **Sub-loops / `spawn_subtask` (§6)** — **now landed (§18.9)**. Offering prediction is now wired too
+  (§18.10); the remaining deferral is only the full fail-course-X trace (§10).
+
+**Validation:** unit surface green — 50 loop tests, 19 `check_eligibility`, 10 route tests. The live
+6-case eval is the remaining end-to-end confirmation (paid GPT-5-mini run); the eligibility case
+should now name `00940224` on its clean pass.
+
+### 18.9 Sub-loops / `spawn_subtask` landed (2026-07-18)
+
+The last deferred subsystem (§6) now ships — a genuine mechanism, not a role taxonomy. The turn loop
+was extracted into a single reusable core, `_drive(ws, ctx, depth, run_completeness)`, that the root
+loop and every sub-loop share; `run_agent_loop` became a thin wrapper (scope-gate + decompose, then
+`_drive` at depth 0). A `spawn_subtask` meta-tool delegates a heavy sub-problem to a child instance
+of that same loop.
+
+The invariants §6 demanded are all enforced in code:
+
+- **Context isolation.** The child gets a *fresh* `WorkingSet` seeded with **only** its resolved
+  `inputs` — none of the parent's facts, index, or observations. Whatever raw material it fetches
+  (years of offering JSON, hundreds of candidate courses) stays in the child's trace; only the named
+  `output_facts` come back. That is the entire reason a second loop is allowed to exist.
+- **Grounding across the boundary (Invariant A holds).** `inputs` are **refs only** —
+  `{"ref": <a grounded parent fact key>}`; a typed literal is rejected. So a child can only start
+  from values the parent already grounded, never a number the model typed into the spawn. Returned
+  facts are promoted through `admit_derivation` with value/basis/confidence preserved, so a sub-loop
+  result is as grounded and as anti-wander-accounted as any other fact.
+- **Shared budget.** A single `LoopBudget` (deadline + `turns_remaining` + `llm_calls`) is created
+  per request and threaded through `_LoopContext`; every turn of every loop in the tree decrements
+  the *same* counters, so decomposition can never buy unbounded total work.
+- **Depth cap ≤ 2**, enforced in code: a `spawn_subtask` at `depth >= MAX_SUBLOOP_DEPTH` is rejected
+  with a repairable observation ("do this inline as normal turns").
+- **Same substrate + cache.** The child reuses the parent's registry and `ToolCallCache`, so a fetch
+  paid for on either side is free on the other; its tool audit folds into the parent's, so
+  course/source derivation still sees everything.
+- **Not for ordinary work.** The constitution frames it as context-isolation ONLY — "fetch then
+  compute" remains two normal turns, per the §6 size-based rule.
+
+Sub-loops skip the completeness gate: a child's "completeness" is structural — did it produce the
+requested `output_facts`, checked by the promotion step — not an LLM re-read. **Validated** by 7 new
+tests (happy-path spawn + promotion, refs-only enforcement, unknown-ref and literal rejection, output
+normalization, depth cap) with the full 57-test loop suite green.
+
+### 18.10 Offering-prediction wired, and the V2-capability eval cases (2026-07-18)
+
+Two follow-ups from the sub-loop work.
+
+**Offering prediction was mis-labeled "deferred" — it was already wired at the substrate level.**
+`extract_temporal_pattern` is registered in the default registry and emits `basis="predicted_pattern"`;
+`_basis_by_handle` already propagates that onto any surfaced fact, and §18.8's rendering already
+hedges it. The one missing link was a **point-of-use note** in the constitution (every other
+load-bearing tool has one) steering the model to it for offering questions and telling it the result
+is a projection, not a published fact. Added.
+
+**Per-field basis attribution — the laundering fix (2026-07-18).** A single tool envelope carried one
+`certainty`, so `check_eligibility`'s `schedulable`/`offeringPattern` — which depend on the offering
+prediction — were laundered into the envelope's `official_record` basis when surfaced. Fixed
+structurally: the envelope gained an optional `field_certainty` map (data-relative path → its own
+basis/confidence), `apply_surface` now resolves a surfaced fact's certainty **per field** (longest
+path-prefix wins, else the envelope default), and `check_eligibility` tags `schedulable`/
+`offeringPattern` as `predicted_pattern`. So `data.eligible` surfaces official while `data.schedulable`
+surfaces predicted — from the same call — and a schedulability claim now renders hedged (§4.2).
+Backward-compatible (empty by default); 6 new unit tests.
+
+**The live eval grew from 6 to 10 cases** (`test_v2_ise_correctness.py`), the four new ones each
+exercising a V2-only capability, all keyed to the verified fixture:
+
+- **7 `grade_filter_above_90`** — `select`'s numeric comparison. The qualifying codes (95/91/93) are
+  numerals absent from the question, so the grounding gate *forces* a grounded `select where grade > 90`;
+  the exactly-90 courses must be excluded (tests `gt` vs `gte`). Cannot be faked.
+- **8 `out_of_scope_decline`** — the Front Door scope-gate: outcome `declined`, `turns == 0`.
+- **9 `offering_prediction_hedge`** — certainty rendering over the now-wired offering path. "In how many
+  semesters…" forces a `predicted_pattern` count to be slotted, so the answer must render the
+  "On certainty:" hedge (asserted; the count itself is raw-data-dependent, so not asserted).
+- **10 `sub_loop_investigation`** — a 17-course offering search. Whether the model *spawns* is its own
+  judgment; the digesting composites, parallel tool-calls, and raw-payload-hiding context discipline
+  routinely let it stay inline (which is *why* single-loop shipped first, §15). So the spawn is
+  **reported**, not required — the substantive gate is a grounded answer naming a real completed
+  course. The deterministic proof that the mechanism works remains the §18.9 unit tests; a separate
+  live probe, `test_v2_spawn_subtask_capability`, *instructs* the model to isolate an investigation
+  and hard-asserts that it forms a valid `spawn_subtask` and the child runs end-to-end to a grounded,
+  promoted fact — proving the live model can reach and drive the mechanism, not just that it exists.
+
+### 18.11 The 10-case live run, and the spawn-discipline / scaffolding fixes (2026-07-18)
+
+The full live eval (10 correctness cases + the spawn capability probe) ran on GPT-5-mini in 9m10s.
+**All 10 cases grounded — zero fabrication; the core invariant held live.** The eligibility fix
+landed (`eligibility_00960211`: 3/4 → **4/4**, now names `00940224`). All four new-capability cases
+validated their feature live: `grade_filter_above_90` **8/8** (named the three >90 courses, excluded
+both exactly-90 — the codes only groundable via `select`), `out_of_scope_decline` **5/5** (declined in
+**0 turns / 1 LLM call**), `offering_prediction_hedge` **4/4** (rendered *"On certainty: 3, reliable —
+predicted from recent offering history"*), and `spawn_subtask_capability` **4/4** (the live model
+spawned, the child mined the history, returned `offer_count=7`, and the predicted-basis hedge rendered
+through the promotion — sub-loop + per-field basis + rendering composing correctly).
+
+**The eval earned its keep by catching a regression the unit tests could not.** Two cases came in
+partial — `completed_courses` **6/6 → 5/6** and `sub_loop_investigation` **4/5** — and both trace to
+the *same* cause: giving the model `spawn_subtask` made it **over-reach**, spawning broad objectives
+("map 17 codes → names/grades/semesters", "compare 17 courses' offering counts") that the child could
+not ground, then degrading honestly to "I could not determine." Narrow spawns succeeded (the capability
+probe); broad ones failed — and `completed_courses`, which used to answer inline in 6/6, now spawned a
+sub-task it did not need and lost the listing.
+
+The transcripts exposed a deeper root cause: the child — *and the parent's own forced-compose* — said
+*"the facts only indicate lists without the actual item values"* and gave up on data they **held**,
+because `summarize_value` rendered a scalar list as a bare `[list of N items]`. The fact's
+enumerability was invisible.
+
+Three fixes, code-first where it counts:
+
+- **C (structural, the root fix):** `summarize_value` now shows a scalar list's values —
+  `[list of 17 values: 00940345, 00940704, 01040065, …]` — and a record list its fields, so any loop
+  (main, child, forced-compose) can SEE the fact holds slottable/selectable data. This closes the
+  "lists without values" misread at its source, everywhere facts render.
+- **A (spawn discipline):** the constitution now reserves `spawn_subtask` for distilling a FEW facts
+  (a pattern, a count, one found course) out of bulk, and forbids it for enumeration — "if your answer
+  must ENUMERATE items, do it INLINE; the child returns only its named output_facts, so a list your
+  answer needs can never come back through a spawn." Working over a list you already hold is inline.
+- **B (child scaffolding):** the child's task framing now states its seeded inputs are real, usable
+  facts (a `[list of N values: …]` HOLDS those items — select/compute over them, FETCH what else you
+  need) and that it must not answer "cannot determine" just because a seeded fact is not already the
+  answer.
+
+**Validated** at the unit level (68 loop tests green, incl. new `summarize_value` cases). The targeted
+re-run of the three affected live cases (`completed_courses`, `sub_loop_investigation`,
+`spawn_subtask_capability`) is the end-to-end confirmation.
+
+---
+
+## 19. Durable stability — the robustness layer (2026-07-18)
+
+Two live runs (§18.11) made the shape of the problem exact. **Grounding is a hard invariant** — every
+run, zero fabrication, because a number cannot be typed. What varies run-to-run is **completion**:
+whether the loop *reaches* a grounded answer or wanders to `budget_exhausted`. Every failure observed —
+wrong-grain surfacing, over-slotting a question-code, an over-elaborate what-if — is **path-selection
+and recovery** variance, never correctness variance. So the goal is precise: make completion a
+**high-probability structural property**, the way grounding is a certain one — in code, not by
+prompt-tuning the model's choices. Four levers landed; a fifth is designed.
+
+- **#1 Self-healing governors (detect-and-correct, not just count).** The substrate now watches for a
+  spinning loop and injects a *deterministic* corrective observation. When `surface_fact` lands an
+  object, the observation names the exact scalar leaf to surface next (*"OBJECT: … surface a scalar
+  leaf (e.g. `…termPatterns.3.label`); do NOT re-surface the object"*) — the offering_pattern
+  dead-end. A no-progress turn re-orients (*"that turn added NO new information — do something
+  DIFFERENT: drill an object, `select` a field, `compute`, or compose now"*) instead of silently
+  counting toward exhaustion.
+- **#2 Deterministic auto-repair of unambiguous near-misses.** `resolve_final` now repairs, rather
+  than rejects, two grounded cases the model fumbled: a slot bound to a **literal code that appears in
+  the question** renders directly (it is grounded-by-question — the action_boundary wander); a slot
+  whose **name matches exactly one scalar field** of a bound record auto-reads that field (the
+  record→scalar mismatch). Fewer rejection turns → fewer exhaustions, with no loss of grounding.
+- **#4a Deterministic answer-assembler floor.** On exhaustion, if the model could not compose but the
+  working set holds usable (scalar) facts, a code-only assembler ships them — grounded by construction,
+  read straight from the fact values — instead of a bare punt. The worst case is now "here is what I
+  determined: …", never empty when something grounded exists.
+- **#4b Root fix — one offering grain across tools.** The offering answer used to depend on *which*
+  tool the model reached for (`extract_temporal_pattern` exposed a scalar leaf at
+  `data.termPatterns.3.label`; `get_course_profile`/`check_eligibility` nested it, and the model got
+  stuck on the object). `extract_temporal_pattern` now emits a **scalar projection** `termLabels`
+  (term → label) alongside `termPatterns`; because both composites spread its output, every offering
+  path exposes the same directly-surfaceable `termLabels.<term>` scalar. Tool-choice can no longer
+  change the answer's shape.
+
+**Designed, not yet built — #3 best-of-N ensemble with deterministic selection.** The durable lever
+against residual variance: run the loop K times in parallel (all grounded by invariant), and select
+the result that concluded, addressed the most sub-asks, and hedged least — using the grounding check
+and completeness gate we already compute as a *trustworthy* judge. It works *because* our failures are
+honest and grounding is certain; a system that could fabricate could not safely pick a best-of-N. This
+converts stochastic variance into reliability at K× compute, and is the recommended next build.
+
+**Validated:** 119 loop + offering-tool tests green (self-healing hint, no-progress re-orient,
+question-code and record-field auto-repair, the assembler floor and its punt fallback, `termLabels`
+and its propagation to both composites).
+
+**Live re-run (2026-07-18, 11 cases, 5m43s): grounding 11/11 — zero fabrication on every case,
+correctness 10/11.** All three §18.11 regressions recovered — offering_pattern (#4b/#1),
+action_boundary (#2), presupposition_conflict (recovered, and it survived a transient
+`json_extraction_failed` mid-run); completed_courses stayed fixed; the certainty hedge rendered; the
+spawn mechanism ran live end-to-end. The **one** remaining miss — `sub_loop_investigation` — motivated
+§19.1.
+
+### 19.1 The `map` primitive — many-entity aggregation in code, not in loops (2026-07-18)
+
+The live re-run's single miss was "which of my 17 completed courses was offered in the most semesters?"
+The model did everything right up to the hard part — fetched the record, surfaced the list, enumerated
+the 17 codes, and **correctly spawned a child loop** to find the argmax — then the child *gave up*
+(*"the data does not include a per-course count of semesters offered across history"*). It failed
+**safe** (grounded, honest, no fabricated code), but it failed.
+
+Diagnosis: **a reasoning loop is the wrong grain for a uniform lookup.** Each per-course sub-task is a
+*single deterministic tool call* (`extract_temporal_pattern(code)`), not an investigation. Fanning out
+17 child loops to make 17 tool calls would cost ~17× the LLM calls, multiply the variance surface by 17
+(each child an independent chance to wander or give up), and fight over the shared `LoopBudget`. The
+right shape is **map-reduce with the map in code, not in LLM loops** — the parallelism already exists
+at the tool layer (`_run_data_tools` gathers concurrent calls); what was missing was an ergonomic way
+to invoke it over a list.
+
+**`map` (a built-in meta-tool, `runner._run_map`).** Fans ONE data tool over every scalar in a grounded
+list fact, concurrently in code (same `execute_tool_round` + shared-cache path as a normal turn's
+parallel calls), and collects the projected results into a new grounded list of `{entity, value}`
+records:
+
+```json
+{"tool":"map","arguments":{"key":"counts","over":"completed_codes","tool":"extract_temporal_pattern",
+ "arg":"entity","args":{"fact_type":"course_offering"},"select":"data.semestersOffered"}}
+```
+
+`over` is a grounded scalar list (e.g. codes from a `select … field`); each item fills the tool's `arg`;
+`args` are the static arguments every call shares; `select` is the path to the ONE scalar kept from each
+result. **Grounding is preserved by construction**: each value is read from its envelope by path
+(`fact_projection.resolve_path`) — never typed — exactly as `surface_fact`. The collected list inherits
+the **weakest** input's basis (like `compute`), so a `predicted_pattern` element renders the whole
+aggregate hedged rather than as a flat official number. A failed call or a missing path is skipped with
+a repairable observation, never guessed. Fan-out is capped (`MAX_MAP_FANOUT = 40`); a longer list is an
+explicit "narrow it first" error, never a silent truncation.
+
+**The reduce it feeds — grounded argmax/argmin.** `select` gained a `by` reducer:
+`select from_fact=counts, by={"max":"value"}, field="entity"` returns the record maximizing `value` and
+reads its `entity` — the grounded "which one is the max", deterministic over a grounded fact (the model
+cannot eyeball the list and *type* the winner). So the whole case is: `surface → select field (17 codes)
+→ map (17 concurrent lookups, grounded) → select by max → final_answer` — one model decision per step,
+the fan-out in code, the answer grounded and hedged.
+
+**The grain companion.** `map`'s projection needs a scalar to read; "semesters offered" was a sum over
+term objects, not a leaf. So `extract_temporal_pattern` now also emits `semestersOffered` (sum of
+`observed`) — the same grain fix as `termLabels` (§19 #4b), propagated to both composites. See
+[TEMPORAL_PATTERN_CONTRACT.md](TEMPORAL_PATTERN_CONTRACT.md).
+
+**Sub-loops keep their real job.** `map` is for uniform *data* fan-out (one tool per item). A sub-loop
+still earns its cost when each per-entity sub-task is a genuine multi-step *investigation* (judgment,
+several dependent calls) whose raw material would flood the parent — the constitution now routes the
+uniform case to `map` and reserves `spawn_subtask` for the reasoning case. If parallel *reasoning*
+fan-out is ever needed, that is when the budget-fork + breadth-cap machinery gets built — not to count
+semesters.
+
+**Validated (unit):** 22 new/updated tests green — the `by` argmax/argmin core (compose-with-`where`,
+non-numeric skip, no-candidate → empty, malformed → fail-closed), `project_mapped_records` (records,
+skip-failed, weakest-input basis, all-authoritative → `computed`), and the end-to-end
+`map → select by` chain through `run_agent_loop` on a fake registry (17-code shape, argmax grounded,
+predicted basis flows to the hedge, mapped calls fold into the audit), plus `semestersOffered` on the
+primitive and its propagation through `get_course_profile`.
+
+**Live-run bug + hardening (2026-07-18).** The first live run with `map` exposed a real defect: the model
+reached for `map` (the steering landed) but wrote `over: {"ref":"completed_codes"}` — generalizing the
+`{"ref": …}` idiom it uses everywhere else — and `_run_map`'s `over not in ws.facts` **hashed the dict and
+crashed** (`TypeError: unhashable type: 'dict'`), aborting the whole request. This violated the substrate's
+"a malformed tool request must never crash the loop" contract. Fixed three ways: `_as_fact_key` accepts a
+bare key OR `{"ref": key}` for `over`; every `_run_map` field is type-validated to fail closed before any
+hashing; and a `try/except` around meta-call dispatch in `_process_turn` turns *any* meta-handler exception
+into a repairable observation (defense-in-depth, the same guarantee `execute_tool_round` gives data tools).
+
+**Validated (live, 2026-07-18 re-run — clean).** Grounding 11/11; `sub_loop_investigation` now **passes
+"names a real completed course"** (the miss in both prior full runs), driven by the intended path with
+**no sub-loop**: `surface → select field (17 codes) → map extract_temporal_pattern over {"ref": codes} →
+select by max → final_answer`. It even self-healed mid-case — a first `map` projecting `data.termPatterns`
+(an object) gave un-reducible values, and the model *remapped* to the scalar `data.semestersOffered`
+(observing "the previous mapped values … were too complex") rather than wandering — exactly the
+detect-and-correct behavior §19 is built on. 5 turns, ~20s, grounded winner `03240033`.

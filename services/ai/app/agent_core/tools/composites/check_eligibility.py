@@ -129,16 +129,29 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
 
     completed = _completed_course_numbers(entries)
     eligible, missing = engine.evaluate_eligibility(course_id, completed)
+    # Name the prerequisites the student HOLDS, not just what is missing: the
+    # engine's verdict is asymmetric (it reports only unmet requirements), so a
+    # clean pass left an eligibility answer with no code to cite (measured live
+    # 2026-07-16 -- "eligible, no missing prerequisites" never named 00940224).
+    prerequisite_ids = engine.prerequisite_course_ids(course_id)
+    prerequisites_held = sorted(set(prerequisite_ids) & completed)
 
     data: dict[str, Any] = {
         "courseId": course_id,
         "eligible": eligible,
         "missingPrerequisites": missing,
+        "prerequisiteCourseIds": prerequisite_ids,
+        "prerequisitesHeld": prerequisites_held,
         "targetSemester": target_semester,
         "offeringPattern": None,
         "schedulable": None,
     }
     warnings: list[str] = []
+    # `eligible`/`missingPrerequisites` are an official record, but `schedulable`
+    # and `offeringPattern` depend on the offering PREDICTION -- so they carry
+    # their own (predicted_pattern) basis rather than being laundered into this
+    # envelope's official_record certainty when surfaced (§4.2).
+    field_certainty: dict[str, CertaintyTag] = {}
 
     if target_semester:
         offering_result = await run_extract_temporal_pattern(
@@ -152,6 +165,8 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
             term_pattern = offering_result.data["termPatterns"].get(str(term_index))
             offered_this_term = term_pattern is None or term_pattern["label"] != "never"
             data["schedulable"] = eligible and offered_this_term
+            field_certainty["schedulable"] = offering_result.certainty
+            field_certainty["offeringPattern"] = offering_result.certainty
         else:
             warnings.append("offering_pattern_unavailable")
 
@@ -160,6 +175,7 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
         data=data,
         certainty=CertaintyTag(basis="official_record", confidence=1.0),
         warnings=warnings,
+        field_certainty=field_certainty,
     )
 
 

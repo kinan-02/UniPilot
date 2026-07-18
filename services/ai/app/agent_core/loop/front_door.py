@@ -8,9 +8,11 @@ the student for granted must emit a concrete sub-ask that VERIFIES that premise
 against the record -- a prompt-level "check premises" rule was falsified on the
 mini model, so the check has to be a structural sub-ask the gate can enforce.
 
-Scope gating (in_scope / decline) is threaded through `FrontDoorResult` but kept
-open for v1 (the loop handles every question); it plugs into V1's kept
-`boundary_handler` when wired (§17.4).
+Scope gating (in_scope / decline) is decided in the SAME decomposer call -- an
+out-of-scope question returns `in_scope=False` with a student-facing
+`decline_reason`, and the runner short-circuits it into a polite decline before
+the loop ever runs (§8.1). It fails OPEN: only an explicit `false` declines, so a
+decomposer that omits the flag never silently refuses a legitimate question.
 """
 
 from __future__ import annotations
@@ -22,9 +24,15 @@ from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
 
 _DECOMPOSE_TIMEOUT_S = 60.0
 
-_DECOMPOSER_SYSTEM = """You break a Technion student's question into the concrete sub-questions that
-must ALL be answered for the reply to be complete and correct. Output ONLY JSON:
-{"sub_asks": ["...", "..."]}.
+_DECOMPOSER_SYSTEM = """You triage and decompose a Technion student's question. Output ONLY JSON.
+
+SCOPE FIRST. You are an academic advisor for Technion students: courses, credits, prerequisites,
+eligibility, requirements, grades, the student's own record, degree/track/minor planning, offerings
+and schedules. If the question is clearly OUTSIDE that -- general chit-chat, coding help, world
+facts, medical/legal/financial advice, anything not about this student's studies -- output
+{"in_scope": false, "decline_reason": "<one short, student-facing sentence>"} and nothing else.
+Otherwise output {"in_scope": true, "sub_asks": ["...", "..."]}: the concrete sub-questions that
+must ALL be answered for the reply to be complete and correct.
 
 Rules:
 - Sub-asks are what the ANSWER must contain to be complete and honest -- NOT intermediate
@@ -75,6 +83,16 @@ async def decompose(
         )
     except LLMAdapterError:
         return FrontDoorResult(sub_asks=[question])
+    # An explicit out-of-scope verdict short-circuits the loop with a polite
+    # decline (§8.1); absence of the flag fails OPEN to answering, so a decomposer
+    # that omits it never silently refuses a legitimate question.
+    if out.get("in_scope") is False:
+        reason = str(out.get("decline_reason") or "").strip()
+        return FrontDoorResult(
+            sub_asks=[],
+            in_scope=False,
+            decline_reason=reason or "That falls outside what I can help with as your academic advisor.",
+        )
     subs = out.get("sub_asks")
     if isinstance(subs, list):
         cleaned = [str(s).strip() for s in subs if str(s).strip()]

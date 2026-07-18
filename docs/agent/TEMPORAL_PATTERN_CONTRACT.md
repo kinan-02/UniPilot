@@ -82,9 +82,24 @@ regardless of how much history backs it.
     "2": {"label": "reliable", "observed": 3, "total": 3},
     "3": {"label": "never", "observed": 0, "total": 2}
   },
+  "termLabels": {"1": "reliable", "2": "reliable", "3": "never"},
+  "semestersOffered": 5,
   "totalSemestersInHistory": 7
 }
 ```
+
+`termLabels` is a **scalar projection** of `termPatterns` (term → its `label`), added so a consumer
+can surface `termLabels.<term>` directly instead of drilling into the term object. Both composites
+that embed this output (`get_course_profile`, `check_eligibility`) inherit it, giving the offering
+answer one consistent scalar grain regardless of which tool produced it.
+
+`semestersOffered` is a second **scalar projection** — the sum of `observed` across every term-type,
+i.e. the number of distinct semesters the course actually appeared in (always ≤ `totalSemestersInHistory`;
+`5` here = `2 + 3 + 0`). Same grain principle as `termLabels`: it answers "in how many semesters has X
+been offered?" as a single directly-surfaceable/comparable leaf, rather than a sum a consumer must
+re-derive over the term objects. This is the grain the `map` primitive
+([`AGENT_ARCHITECTURE_V2.md` §19](AGENT_ARCHITECTURE_V2.md)) reads when fanning this tool over many
+course codes to find, in-code and grounded, which was offered most — instead of a per-course child loop.
 
 An entity that never appears in any discovered semester file still returns
 `ok=True` (all buckets `"never"`, `observed=0` everywhere) — mining a

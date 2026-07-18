@@ -358,6 +358,21 @@ class AcademicGraphEngine:
         missing = _missing_from_ast(ast, completed)
         return len(missing) == 0, missing
 
+    def prerequisite_course_ids(self, course_id: str) -> list[str]:
+        """Every course code referenced anywhere in `course_id`'s prerequisite
+        AST (flattened across AND/OR), sorted and de-duplicated.
+
+        For NAMING which prerequisites are relevant/held -- NOT for the
+        eligibility verdict (that is `evaluate_eligibility`, which alone honours
+        the AND/OR structure). A grounded eligibility answer needs the codes to
+        cite the prerequisite the student holds; without this the tool reports
+        only what is MISSING, so a clean pass could name nothing at all."""
+        if not self._built:
+            raise RuntimeError("Call build_graph() before prerequisite_course_ids()")
+        node = self.graph.nodes.get(course_id, {})
+        ast = node.get("prerequisites_ast") or {"type": "AND", "operands": []}
+        return sorted(set(_collect_course_ids(ast)))
+
     def retrieve_context(
         self,
         intent: Intent,

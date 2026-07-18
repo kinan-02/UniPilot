@@ -58,7 +58,8 @@ def test_non_scalar_record_slot_is_rejected():
         "Your record is {rec}.",
         {"rec": "rec"},
     )
-    assert any("non-scalar" in p for p in problems)
+    # Sharpened: names the fields so the model can select the scalar it meant.
+    assert any("dict with keys" in p and "grade" in p for p in problems)
 
 
 def test_list_of_scalars_slot_renders_comma_separated():
@@ -89,4 +90,68 @@ def test_list_of_records_slot_is_still_rejected():
         "Your courses: {recs}.",
         {"recs": "recs"},
     )
-    assert any("non-scalar" in p for p in problems)
+    assert any("list of 1 records" in p for p in problems)
+
+
+def test_predicted_fact_appends_a_certainty_note():
+    # §4.2: a non-authoritative basis renders hedged -- the value still slots, but
+    # a trailing note names why it is not a firm record.
+    facts = {"season": Fact("Spring", "extract(...)", "predicted_pattern", 0.7)}
+    rendered, problems = resolve_final(
+        "When is 00940224 offered?", facts, "It is usually offered in {season}.", {"season": "season"}
+    )
+    assert problems == []
+    assert "Spring" in rendered
+    assert "On certainty:" in rendered
+    assert "predicted from recent offering history" in rendered
+
+
+def test_official_fact_renders_flat_without_a_certainty_note():
+    facts = {"grade": Fact(85, "select(...)", "official_record", 1.0)}
+    rendered, problems = resolve_final(
+        "What did I get in 00940224?", facts, "You scored {grade}.", {"grade": "grade"}
+    )
+    assert rendered == "You scored 85."
+    assert "On certainty" not in rendered
+
+
+def test_ordered_list_markers_are_not_flagged_as_ungrounded():
+    # The "1." / "2." are Markdown list formatting, not factual claims.
+    _, problems = resolve_final(
+        "What are my options?",
+        {},
+        "Your options:\n1. Retake the course next winter\n2. Petition the committee",
+        {},
+    )
+    assert problems == []
+
+
+def test_autorepair_slot_bound_to_a_question_code_renders_directly():
+    # #2 auto-repair: the model bound {course} to the literal "00960211" (a question
+    # code), not a fact key. It is grounded-by-question, so render it -- don't reject
+    # into a wander (the action_boundary failure mode).
+    rendered, problems = resolve_final(
+        "Please register me for course 00960211.",
+        {},
+        "I can't register you, but course {course} is the one you asked about.",
+        {"course": "00960211"},
+    )
+    assert problems == []
+    assert "00960211" in rendered and "{course}" not in rendered
+
+
+def test_autorepair_slot_name_matching_a_record_field_auto_selects_it():
+    # #2 auto-repair: {grade} bound to a whole record, but the slot NAME names a
+    # scalar field -- read it instead of rejecting the record->scalar mismatch.
+    facts = {"rec": Fact({"courseNumber": "00940224", "grade": 85}, "select(...)", "official_record", 1.0)}
+    rendered, problems = resolve_final(
+        "What did I get in 00940224?", facts, "You scored {grade}.", {"grade": "rec"}
+    )
+    assert problems == []
+    assert rendered == "You scored 85."
+
+
+def test_autorepair_does_not_fire_when_slot_name_matches_no_field():
+    facts = {"rec": Fact({"courseNumber": "00940224", "grade": 85}, "s", "official_record", 1.0)}
+    _, problems = resolve_final("q", facts, "Value: {foo}.", {"foo": "rec"})
+    assert any("dict with keys" in p for p in problems)  # no 'foo' field -> still rejected

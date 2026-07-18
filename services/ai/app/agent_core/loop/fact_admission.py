@@ -20,8 +20,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.agent_core.loop.working_set import Fact, WorkingSet, summarize_value
-from app.agent_core.subagents.fact_projection import project_facts
+from app.agent_core.loop.working_set import AUTHORITATIVE_BASES, Fact, WorkingSet, summarize_value
+from app.agent_core.subagents.fact_projection import project_facts, resolve_path
 from app.agent_core.tools.primitives.expression_tree import (
     ExpressionNode,
     evaluate_expression,
@@ -31,35 +31,104 @@ from app.agent_core.tools.primitives.expression_tree import (
 _ARITHMETIC_OPS = frozenset({"add", "subtract", "multiply", "divide"})
 
 
-def _basis_by_handle(ws: WorkingSet) -> dict[str, str]:
-    """The certainty basis of each recorded call, keyed by its handle -- so a
-    surfaced fact inherits its source call's basis rather than a guessed one."""
-    out: dict[str, str] = {}
-    for handle, key in ws.handles.items():
-        certainty = (ws.tool_results.get(key) or {}).get("certainty") or {}
-        out[handle] = certainty.get("basis", "unknown")
-    return out
+def _resolve_field_certainty(
+    path: str | None, field_certainty: Any, default_basis: str, default_confidence: float
+) -> tuple[str, float]:
+    """Per-field certainty (§4.2). One tool envelope can hold fields of different
+    provenance -- check_eligibility's `eligible` is an official record but its
+    `schedulable` depends on an offering PREDICTION. `field_certainty` maps a
+    data-relative path (or a prefix of one) to that field's basis/confidence; the
+    longest matching prefix wins, else the envelope's default certainty applies.
+    So surfacing `data.schedulable` yields predicted_pattern while `data.eligible`
+    stays official -- a prediction can no longer be laundered into a flat fact."""
+    if not isinstance(field_certainty, dict) or not path:
+        return default_basis, default_confidence
+    segments = path.split(".")
+    if segments and segments[0] == "data":
+        segments = segments[1:]
+    best_tag: dict[str, Any] | None = None
+    best_len = -1
+    for raw_key, tag in field_certainty.items():
+        if not isinstance(tag, dict):
+            continue
+        key_segments = str(raw_key).split(".")
+        if segments[: len(key_segments)] == key_segments and len(key_segments) > best_len:
+            best_tag, best_len = tag, len(key_segments)
+    if best_tag is None:
+        return default_basis, default_confidence
+    return best_tag.get("basis", default_basis), best_tag.get("confidence", default_confidence)
+
+
+def _envelope_field_certainty(
+    envelope: Any, path: str | None, fallback_confidence: float
+) -> tuple[str, float]:
+    """The (basis, confidence) a value projected at `path` inherits from its
+    source ENVELOPE, resolved PER FIELD (§4.2). Shared by surface_fact (through
+    `_selector_certainty`) and `map` -- both read a scalar out of a recorded tool
+    result and must attribute its provenance identically."""
+    default_certainty = (envelope or {}).get("certainty") or {}
+    default_basis = default_certainty.get("basis", "unknown")
+    default_confidence = default_certainty.get("confidence", fallback_confidence)
+    return _resolve_field_certainty(
+        path, (envelope or {}).get("field_certainty"), default_basis, default_confidence
+    )
+
+
+def _selector_certainty(
+    ws: WorkingSet, selector: dict[str, Any], fallback_confidence: float
+) -> tuple[str, float]:
+    """The (basis, confidence) a surfaced fact inherits from its source call --
+    resolved PER FIELD, not per envelope, so a mixed-provenance result attributes
+    each field correctly rather than stamping them all with the envelope's basis."""
+    envelope = ws.tool_results.get(ws.handles.get(selector.get("from"), "")) or {}
+    return _envelope_field_certainty(envelope, selector.get("path"), fallback_confidence)
+
+
+def _grain_hint(path: str | None, value: Any) -> str:
+    """A deterministic nudge appended to a surface observation when the value is
+    NOT directly answer-usable -- an object or a list of records, from which the
+    answer needs a scalar leaf. Names the exact leaf to surface next.
+
+    The live eval (2026-07-18, offering_pattern) showed the loop surface an object
+    (an offering pattern's term dict) and then re-surface the SAME path four times
+    without drilling in -- a no-progress spin straight to budget exhaustion. The
+    grounding substrate already made fabrication impossible; this makes a known
+    dead-end self-healing, turning "stuck" into a guided next step, in code rather
+    than by prompt-tuning the model's choices."""
+    if isinstance(value, dict) and value:
+        leaf = f"{path}.{sorted(value)[0]}" if path else "one of its fields"
+        return (
+            f" -- OBJECT: to use a value from it in an answer, surface a scalar leaf "
+            f"(e.g. path '{leaf}'); do NOT re-surface the object itself"
+        )
+    if isinstance(value, list) and value and isinstance(value[0], dict):
+        return (
+            " -- LIST OF RECORDS: use `select` (a `where` to pick one, or a `field` to "
+            "enumerate) to read scalar values from it"
+        )
+    return ""
 
 
 def apply_surface(ws: WorkingSet, args: dict[str, Any]) -> int:
     """FETCH. Promote value(s) from recorded tool result(s) into named facts via
-    `project_facts` (which reads by path -- the model never types the value).
-    Returns the count of genuinely-new facts admitted (no-progress signal)."""
+    `project_facts` (which reads by path -- the model never types the value). Each
+    fact inherits its source call's certainty, resolved PER FIELD (§4.2). Returns
+    the count of genuinely-new facts admitted (no-progress signal)."""
     selectors = args.get("selectors")
     if selectors is None:  # single-selector shorthand
         selectors = [{"key": args.get("key"), "from": args.get("from"), "path": args.get("path")}]
     outcome = project_facts(selectors, ws.tool_results, ws.handles)
-    basis_by_handle = _basis_by_handle(ws)
     selector_by_key = {s.get("key"): s for s in selectors if isinstance(s, dict)}
     new_facts = 0
     for key, fact in outcome.facts.items():
         selector = selector_by_key.get(key, {})
         signature = f"surface:{selector.get('from')}:{selector.get('path')}"
-        basis = basis_by_handle.get(selector.get("from"), "unknown")
-        admitted = ws.admit_derivation(key, Fact(fact["value"], fact["source"], basis, fact["confidence"]), signature)
+        basis, confidence = _selector_certainty(ws, selector, fact["confidence"])
+        admitted = ws.admit_derivation(key, Fact(fact["value"], fact["source"], basis, confidence), signature)
         new_facts += int(admitted)
         suffix = "" if admitted else " (already derived; no new info)"
-        ws.observe(f"surfaced fact '{key}' = {summarize_value(fact['value'])}{suffix}")
+        hint = _grain_hint(selector.get("path"), fact["value"])
+        ws.observe(f"surfaced fact '{key}' = {summarize_value(fact['value'])}{suffix}{hint}")
     for err in outcome.errors:
         ws.observe(f"surface_fact error: {err}")
     return new_facts
@@ -127,28 +196,109 @@ def apply_compute(ws: WorkingSet, args: dict[str, Any]) -> int:
 
     refs_used = {k for k in ws.facts if f'"{k}"' in json.dumps(raw_expr)}
     confidence = min((ws.facts[r].confidence for r in refs_used), default=1.0)
+    # A computed value is only as authoritative as its weakest input: if any ref
+    # is qualified (interpreted / predicted / simulated), inherit that basis so
+    # the answer renders the result hedged, not as a flat official number (§4.2).
+    qualified_refs = [r for r in refs_used if ws.facts[r].basis not in AUTHORITATIVE_BASES]
+    basis = ws.facts[min(qualified_refs, key=lambda r: ws.facts[r].confidence)].basis if qualified_refs else "computed"
     signature = f"compute:{json.dumps(raw_expr, sort_keys=True, default=str)}"
-    admitted = ws.admit_derivation(key, Fact(value, f"compute({'; '.join(trace)})", "computed", confidence), signature)
+    admitted = ws.admit_derivation(key, Fact(value, f"compute({'; '.join(trace)})", basis, confidence), signature)
     suffix = "" if admitted else "  (already computed; no new info)"
     ws.observe(f"computed '{key}' = {value}  [{'; '.join(trace)}]{suffix}")
     return int(admitted)
 
 
+_COMPARATORS = {
+    "gt": lambda a, b: a > b,
+    "gte": lambda a, b: a >= b,
+    "lt": lambda a, b: a < b,
+    "lte": lambda a, b: a <= b,
+    ">": lambda a, b: a > b,
+    ">=": lambda a, b: a >= b,
+    "<": lambda a, b: a < b,
+    "<=": lambda a, b: a <= b,
+}
+
+
+def _to_number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _matches_condition(record_value: Any, condition: Any) -> bool:
+    """One field's match test for `select`'s `where`. A scalar condition is
+    equality (stringified, so "111" matches int 111 alike); a single-key dict
+    like {"gt": 85} or {">": 85} is a numeric comparison that fails closed when
+    either side is non-numeric. Supports eq/ne and gt/gte/lt/lte (word or symbol)
+    -- the comparison filtering `expression_tree` and a plain equality could not
+    express ("which courses did I score above 85 in?")."""
+    if isinstance(condition, dict) and len(condition) == 1:
+        ((op, threshold),) = condition.items()
+        if op in ("eq", "=="):
+            return str(record_value) == str(threshold)
+        if op in ("ne", "!="):
+            return str(record_value) != str(threshold)
+        comparator = _COMPARATORS.get(op)
+        if comparator is None:
+            return False
+        left, right = _to_number(record_value), _to_number(threshold)
+        return left is not None and right is not None and comparator(left, right)
+    return str(record_value) == str(condition)
+
+
+_REDUCERS = frozenset({"max", "min"})
+
+
+def _normalize_by(raw: Any) -> tuple[dict[str, str] | None, str | None]:
+    """Validate select's optional `by` argmax/argmin reducer. Returns (by, error):
+    a clean single-key {"max"|"min": field}, or (None, None) when absent, or
+    (None, message) when malformed -- fail closed, never silently ignore a `by`
+    the model meant."""
+    if raw is None:
+        return None, None
+    if not isinstance(raw, dict) or len(raw) != 1:
+        return None, '"by" must be a single-key object like {"max": "value"} or {"min": "value"}'
+    ((direction, by_field),) = raw.items()
+    if direction not in _REDUCERS or not isinstance(by_field, str) or not by_field:
+        return None, '"by" direction must be "max" or "min" with a field name, e.g. {"max": "value"}'
+    return {direction: by_field}, None
+
+
 def filter_records(
-    records: list[Any], where: dict[str, Any], field: str | None
+    records: list[Any], where: dict[str, Any], field: str | None, by: dict[str, str] | None = None
 ) -> tuple[Any, int]:
-    """Pure select core: filter a list of records by an all-equal `where` match,
-    then read `field` (or the whole record). Returns (value, match_count).
+    """Pure select core: filter a list of records by an all-match `where`,
+    optionally pick the argmax/argmin record by a field (`by`), then read `field`
+    (or the whole record). Returns (value, match_count).
 
     A single match yields the scalar/record directly; zero or several yield a
     list -- an empty list is a real, grounded answer ("not in that list"), not a
-    failure. Comparison is stringified so "00940224" matches an int/str alike.
+    failure. Each `where` value is an exact match (stringified, so "00940224"
+    matches an int/str alike) or a comparison dict like {"gt": 85} (see
+    `_matches_condition`).
+
+    `by` is a single-key {"max"|"min": fieldName} reducer -- the grounded ARGMAX a
+    `map` result feeds into ("which course was offered in the most semesters" =
+    the record maximizing `value`). It collapses the matched set to the single
+    extremal record; records whose by-field is non-numeric are ignored, and with
+    no numeric candidate it selects nothing (empty result -- itself grounded).
     """
     matched = [
         r
         for r in records
-        if isinstance(r, dict) and all(str(r.get(k)) == str(v) for k, v in where.items())
+        if isinstance(r, dict) and all(_matches_condition(r.get(k), cond) for k, cond in where.items())
     ]
+    if by is not None:
+        ((direction, by_field),) = by.items()
+        keyed = [(r, _to_number(r.get(by_field))) for r in matched]
+        keyed = [(record, number) for record, number in keyed if number is not None]
+        if keyed:
+            extremum = max if direction == "max" else min
+            matched = [extremum(keyed, key=lambda pair: pair[1])[0]]
+        else:
+            matched = []
     if field is not None:
         picked = [r.get(field) for r in matched]
         value: Any = picked[0] if len(picked) == 1 else picked
@@ -165,6 +315,10 @@ def apply_select(ws: WorkingSet, args: dict[str, Any]) -> int:
     from_fact = args.get("from_fact")
     where = args.get("where") or {}
     field = args.get("field")
+    by, by_error = _normalize_by(args.get("by"))
+    if by_error:
+        ws.observe(f"select error: {by_error}")
+        return 0
     if not key or not from_fact:
         ws.observe("select error: missing 'key' or 'from_fact'")
         return 0
@@ -178,13 +332,54 @@ def apply_select(ws: WorkingSet, args: dict[str, Any]) -> int:
         )
         return 0
 
-    value, match_count = filter_records(source.value, where, field)
-    label = f"select({from_fact} where {where}" + (f").{field}" if field else ")")
-    signature = f"select:{from_fact}:{json.dumps(where, sort_keys=True, default=str)}:{field}"
+    value, match_count = filter_records(source.value, where, field, by)
+    by_label = f" {next(iter(by))} by {next(iter(by.values()))}" if by else ""
+    label = f"select({from_fact} where {where}{by_label}" + (f").{field}" if field else ")")
+    signature = (
+        f"select:{from_fact}:{json.dumps(where, sort_keys=True, default=str)}:{field}"
+        f":{json.dumps(by, sort_keys=True, default=str)}"
+    )
     admitted = ws.admit_derivation(key, Fact(value, label, source.basis, source.confidence), signature)
     suffix = "" if admitted else " (already selected; no new info)"
     ws.observe(f"selected '{key}' = {summarize_value(value)} ({match_count} match(es)){suffix}")
     return int(admitted)
+
+
+def project_mapped_records(
+    elements: list[Any], envelopes: list[Any], select_path: str | None
+) -> tuple[list[dict[str, Any]], str, float, list[str]]:
+    """Pure core of `map` (§19): given the source `elements` and their per-element
+    result `envelopes` (aligned by index), project `select_path` out of each OK
+    envelope and build grounded `{"entity": element, "value": projected}` records.
+    Returns (records, basis, confidence, errors).
+
+    The value is READ from the envelope by path -- never typed -- so each record
+    is grounded exactly as surface_fact's facts are. Certainty follows the WEAKEST
+    input, like `apply_compute`: any qualified element (predicted/interpreted/
+    simulated) makes the whole collected list qualified, so an argmax over it
+    renders hedged rather than as a flat official number. A failed call or a
+    missing path is skipped with a repairable error, never guessed."""
+    records: list[dict[str, Any]] = []
+    pairs: list[tuple[str, float]] = []
+    errors: list[str] = []
+    for element, envelope in zip(elements, envelopes):
+        if not isinstance(envelope, dict) or not envelope.get("ok"):
+            reason = envelope.get("error") if isinstance(envelope, dict) else "no result"
+            errors.append(f"{element}: {reason}")
+            continue
+        if select_path:
+            value, found = resolve_path(envelope, select_path)
+            if not found:
+                errors.append(f"{element}: path '{select_path}' not found")
+                continue
+        else:
+            value = envelope.get("data")
+        records.append({"entity": element, "value": value})
+        pairs.append(_envelope_field_certainty(envelope, select_path, 0.5))
+    confidence = min((conf for _, conf in pairs), default=1.0)
+    qualified = [(basis, conf) for basis, conf in pairs if basis not in AUTHORITATIVE_BASES]
+    basis = min(qualified, key=lambda pair: pair[1])[0] if qualified else "computed"
+    return records, basis, confidence, errors
 
 
 __all__ = [
@@ -193,4 +388,5 @@ __all__ = [
     "apply_select",
     "numeric_const_operands",
     "filter_records",
+    "project_mapped_records",
 ]

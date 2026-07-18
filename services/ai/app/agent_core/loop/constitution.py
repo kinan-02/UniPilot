@@ -27,6 +27,16 @@ TOOL_NOTES: dict[str, str] = {
         "(entity_id = the user_id); course / track / program / minor / faculty / wiki_page "
         "(entity_id = a course CODE or a wiki SLUG). There is NO 'degree' entity_type."
     ),
+    "extract_temporal_pattern": (
+        "The offering-history tool. For 'is course X offered in <term>?' or 'how often / in how many "
+        "semesters has X been offered?': call it with fact_type='course_offering' and entity=the course "
+        "CODE (term index 1=Winter, 2=Spring, 3=Summer). To answer whether it is offered in a term, surface "
+        "the SCALAR data.termLabels.<term> (e.g. data.termLabels.3 -> 'never'/'reliable'/'irregular') -- a "
+        "value you can slot DIRECTLY; use data.termPatterns.<term>.observed / .total for the counts. (Via "
+        "get_course_profile or check_eligibility the same fields sit under data.offeringPattern.) Its basis "
+        "is predicted_pattern -- a projection from history, not a published guarantee -- so your answer "
+        "renders hedged; that is correct, do NOT restate it as certain."
+    ),
     "interpret_text": (
         "source MUST be a wiki SLUG (e.g. the track slug 'track-information-systems-engineering'), "
         "NOT a call handle and NOT raw text -- it fetches that page itself and reads the answer from "
@@ -40,7 +50,11 @@ TOOL_NOTES: dict[str, str] = {
     "check_eligibility": (
         "Pass the student's user_id (student_id); the tool self-fetches their completed courses. "
         "Only pass `state` when simulating a deliberate what-if (e.g. a failed/added course) -- "
-        "for a plain eligibility question, omit it."
+        "for a plain eligibility question, omit it. The result carries data.prerequisitesHeld -- "
+        "the prerequisite course code(s) the student has completed that satisfy this course; "
+        "surface and NAME them in the answer (they are the BASIS for an 'eligible' verdict). "
+        "data.missingPrerequisites lists only what is UNMET; on a clean pass it is empty, so cite "
+        "prerequisitesHeld, never a bare 'eligible: True'."
     ),
     "simulate_course_disruption": (
         "Pass student_id; the tool self-fetches the record. Pass an altered `state` only for a "
@@ -111,11 +125,18 @@ results into grounded facts and end the turn -- use these, never invent others:
       This is how you answer "the student's status/grade on course X": filter their completed-courses
       list by courseNumber and read the grade. Omit "field" to get the whole matching record. NO MATCH
       (empty result) is itself a grounded answer -- the course is not in that list.
+      A "where" value may be an exact match OR a numeric comparison: {{"grade":{{"gt":85}}}} keeps records
+      whose grade > 85 (operators gt/gte/lt/lte or symbols >, >=, <, <=; ne for not-equal). So "which
+      courses did I score above 85 in?" is select where {{"grade":{{"gt":85}}}} with field "courseNumber".
       To ENUMERATE a field across ALL records (e.g. list every completed course code), use a "field"
       and NO "where": {{"tool":"select","arguments":{{"key":"all_codes","from_fact":"completed","field":"courseNumber"}}}}
       returns the list of every record's courseNumber. (surface_fact paths CANNOT index a list -- no
       [0], no .0. -- so `select` is the only way to read into list records.) A list of scalar values
       slots into a final answer, rendered comma-separated. The selected value is grounded either way.
+      To pick the single RECORD with the largest/smallest value of a field (a grounded ARGMAX/ARGMIN),
+      add "by": {{"max":"<field>"}} or {{"min":"<field>"}} and read a "field": over a list of
+      {{entity, value}} records, select by {{"max":"value"}} with field "entity" returns the entity whose
+      value is highest -- the grounded reduce a `map` result feeds into.
 
   - final_answer (ends the turn): numbers/codes MUST be slots filled from fact refs.
       {{"tool":"final_answer","arguments":{{"prose":"You still need {{gap}} credits.","fact_refs":{{"gap":"gap"}}}}}}
@@ -125,6 +146,38 @@ results into grounded facts and end the turn -- use these, never invent others:
       e.g. for an eligibility answer, name the prerequisite course the student holds; do not
       reduce it to a bare "True"/"False". A one-line "eligible: True" that never names the
       course or the prerequisite is a poor answer.
+
+  - map (fan a data tool over a grounded list, IN PARALLEL): apply ONE data tool to every scalar in a
+      list-valued fact at once, collecting the results into a NEW grounded list of {{entity, value}} records.
+      {{"tool":"map","arguments":{{"key":"offering_counts","over":"completed_codes","tool":"extract_temporal_pattern","arg":"entity","args":{{"fact_type":"course_offering"}},"select":"data.semestersOffered"}}}}
+      `over` is the KEY of a grounded list fact of SCALARS (e.g. course codes from a `select ... field`) --
+      the bare key `"completed_codes"` or `{{"ref":"completed_codes"}}`, either works; each item fills the
+      tool's `arg`; `args` are the static arguments every call shares; `select` is the path to the ONE scalar
+      kept from each result (so it stays comparable -- e.g. `data.semestersOffered`, NOT the whole object).
+      The values are READ from each result --
+      never typed -- so the collected list is grounded. This is how you answer "across MANY items, which has
+      the most/least X?": `map` the per-item tool, then reduce with `select ... by {{"max":"value"}} field
+      "entity"` (or `compute`). PREFER `map` over a sub-loop for a uniform lookup over a list: it is ONE step,
+      runs the calls in parallel, and stays grounded, where a spawn would burn a whole child loop per item.
+
+  - spawn_subtask (context isolation ONLY): delegate a HEAVY sub-problem to a fresh child loop when its raw
+      material would FLOOD this trace -- mining years of offering JSON for one pattern, searching hundreds of
+      candidates to find one, reading a long regulation for a single clause.
+      {{"tool":"spawn_subtask","arguments":{{"objective":"<what to find>","inputs":{{"childKey":{{"ref":"<a fact you already grounded>"}}}},"output_facts":["<key(s) the child grounds and returns>"]}}}}
+      inputs are REFS to facts you already grounded (never typed values); the child runs in a clean context
+      seeded ONLY with those and returns ONLY the named output_facts.
+      SPAWN ONLY when the result is a FEW distilled facts (a pattern, a count, one found course) squeezed out
+      of bulky or noisy raw material. Otherwise STAY INLINE:
+       - if your answer must ENUMERATE items ("list my completed courses"; "which ones did I score above X"),
+         do it INLINE -- the child returns only its named output_facts, so a list your answer needs can never
+         come back through a spawn.
+       - working over a list you ALREADY hold (select / count / compare its records, even many of them) is
+         INLINE: list several tool_calls in one turn -- independent ones run in parallel. "Fetch then
+         select/compute" is normal turns, never a spawn.
+       - applying the SAME tool to EVERY item of a list you hold (e.g. the offering history of each of your
+         completed courses, to find which was offered most) is a `map` + a `select ... by`, NOT a spawn --
+         one grounded parallel step, no child loop per item.
+      Sub-loops share your turn budget and are depth-capped (max 2 deep).
 
   - clarify (ends the turn): {{"tool":"clarify","arguments":{{"question":"..."}}}}  -- only if genuinely blocked.
 

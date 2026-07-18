@@ -28,6 +28,14 @@ _OBSERVATION_TAIL = 8
 # are what the model addresses it by.
 _INDEX_CALL_CLIP = 160
 
+# A fact's basis is "authoritative" when a composed answer needs no hedge for it:
+# an official record, or arithmetic purely over authoritative inputs. Every other
+# basis (interpreted text, a predicted pattern, a simulated what-if) is qualified
+# and must render hedged in the answer (§4.2). `apply_compute` narrows a computed
+# fact's basis to its weakest input, so "computed" here always means "computed
+# over authoritative inputs".
+AUTHORITATIVE_BASES = frozenset({"official_record", "computed"})
+
 
 @dataclass(frozen=True)
 class Fact:
@@ -99,13 +107,22 @@ class Terminal:
 
 def summarize_value(value: Any) -> str:
     """A one-line shape summary for the prompt's facts/index -- never the full
-    payload (context discipline, §5). A list shows its length and record keys so
-    the model knows it can `select` over it."""
+    payload (context discipline, §5).
+
+    A list of RECORDS shows its length and record fields (so the model knows what
+    to `select` on); a list of SCALARS shows a short SAMPLE of its values, so the
+    model can SEE the fact holds real, slottable/selectable data. Without that, a
+    bare "[list of N items]" reads as "no values here" -- measured live, a
+    sub-loop and a forced compose each gave up on a list they actually held."""
     if isinstance(value, list):
-        sample = value[0] if value else None
-        keys = sorted(sample.keys()) if isinstance(sample, dict) else None
-        tail = f", record keys: {keys}" if keys else ""
-        return f"[list of {len(value)} items{tail}]"
+        if not value:
+            return "[list of 0 items]"
+        sample = value[0]
+        if isinstance(sample, dict):
+            return f"[list of {len(value)} records, fields: {sorted(sample.keys())}]"
+        preview = ", ".join(str(item)[:24] for item in value[:3])
+        more = ", …" if len(value) > 3 else ""
+        return f"[list of {len(value)} values: {preview}{more}]"
     if isinstance(value, dict):
         return f"{{dict with keys: {sorted(value.keys())}}}"
     return json.dumps(value, ensure_ascii=False, default=str)
@@ -154,4 +171,4 @@ def render_working_set(ws: WorkingSet, turn: int, max_turns: int) -> str:
     )
 
 
-__all__ = ["Fact", "WorkingSet", "Terminal", "summarize_value", "render_working_set"]
+__all__ = ["AUTHORITATIVE_BASES", "Fact", "WorkingSet", "Terminal", "summarize_value", "render_working_set"]
