@@ -92,14 +92,34 @@ def test_get_embeddings_client_sets_an_explicit_timeout(mock_cls, monkeypatch):
 @patch("langchain_openai.OpenAIEmbeddings")
 def test_embed_query_cached_sets_an_explicit_timeout(mock_cls):
     # Same regression guard as the `get_embeddings_client` version above,
-    # for the second (separately-constructed) OpenAIEmbeddings client this
-    # module builds.
+    # reached via the query path rather than the document path.
     from app.retrieval.embedding_service import _EMBEDDING_TIMEOUT_SECONDS, embed_query_cached
 
     embed_query_cached("hello", "test-key", "https://example.com/v1", "test-model")
 
     _, kwargs = mock_cls.call_args
     assert kwargs["timeout"] == _EMBEDDING_TIMEOUT_SECONDS
+
+
+@patch("langchain_openai.OpenAIEmbeddings")
+def test_query_and_document_paths_share_one_pooled_client(mock_cls, monkeypatch):
+    """Rebuilding a client per call costs a fresh TLS handshake every time.
+
+    Measured against api.llmod.ai: 798ms per uncached query with a new client
+    vs 466ms reusing one. Both entry points must land on the same instance.
+    """
+    monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
+    monkeypatch.setenv("EMBEDDING_BASE_URL", "https://example.com/v1")
+    monkeypatch.setenv("EMBEDDING_MODEL", "test-model")
+    get_settings.cache_clear()
+    from app.retrieval.embedding_service import embed_query_cached, get_embeddings_client
+
+    get_embeddings_client()
+    embed_query_cached("first", "test-key", "https://example.com/v1", "test-model")
+    embed_query_cached("second", "test-key", "https://example.com/v1", "test-model")
+
+    # Two distinct queries plus the document client -- still one construction.
+    assert mock_cls.call_count == 1
 
 
 def _enable_semantic_search(monkeypatch) -> None:

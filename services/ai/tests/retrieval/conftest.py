@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import get_settings
+from app.retrieval.embedding_service import reset_embeddings_client_cache
 from app.retrieval.obsidian_wiki_indexer import reset_wiki_index_cache
 from app.retrieval.wiki_vector_index import reset_wiki_vector_index_runtime_cache
 
@@ -22,7 +23,15 @@ def isolate_retrieval_vector_store(monkeypatch):
     get_settings.cache_clear()
     reset_wiki_index_cache()
     reset_wiki_vector_index_runtime_cache()
+    # Embedding clients are pooled by credential set, so a client cached by an
+    # earlier test would otherwise outlive its patched `OpenAIEmbeddings`.
+    reset_embeddings_client_cache()
     yield
     get_settings.cache_clear()
     reset_wiki_index_cache()
     reset_wiki_vector_index_runtime_cache()
+    # Deliberately NOT resetting the embedding caches on teardown: this
+    # fixture unwinds before `monkeypatch` undoes its own patches, so a test
+    # that replaced `embed_query_cached` with a plain stub would still have
+    # that stub installed here -- and stubs have no `.cache_clear()`. The
+    # setup call above is what actually provides isolation.
