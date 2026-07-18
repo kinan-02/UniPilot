@@ -21,8 +21,6 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
       TRANSCRIPT_PARSER_URL: http://transcript-parser:${TRANSCRIPT_PARSER_PORT:-8010}
       AI_SERVICE_URL: http://ai:${AI_SERVICE_PORT:-3001}
-      AGENT_SERVICE_URL: http://agent:${AGENT_SERVICE_PORT:-3003}
-      AGENT_TURN_TIMEOUT_SECONDS: ${AGENT_TURN_TIMEOUT_SECONDS:-180}
       WEB_APP_URL: ${WEB_APP_URL:-http://localhost:3000}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
@@ -57,8 +55,6 @@ services:
         condition: service_healthy
       ai:
         condition: service_healthy
-      agent:
-        condition: service_healthy
     healthcheck:
       test:
         [
@@ -66,59 +62,6 @@ services:
           "python",
           "-c",
           "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - unipilot-internal
-
-  agent:
-    build:
-      context: ./services/agent
-    env_file:
-      - .env
-    environment:
-      AGENT_SERVICE_PORT: ${AGENT_SERVICE_PORT:-3003}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB:-unipilot_python}?authSource=admin}
-      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-unipilot_dev_internal_service_token_change_in_production}
-      API_SERVICE_URL: http://api:${API_PORT:-8000}
-      INTERNAL_API_TIMEOUT_SECONDS: ${INTERNAL_API_TIMEOUT_SECONDS:-60}
-      AGENT_AGENTIC_RETRIEVAL_ENABLED: ${AGENT_AGENTIC_RETRIEVAL_ENABLED:-true}
-      AGENT_LLM_VALIDATION_ENABLED: ${AGENT_LLM_VALIDATION_ENABLED:-false}
-      AGENT_LLM_EXPLANATION_ENABLED: ${AGENT_LLM_EXPLANATION_ENABLED:-true}
-      AGENT_LLM_INTENT_FALLBACK_ENABLED: ${AGENT_LLM_INTENT_FALLBACK_ENABLED:-true}
-      AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED: ${AGENT_LLM_PREFERENCE_EXTRACTION_ENABLED:-true}
-      AGENT_TASK_UNDERSTANDING_ENABLED: ${AGENT_TASK_UNDERSTANDING_ENABLED:-false}
-      AGENT_TASK_UNDERSTANDING_DRY_RUN: ${AGENT_TASK_UNDERSTANDING_DRY_RUN:-true}
-      CATALOG_VAULT_WIKI_PATH: ${CATALOG_VAULT_WIKI_PATH:-/app/data/academic/wiki}
-      TECHNION_RAW_DIR: ${TECHNION_RAW_DIR:-/app/data/raw/technion}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-}
-      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.llmod.ai/v1}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-MB5R2CF-azure/text-embedding-3-small}
-      EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
-      EMBEDDING_INDEX_ENABLED: ${EMBEDDING_INDEX_ENABLED:-true}
-      EMBEDDING_INDEX_CACHE_PATH: ${EMBEDDING_INDEX_CACHE_PATH:-/app/data/cache/wiki_embedding_index.json}
-      EMBEDDING_INDEX_BATCH_SIZE: ${EMBEDDING_INDEX_BATCH_SIZE:-64}
-    volumes:
-      - ./services/data-engineering/data/raw/technion:/app/data/raw/technion:ro
-      - ./services/data-engineering/data/catalog_valut/catalog_valut/wiki:/app/data/academic/wiki:ro
-    depends_on:
-      mongo:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import os,urllib.request; port=os.environ.get('AGENT_SERVICE_PORT','3003'); urllib.request.urlopen(f'http://localhost:{port}/health').read()",
         ]
       interval: 10s
       timeout: 5s
