@@ -211,7 +211,12 @@ class PineconeVectorStore:
         entry = namespaces.get(self._namespace)
         if entry is not None:
             return int(getattr(entry, "vector_count", 0) or 0)
-        return int(getattr(stats, "total_vector_count", 0) or 0)
+        # A configured namespace that Pinecone does not report simply holds
+        # nothing. Falling back to the index-wide total here would report
+        # OTHER namespaces' vectors as this one's -- worst exactly when
+        # you're chasing a namespace typo. The total is only the right
+        # answer when no namespace was configured at all.
+        return int(getattr(stats, "total_vector_count", 0) or 0) if not self._namespace else 0
 
     # -- writes ----------------------------------------------------------
 

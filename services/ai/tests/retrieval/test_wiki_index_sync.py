@@ -16,7 +16,7 @@ from app.retrieval.obsidian_wiki_indexer import (
     load_wiki_chunks,
     reset_wiki_index_cache,
 )
-from app.retrieval.vector_store import VectorRecord, VectorStoreError
+from app.retrieval.vector_store import PineconeVectorStore, VectorRecord, VectorStoreError
 from app.retrieval.wiki_index_sync import backfill_from_legacy_cache, reindex_wiki, verify_index
 from app.retrieval.wiki_vector_index import chunk_vector_id, reset_wiki_vector_index_runtime_cache
 
@@ -359,3 +359,42 @@ def test_verify_flags_an_empty_index(tmp_path, monkeypatch):
 
     assert report["ok"] is False
     assert report["vectorCountInPinecone"] == 0
+
+
+class _FakeStats:
+    def __init__(self, namespaces: dict[str, int], total: int) -> None:
+        self.namespaces = {
+            name: type("NS", (), {"vector_count": count})()
+            for name, count in namespaces.items()
+        }
+        self.total_vector_count = total
+
+
+def _store_with_stats(stats: _FakeStats, namespace: str) -> PineconeVectorStore:
+    store = PineconeVectorStore(
+        api_key="test-key",
+        index_name="test-index",
+        namespace=namespace,
+    )
+    store._index = type("Idx", (), {"describe_index_stats": lambda _self, **_kw: stats})()
+    return store
+
+
+def test_count_reports_zero_for_a_configured_namespace_that_is_empty():
+    """Must not report another namespace's vectors as this one's.
+
+    Falling back to the index-wide total here would make a namespace typo
+    look like a populated index -- the exact moment the number matters.
+    """
+    stats = _FakeStats({"other": 500}, total=500)
+    assert _store_with_stats(stats, namespace="mine").count() == 0
+
+
+def test_count_uses_the_index_total_only_when_no_namespace_is_configured():
+    stats = _FakeStats({"other": 500}, total=500)
+    assert _store_with_stats(stats, namespace="").count() == 500
+
+
+def test_count_reads_the_configured_namespace_when_present():
+    stats = _FakeStats({"mine": 12586, "other": 500}, total=13086)
+    assert _store_with_stats(stats, namespace="mine").count() == 12586
