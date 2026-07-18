@@ -1057,30 +1057,36 @@ the model hunted a current-semester record for a course passed *last* semester a
 real grade), and it inflated `eligibility` into co-requisite / exclusion / department / standing
 sub-asks the question never raised, sending the loop chasing them to budget.
 
-Round-4 fix — decompose at the root (un-scope premise checks to the course's *actual recorded
-status*; enforce minimality: only the sub-asks the question raises):
+Fixes across rounds 4–6: decompose at the root (un-scope premise checks to the course's *actual
+recorded status*; enforce minimality); reject `None`-valued answer slots; require final answers to
+name the course code(s) and the basis. Six full runs on the demo model:
 
-| case | R1 | R2 | R3 | R4 |
-|---|---|---|---|---|
-| credits_remaining | 8/8 | 8/8 | 8/8 | 8/8 |
-| eligibility_00960211 | 4/4 | 4/4 | budget | 3/4† |
-| **presupposition_conflict** | budget | budget | budget | **5/5** |
-| offering_pattern | budget | budget | 4/4 | 4/4 |
-| completed_courses | 5/6 | 6/6 | 6/6 | 6/6 |
-| action_boundary | budget | 4/4 | 4/4 | 4/4 |
-| **correct** | **2/6** | **4/6** | **4/6** | **5/6** |
+| case | R1 | R2 | R3 | R4 | R5 | R6 | passed |
+|---|---|---|---|---|---|---|---|
+| credits_remaining | 8/8 | 8/8 | 8/8 | 8/8 | 8/8 | 8/8 | **6/6** |
+| completed_courses | 5/6 | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 | 5/6 |
+| action_boundary | budget | 4/4 | 4/4 | 4/4 | 4/4 | 4/4 | 5/6 |
+| offering_pattern | budget | budget | 4/4 | 4/4 | 3/4 | 4/4 | 3/6 |
+| eligibility_00960211 | 4/4 | 4/4 | budget | 3/4 | 3/4 | 3/4 | 2/6 |
+| presupposition_conflict | budget | budget | budget | 5/5 | 5/5 | budget | 2/6 |
+| **correct** | **2** | **4** | **4** | **5** | **4** | **4** | of 6 |
 
-Round 4 also ran in **260s vs 575s** — minimality cut the wandering roughly in half.
-`presupposition_conflict`, the hardest adversarial case (and the whole reason the `ise_correctness`
-suite exists), passed for the first time. †The only R4 miss, `eligibility`, over-minimized: it
-answered in 2 turns from `check_eligibility`'s raw flags ("eligible: True") without naming the
-prerequisite 00940224 — a terse-answer quality issue, not a wandering or grounding failure (and it
-answered 4/4 in R1/R2). A follow-on fix rejects `None`-valued slots so an answer can never render
-"target semester None".
+Each fix hit a real root cause and moved the average up, but **none made the two hardest cases
+deterministic.** `presupposition_conflict` is the clearest lesson: R4/R6 both drew the *good*
+un-scoped decomposition, yet R6 still failed — the model wandered (re-selecting the same record),
+hit a transient `json_parse_failed`, and at the budget boundary bound whole *records* to answer
+slots instead of the scalar grade 85 it had already grounded. The failures are an accumulation of
+*different* stochastic fumbles, not one fixable cause. `eligibility` similarly oscillates between a
+full answer (R1/R2) and an over-terse "eligible: True" that omits the prerequisite.
 
-**Verdict.** Grounding held **6/6 on every run (24/24 case-runs, zero fabrication)**, and every case
-passed on at least one run — the loop is capable of the whole suite. Correctness climbed 2→4→4→**5**
-of 6 as each fix hit its root cause. The demo model is stochastic at temperature 1.0 (GPT-5 forces
-it), so a single run lands 4–5/6 by luck-of-the-draw on the terse/verbose boundary; the *stable*
-guarantees are the grounding floor and majority-correct, not a deterministic 6/6. The remaining gap
-is answer-quality tuning, not architecture — the V2 thesis is validated.
+**Honest verdict.** The architecture is validated on the axis that matters: **the grounding floor
+held 6/6 on all six runs — 36/36 case-runs, zero fabrication**, including the `92.5` case V1 faked.
+Correctness lands **~4–5 of 6 per run**, and every case passes on some run, but a **deterministic
+6/6 was not reached in six attempts** — two hard cases (`presupposition_conflict`,
+`eligibility`-basis) jitter irreducibly on a temperature-1.0 model (GPT-5 forces temp=1). Further
+prompt tuning shows diminishing returns because the residual failures are diverse stochastic fumbles
+(wandering, composition slips, transient parse errors), not a single root cause. Closing the last
+gap needs either a stronger model or deeper work (a stricter anti-re-derivation governor; a
+composition step that can't bind a record to a scalar slot), which is beyond "validate the rewrite."
+Net: the V2 thesis — grounding by substrate — is proven; correctness on the demo model is
+good-but-variance-bounded, not perfect.
