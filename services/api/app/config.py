@@ -79,14 +79,6 @@ class Settings(BaseSettings):
     # (180s default) so that service's own ceiling has a chance to return a
     # clean, honest timeout answer before this client gives up on it first.
     ai_advisor_timeout_seconds: int = 300
-    agent_service_url: str | None = None
-    agent_turn_timeout_seconds: int = 180
-    agent_conversations_collection: str = "agent_conversations"
-    agent_messages_collection: str = "agent_messages"
-    agent_runs_collection: str = "agent_runs"
-    agent_steps_collection: str = "agent_steps"
-    agent_tool_calls_collection: str = "agent_tool_calls"
-    agent_action_proposals_collection: str = "agent_action_proposals"
     transcript_parser_url: str | None = None
     transcript_parser_timeout_seconds: int = 60
     transcript_import_max_upload_bytes: int = 5 * 1024 * 1024
@@ -172,12 +164,6 @@ class Settings(BaseSettings):
         if configured:
             return configured.rstrip("/")
         return "http://ai:3001"
-
-    def resolved_agent_service_url(self) -> str:
-        configured = (self.agent_service_url or "").strip()
-        if configured:
-            return configured.rstrip("/")
-        return "http://agent:3003"
 
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()
