@@ -5,15 +5,13 @@ rules, and default execution parameters for one reasoning task type — so
 prompts stay reviewable in one place instead of being inlined at call sites.
 
 `PromptContract`/`PromptRegistry` and the two contracts below
-(`GENERIC_REASONING_BLOCK_V1`, `SCHEMA_REPAIR_V1`) are ported verbatim from
-`services/agent/app/agent/reasoning/prompt_registry.py` — both are fully
-generic (no dependency on any specific role's vocabulary), unlike the ~15
-other contracts that file defined for `services/agent`'s old roles (task
-understanding, the old Planner, the old 3 specialists), none of which are
-ported here. The 5 new roles' contracts live in `app.agent_core.roles.prompts`
-(a one-way dependency on this module, never the reverse, to avoid a cycle)
-and are layered onto `build_default_prompt_registry()`'s output by
-`roles.prompts.build_prompt_registry_with_roles()`.
+(`GENERIC_REASONING_BLOCK_V1`, `SCHEMA_REPAIR_V1`) were ported verbatim from
+the retired `services/agent` prompt registry — both are fully generic (no
+dependency on any specific role's vocabulary), unlike the ~15 other contracts
+that file defined for the old roles (task understanding, the old Planner, the
+old 3 specialists), none of which were ported here. The role layer that once
+added its own contracts on top (`app.agent_core.roles.prompts`) was removed
+with the V1 org chart, so these two are now the whole registry.
 """
 
 from __future__ import annotations
@@ -147,11 +145,10 @@ def _schema_repair_contract() -> PromptContract:
 
 
 def build_default_prompt_registry() -> PromptRegistry:
-    """Fresh `PromptRegistry` with only the two generic, role-agnostic contracts.
+    """Fresh `PromptRegistry` with the two generic, role-agnostic contracts.
 
-    Callers that need the 5 role contracts too should use
-    `app.agent_core.roles.prompts.build_prompt_registry_with_roles()` instead,
-    which layers them onto this base.
+    These are the only contracts there are — the role layer that used to add
+    more on top was removed with the V1 org chart.
     """
     registry = PromptRegistry()
     registry.register(_generic_reasoning_block_contract())

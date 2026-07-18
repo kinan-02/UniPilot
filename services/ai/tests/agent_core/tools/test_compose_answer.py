@@ -1,8 +1,8 @@
 """Unit tests for `compose_answer` (docs/agent/AGENT_VISION.md §5, primitive 9a).
 
-Implemented standalone per explicit user instruction -- does not touch
-`agent_core.synthesis.synthesis.compose_answer`. No real LLM call is ever
-made (same `_FakeLLMAdapter` pattern as test_interpret_text.py).
+Implemented standalone; the V1 `agent_core.synthesis.synthesis.compose_answer`
+it was kept separate from no longer exists. No real LLM call is ever made
+(same `_FakeLLMAdapter` pattern as test_interpret_text.py).
 """
 
 from __future__ import annotations
