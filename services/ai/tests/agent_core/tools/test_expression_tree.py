@@ -1,5 +1,5 @@
 """Unit tests for the expression-tree vocabulary
-(docs/agent/CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md Part 1) --
+--
 one operator at a time, `validate_expression_tree`'s own structural checks,
 and a multi-level tree exercising the full validate+evaluate path together.
 """

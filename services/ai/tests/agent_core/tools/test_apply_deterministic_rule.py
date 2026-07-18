@@ -385,7 +385,7 @@ async def test_every_comparator(comparator, value, threshold, expected):
     assert result.data["satisfied"] is expected
 
 
-# -- expression (docs/agent/CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md Part 1) --
+# -- expression --
 
 
 async def test_expression_happy_path_end_to_end():

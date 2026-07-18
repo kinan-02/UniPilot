@@ -25,8 +25,7 @@ Discriminated by `rule["type"]` (runtime-validated `str`, not `Literal` —
 same extensibility rationale as every other primitive's vocabulary field).
 Four types. The first three cover AGENT_VISION's own named examples ("credit
 totals, academic-standing checks") without building a general expression
-language; `expression` (added per
-`docs/agent/CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md`) covers any
+language; `expression` covers any
 other arithmetic/aggregate calculation over already-given facts via a small,
 closed, composable operator tree — still not a general expression language,
 since its operator vocabulary (`app/agent_core/tools/primitives/

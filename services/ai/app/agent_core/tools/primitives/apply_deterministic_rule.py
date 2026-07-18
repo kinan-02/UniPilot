@@ -173,10 +173,8 @@ def _expression(rule: dict[str, Any], facts: dict[str, Any]) -> _HandlerResult:
     except ValidationError as exc:
         return None, f"invalid_expression_shape: {exc}"
 
-    # Defense in depth: validated again here even though
-    # CalculationValidationReasoningBlock (docs/agent/
-    # CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md Part 2) already runs
-    # this same check before ever calling this tool -- nothing here should
+    # Defense in depth: validated again here even though a caller may already
+    # have run this same check before invoking the tool -- nothing here should
     # assume that pre-check actually ran (any caller could reach this tool
     # directly).
     errors = validate_expression_tree(node, facts=facts)

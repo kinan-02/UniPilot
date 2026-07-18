@@ -5,7 +5,7 @@
 > describes was deleted in the V1 teardown (2026-07-18); it is kept for design
 > rationale only.
 
-**This document describes where the agent system is meant to go, not what exists in the codebase today.** For the current, phase-by-phase implementation state, see [`CURRENT_STATE.md`](CURRENT_STATE.md) and [`docs/architecture/agent-orchestration-architecture.md`](../architecture/agent-orchestration-architecture.md). Where this vision and the current implementation diverge, this document wins for direction; `CURRENT_STATE.md` wins for what is actually true right now.
+**This document describes where the V1 agent system was meant to go, not what exists in the codebase today.** The V1 status docs it used to point at were deleted in the teardown; for what is actually true now, see [`AGENT_ARCHITECTURE_V2.md`](AGENT_ARCHITECTURE_V2.md). Sections §3.3 and §5 are still cited by the live tool-primitive contracts (`SIMULATION_STATE_CONTRACT`, `SEARCH_OVER_STATE_CONTRACT`, `TEMPORAL_PATTERN_CONTRACT`), which is why this file survives.
 
 The vision below was arrived at through direct, adversarial design discussion — each design choice was pressure-tested against concrete counterexamples (most importantly, "what happens if I fail course X this semester?") until it either held up or was revised. It is recorded here in that spirit: not just conclusions, but the reasoning and the traps each conclusion was chosen to avoid, so a future reader can tell the difference between "this is arbitrary" and "this is load-bearing."
 

@@ -1,6 +1,5 @@
 """A small, closed, composable expression-tree vocabulary for
-`apply_deterministic_rule`'s `"expression"` rule type
-(docs/agent/CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md Part 1).
+`apply_deterministic_rule`'s `"expression"` rule type.
 
 Deliberately NOT a general expression evaluator: `_OPERATORS` is a fixed,
 auditable set (sum/count/average/add/subtract/multiply/divide/compare), and
@@ -47,8 +46,8 @@ FACTS_DEFECT_PREFIX = "facts_defect:"
 
 class ExpressionNode(BaseModel):
     """Exactly one of `const`/`ref`/`op` is set per node. Which other fields
-    apply depends on `op` (see the operator table in
-    CALCULATION_VALIDATION_REASONING_BLOCK_PLAN.md 1.1) -- those op-specific
+    apply depends on `op` (see `_OPERATORS` above for the operator set) --
+    those op-specific
     requirements are checked by `validate_expression_tree`, not here, so the
     error messages can name the exact node and be human-readable rather than
     raw jsonschema output.
