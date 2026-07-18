@@ -645,6 +645,9 @@ class AcademicGraphEngine:
             query=query,
             limit=limit,
             profile=get_profile("fallback_academic_search"),
+            # `page_chunks` is every chunk of this slug's file(s), which is
+            # exactly the completeness `page_scoped` requires.
+            page_scoped=True,
             settings=settings,
         )
         return [

@@ -189,6 +189,55 @@ def fetch_chunk_vectors(
         return {}
 
 
+def score_page_scoped_chunks(
+    chunks: Sequence[WikiChunk],
+    *,
+    query: str,
+    settings: Settings | None = None,
+) -> dict[str, float]:
+    """Similarity scores for a page-scoped candidate set, keyed by vector id.
+
+    One metadata-filtered Pinecone query that returns scores directly, instead
+    of fetching every candidate's vector to recompute cosine locally. Measured
+    on a 7-section page: 167ms vs 345ms, and it halves the read units.
+
+    CALLER CONTRACT: `chunks` must be *every* indexed chunk of the source
+    files it spans (which is what `retrieve_page_chunks` produces -- it takes
+    all chunks whose stem matches the slug). If it were only a subset, `top_k`
+    would let Pinecone return that file's other sections instead, scoring
+    non-candidates and leaving real candidates unscored. `fetch_chunk_vectors`
+    is the correct choice for an arbitrary candidate set.
+
+    Returns `{}` rather than raising, so reranking drops to its keyword
+    component.
+    """
+    cfg = settings or get_settings()
+    if not cfg.wiki_vector_index_enabled() or not chunks:
+        return {}
+    store = get_vector_store(settings=cfg)
+    if store is None:
+        return {}
+
+    query_vector = _query_vector(query, cfg)
+    if not query_vector:
+        return {}
+
+    source_files = sorted({chunk.source_file for chunk in chunks if chunk.source_file})
+    if not source_files:
+        return {}
+
+    try:
+        matches = store.query(
+            list(query_vector),
+            limit=len(chunks),
+            metadata_filter={"source_file": {"$in": source_files}},
+        )
+    except VectorStoreError:
+        logger.exception("wiki_page_scoped_query_failed")
+        return {}
+    return {vector_id: score for vector_id, score in matches}
+
+
 def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
@@ -234,4 +283,5 @@ __all__ = [
     "fetch_chunk_vectors",
     "query_semantic_candidates",
     "reset_wiki_vector_index_runtime_cache",
+    "score_page_scoped_chunks",
 ]

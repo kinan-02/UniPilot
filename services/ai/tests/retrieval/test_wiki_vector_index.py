@@ -18,6 +18,7 @@ from app.retrieval.wiki_vector_index import (
     estimate_query_embedding_cost,
     fetch_chunk_vectors,
     query_semantic_candidates,
+    score_page_scoped_chunks,
     reset_wiki_vector_index_runtime_cache,
 )
 
@@ -51,6 +52,7 @@ class _FakeVectorStore:
         self.fail = fail
         self.query_calls: list[tuple[tuple[float, ...], int]] = []
         self.fetch_calls: list[list[str]] = []
+        self.filters: list[dict[str, Any] | None] = []
 
     def query(
         self,
@@ -62,6 +64,7 @@ class _FakeVectorStore:
         if self.fail:
             raise VectorStoreError("pinecone_query_failed: simulated")
         self.query_calls.append((tuple(vector), limit))
+        self.filters.append(metadata_filter)
         matches = self._matches if self._matches is not None else [
             (vector_id, 0.9) for vector_id in self.vectors
         ]
@@ -302,6 +305,77 @@ def test_fetch_chunk_vectors_empty_on_store_failure(tmp_path, monkeypatch):
 def test_fetch_chunk_vectors_empty_for_no_chunks(monkeypatch):
     _enable_semantic_search(monkeypatch)
     assert fetch_chunk_vectors([], settings=get_settings()) == {}
+
+
+# -- page-scoped scoring -------------------------------------------------
+
+
+def test_page_scoped_scoring_uses_one_filtered_query(tmp_path, monkeypatch):
+    """Scores come back directly — no fetch, no local cosine."""
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    store = _FakeVectorStore(
+        matches=[(chunk_vector_id(c), 0.5 + i / 10) for i, c in enumerate(chunks)]
+    )
+    _use_store(monkeypatch, store)
+    _stub_query_embedding(monkeypatch)
+
+    scores = score_page_scoped_chunks(chunks, query="prerequisites", settings=get_settings())
+
+    assert len(store.query_calls) == 1
+    assert store.fetch_calls == []
+    assert scores[chunk_vector_id(chunks[0])] == pytest.approx(0.5)
+
+
+def test_page_scoped_scoring_filters_to_the_candidate_source_files(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    store = _FakeVectorStore(matches=[(chunk_vector_id(chunks[0]), 0.9)])
+    _use_store(monkeypatch, store)
+    _stub_query_embedding(monkeypatch)
+
+    score_page_scoped_chunks(chunks, query="prerequisites", settings=get_settings())
+
+    assert store.filters[0] == {"source_file": {"$in": ["00940345.md"]}}
+
+
+def test_page_scoped_scoring_requests_top_k_covering_every_candidate(tmp_path, monkeypatch):
+    """top_k below the candidate count would leave real candidates unscored."""
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    store = _FakeVectorStore(matches=[(chunk_vector_id(chunks[0]), 0.9)])
+    _use_store(monkeypatch, store)
+    _stub_query_embedding(monkeypatch)
+
+    score_page_scoped_chunks(chunks, query="prerequisites", settings=get_settings())
+
+    _vector, limit = store.query_calls[0]
+    assert limit == len(chunks)
+
+
+def test_page_scoped_scoring_empty_when_disabled(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    monkeypatch.setenv("PINECONE_API_KEY", "")
+    get_settings.cache_clear()
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    assert score_page_scoped_chunks(chunks, query="x", settings=get_settings()) == {}
+
+
+def test_page_scoped_scoring_empty_on_store_failure(tmp_path, monkeypatch):
+    wiki = _write_wiki(tmp_path)
+    _enable_semantic_search(monkeypatch)
+    chunks = list(load_wiki_chunks(str(wiki.resolve())))
+    _use_store(monkeypatch, _FakeVectorStore(fail=True))
+    _stub_query_embedding(monkeypatch)
+    assert score_page_scoped_chunks(chunks, query="x", settings=get_settings()) == {}
+
+
+def test_page_scoped_scoring_empty_for_no_chunks(monkeypatch):
+    _enable_semantic_search(monkeypatch)
+    assert score_page_scoped_chunks([], query="x", settings=get_settings()) == {}
 
 
 # -- cost estimates ------------------------------------------------------

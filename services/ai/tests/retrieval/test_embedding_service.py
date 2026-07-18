@@ -152,6 +152,62 @@ def test_rerank_uses_embedding_scores_when_available(monkeypatch):
     assert ranked[0][0].section_title == "Requirements"
 
 
+def test_rerank_page_scoped_uses_the_filtered_query_not_a_fetch(monkeypatch):
+    """One scoped query returning scores, instead of fetching every vector."""
+    _enable_semantic_search(monkeypatch)
+    chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
+    scoped_calls: list[int] = []
+
+    def _fake_scoped(candidate_chunks, **_kwargs):
+        candidates = list(candidate_chunks)
+        scoped_calls.append(len(candidates))
+        # favour "Requirements" (index 1), same rationale as the test above
+        return {chunk_vector_id(c): (0.2, 0.9)[i] for i, c in enumerate(candidates)}
+
+    def _explode(*_args, **_kwargs):
+        raise AssertionError("page_scoped must not fall back to fetch_chunk_vectors")
+
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.score_page_scoped_chunks", _fake_scoped)
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.fetch_chunk_vectors", _explode)
+
+    ranked = rerank_chunks(
+        chunks,
+        query="requirements",
+        limit=2,
+        profile=get_profile("requirement_explanation"),
+        page_scoped=True,
+    )
+
+    assert scoped_calls == [len(chunks)]
+    assert ranked[0][0].section_title == "Requirements"
+
+
+def test_rerank_defaults_to_fetch_for_arbitrary_candidate_sets(monkeypatch):
+    """Only page-scoped callers may use the filtered query — see its contract."""
+    _enable_semantic_search(monkeypatch)
+    chunks = chunk_wiki_page(relative_path="test/degree.md", text=SAMPLE_PAGE)
+
+    def _explode(*_args, **_kwargs):
+        raise AssertionError("must not use the page-scoped query by default")
+
+    monkeypatch.setattr("app.retrieval.wiki_vector_index.score_page_scoped_chunks", _explode)
+    monkeypatch.setattr(
+        "app.retrieval.wiki_vector_index.fetch_chunk_vectors",
+        lambda candidate_chunks, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "app.retrieval.embedding_service.embed_query_cached",
+        lambda *_args, **_kwargs: (1.0, 0.0),
+    )
+
+    assert rerank_chunks(
+        chunks,
+        query="requirements",
+        limit=2,
+        profile=get_profile("requirement_explanation"),
+    )
+
+
 def test_rerank_falls_back_to_keywords_without_pinecone(monkeypatch):
     """Pinecone unconfigured must still rank, on BM25 alone."""
     monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")

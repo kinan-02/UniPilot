@@ -219,12 +219,24 @@ def rerank_chunks(
     profile: RetrievalProfile | None = None,
     entities: dict[str, Any] | None = None,
     user_context: dict[str, Any] | None = None,
+    page_scoped: bool = False,
     settings: "Settings | None" = None,
 ) -> list[tuple[WikiChunk, float]]:
+    """Rank `chunks` against `query` on BM25 plus embedding similarity.
+
+    Set `page_scoped` only when `chunks` is *every* indexed chunk of the
+    source files it spans -- see `score_page_scoped_chunks` for why a subset
+    would silently mis-score. It buys one filtered query returning scores
+    directly instead of a fetch of every candidate vector.
+    """
     from app.config import get_settings
     from app.retrieval.embedding_service import cosine_similarity, embed_query_cached
     from app.retrieval.profiles import get_profile
-    from app.retrieval.wiki_vector_index import chunk_vector_id, fetch_chunk_vectors
+    from app.retrieval.wiki_vector_index import (
+        chunk_vector_id,
+        fetch_chunk_vectors,
+        score_page_scoped_chunks,
+    )
 
     active_profile = profile or get_profile("fallback_academic_search")
     candidate_limit = max(active_profile.rerankCandidateLimit, limit)
@@ -232,29 +244,40 @@ def rerank_chunks(
     semantic_by_chunk_id: dict[int, float] = {}
     settings = settings or get_settings()
 
-    # Candidate vectors come back in ONE batched Pinecone fetch rather than a
-    # lookup per chunk. There is no live "embed every candidate" fallback: if
-    # Pinecone is unreachable, `fetch_chunk_vectors` returns {} and scoring
+    # Either way this is ONE Pinecone round trip for the whole candidate set,
+    # never a call per chunk. There is no live "embed every candidate"
+    # fallback: if Pinecone is unreachable both paths return empty and scoring
     # drops to its keyword component. Embedding ~60 candidate documents per
     # call instead would turn an outage into a latency and cost cliff on
     # every query.
     if settings.wiki_vector_index_enabled() and chunk_list:
-        query_vector = embed_query_cached(
-            query,
-            settings.resolved_embedding_api_key(),
-            settings.resolved_embedding_base_url(),
-            settings.resolved_embedding_model(),
-        )
-        if query_vector:
-            vectors = fetch_chunk_vectors(chunk_list, settings=settings)
-            query_values = list(query_vector)
+        if page_scoped:
+            scores_by_vector_id = score_page_scoped_chunks(
+                chunk_list,
+                query=query,
+                settings=settings,
+            )
             for chunk in chunk_list:
-                chunk_vector = vectors.get(chunk_vector_id(chunk))
-                if chunk_vector:
-                    semantic_by_chunk_id[id(chunk)] = cosine_similarity(
-                        query_values,
-                        list(chunk_vector),
-                    )
+                score = scores_by_vector_id.get(chunk_vector_id(chunk))
+                if score is not None:
+                    semantic_by_chunk_id[id(chunk)] = score
+        else:
+            query_vector = embed_query_cached(
+                query,
+                settings.resolved_embedding_api_key(),
+                settings.resolved_embedding_base_url(),
+                settings.resolved_embedding_model(),
+            )
+            if query_vector:
+                vectors = fetch_chunk_vectors(chunk_list, settings=settings)
+                query_values = list(query_vector)
+                for chunk in chunk_list:
+                    chunk_vector = vectors.get(chunk_vector_id(chunk))
+                    if chunk_vector:
+                        semantic_by_chunk_id[id(chunk)] = cosine_similarity(
+                            query_values,
+                            list(chunk_vector),
+                        )
 
     scored = [
         (
