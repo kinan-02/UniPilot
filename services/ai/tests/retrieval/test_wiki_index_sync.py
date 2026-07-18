@@ -28,9 +28,9 @@ title: Discrete Math
 ---
 # Discrete Math
 ## Description
-Students learn discrete mathematics for DDS in this section of the page.
+Students learn discrete mathematics for DDS in this section of the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 ## פרטי הקורס בעברית
-תיאור הקורס בעברית עם מספיק תוכן כדי להיחשב מקטע לאינדוקס.
+תיאור הקורס בעברית עם מספיק תוכן כדי להיחשב מקטע לאינדוקס. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 """
 
 

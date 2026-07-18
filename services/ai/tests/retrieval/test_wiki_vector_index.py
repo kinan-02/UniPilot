@@ -31,9 +31,9 @@ title: Discrete Math
 ---
 # Discrete Math
 ## Description
-Students learn discrete mathematics for DDS in this section of the page.
+Students learn discrete mathematics for DDS in this section of the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 ## {_HEBREW_SECTION}
-תיאור הקורס בעברית עם מספיק תוכן כדי להיחשב מקטע לאינדוקס.
+תיאור הקורס בעברית עם מספיק תוכן כדי להיחשב מקטע לאינדוקס. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 """
 
 
@@ -173,7 +173,7 @@ def test_metadata_carries_the_readable_identity_dropped_from_the_id():
     assert metadata["page_title"] == "Discrete Math"
 
 
-def test_metadata_stringifies_course_number_lists():
+def test_metadata_stringifies_list_valued_fields():
     chunk = WikiChunk(
         source_file="courses/x.md",
         page_title="X",
@@ -181,11 +181,25 @@ def test_metadata_stringifies_course_number_lists():
         heading_path=("X",),
         content="body",
         course_numbers_mentioned=("00940345", "00440105"),
-        catalog_year=2025,
+        aliases=("discrete math", "מתמטיקה בדידה"),
+        tags=("required-dne", "mathematics"),
+        credits="3.5",
+        level="undergraduate",
     )
     metadata = chunk_metadata(chunk)
     assert metadata["course_numbers"] == ["00940345", "00440105"]
-    assert metadata["catalog_year"] == 2025
+    assert metadata["aliases"] == ["discrete math", "מתמטיקה בדידה"]
+    assert metadata["tags"] == ["required-dne", "mathematics"]
+    assert metadata["credits"] == "3.5"
+    assert metadata["level"] == "undergraduate"
+
+
+def test_metadata_omits_fields_this_corpus_never_populates():
+    """`catalog_year` and `degree_program` appear in zero files under any
+    spelling, so carrying them only produced empty keys."""
+    metadata = chunk_metadata(_chunk())
+    assert "catalog_year" not in metadata
+    assert "degree_program" not in metadata
 
 
 # -- query path ----------------------------------------------------------

@@ -8,15 +8,15 @@ _NESTED = """---
 title: Academic Calendar
 ---
 # Academic Calendar — Technion
-Intro text long enough to survive the short-section filter comfortably here.
+Intro text long enough to survive the short-section filter comfortably here. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 ## Undergraduate School
-Body for the undergraduate school section, long enough to be indexed fine.
+Body for the undergraduate school section, long enough to be indexed fine. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 ### Winter Semester
-Winter semester dates and details, long enough to be indexed without issue.
+Winter semester dates and details, long enough to be indexed without issue. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 ### Spring Semester
-Spring semester dates and details, long enough to be indexed without issue.
+Spring semester dates and details, long enough to be indexed without issue. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 ## Graduate School
-Graduate body text that is also long enough to survive the length filter.
+Graduate body text that is also long enough to survive the length filter. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 """
 
 
@@ -78,3 +78,82 @@ n/a
     titles = {c.section_title for c in chunk_wiki_page(relative_path="entities/tracks/t.md", text=text)}
     assert "Required" in titles
     assert "Empty Notes" not in titles
+
+
+# -- content quality filtering -------------------------------------------
+
+_BOILERPLATE = """---
+title: Some Course
+aliases: [discrete math, מתמטיקה בדידה]
+tags: [required-dne, mathematics]
+credits: 3.5
+level: undergraduate
+faculty: faculty-dds
+---
+## Description
+_No description available in catalog source._
+## Sources
+- [[technion-full-catalog-2025-2026]]
+## Real Section
+Actual substantive prose about the course that carries retrievable meaning.
+"""
+
+
+def test_placeholder_and_link_only_sections_are_not_indexed():
+    """2,086 chunks were the identical 'no description' placeholder and 2,672
+    were bare link lists -- together 38.5% of the corpus, consuming up to 38%
+    of the keyword candidate budget."""
+    titles = {c.section_title for c in chunk_wiki_page(relative_path="courses/x.md", text=_BOILERPLATE)}
+    assert "Description" not in titles
+    assert "Sources" not in titles
+
+
+def test_frontmatter_that_exists_is_actually_read():
+    chunk = chunk_wiki_page(relative_path="courses/x.md", text=_BOILERPLATE)[0]
+    assert chunk.aliases == ("discrete math", "מתמטיקה בדידה")
+    assert chunk.tags == ("required-dne", "mathematics")
+    assert chunk.credits == "3.5"
+    assert chunk.level == "undergraduate"
+    assert chunk.faculty == "faculty-dds"
+
+
+def test_track_is_derived_from_the_path_for_track_pages():
+    """The `track` frontmatter key is present in zero files; for track pages
+    the slug is in the path."""
+    text = "---\ntitle: T\n---\n## Body\n" + "Long enough body text to be indexed on its own. " * 20
+    chunk = chunk_wiki_page(relative_path="entities/tracks/track-aerospace.md", text=text)[0]
+    assert chunk.track == "aerospace"
+    assert chunk_wiki_page(relative_path="courses/x.md", text=text)[0].track is None
+
+
+def test_language_is_detected_rather_than_hardcoded():
+    """Every one of the 12,586 chunks previously claimed Hebrew."""
+    from app.retrieval.obsidian_wiki_indexer import detect_language
+
+    assert detect_language("Introduction to computer science") == "en"
+    assert detect_language("מבוא למדעי המחשב ותכנות") == "he"
+    assert detect_language("Discrete Mathematics מתמטיקה בדידה") == "mixed"
+
+
+# -- page merging ---------------------------------------------------------
+
+
+def test_small_page_is_indexed_as_one_chunk():
+    """The median page held ~414 chars split into ~4.6 fragments of ~90 --
+    too little text per fragment to embed meaningfully."""
+    text = """---
+title: Tiny Course
+---
+## Description
+Short description of the course.
+## Notes
+A brief note about scheduling.
+"""
+    chunks = chunk_wiki_page(relative_path="courses/tiny.md", text=text)
+    assert len(chunks) == 1
+    assert "Description" in chunks[0].content
+    assert "Notes" in chunks[0].content
+
+
+def test_large_page_keeps_its_section_structure():
+    assert len(chunk_wiki_page(relative_path="calendar.md", text=_NESTED)) > 1

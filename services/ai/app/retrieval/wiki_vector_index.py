@@ -65,16 +65,21 @@ def chunk_metadata(chunk: WikiChunk) -> dict[str, Any]:
     null metadata values, so empty fields are omitted rather than sent as
     None.
     """
+    # `catalog_year` and `degree_program` are absent from every file in this
+    # corpus, so they only ever produced empty keys; `language` was a
+    # hardcoded "he" on all 12,586 chunks and is now detected per chunk.
     raw: dict[str, Any] = {
         "source_file": chunk.source_file,
         "page_title": chunk.page_title,
         "section_title": chunk.section_title,
         "language": chunk.language,
-        "catalog_year": chunk.catalog_year,
         "faculty": chunk.faculty,
-        "degree_program": chunk.degree_program,
         "track": chunk.track,
+        "level": chunk.level,
+        "credits": chunk.credits,
         "course_numbers": list(chunk.course_numbers_mentioned or ()),
+        "tags": list(chunk.tags or ()),
+        "aliases": list(chunk.aliases or ()),
     }
     metadata: dict[str, Any] = {}
     for key, value in raw.items():

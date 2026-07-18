@@ -25,10 +25,10 @@ catalog_year: 2025
 ---
 
 # Overview
-General overview text for the DDS track requirements document.
+General overview text for the DDS track requirements document. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 
 ## Requirements
-Students must complete course 00940139 and electives.
+Students must complete course 00940139 and electives. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page. Additional explanatory sentence providing enough body text that this section is indexed on its own rather than merged into the page.
 """
 
 

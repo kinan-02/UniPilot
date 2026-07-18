@@ -28,18 +28,33 @@ def tokenize(text: str) -> list[str]:
 
 
 def embedding_text(chunk: WikiChunk) -> str:
-    return "\n".join(
-        [
-            f"Page: {chunk.page_title}",
-            f"Heading path: {' > '.join(chunk.heading_path)}",
-            f"Catalog year: {chunk.catalog_year or ''}",
-            f"Degree program: {chunk.degree_program or ''}",
-            f"Track: {chunk.track or ''}",
-            "",
-            "Content:",
-            chunk.content,
-        ]
-    )
+    """Text handed to the embedding model for one chunk.
+
+    `aliases` carry the most weight per character here: they are the
+    Hebrew/English name variants a student actually types ("discrete math",
+    "מתמטיקה דיסקרטית") and previously reached only the slug registry, so
+    neither the vector nor the keyword path could match on them. Fields that
+    were always blank (catalog year, degree program) are gone -- they only
+    ever contributed empty labels.
+    """
+    lines = [
+        f"Page: {chunk.page_title}",
+        f"Heading path: {' > '.join(chunk.heading_path)}",
+    ]
+    if chunk.aliases:
+        lines.append(f"Also known as: {', '.join(chunk.aliases)}")
+    if chunk.tags:
+        lines.append(f"Tags: {', '.join(chunk.tags)}")
+    if chunk.track:
+        lines.append(f"Track: {chunk.track}")
+    if chunk.faculty:
+        lines.append(f"Faculty: {chunk.faculty}")
+    if chunk.credits:
+        lines.append(f"Credits: {chunk.credits}")
+    if chunk.level:
+        lines.append(f"Level: {chunk.level}")
+    lines += ["", "Content:", chunk.content]
+    return "\n".join(lines)
 
 
 def bm25_score(
@@ -150,22 +165,27 @@ def apply_metadata_boosts(
     ):
         adjustment += boosts.exactCourseNumberBoost
 
+    # Track relevance now reads two real signals. `chunk.track` is set for
+    # track pages (derived from their path), and `tags` carry membership for
+    # everything else -- a course tagged `required-dne` is required by the dne
+    # track. The old code keyed on `chunk.track`/`catalog_year`/
+    # `degree_program` frontmatter that is present in ZERO files, so
+    # trackMatchBoost, wrongTrackPenalty, catalogYearMatchBoost,
+    # wrongCatalogYearPenalty and degreeProgramMatchBoost were all unreachable.
+    # The catalog-year and degree-program boosts are gone: this corpus has no
+    # source for either, so there is nothing to revive them from.
     track = str(profile.get("track") or "").lower()
-    if track and chunk.track and track in chunk.track.lower():
-        adjustment += boosts.trackMatchBoost
-    elif track and track not in (chunk.track or "").lower() and chunk.track:
-        adjustment += boosts.wrongTrackPenalty
-
-    catalog_year = profile.get("catalogYear")
-    if catalog_year is not None and chunk.catalog_year:
-        if str(catalog_year) in str(chunk.catalog_year):
-            adjustment += boosts.catalogYearMatchBoost
-        else:
-            adjustment += boosts.wrongCatalogYearPenalty
-
-    degree_program = str(profile.get("degreeProgram") or "").lower()
-    if degree_program and chunk.degree_program and degree_program in chunk.degree_program.lower():
-        adjustment += boosts.degreeProgramMatchBoost
+    if track:
+        chunk_tags = {tag.lower() for tag in (chunk.tags or ())}
+        tagged_for_track = any(
+            tag.endswith(f"-{track}") or tag == track for tag in chunk_tags
+        )
+        if chunk.track and track in chunk.track.lower():
+            adjustment += boosts.trackMatchBoost
+        elif tagged_for_track:
+            adjustment += boosts.trackMatchBoost
+        elif chunk.track:
+            adjustment += boosts.wrongTrackPenalty
 
     target_semester = str(entities.get("targetSemesterCode") or "")
     if target_semester and target_semester not in chunk.content and "semester" in query_tokens:

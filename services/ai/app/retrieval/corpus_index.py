@@ -44,8 +44,14 @@ _EMPTY_STATS = ChunkStats()
 
 
 def build_chunk_stats(chunk: WikiChunk) -> ChunkStats:
-    title_tokens = tokenize(f"{chunk.page_title} {chunk.section_title}")
-    body_tokens = tokenize(chunk.content)
+    # Aliases join the TITLE tokens rather than the body: they name the thing,
+    # so a query using one should score like a title hit. This is what lets
+    # "discrete math" or "מתמטיקה דיסקרטית" reach the keyword path at all --
+    # previously only the slug registry ever saw them.
+    title_tokens = tokenize(
+        " ".join([chunk.page_title, chunk.section_title, *(chunk.aliases or ())])
+    )
+    body_tokens = tokenize(" ".join([chunk.content, *(chunk.tags or ())]))
     course_numbers = {str(number) for number in (chunk.course_numbers_mentioned or ())}
     all_tokens = [*title_tokens, *body_tokens, *course_numbers]
     return ChunkStats(
