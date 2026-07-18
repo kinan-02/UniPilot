@@ -32,14 +32,21 @@ Rules:
   earned-so-far total used to compute it is not its own sub-ask.
 - Each sub-ask is a SPECIFIC, checkable question, never an abstraction.
 - PRESUPPOSITIONS (critical): if the question takes something about the student for
-  granted -- "if I fail X", "when I retake Y", "after I finish Z", "since I'm in year N"
-  -- emit a concrete sub-ask that VERIFIES that premise against the student's record,
-  phrased as a direct lookup: e.g. "What is the student's current status and grade on
-  course X?" -- NOT "verify the premise". A false premise (e.g. X is already passed) would
-  make the answer misleading, so the answer MUST surface the real status -- this sub-ask is
-  mandatory whenever a premise about the student is present.
-- Keep it minimal -- only the sub-asks the answer genuinely must address. A simple factual
-  question may have exactly one."""
+  granted -- "if I fail X this semester", "when I retake Y", "after I finish Z", "since I'm in
+  year N" -- emit a concrete sub-ask that VERIFIES that premise against the student's record.
+  Phrase it as the course's ACTUAL recorded status, NOT scoped to a specific semester: e.g.
+  "Is course X already completed (with what grade and in which semester), in progress, or not
+  yet taken?" Do NOT write "...this semester" into the sub-ask -- the honest answer is often
+  that the course was completed EARLIER, which makes a 'fail it this semester' premise moot,
+  and a semester-scoped sub-ask hides exactly that. A false premise would mislead, so the
+  answer MUST surface the real status. Mandatory whenever a premise about the student is present.
+- MINIMALITY (critical): emit ONLY the sub-asks the question actually raises. Do NOT inflate a
+  sub-ask with clauses the question never mentioned (co-requisites, exclusions,
+  department/year restrictions, registration holds, seats, academic standing) unless the
+  question raises them. "Am I eligible for X?" is ONE sub-ask -- "Is the student eligible for X,
+  and on what basis?" -- not a checklist of every conceivable restriction. Over-broad sub-asks
+  make a correct, direct answer look incomplete and send the loop chasing things nobody asked.
+- A simple factual question may have exactly one sub-ask."""
 
 
 @dataclass(frozen=True)
