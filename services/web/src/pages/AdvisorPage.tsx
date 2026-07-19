@@ -238,53 +238,62 @@ export function AdvisorPage() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
 
+      const handleEvent = (event: string) => {
+        if (!event.trim() || !event.startsWith('data: ')) return
+        try {
+          const data = JSON.parse(event.slice(6))
+          if (data.type === 'chunk') {
+            setMessages((current) =>
+              current.map(m => m.id === assistantMessageId
+                ? { ...m, content: m.content + data.text }
+                : m
+              )
+            )
+          } else if (data.type === 'final') {
+            const advisor = data.data?.advisor
+            setMessages((current) =>
+              current.map(m => m.id === assistantMessageId
+                ? {
+                    ...m,
+                    reply: advisor,
+                    content: m.content || advisor?.answer || '',
+                  }
+                : m
+              )
+            )
+          } else if (data.type === 'error') {
+            console.error('SSE error event:', data.error)
+            setMessages((current) =>
+              current.map(m => m.id === assistantMessageId
+                ? { ...m, content: m.content || 'Something went wrong. Please try again.' }
+                : m
+              )
+            )
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE JSON:', err)
+        }
+      }
+
+      // An SSE event can straddle a read boundary, and without carrying the
+      // trailing partial across reads BOTH halves are lost: the first fails
+      // JSON.parse, the second no longer starts with `data: ` and is skipped in
+      // silence. `final` carries the whole advisor payload, so losing it stripped
+      // the confidence badge and source list off an answer whose text -- already
+      // delivered by `chunk` -- still looked perfectly fine.
+      let buffer = ''
+
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value, { stream: true })
-        const events = chunk.split('\n\n')
-
-        for (const event of events) {
-          if (!event.trim()) continue
-          if (event.startsWith('data: ')) {
-            const dataStr = event.slice(6)
-            try {
-              const data = JSON.parse(dataStr)
-              if (data.type === 'chunk') {
-                setMessages((current) =>
-                  current.map(m => m.id === assistantMessageId
-                    ? { ...m, content: m.content + data.text }
-                    : m
-                  )
-                )
-              } else if (data.type === 'final') {
-                const advisor = data.data?.advisor
-                setMessages((current) =>
-                  current.map(m => m.id === assistantMessageId
-                    ? {
-                        ...m,
-                        reply: advisor,
-                        content: m.content || advisor?.answer || '',
-                      }
-                    : m
-                  )
-                )
-              } else if (data.type === 'error') {
-                console.error('SSE error event:', data.error)
-                setMessages((current) =>
-                  current.map(m => m.id === assistantMessageId
-                    ? { ...m, content: m.content || 'Something went wrong. Please try again.' }
-                    : m
-                  )
-                )
-              }
-            } catch (err) {
-              console.error('Failed to parse SSE JSON:', err)
-            }
-          }
-        }
+        buffer += decoder.decode(value, { stream: true })
+        const events = buffer.split('\n\n')
+        buffer = events.pop() ?? ''
+        events.forEach(handleEvent)
       }
+      // Normally empty -- the server terminates every event with a blank line.
+      handleEvent(buffer)
     } catch (err) {
       console.error('Stream error:', err)
       setMessages((current) =>
