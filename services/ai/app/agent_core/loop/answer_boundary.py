@@ -18,7 +18,7 @@ import json
 import re
 from typing import Any
 
-from app.agent_core.loop.course_names import course_display_name
+from app.agent_core.loop.course_names import course_codes_in, course_display_name
 from app.agent_core.response_language import response_language_directive
 from app.agent_core.loop.working_set import AUTHORITATIVE_BASES, Fact, summarize_value
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
@@ -51,7 +51,6 @@ _CERTAINTY_MARKER = "\n\nOn certainty: "
 # The rewrite is unconstrained prose, so every property we need from it has to be
 # checked deterministically here -- a prompt rule it can simply not follow is not
 # a guarantee, and each of these was in the prompt when it was broken.
-_COURSE_CODE_RE = re.compile(r"\b\d{8}\b")
 _INTERNAL_VOCABULARY = (
     "predicted_pattern",
     "official_record",
@@ -63,7 +62,7 @@ _INTERNAL_VOCABULARY = (
 
 
 def _course_codes(text: str) -> set[str]:
-    return set(_COURSE_CODE_RE.findall(text))
+    return course_codes_in(text)
 
 
 def _split_certainty_note(text: str) -> tuple[str, str]:
@@ -147,6 +146,19 @@ def resolve_final(
         eval shipped "the student is True". Booleans must be checked before
         anything numeric, since `isinstance(True, int)` is true.
         """
+        if value is None:
+            # A null INSIDE a list. The fact-level guard in `_sub` catches a fact
+            # that is wholly None; this catches one null element among many, which
+            # the 2026-07-19 live run rendered as "..., ספרי יסוד (03260008), None,
+            # Optimization Methods...". Seven of that student's 53 completed
+            # courses reference a catalog row carrying no courseNumber (a
+            # transcript import that never matched the catalog), so the join
+            # legitimately has nothing to show.
+            #
+            # Named rather than dropped on purpose: omitting the element would
+            # silently render 46 courses for a record that holds 53, turning a
+            # visible blemish into a wrong answer.
+            return "(not recorded)"
         if isinstance(value, bool):
             return "yes" if value else "no"
         return _readable(str(value))

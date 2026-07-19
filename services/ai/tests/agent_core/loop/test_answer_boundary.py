@@ -492,3 +492,46 @@ def test_autorepair_does_not_fire_when_slot_name_matches_no_field():
     facts = {"rec": Fact({"courseNumber": "00940224", "grade": 85}, "s", "official_record", 1.0)}
     _, problems = resolve_final("q", facts, "Value: {foo}.", {"foo": "rec"})
     assert any("dict with keys" in p for p in problems)  # no 'foo' field -> still rejected
+
+
+def test_a_null_inside_a_list_never_renders_the_python_literal():
+    """The 2026-07-19 live run shipped "..., ספרי יסוד (03260008), None, Optimization
+    Methods ..." to a student. Seven of that user's 53 completed courses reference a
+    catalog row with no courseNumber, so the join genuinely had nothing to show --
+    but "None" reads as a software fault, which is exactly what it was."""
+    facts = {
+        "courses": Fact(
+            value=["00940224", None, "00960211"],
+            source="get_entity",
+            basis="official_record",
+            confidence=0.95,
+        )
+    }
+
+    rendered, problems = resolve_final("what did i complete?", facts, "You completed {courses}.", {"courses": "courses"})
+
+    assert "None" not in rendered
+    assert "(not recorded)" in rendered
+    assert problems == []
+
+
+def test_a_null_element_is_named_rather_than_dropped():
+    """Dropping it would render two courses for a record that holds three -- a
+    visible blemish traded for a wrong answer."""
+    facts = {
+        "courses": Fact(value=[None, None, "00940224"], source="get_entity", basis="official_record", confidence=0.95)
+    }
+
+    rendered, _ = resolve_final("q", facts, "{courses}", {"courses": "courses"})
+
+    assert rendered.count("(not recorded)") == 2
+
+
+def test_a_wholly_null_fact_is_still_rejected_not_rendered():
+    """The element-level placeholder must not weaken the fact-level guard: a slot
+    bound to a fact with no value at all is still a grounding failure."""
+    facts = {"sem": Fact(value=None, source="get_entity", basis="official_record", confidence=0.9)}
+
+    _, problems = resolve_final("q", facts, "Target semester is {sem}.", {"sem": "sem"})
+
+    assert any("None" in problem for problem in problems)
