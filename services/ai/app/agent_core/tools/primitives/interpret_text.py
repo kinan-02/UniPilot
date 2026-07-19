@@ -367,7 +367,26 @@ async def run_interpret_text(payload: InterpretTextInput) -> ToolOutputEnvelope:
             break
 
     if output is None or not output.determined:
-        return ToolOutputEnvelope(ok=False, data=None, error="cannot_determine")
+        # A TRUTHFUL negative, and the most expensive kind of error the substrate
+        # can return if it stops there. On 2026-07-19 the model asked this for the
+        # grounds of a grade appeal; section 5.4 of the regulations is a timeline
+        # table that genuinely does not list grounds, so `cannot_determine` was
+        # correct -- and the loop answered it with SEVEN reworded `search_knowledge`
+        # calls against the same page, ~70s and ~14 LLM calls, because "I could not
+        # determine it" reads as "try again" rather than "it is not in there".
+        #
+        # Name the source and close that door explicitly: the only moves left are
+        # a different source, or telling the student it is not documented.
+        return ToolOutputEnvelope(
+            ok=False,
+            data=None,
+            error=(
+                f"cannot_determine: '{source}' does not answer this. The text was read and it is "
+                "not in there -- re-querying the same source, rephrased, will return this again. "
+                "Either read a DIFFERENT source, or state in your answer that this is not "
+                "documented in the material you have and answer what the source does cover."
+            ),
+        )
 
     return ToolOutputEnvelope(
         ok=True,

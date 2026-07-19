@@ -971,3 +971,133 @@ def test_a_raising_progress_callback_does_not_cost_the_turn():
 
 def test_no_callback_is_a_no_op():
     _report_progress(SimpleNamespace(on_progress=None, last_progress=None), [{"tool": "get_entity"}])
+
+
+async def test_a_question_that_needs_no_record_preloads_nothing(monkeypatch):
+    """The 2026-07-19 grade-appeal question was pure regulations -- nothing to do
+    with this student's transcript -- and still fetched their profile and completed
+    courses before turn 1."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "answer", "tool_calls": [
+            {"tool": "final_answer", "arguments": {"prose": "Appeals go to the lecturer.", "fact_refs": {}}}
+        ]}],
+        sub_asks=["appeal rules?"],
+        front_door={"in_scope": True, "sub_asks": ["appeal rules?"], "needs_student_record": False},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("What are the grade appeal rules?", "u1", _stub_registry())
+
+    assert [record.tool_name for record in result.audit] == []
+
+
+async def test_an_omitted_record_flag_still_preloads(monkeypatch):
+    """Fails OPEN: a decomposer that omits the field must behave exactly as before,
+    because a needless fetch costs two cached calls and a missing one costs a wrong
+    answer."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "answer", "tool_calls": [
+            {"tool": "final_answer", "arguments": {"prose": "Done.", "fact_refs": {}}}
+        ]}],
+        sub_asks=["credits?"],
+        front_door={"in_scope": True, "sub_asks": ["credits?"]},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits do I have?", "u1", _stub_registry())
+
+    assert [record.tool_name for record in result.audit] == ["get_entity", "get_entity"]
+
+
+# -- one tool cannot be the whole request --------------------------------------
+
+
+def _budget_ctx() -> tuple[Any, WorkingSet]:
+    ws = WorkingSet(question="q", user_id="u1")
+    ctx = SimpleNamespace(tool_calls_made={})
+    return ctx, ws
+
+
+def test_a_tool_is_closed_after_its_allowance():
+    """Seven rewordings of one search against one page is what this bounds."""
+    ctx, ws = _budget_ctx()
+    requests = [{"tool_name": "search_knowledge", "arguments": {"query": f"try {i}"}} for i in range(8)]
+
+    allowed = runner._within_tool_budget(ws, requests, ctx)
+
+    assert len(allowed) == runner.MAX_CALLS_PER_TOOL
+
+
+def test_closing_a_tool_tells_the_model_rewording_will_not_help():
+    """A refusal with no repair path is what produced the wander in the first place."""
+    ctx, ws = _budget_ctx()
+    ctx.tool_calls_made = {"search_knowledge": runner.MAX_CALLS_PER_TOOL}
+
+    runner._within_tool_budget(ws, [{"tool_name": "search_knowledge", "arguments": {}}], ctx)
+
+    observations = " ".join(ws.observations)
+    assert "CLOSED" in observations
+    assert "rewording" in observations
+
+
+def test_one_observation_per_tool_per_turn_not_one_per_dropped_call():
+    ctx, ws = _budget_ctx()
+    ctx.tool_calls_made = {"search_knowledge": runner.MAX_CALLS_PER_TOOL}
+    requests = [{"tool_name": "search_knowledge", "arguments": {}} for _ in range(4)]
+
+    runner._within_tool_budget(ws, requests, ctx)
+
+    assert len([o for o in ws.observations if "CLOSED" in o]) == 1
+
+
+def test_budgets_are_tracked_per_tool_not_globally():
+    """Spending search_knowledge must not close get_entity."""
+    ctx, ws = _budget_ctx()
+    ctx.tool_calls_made = {"search_knowledge": runner.MAX_CALLS_PER_TOOL}
+
+    allowed = runner._within_tool_budget(ws, [{"tool_name": "get_entity", "arguments": {}}], ctx)
+
+    assert len(allowed) == 1
+
+
+# -- the exhaustion floor is read by a student ---------------------------------
+
+
+def test_the_floor_does_not_show_internal_fact_keys():
+    """The 2026-07-19 exhaustion shipped "- policy_certainty: 0.99" to a student.
+    Provenance and confidence are already carried by the certainty note and the
+    badge; repeated as fact keys they are debug output."""
+    ws = WorkingSet(question="q", user_id="u1")
+    ws.facts["policy_answer"] = Fact("Appeals are filed with the lecturer.", "s", "wiki_derived", 0.9)
+    ws.facts["policy_certainty"] = Fact(0.99, "s", "wiki_derived", 0.9)
+    ws.facts["policy_source"] = Fact("regulations-undergraduate", "s", "wiki_derived", 0.9)
+
+    floor = runner._assemble_from_facts(ws)
+
+    assert "policy_certainty" not in floor
+    assert "0.99" not in floor
+    assert "regulations-undergraduate" not in floor
+
+
+def test_the_floor_does_not_show_snake_case_labels():
+    ws = WorkingSet(question="q", user_id="u1")
+    ws.facts["credits_remaining"] = Fact(12.5, "s", "computed", 0.95)
+
+    floor = runner._assemble_from_facts(ws)
+
+    assert "credits_remaining" not in floor
+    assert "Credits remaining" in floor
+    assert "12.5" in floor
+
+
+def test_a_sentence_long_fact_needs_no_label():
+    """A value that reads as an answer on its own should not be prefixed by the
+    internal name the model happened to give it."""
+    ws = WorkingSet(question="q", user_id="u1")
+    sentence = "Appeals must be filed within four days of the exam copy becoming available to you."
+    ws.facts["policy_answer"] = Fact(sentence, "s", "wiki_derived", 0.9)
+
+    floor = runner._assemble_from_facts(ws)
+
+    assert sentence in floor
+    assert "Policy answer" not in floor

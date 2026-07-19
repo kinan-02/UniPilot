@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -35,6 +36,8 @@ from app.config import get_settings
 from app.core.responses import success_response
 from app.dependencies.internal_auth import require_internal_service_token
 from app.schemas.advise import AdviseRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_internal_service_token)])
 
@@ -155,7 +158,35 @@ def _response_payload(
     }
 
 
+def _log_outcome(result: AgentLoopResult) -> None:
+    """What the run cost and how it ended.
+
+    Neither was recorded anywhere: diagnosing a bad 2026-07-19 answer meant asking
+    the student to paste it back, because the logs showed every tool the loop
+    CALLED and nothing it SAID, and no outcome either.
+
+    The answer text carries grades and course history, so it is logged only
+    outside production. The metrics are safe everywhere and are what turns "it
+    felt slow" into a number.
+    """
+    logger.info(
+        "agent_loop_outcome outcome=%s turns=%d llm_calls=%d wall_clock_s=%.1f "
+        "facts=%d ungrounded=%d sub_asks=%d answer_chars=%d",
+        result.outcome,
+        result.turns,
+        result.llm_calls,
+        result.wall_clock_s,
+        len(result.facts),
+        len(result.ungrounded_numbers),
+        len(result.sub_asks),
+        len(result.answer or ""),
+    )
+    if get_settings().environment != "production":
+        logger.info("agent_loop_answer %s", json.dumps(result.answer or "", ensure_ascii=False))
+
+
 def _build_advise_response(question: str, result: AgentLoopResult) -> dict[str, Any]:
+    _log_outcome(result)
     course_ids = set(_derive_course_ids(result.audit))
     course_ids |= _mentioned_course_ids(result.answer, result.facts)
     return {

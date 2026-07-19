@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from typing import Any
 
 from app.agent_core.loop.course_names import course_codes_in, course_display_name
@@ -111,6 +112,33 @@ a draft that names NO concrete status or grade at all for the course (a bare "I 
 determine it"). A stated grade like "85 in 2025-1" is an addressed status, not a cop-out."""
 
 
+# A slot takes a VALUE: a number, a code, a date, a short phrase like an enriched
+# course name ("Introduction to Economics or Principles of Economics (00940591)",
+# 63 chars). Anything appreciably longer, or built of whole sentences, is prose
+# that belongs in the model's own writing rather than inside a slot.
+_MAX_SLOT_CHARS = 120
+_SENTENCE_BREAK = re.compile(r"[.!?]\s+\S")
+# Length floor for the sentence test, so a name carrying a full stop ("Intro to
+# C.S. M") is not mistaken for prose.
+_PROSE_SENTENCE_FLOOR = 40
+# How many slots one fact may fill. Repeating a value is occasionally natural
+# ("your GPA is {gpa}, and {gpa} clears the bar"); seven times is a template
+# being padded.
+_MAX_SLOT_REPEATS = 3
+# Trailing punctuation/whitespace after a slot -- what a legitimately terminal
+# slot is followed by. Anything left after stripping this is the template still
+# talking, which is what makes an embedded blob unreadable.
+_SENTENCE_TAIL = re.compile(r"[\s.,;:!?)\]}\"'»”]+$")
+
+
+def _is_prose(text: str) -> bool:
+    """Whether a string is written-out prose rather than a slottable value."""
+    stripped = text.strip()
+    if len(stripped) > _MAX_SLOT_CHARS:
+        return True
+    return len(stripped) > _PROSE_SENTENCE_FLOOR and bool(_SENTENCE_BREAK.search(stripped))
+
+
 def resolve_final(
     question: str, facts: dict[str, Fact], prose: str, fact_refs: dict[str, Any]
 ) -> tuple[str, list[str]]:
@@ -126,6 +154,7 @@ def resolve_final(
     """
     slotted_values: list[str] = []
     unresolved: list[str] = []
+    filled_refs: list[str] = []  # one entry per slot actually filled, for the repeat guard
     qualified: list[tuple[str, str]] = []  # (rendered_value, basis) for the certainty note
 
     def _readable(value: str) -> str:
@@ -165,6 +194,7 @@ def resolve_final(
 
     def _record_scalar(rendered_value: str, ref: str) -> None:
         slotted_values.append(rendered_value)
+        filled_refs.append(ref)
         basis = facts[ref].basis
         if basis not in AUTHORITATIVE_BASES:
             qualified.append((rendered_value, basis))
@@ -237,6 +267,31 @@ def resolve_final(
                 )
                 unresolved.append(f"{slot}->list of {len(value)} records ({recovery})")
                 return match.group(0)
+            # A PARAGRAPH IS NOT A VALUE. `str` satisfies "the slot must bind to a
+            # scalar" -- that check rejects dicts and lists, and prose is neither --
+            # so a 400-character interpretation blob slotted cleanly, and every
+            # numeral inside it counted as grounded because the blob itself was the
+            # slotted fact. Both invariants held; the answer was unreadable.
+            #
+            # 2026-07-19, live: an `interpret_text` summary went into SEVEN slots of
+            # a Hebrew sentence, giving "ניתן להגיש ערעור בתוך The source states
+            # that a grade appeal is handled under... מרגע שעתק הבחינה זמין" where
+            # "4 ימים" belonged. Reject with the two ways out the model actually
+            # has: pull the value out, or stop trying to slot it.
+            # ...but only when it is EMBEDDED. A policy answer legitimately IS a
+            # paragraph, and "{policy_answer}" as the whole reply is the right
+            # shape; rejecting that too made the loop exhaust its budget failing
+            # to compose, and ship the raw fact dump instead (2026-07-19, second
+            # run). What is never right is a paragraph wedged mid-sentence, with
+            # the template's own words continuing after it.
+            if isinstance(value, str) and _is_prose(value) and _SENTENCE_TAIL.sub("", prose[match.end() :]).strip():
+                unresolved.append(
+                    f"{slot}->prose ({len(value.strip())} chars, whole sentences) used mid-sentence, with "
+                    "your own words continuing after it. Either end the sentence at this slot and let the "
+                    "quoted text stand on its own, or `interpret_text` the specific value you need out of "
+                    "it and slot that instead."
+                )
+                return match.group(0)
             rendered_value = _render_scalar(value)
             _record_scalar(rendered_value, ref)
             return rendered_value
@@ -253,6 +308,17 @@ def resolve_final(
         return match.group(0)
 
     rendered = _SLOT.sub(_sub, prose)
+    # One fact answering many slots is a tell in itself: the model is padding a
+    # template it cannot actually fill. The 2026-07-19 grade-appeal answer bound
+    # ONE fact to seven slots, and each individual substitution looked fine --
+    # only the count gave it away.
+    for ref, uses in Counter(filled_refs).items():
+        if uses > _MAX_SLOT_REPEATS:
+            unresolved.append(
+                f"{ref} fills {uses} slots. One fact cannot be that many different values -- "
+                "slot the distinct facts you actually hold, or write a shorter answer that "
+                "states this one once."
+            )
     allowed: set[str] = set()
     for slotted in slotted_values:
         allowed.update(_NUM.findall(slotted))

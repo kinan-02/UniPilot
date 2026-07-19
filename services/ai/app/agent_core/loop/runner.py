@@ -82,6 +82,18 @@ MAX_SUBLOOP_DEPTH = 2
 # the ISE completed set is 17, comfortably under. A longer list must be narrowed
 # first -- an explicit error, never a silent truncation.
 MAX_MAP_FANOUT = 40
+# How many times the MODEL may reach for one data tool in a request. A backstop,
+# not the fix: the 2026-07-19 grade-appeal run issued SEVEN `search_knowledge`
+# calls, every one a rewording of the same query against the same page, after
+# `interpret_text` had truthfully said the answer was not in that page. The real
+# repair is the error message that now names the source and closes the door
+# (interpret_text / get_policy_answer); this bounds the damage when a rewording
+# loop starts anyway. Healthy runs use one to three calls of any single tool.
+#
+# Counts only model-issued calls from `_process_turn`: `_preload_student_state`
+# dispatches directly, and `map` fans out through `execute_tool_round`, so
+# neither spends the model's allowance.
+MAX_CALLS_PER_TOOL = 5
 
 _FORCED_COMPOSE_SYSTEM = """You are OUT of tool budget and must answer NOW, using ONLY the grounded
 facts already gathered -- no more tools, no invented values. Output ONLY a final_answer JSON:
@@ -158,6 +170,8 @@ class _LoopContext:
     # Last phrase reported, so a repeat can be suppressed. Shared across the loop
     # tree because a sub-loop repeating its parent's line reads as a stall too.
     last_progress: str | None = None
+    # Model-issued data-tool calls per tool name this request, for MAX_CALLS_PER_TOOL.
+    tool_calls_made: dict[str, int] = field(default_factory=dict)
 
 
 def _report_progress(ctx: _LoopContext, calls: list[dict[str, Any]]) -> None:
@@ -443,6 +457,37 @@ def _apply_meta_call(ws: WorkingSet, call: dict[str, Any]) -> tuple[Terminal | N
     return None, 0
 
 
+def _within_tool_budget(
+    ws: WorkingSet, requests: list[dict[str, Any]], ctx: _LoopContext
+) -> list[dict[str, Any]]:
+    """Drop calls to a tool the model has already spent its allowance on.
+
+    Refusing IS the repair here: the observation tells the model the tool is done
+    for this request and names what to do instead, so a rewording loop terminates
+    rather than running to the wall clock. One observation per tool per turn, not
+    per dropped call -- three copies of the same correction is noise the next
+    turn has to read past.
+    """
+    allowed: list[dict[str, Any]] = []
+    refused: set[str] = set()
+    for request in requests:
+        tool = str(request.get("tool_name") or "")
+        used = ctx.tool_calls_made.get(tool, 0)
+        if used >= MAX_CALLS_PER_TOOL:
+            refused.add(tool)
+            continue
+        ctx.tool_calls_made[tool] = used + 1
+        allowed.append(request)
+    for tool in sorted(refused):
+        ws.observe(
+            f"'{tool}' has been called {MAX_CALLS_PER_TOOL} times already and is now CLOSED for "
+            "this question -- further calls are dropped, and rewording the arguments will not "
+            "reopen it. Answer from the facts you already hold, and say plainly which part you "
+            "could not establish."
+        )
+    return allowed
+
+
 async def _process_turn(
     ws: WorkingSet, calls: list[dict[str, Any]], ctx: _LoopContext, depth: int
 ) -> tuple[Terminal | None, int, list[ToolInvocationRecord]]:
@@ -453,6 +498,8 @@ async def _process_turn(
     real_requests, meta_calls = _split_calls(calls)
     progress = 0
     audit: list[ToolInvocationRecord] = []
+    if real_requests:
+        real_requests = _within_tool_budget(ws, real_requests, ctx)
     if real_requests:
         tool_progress, audit = await _run_data_tools(ws, real_requests, ctx.registry, ctx.cache)
         progress += tool_progress
@@ -514,6 +561,26 @@ def _punt_message(ws: WorkingSet) -> str:
     return " ".join(parts)
 
 
+# Facts that exist for the machinery, not the student. Provenance and confidence
+# are already conveyed by the certainty note and the confidence badge; repeated
+# as "- policy_certainty: 0.99" they read as debug output, which is what they are.
+_FLOOR_SUPPRESSED_KEYS = frozenset(
+    {"policy_certainty", "policy_source", "policy_section", "certainty", "confidence", "source"}
+)
+# Long enough to be a sentence in its own right, so a label would only get in the way.
+_SELF_DESCRIBING_CHARS = 80
+
+
+def _is_self_describing(rendered: str) -> bool:
+    return len(rendered.strip()) >= _SELF_DESCRIBING_CHARS
+
+
+def _readable_key(key: str) -> str:
+    """`policy_answer` -> `Policy answer`. Not a real label -- the model named these
+    for itself -- but a student reading one should not also have to read snake_case."""
+    return key.replace("_", " ").strip().capitalize()
+
+
 def _assemble_from_facts(ws: WorkingSet) -> str | None:
     """Deterministic grounded FLOOR (#4): when the model cannot compose an answer
     but the working set holds usable facts, ship those facts -- grounded by
@@ -525,13 +592,19 @@ def _assemble_from_facts(ws: WorkingSet) -> str | None:
         value = fact.value
         if isinstance(value, dict):
             continue
+        if key in _FLOOR_SUPPRESSED_KEYS:
+            continue
         if isinstance(value, list):
             if not value or isinstance(value[0], (dict, list)):
                 continue
             rendered = ", ".join(_readable_value(str(item)) for item in value)
         else:
             rendered = _readable_value(str(value))
-        lines.append(f"- {key}: {rendered}")
+        # The KEY is an internal name the model chose ("policy_answer",
+        # "policy_certainty"), and this floor puts it in front of a student. The
+        # 2026-07-19 run shipped "- policy_certainty: 0.99" verbatim. A long value
+        # reads as an answer on its own and needs no label; a short one still does.
+        lines.append(rendered if _is_self_describing(rendered) else f"- {_readable_key(key)}: {rendered}")
     if not lines:
         return None
     # Framing matters here, because these facts are often the COMPLETE answer.
@@ -918,7 +991,11 @@ async def run_agent_loop(
     ws.sub_asks = front_door.sub_asks
     # AFTER the scope gate on purpose: an out-of-scope question still costs zero
     # tool calls, which is what keeps a decline at 0 turns / 1 call / ~1s.
-    preload_audit = await _preload_student_state(ws, ctx)
+    # Gated on the front door's verdict: a regulations question has nothing to
+    # learn from the transcript, and preloading it there is two wasted calls plus
+    # latency on every policy question. Defaults true, so anything ambiguous
+    # preloads as before.
+    preload_audit = await _preload_student_state(ws, ctx) if front_door.needs_student_record else []
     if front_door.suggested_tools:
         # A HINT, never a dispatch -- the loop can ignore it, and every name was
         # validated against the registry before it got here.

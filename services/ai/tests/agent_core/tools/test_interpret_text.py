@@ -183,6 +183,33 @@ async def test_model_reports_cannot_determine(use_real_academic_engine, monkeypa
     assert "cannot_determine" in result.error
 
 
+async def test_cannot_determine_names_the_source_and_closes_it(use_real_academic_engine, monkeypatch):
+    """A truthful negative is the most expensive error the substrate can return if
+    it stops at "I could not determine it".
+
+    2026-07-19, live: asked for the GROUNDS of a grade appeal, which section 5.4 of
+    the regulations genuinely does not list -- it is a timeline table. The verdict
+    was right; the loop then spent ~70s and ~14 LLM calls on SEVEN reworded searches
+    of that same page, because the error read as "try again" rather than "it is not
+    in there".
+    """
+    fake = _FakeLLMAdapter([{"status": "cannot_determine", "answer": None, "cited_section": None, "confidence": 0.0}])
+    _patch_llm_adapter(monkeypatch, fake)
+    _disable_scoped_retrieval(monkeypatch)
+
+    result = await run_interpret_text(
+        InterpretTextInput(source="student-rights", question="what are the allowed grounds?")
+    )
+
+    assert result.ok is False
+    # Names the source that was read, so the model knows which door is shut.
+    assert "student-rights" in result.error
+    # Says re-asking will not help, and names both moves that remain.
+    assert "re-querying the same source" in result.error
+    assert "DIFFERENT source" in result.error
+    assert "not" in result.error and "documented" in result.error
+
+
 async def test_determined_status_without_real_citation_fails_closed(use_real_academic_engine, monkeypatch):
     """Schema-valid but semantically hollow -- status='determined' with a
     null/empty cited_section must still fail closed, never be trusted."""

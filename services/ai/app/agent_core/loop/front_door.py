@@ -59,7 +59,13 @@ Rules:
 ALSO output "suggested_tools": the 1-2 tools from AVAILABLE TOOLS (verbatim names) that most
 directly answer this question -- prefer a composite that answers it in ONE call over primitives
 the loop would have to assemble. Omit or leave empty when nothing fits well; a wrong suggestion
-is worse than none. This is a hint, not an instruction: the loop is free to ignore it."""
+is worse than none. This is a hint, not an instruction: the loop is free to ignore it.
+
+ALSO output "needs_student_record": true if answering requires THIS student's own data -- their
+transcript, grades, completed courses, plan, profile or progress. false for a question answerable
+from the catalog, the wiki or Technion regulations alone ("what are the rules for appealing a
+grade", "what are this course's prerequisites"). When unsure, say true: a needless fetch costs
+two cached calls, a missing one costs a wrong answer."""
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,12 @@ class FrontDoorResult:
     # pointed the loop at it. Validated against the registry, so a name the model
     # invented is dropped rather than sent to a model that will then hunt for it.
     suggested_tools: list[str] = field(default_factory=list)
+    # Whether the answer depends on this student's own record. Gates the preload
+    # (`_preload_student_state`), which was unconditional: the 2026-07-19 grade-appeal
+    # question -- pure regulations, nothing to do with the transcript -- still fetched
+    # the profile and completed courses. Defaults TRUE so a decomposer that omits the
+    # field, or fails outright, preloads exactly as before.
+    needs_student_record: bool = True
 
 
 async def decompose(
@@ -118,12 +130,19 @@ async def decompose(
         if isinstance(raw_tools, list)
         else []
     )
+    # Only an explicit `false` skips the preload -- an omitted or malformed field
+    # keeps the old behaviour.
+    needs_record = out.get("needs_student_record") is not False
     subs = out.get("sub_asks")
     if isinstance(subs, list):
         cleaned = [str(s).strip() for s in subs if str(s).strip()]
         if cleaned:
-            return FrontDoorResult(sub_asks=cleaned, suggested_tools=suggested)
-    return FrontDoorResult(sub_asks=[question], suggested_tools=suggested)
+            return FrontDoorResult(
+                sub_asks=cleaned, suggested_tools=suggested, needs_student_record=needs_record
+            )
+    return FrontDoorResult(
+        sub_asks=[question], suggested_tools=suggested, needs_student_record=needs_record
+    )
 
 
 __all__ = ["FrontDoorResult", "decompose"]
