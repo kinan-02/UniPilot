@@ -19,6 +19,7 @@ import app.routes.advise as advise_module
 from app.agent_core.loop import AgentLoopResult
 from app.agent_core.loop.working_set import Fact
 from app.agent_core.certainty import ToolInvocationRecord
+from app.config import get_settings
 from app.dependencies.internal_auth import require_internal_service_token
 from app.main import app
 from app.routes.advise import _derive_course_ids, _derive_sources
@@ -156,6 +157,42 @@ async def test_advise_route_budget_exhausted_maps_to_incomplete(monkeypatch):
     data = response.json()["data"]
     assert data["retrieval_agent"]["status"] == "incomplete"
     assert data["response"]["confidence"] == "low"
+
+
+# -- timeout ladder ------------------------------------------------------------
+
+
+def test_advise_timeout_ceiling_stays_above_loop_wall_clock():
+    """The route ceiling is a backstop for a hung provider, not a competitor to the
+    loop's own budget.
+
+    These inverted once: the ceiling stayed at 180 while WALL_CLOCK_S was raised
+    150 -> 240, so the backstop began firing on healthy runs and replacing finished,
+    grounded answers with the canned timeout string (observed in the 2026-07-18/19
+    planning eval at 183.6s and 192.8s). The loop degrades gracefully on its own
+    budget; this ceiling cannot, so it must never be the one that fires first.
+
+    Above this sit `ai_advisor_timeout_seconds` (300, services/api) and nginx's
+    `proxy_read_timeout` (300) -- both must stay above the value asserted here.
+    """
+    from app.agent_core.loop.runner import TURN_TIMEOUT_S, WALL_CLOCK_S
+
+    ceiling = get_settings().agent_turn_timeout_seconds
+
+    assert ceiling > WALL_CLOCK_S, (
+        f"route ceiling {ceiling}s is below the loop's own budget {WALL_CLOCK_S}s -- "
+        "the loop can no longer reach its graceful degradation path"
+    )
+    # The post-loop forced compose + completeness gate run AFTER the wall clock is
+    # spent. Measured at ~44s when exhaustions at WALL_CLOCK_S=150 landed at ~194s.
+    assert ceiling >= WALL_CLOCK_S + 45, (
+        f"route ceiling {ceiling}s leaves no room for the post-budget forced compose"
+    )
+    # A single turn already in flight when the deadline passes can still run for
+    # TURN_TIMEOUT_S. Fully covering that would push the ceiling past the 300s
+    # callers, so it is deliberately NOT covered -- a maximally overshooting turn is
+    # the hung-provider case this backstop is for.
+    assert ceiling < WALL_CLOCK_S + TURN_TIMEOUT_S + 45
 
 
 # -- /advise/stream typed-event wiring (§11) ----------------------------------

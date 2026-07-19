@@ -159,8 +159,11 @@ async def advise_route(payload: AdviseRequest) -> dict[str, Any]:
             timeout=settings.agent_turn_timeout_seconds,
         )
     except asyncio.TimeoutError:
-        # The loop's own wall-clock budget (§7) concludes well under this ceiling;
-        # this is only the hard backstop against a hung provider call.
+        # Only a hung provider should reach here. The loop's own wall-clock budget
+        # (§7) concludes below this ceiling and degrades into a grounded partial
+        # answer, which is strictly better than the canned string below -- see the
+        # ordering invariant on `agent_turn_timeout_seconds` in config.py, which
+        # this comment previously asserted while the opposite was true.
         return success_response(_timeout_response(payload.question))
     return success_response(_build_advise_response(payload.question, result))
 

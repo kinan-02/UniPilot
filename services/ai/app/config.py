@@ -68,13 +68,25 @@ class Settings(BaseSettings):
     # Ceiling on real LLM calls per turn (BudgetedLLMAdapter) -- see
     # app/agent_core/reasoning/reasoning_budget.py for why this exists.
     agent_reasoning_call_budget_per_turn: int = 80
-    # Already declared in the root .env (AGENT_TURN_TIMEOUT_SECONDS) but never
-    # actually read anywhere in this service until routes/advise.py wraps the
-    # whole run_agent_turn call in asyncio.wait_for with it -- a manual
-    # docker-compose smoke test found a real turn hang with no ceiling at all
-    # (ReasoningBlock's own complete_json calls never pass a timeout, so a
-    # single slow/hung LLM response could block a worker indefinitely).
-    agent_turn_timeout_seconds: int = 180
+    # Despite the name (kept because AGENT_TURN_TIMEOUT_SECONDS is already
+    # deployed in the root .env), this is a WHOLE-REQUEST ceiling: routes/advise.py
+    # wraps the entire run_agent_loop call in asyncio.wait_for with it. It exists
+    # because a hung provider call has no ceiling of its own (ReasoningBlock's
+    # complete_json passes no timeout), and could block a worker indefinitely.
+    #
+    # INVARIANT: must stay ABOVE the loop's own WALL_CLOCK_S. The loop's budget is
+    # the graceful path -- it degrades into a grounded partial answer. This ceiling
+    # only drops the request for the canned timeout string. Ordering across the
+    # whole ladder: WALL_CLOCK_S (240) < this (290) < ai_advisor client (300)
+    # == nginx proxy_read_timeout (300).
+    #
+    # This sat at 180 while WALL_CLOCK_S was raised 150 -> 240, inverting the two:
+    # the backstop began firing on healthy runs. The 2026-07-18/19 planning eval
+    # composed real grounded answers at 183.6s and 192.8s that this would have
+    # thrown away. test_advise_timeout_ceiling_stays_above_loop_wall_clock pins the
+    # ordering so raising WALL_CLOCK_S again fails a test instead of silently
+    # discarding answers.
+    agent_turn_timeout_seconds: int = 290
 
     # -- Retrieval port (services/agent/app/retrieval) additions below --
 
