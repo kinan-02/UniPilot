@@ -19,15 +19,20 @@ missing outright for some courses (00940704, 01040065 among them).
 
 from __future__ import annotations
 
+import logging
 import re
 from functools import lru_cache
 
 from app.retrieval.graph_engine.graph_registry import graph_registry
 
+logger = logging.getLogger(__name__)
+
 # A course code as it appears in a fact value: exactly 8 digits. Narrow on
 # purpose -- a grade, a credit total and a semester code must never be looked up
 # as if they were courses.
 _COURSE_CODE = re.compile(r"^\d{8}$")
+# The same shape, unanchored, for scanning prose rather than testing one value.
+_COURSE_CODE_IN_TEXT = re.compile(r"\b\d{8}\b")
 _FRONTMATTER_TITLE = re.compile(r"^title:\s*\"?(.+?)\"?\s*$", re.M)
 # The title's leading `<code> — ` prefix; the code is already in the answer.
 _TITLE_LEAD = re.compile(r"^\s*\d{6,8}\s*[—\-–]\s*")
@@ -76,13 +81,69 @@ def _name_index() -> dict[str, str]:
     return index
 
 
+# code -> catalog title, loaded once at startup by `load_catalog_names`. The wiki
+# index above is always preferred because its names are English; this covers what
+# the wiki does not. The ISE wiki holds 2601 courses, but a student's record also
+# carries general electives and humanities that were never wiki'd -- 03240305
+# ("היסטוריה של המדע") shipped as a bare code in a live 2026-07-19 answer, sitting
+# among eight correctly-named courses. A Hebrew title is not ideal inside an
+# English sentence, but a student can read it; an 8-digit number tells them
+# nothing at all.
+_catalog_names: dict[str, str] = {}
+
+
+async def load_catalog_names() -> int:
+    """Load code -> catalog title from Mongo, returning how many were loaded.
+
+    Degrades to an empty map on ANY failure, for the same reason `_name_index`
+    does: a missing name costs readability, never correctness. It must never
+    raise into an answer, and must never block service startup.
+    """
+    global _catalog_names
+    try:
+        from app.config import get_settings
+        from app.db.mongo import get_database
+
+        database = await get_database()
+        collection = database[get_settings().courses_collection]
+        loaded: dict[str, str] = {}
+        async for doc in collection.find({}, {"courseNumber": 1, "title": 1}):
+            code, title = doc.get("courseNumber"), doc.get("title")
+            if isinstance(code, str) and isinstance(title, str) and title.strip():
+                loaded[code] = title.strip()
+        _catalog_names = loaded
+    except Exception:  # noqa: BLE001 -- readability fallback, never fatal
+        logger.warning("catalog course names unavailable; falling back to bare codes", exc_info=True)
+        return 0
+    return len(_catalog_names)
+
+
 def course_display_name(value: str) -> str | None:
-    """The course's English name, or None if `value` is not a known course code."""
+    """The course's display name, or None if `value` is not a known course code.
+
+    Wiki first (English), catalog second (usually Hebrew), bare code last.
+    """
     if not _COURSE_CODE.match(value or ""):
         return None
-    return _name_index().get(value)
+    return _name_index().get(value) or _catalog_names.get(value)
+
+
+def course_codes_in(text: str) -> set[str]:
+    """Every course code appearing in free text.
+
+    The unanchored twin of `_COURSE_CODE`: that one asks "is this value a course
+    code", this one asks "which course codes does this prose mention".
+    """
+    return set(_COURSE_CODE_IN_TEXT.findall(text or ""))
+
+
+def set_catalog_names(names: dict[str, str]) -> None:
+    """Test hook -- seeds the fallback without a database."""
+    global _catalog_names
+    _catalog_names = dict(names)
 
 
 def reset_course_name_index() -> None:
     """Test hook -- the index is built from whichever graph engine is loaded."""
     _name_index.cache_clear()
+    set_catalog_names({})

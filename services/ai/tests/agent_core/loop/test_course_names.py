@@ -13,7 +13,23 @@ composed.
 
 from __future__ import annotations
 
-from app.agent_core.loop.course_names import course_display_name
+import pytest
+
+from app.agent_core.loop.course_names import (
+    course_codes_in,
+    course_display_name,
+    set_catalog_names,
+)
+
+
+@pytest.fixture(autouse=True)
+def _clean_catalog_names():
+    """`_catalog_names` is module-level process state, and `use_real_academic_engine`
+    does not touch it. Without this, a test that seeds the fallback leaks it into
+    every test that runs afterwards in the same session."""
+    set_catalog_names({})
+    yield
+    set_catalog_names({})
 
 
 def test_known_course_resolves_to_its_english_name(use_real_academic_engine):
@@ -46,3 +62,45 @@ def test_non_course_values_are_ignored(use_real_academic_engine):
     assert course_display_name("92.5") is None
     assert course_display_name("2025-1") is None
     assert course_display_name("") is None
+
+
+# -- catalog fallback ---------------------------------------------------------
+
+
+def test_catalog_title_names_a_course_the_wiki_does_not_cover(use_real_academic_engine):
+    """The wiki holds 2601 courses, but a record also carries general electives and
+    humanities that were never wiki'd. 03240305 shipped as a bare code in a live
+    2026-07-19 answer, sitting among eight correctly-named courses."""
+    assert course_display_name("03240305") is None
+
+    set_catalog_names({"03240305": "היסטוריה של המדע"})
+    assert course_display_name("03240305") == "היסטוריה של המדע"
+
+
+def test_wiki_wins_over_the_catalog(use_real_academic_engine):
+    """The wiki's names are English; the catalog's are usually Hebrew. A course in
+    both must not lose its English name to the fallback."""
+    set_catalog_names({"00940224": "מבני נתונים ואלגוריתמים"})
+    assert course_display_name("00940224") == "Data Structures and Algorithms"
+
+
+def test_catalog_fallback_still_refuses_non_course_values(use_real_academic_engine):
+    """The fallback must not widen what counts as a course code -- a grade or a
+    credit total that happens to be a catalog key stays unresolvable."""
+    set_catalog_names({"85": "not a course", "2025-1": "also not a course"})
+    assert course_display_name("85") is None
+    assert course_display_name("2025-1") is None
+
+
+# -- scanning prose for codes -------------------------------------------------
+
+
+def test_course_codes_in_finds_codes_in_prose():
+    assert course_codes_in("You passed 00940224 and 00960211.") == {"00940224", "00960211"}
+
+
+def test_course_codes_in_ignores_numbers_that_are_not_course_codes():
+    """Credits, grades and years share the digit alphabet; only the 8-digit shape
+    is a course."""
+    assert course_codes_in("You have 158.0 credits, a 92 average, and 2025 ahead.") == set()
+    assert course_codes_in("") == set()

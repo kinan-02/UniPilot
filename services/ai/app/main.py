@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.agent_core.loop.course_names import load_catalog_names
 from app.config import get_settings
 from app.core.responses import error_response
 from app.retrieval.graph_engine.graph_registry import graph_registry
@@ -25,6 +26,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     graph_registry.refresh_stats(get_settings())
+    # Course names for answers about courses the wiki does not cover. Returns 0
+    # and logs rather than raising if the catalog is unreachable -- a bare code is
+    # a worse answer, not a broken service.
+    loaded = await load_catalog_names()
+    logging.getLogger(__name__).info("catalog course names loaded: %d", loaded)
     yield
 
 
