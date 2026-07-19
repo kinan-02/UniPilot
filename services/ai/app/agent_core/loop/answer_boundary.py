@@ -125,10 +125,9 @@ _PROSE_SENTENCE_FLOOR = 40
 # ("your GPA is {gpa}, and {gpa} clears the bar"); seven times is a template
 # being padded.
 _MAX_SLOT_REPEATS = 3
-# Trailing punctuation/whitespace after a slot -- what a legitimately terminal
-# slot is followed by. Anything left after stripping this is the template still
-# talking, which is what makes an embedded blob unreadable.
-_SENTENCE_TAIL = re.compile(r"[\s.,;:!?)\]}\"'»”]+$")
+# A prose-valued fact gets exactly one. See the repeat check for why position
+# turned out to be the wrong thing to police.
+_MAX_PROSE_SLOT_REPEATS = 1
 
 
 def _is_prose(text: str) -> bool:
@@ -278,20 +277,17 @@ def resolve_final(
             # that a grade appeal is handled under... מרגע שעתק הבחינה זמין" where
             # "4 ימים" belonged. Reject with the two ways out the model actually
             # has: pull the value out, or stop trying to slot it.
-            # ...but only when it is EMBEDDED. A policy answer legitimately IS a
-            # paragraph, and "{policy_answer}" as the whole reply is the right
-            # shape; rejecting that too made the loop exhaust its budget failing
-            # to compose, and ship the raw fact dump instead (2026-07-19, second
-            # run). What is never right is a paragraph wedged mid-sentence, with
-            # the template's own words continuing after it.
-            if isinstance(value, str) and _is_prose(value) and _SENTENCE_TAIL.sub("", prose[match.end() :]).strip():
-                unresolved.append(
-                    f"{slot}->prose ({len(value.strip())} chars, whole sentences) used mid-sentence, with "
-                    "your own words continuing after it. Either end the sentence at this slot and let the "
-                    "quoted text stand on its own, or `interpret_text` the specific value you need out of "
-                    "it and slot that instead."
-                )
-                return match.group(0)
+            # Prose in a slot is judged by REPETITION, not by position -- see the
+            # repeat check after the substitution pass. Two attempts to police
+            # position both misfired: rejecting every prose slot, then rejecting
+            # only embedded ones, each left the model with no legal move (it
+            # cannot type the numbers itself -- the numeral backstop -- and
+            # quoting the paragraph was the only other option), so it emitted
+            # empty turns and the request died on the exhaustion floor with the
+            # correct answer sitting in `policy_answer` the whole time.
+            #
+            # One quoted paragraph is clumsy and TRUE. Seven copies of one is the
+            # unreadable thing, and that is a count, not a position.
             rendered_value = _render_scalar(value)
             _record_scalar(rendered_value, ref)
             return rendered_value
@@ -313,11 +309,16 @@ def resolve_final(
     # ONE fact to seven slots, and each individual substitution looked fine --
     # only the count gave it away.
     for ref, uses in Counter(filled_refs).items():
-        if uses > _MAX_SLOT_REPEATS:
+        # A paragraph gets ONE slot. Quoting it once is clumsy and true; quoting
+        # it in every gap of a sentence is what made the live answer unreadable,
+        # and it is far likelier to be prose that gets abused this way than a
+        # number, which is why the allowance differs.
+        limit = _MAX_PROSE_SLOT_REPEATS if _is_prose(str(facts[ref].value)) else _MAX_SLOT_REPEATS
+        if uses > limit:
             unresolved.append(
-                f"{ref} fills {uses} slots. One fact cannot be that many different values -- "
-                "slot the distinct facts you actually hold, or write a shorter answer that "
-                "states this one once."
+                f"{ref} fills {uses} slots but is allowed {limit}. One fact cannot be that many "
+                "different values -- slot the distinct facts you actually hold, or state this one "
+                "once and write the rest of the sentence in your own words."
             )
     allowed: set[str] = set()
     for slotted in slotted_values:

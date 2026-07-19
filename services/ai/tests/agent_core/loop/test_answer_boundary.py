@@ -553,12 +553,14 @@ def _interpretation(value: str) -> dict[str, Fact]:
     return {"appeal": Fact(value=value, source="interpret_text", basis="llm_interpretation", confidence=0.84)}
 
 
-def test_prose_in_a_scalar_slot_is_rejected():
-    """The 2026-07-19 live answer. `str` satisfies "the slot must bind to a scalar"
-    -- that check rejects dicts and lists, and prose is neither -- so a 400-char
-    interpretation blob slotted cleanly, and every numeral inside it counted as
-    grounded because the blob WAS the slotted fact. Both invariants held and the
-    answer was unreadable."""
+def test_one_quoted_paragraph_is_allowed_even_mid_sentence():
+    """Clumsy and TRUE beats budget_exhausted.
+
+    Policing POSITION was wrong twice: the model cannot type the numbers itself
+    (the numeral backstop) and quoting the paragraph was its only other move, so
+    rejecting that left it with no legal action -- it emitted empty turns and the
+    request died on the exhaustion floor with the correct answer already in hand.
+    """
     _, problems = resolve_final(
         "מהן זכויותיי בנוגע לערעור על ציון?",
         _interpretation(_APPEAL_BLOB),
@@ -566,21 +568,21 @@ def test_prose_in_a_scalar_slot_is_rejected():
         {"appeal": "appeal"},
     )
 
-    assert any("prose" in problem for problem in problems), problems
+    assert problems == [], problems
 
 
-def test_the_prose_rejection_names_both_ways_out():
-    """A rejection with no repair path is what makes the model retry verbatim."""
+def test_a_paragraph_quoted_twice_is_rejected():
+    """One quote is clumsy; the same paragraph filling gap after gap is the
+    unreadable thing, and that is a COUNT, not a position."""
     _, problems = resolve_final(
         "q",
         _interpretation(_APPEAL_BLOB),
-        "ניתן להגיש ערעור בתוך {appeal} מרגע שעתק הבחינה זמין.",
+        "ניתן להגיש ערעור בתוך {appeal}. תוצאת הערעור: {appeal}.",
         {"appeal": "appeal"},
     )
 
     message = " ".join(problems)
-    assert "end the sentence at this slot" in message
-    assert "interpret_text" in message
+    assert "fills 2 slots but is allowed 1" in message
 
 
 def test_a_short_value_is_still_slottable():
@@ -636,14 +638,11 @@ def test_a_paragraph_answer_standing_on_its_own_is_allowed():
         assert problems == [], (prose, problems)
 
 
-def test_a_paragraph_wedged_mid_sentence_is_still_rejected():
-    """The template's own words continuing after the blob is what made the live
-    answer unreadable."""
-    _, problems = resolve_final(
-        "q",
-        _interpretation(_APPEAL_BLOB),
-        "ניתן להגיש ערעור בתוך {appeal} מרגע שעתק הבחינה זמין.",
-        {"appeal": "appeal"},
-    )
+def test_the_seven_slot_disaster_is_still_rejected():
+    """The answer that started this: ONE interpretation paragraph in seven gaps of
+    a Hebrew sentence."""
+    prose = " ".join("{appeal}" for _ in range(7))
 
-    assert any("mid-sentence" in problem for problem in problems), problems
+    _, problems = resolve_final("q", _interpretation(_APPEAL_BLOB), prose, {"appeal": "appeal"})
+
+    assert any("fills 7 slots" in problem for problem in problems), problems
