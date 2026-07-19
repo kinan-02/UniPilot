@@ -282,6 +282,16 @@ async def test_v2_ise_correctness(ise_student: IseStudent) -> None:
         total = len(row["claims"])
         print(f"  {row['case']:<26} {row['outcome']:<10} "
               f"{passed}/{total} claims  ({row['turns']}t {row['llm_calls']}c {row['wall_clock_s']}s)")
+    # Efficiency is a first-class result, not a footnote: turns and calls are what
+    # the loop spends, and a change that answers correctly by wandering twice as
+    # long is a regression the claim counts alone cannot show.
+    total_turns = sum(row["turns"] for row in scorecard)
+    total_calls = sum(row["llm_calls"] for row in scorecard)
+    total_wall = sum(row["wall_clock_s"] for row in scorecard)
+    print(
+        f"\n  TOTALS: {total_turns} turns, {total_calls} llm calls, {total_wall:.0f}s "
+        f"({total_turns / len(scorecard):.1f} turns and {total_calls / len(scorecard):.1f} calls per case)"
+    )
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     scorecard_path = _LOG_DIR / f"v2_ise_correctness-{stamp}.json"
