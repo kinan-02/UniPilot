@@ -65,6 +65,37 @@ const ADVISOR_REPLY = {
 
 const CHUNK_EVENT = `data: ${JSON.stringify({ type: 'chunk', text: ADVISOR_REPLY.answer })}\n\n`
 const FINAL_EVENT = `data: ${JSON.stringify({ type: 'final', data: { advisor: ADVISOR_REPLY } })}\n\n`
+const progressEvent = (text: string) => `data: ${JSON.stringify({ type: 'progress', text })}\n\n`
+
+/** Delivers `before`, then blocks until the returned `release` is called, then
+ * delivers `after` — so a test can assert on what the UI shows mid-stream. */
+function gatedStream(before: string[], after: string[]) {
+  const encoder = new TextEncoder()
+  const queue = [...before]
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let opened = false
+
+  const response = {
+    ok: true,
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (!queue.length && !opened) {
+            await gate
+            opened = true
+            queue.push(...after)
+          }
+          return queue.length
+            ? { value: encoder.encode(queue.shift()), done: false }
+            : { value: undefined, done: true }
+        },
+      }),
+    },
+  } as unknown as Response
+
+  return { response, release: () => release() }
+}
 
 async function ask() {
   const user = userEvent.setup()
@@ -116,6 +147,54 @@ describe('AdvisorPage', () => {
     expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
     expect(await screen.findByText('Referenced Courses')).toBeInTheDocument()
     expect(await screen.findByText('00940314')).toBeInTheDocument()
+  })
+
+  it('shows the latest progress phrase while the answer is still pending', async () => {
+    // The answer arrives in one piece at the end, so during a 190s planning
+    // question this is the only thing on screen that changes.
+    const { response, release } = gatedStream(
+      [progressEvent('Reading your academic record'), progressEvent('Checking your eligibility')],
+      [CHUNK_EVENT, FINAL_EVENT],
+    )
+    vi.mocked(advisorApi.askStream).mockResolvedValue(response)
+
+    await ask()
+
+    // Mid-stream: latest phrase wins, and no answer has landed yet.
+    expect(await screen.findByText('Checking your eligibility')).toBeInTheDocument()
+    expect(screen.queryByText('Reading your academic record')).not.toBeInTheDocument()
+    expect(screen.queryByText(ADVISOR_REPLY.answer)).not.toBeInTheDocument()
+
+    release()
+
+    expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
+    expect(screen.queryByTestId('advisor-progress')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the default phrase before any progress event arrives', async () => {
+    const { response, release } = gatedStream([], [CHUNK_EVENT, FINAL_EVENT])
+    vi.mocked(advisorApi.askStream).mockResolvedValue(response)
+
+    await ask()
+
+    expect(await screen.findByTestId('advisor-progress')).toHaveTextContent('Analyzing your question…')
+
+    release()
+    expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
+  })
+
+  it('marks message text dir="auto" so English is not mangled by the RTL shell', async () => {
+    // <html dir="rtl"> for the Hebrew UI. Without dir="auto" an English answer
+    // inherits RTL and bidi throws its final period to the visual left.
+    vi.mocked(advisorApi.askStream).mockResolvedValue(
+      streamingResponse(CHUNK_EVENT, FINAL_EVENT),
+    )
+
+    await ask()
+
+    const answer = await screen.findByText(ADVISOR_REPLY.answer)
+    expect(answer.closest('[dir="auto"]')).not.toBeNull()
+    expect(screen.getByText('How many credits do I have left?').closest('[dir="auto"]')).not.toBeNull()
   })
 
   it('reassembles an event delivered one byte at a time', async () => {

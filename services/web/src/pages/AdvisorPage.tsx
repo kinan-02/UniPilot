@@ -129,13 +129,14 @@ function MessageMetadata({ reply }: { reply: AdvisorReply }) {
 function AssistantMessage({
   message,
   isCurrentlyStreaming,
+  progress,
 }: {
   message: ChatMessage & { role: 'assistant' }
   isCurrentlyStreaming: boolean
+  progress?: string | null
 }) {
   const displayContent = useMemo(() => stripJsonEnvelope(message.content), [message.content])
   const isThinking = isCurrentlyStreaming && !displayContent
-  const isStreamingText = isCurrentlyStreaming && !!displayContent
 
   return (
     <div className="flex items-start gap-3 advisor-msg-in">
@@ -150,11 +151,17 @@ function AssistantMessage({
               <span />
               <span />
             </div>
-            <span className="text-sm text-[var(--color-text-muted)]">Analyzing your question…</span>
+            <span dir="auto" className="text-sm text-[var(--color-text-muted)]" data-testid="advisor-progress">
+              {progress ?? 'Analyzing your question…'}
+            </span>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className={`advisor-prose text-sm text-[var(--color-text)] ${isStreamingText ? 'advisor-stream-cursor' : ''}`}>
+            {/* No `advisor-stream-cursor` here: the answer is composed after the
+                loop concludes and arrives in one `chunk`, so content goes empty ->
+                whole in a single setState. The typing cursor was never on screen
+                for a frame -- it read as a working feature and was not one. */}
+            <div dir="auto" className="advisor-prose text-sm text-[var(--color-text)]">
               <ReactMarkdown>{displayContent}</ReactMarkdown>
             </div>
 
@@ -181,6 +188,10 @@ export function AdvisorPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null)
+  // Latest `progress` event. The answer arrives in one piece at the end, so for
+  // a question that takes three minutes this is the only thing that changes on
+  // screen the whole time.
+  const [progress, setProgress] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const suggestedPrompts = useMemo(
@@ -242,7 +253,9 @@ export function AdvisorPage() {
         if (!event.trim() || !event.startsWith('data: ')) return
         try {
           const data = JSON.parse(event.slice(6))
-          if (data.type === 'chunk') {
+          if (data.type === 'progress') {
+            setProgress(data.text)
+          } else if (data.type === 'chunk') {
             setMessages((current) =>
               current.map(m => m.id === assistantMessageId
                 ? { ...m, content: m.content + data.text }
@@ -305,6 +318,7 @@ export function AdvisorPage() {
     } finally {
       setIsStreaming(false)
       setActiveStreamId(null)
+      setProgress(null)
     }
   }, [isStreaming])
 
@@ -362,7 +376,10 @@ export function AdvisorPage() {
                 return (
                   <div key={message.id} className="flex justify-end advisor-msg-in">
                     <div className="advisor-bubble-user rounded-2xl rounded-tr-md px-5 py-3.5 max-w-[85%]">
-                      <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
+                      {/* dir="auto": <html> is dir="rtl" for the Hebrew UI, so an
+                          English message inherits RTL and bidi throws its final
+                          punctuation to the visual left ("?How many credits..."). */}
+                      <p dir="auto" className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
                     </div>
                   </div>
                 )
@@ -372,6 +389,7 @@ export function AdvisorPage() {
                   key={message.id}
                   message={message as ChatMessage & { role: 'assistant' }}
                   isCurrentlyStreaming={isStreaming && message.id === activeStreamId}
+                  progress={message.id === activeStreamId ? progress : null}
                 />
               )
             })}

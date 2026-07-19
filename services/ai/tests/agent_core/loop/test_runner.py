@@ -7,12 +7,18 @@ plus the governors (completeness rejection continuation, no-progress cap).
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 from pydantic import BaseModel
 
 import app.agent_core.loop.runner as runner
-from app.agent_core.loop.runner import run_agent_loop
+from app.agent_core.loop.runner import (
+    _GENERIC_PROGRESS,
+    _progress_phrase,
+    _report_progress,
+    run_agent_loop,
+)
 from app.agent_core.loop.working_set import Fact, WorkingSet
 from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
@@ -932,3 +938,62 @@ async def test_map_with_malformed_over_fails_closed_without_crashing(monkeypatch
     assert result.outcome == "answered"  # survived the malformed map, no crash
     assert "counts" not in result.facts
     assert result.ungrounded_numbers == []
+
+
+# -- progress reporting (§ streaming affordance) -------------------------------
+
+
+def test_progress_phrase_reads_the_key_the_model_actually_emits():
+    """The model emits `tool`; `_split_calls` renames it to `tool_name` only when
+    building data-tool requests. Reading the renamed key matched nothing, so every
+    turn reported the generic phrase -- three identical lines over a live 35s
+    request. These tests asserted the wrong key too, which is why they passed."""
+    assert _progress_phrase([{"tool": "search_knowledge"}]) == "Searching the catalog and wiki"
+    assert _progress_phrase([{"tool": "check_eligibility"}]) == "Checking your eligibility"
+
+
+def test_progress_phrase_covers_meta_tools():
+    """`_preload_student_state` has the record in hand by turn 1, so most turns of
+    a typical question are meta -- if these are not mapped, nothing else is."""
+    assert _progress_phrase([{"tool": "compute"}]) == "Doing the arithmetic"
+    assert _progress_phrase([{"tool": "select"}]) == "Picking out the details that matter"
+    assert _progress_phrase([{"tool": "final_answer"}]) == "Writing your answer"
+
+
+def test_every_meta_tool_has_a_phrase():
+    """A meta-tool added later without a phrase silently degrades every turn that
+    uses it back to the generic line."""
+    missing = runner._META_TOOLS - runner._PROGRESS_PHRASES.keys()
+    assert not missing, f"meta-tools with no student-facing phrase: {sorted(missing)}"
+
+
+def test_progress_phrase_never_leaks_an_internal_tool_name():
+    """The phrase goes straight into a student's chat window. An unmapped tool must
+    degrade to the generic line, not surface `traverse_relationship` verbatim."""
+    phrase = _progress_phrase([{"tool": "some_future_internal_tool"}])
+    assert phrase == _GENERIC_PROGRESS
+    assert "some_future_internal_tool" not in phrase
+
+
+def test_progress_phrase_skips_unmapped_tools_to_find_a_known_one():
+    calls = [{"tool": "apply_deterministic_rule"}, {"tool": "get_entity"}]
+    assert _progress_phrase(calls) == "Reading your academic record"
+
+
+def test_progress_phrase_handles_a_turn_with_no_tools():
+    assert _progress_phrase([]) == _GENERIC_PROGRESS
+    assert _progress_phrase([{}]) == _GENERIC_PROGRESS
+
+
+def test_a_raising_progress_callback_does_not_cost_the_turn():
+    """Progress is a UI affordance. A caller whose callback throws must still get
+    the answer the loop already paid provider calls for."""
+    def _explode(_phrase: str) -> None:
+        raise RuntimeError("subscriber died")
+
+    ctx = SimpleNamespace(on_progress=_explode)
+    _report_progress(ctx, [{"tool": "get_entity"}])  # must not raise
+
+
+def test_no_callback_is_a_no_op():
+    _report_progress(SimpleNamespace(on_progress=None), [{"tool": "get_entity"}])

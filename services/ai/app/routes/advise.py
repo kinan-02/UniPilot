@@ -20,12 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.agent_core.loop import AgentLoopResult, run_agent_loop
+from app.agent_core.loop.course_names import course_codes_in
 from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.config import get_settings
@@ -81,6 +84,23 @@ def _derive_course_ids(audit: list[ToolInvocationRecord]) -> list[str]:
     return sorted(course_ids)
 
 
+def _mentioned_course_ids(answer: str, facts: dict[str, Any]) -> set[str]:
+    """Course codes the answer names that also appear in a grounded fact.
+
+    `_derive_course_ids` alone leaves the UI's "Referenced Courses" chips empty
+    for the most common question shape: courses usually arrive in ONE bulk
+    payload (`completed_courses`, a semester plan), not one `get_entity` per
+    course. A live 2026-07-19 answer named eight courses with their codes and
+    shipped `courseIds: []`, so the metadata footer rendered nothing at all.
+
+    Still not model-authored: facts are the loop's only channel for admitted
+    data, so intersecting against them keeps a hallucinated 8-digit number out
+    even though it appeared in the prose.
+    """
+    grounded = course_codes_in(json.dumps([fact.value for fact in facts.values()], default=str))
+    return course_codes_in(answer) & grounded
+
+
 def _derive_sources(audit: list[ToolInvocationRecord]) -> list[str]:
     """Grounded in real tool calls: successful wiki/track/etc. fetches, plus the
     query term of each successful search (a provenance hint -- the audit records
@@ -125,12 +145,14 @@ def _response_payload(
 
 
 def _build_advise_response(question: str, result: AgentLoopResult) -> dict[str, Any]:
+    course_ids = set(_derive_course_ids(result.audit))
+    course_ids |= _mentioned_course_ids(result.answer, result.facts)
     return {
         "question": question,
         **_response_payload(
             answer=result.answer,
             confidence=_confidence_band(result),
-            course_ids=_derive_course_ids(result.audit),
+            course_ids=sorted(course_ids),
             retrieval_status=_STATUS_BY_OUTCOME.get(result.outcome, "incomplete"),
             sources=_derive_sources(result.audit),
         ),
@@ -189,6 +211,40 @@ def _to_frontend_advisor_shape(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _drain_until_done(
+    progress: asyncio.Queue[str],
+    loop_task: asyncio.Task[AgentLoopResult],
+    timeout: float,
+) -> AsyncIterator[str]:
+    """Yield queued progress phrases until the loop task finishes.
+
+    The whole-request ceiling is enforced here rather than by wrapping the loop in
+    `asyncio.wait_for`, because the generator has to stay awake forwarding
+    progress for as long as the loop runs. Same ceiling, same TimeoutError, same
+    ordering invariant against WALL_CLOCK_S (see config.py).
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise asyncio.TimeoutError
+        getter: asyncio.Task[str] = asyncio.ensure_future(progress.get())
+        done, _ = await asyncio.wait(
+            {getter, loop_task}, timeout=remaining, return_when=asyncio.FIRST_COMPLETED
+        )
+        if getter in done:
+            yield getter.result()
+            continue
+        getter.cancel()
+        if loop_task not in done:
+            raise asyncio.TimeoutError
+        # Anything the last turn queued still belongs to the student.
+        while not progress.empty():
+            yield progress.get_nowait()
+        loop_task.result()  # re-raise whatever the loop failed with, if anything
+        return
+
+
 @router.post("/advise/stream")
 async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
     """Typed-event SSE (§11). The V2 answer is composed deterministically after
@@ -198,21 +254,36 @@ async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
     settings = get_settings()
 
     async def _event_generator():
-        try:
-            result = await asyncio.wait_for(
-                run_agent_loop(
-                    question=payload.question,
-                    user_id=payload.user_id,
-                    registry=build_default_tool_registry(),
-                ),
-                timeout=settings.agent_turn_timeout_seconds,
+        # The answer is composed only after the loop concludes, so without this
+        # the connection is silent for the WHOLE request -- measured at 100% of a
+        # 62s question on 2026-07-19, and planning questions run past 190s. The
+        # loop reports a student-facing phrase per turn; we forward those while
+        # waiting. Strictly additive: `progress` is advisory, and a client that
+        # ignores it sees exactly the `chunk` + `final` pair it saw before.
+        progress: asyncio.Queue[str] = asyncio.Queue()
+        loop_task = asyncio.create_task(
+            run_agent_loop(
+                question=payload.question,
+                user_id=payload.user_id,
+                registry=build_default_tool_registry(),
+                on_progress=progress.put_nowait,
             )
-            final_payload = _build_advise_response(payload.question, result)
+        )
+
+        try:
+            async for phrase in _drain_until_done(progress, loop_task, settings.agent_turn_timeout_seconds):
+                yield f"data: {json.dumps({'type': 'progress', 'text': phrase})}\n\n"
+            final_payload = _build_advise_response(payload.question, loop_task.result())
         except asyncio.TimeoutError:
             final_payload = _timeout_response(payload.question)
         except Exception as exc:  # noqa: BLE001 -- surface as a typed error event, never a 500 mid-stream
             yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
             return
+        finally:
+            # A timed-out or failed generator must not leave the loop running and
+            # burning provider calls for an answer nobody will read.
+            if not loop_task.done():
+                loop_task.cancel()
 
         answer = (final_payload.get("response") or {}).get("answer", "")
         if answer:

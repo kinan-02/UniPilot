@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,6 +34,8 @@ from app.agent_core.subagents.fact_projection import build_call_handles, describ
 from app.agent_core.subagents.tool_round import execute_tool_round
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 # Budgets (§7). Wall-clock is deliberately under the API timeout so the student
 # gets our honest conclusion, never a dropped connection.
@@ -144,6 +148,73 @@ class _LoopContext:
     budget: LoopBudget
     temperature: float
     reasoning_effort: str
+    # Called once per turn with a student-facing phrase. Best-effort: the answer
+    # is composed after the loop concludes, so this is the ONLY signal a caller
+    # can surface while a 3-minute question is running (a live 2026-07-19 trace
+    # measured 100% of the request as silent wait). Never load-bearing -- a
+    # raising callback must not cost an answer, see `_report_progress`.
+    on_progress: Callable[[str], None] | None = None
+
+
+# Tool name -> what to tell the student it is doing. Deliberately a closed map:
+# an unmapped tool falls back to the generic phrase rather than leaking a name
+# like `traverse_relationship` into a student's chat window.
+_PROGRESS_PHRASES = {
+    "audit_graduation_progress": "Auditing your graduation progress",
+    "check_eligibility": "Checking your eligibility",
+    "compare_plans": "Comparing your plans",
+    "extract_temporal_pattern": "Looking at when this is usually offered",
+    "find_requirement_substitutes": "Looking for alternatives that satisfy the requirement",
+    "get_course_profile": "Reading the course details",
+    "get_current_date": "Checking the academic calendar",
+    "get_current_semester": "Checking the academic calendar",
+    "get_entity": "Reading your academic record",
+    "get_policy_answer": "Checking Technion regulations",
+    "get_track_requirements": "Reading your track requirements",
+    "search_knowledge": "Searching the catalog and wiki",
+    "search_over_state": "Searching your record",
+    "simulate_course_disruption": "Working through the knock-on effects",
+    "traverse_relationship": "Following prerequisite chains",
+    # Meta-tools (§_META_TOOLS) matter as much as data tools here: `_preload_student_state`
+    # already has the record in hand by turn 1, so most turns of a typical question
+    # are meta. Omitting these made every phrase the generic one -- three identical
+    # lines over a 35s request in the 2026-07-19 trace.
+    "compute": "Doing the arithmetic",
+    "select": "Picking out the details that matter",
+    "surface_fact": "Pulling out what your record says",
+    "surface_facts": "Pulling out what your record says",
+    "map": "Checking each course in turn",
+    "spawn_subtask": "Breaking this into smaller questions",
+    "final_answer": "Writing your answer",
+    "clarify": "Working out what to ask you",
+}
+_GENERIC_PROGRESS = "Working through your question"
+
+
+def _progress_phrase(calls: list[dict[str, Any]]) -> str:
+    """One student-facing line for the tools a turn is about to run.
+
+    Reads `tool` -- the key the MODEL emits. `_split_calls` renames it to
+    `tool_name` when building data-tool requests, and reading that renamed key
+    here matched nothing, so every turn reported the generic phrase (caught in a
+    live trace, not by the unit tests, which asserted the same wrong key).
+    """
+    for call in calls:
+        phrase = _PROGRESS_PHRASES.get(str(call.get("tool") or call.get("tool_name") or ""))
+        if phrase:
+            return phrase
+    return _GENERIC_PROGRESS
+
+
+def _report_progress(ctx: _LoopContext, calls: list[dict[str, Any]]) -> None:
+    """Best-effort. A progress callback that raises must never cost an answer the
+    loop already paid for -- this is a UI affordance, not part of the result."""
+    if ctx.on_progress is None:
+        return
+    try:
+        ctx.on_progress(_progress_phrase(calls))
+    except Exception:  # noqa: BLE001 -- cosmetic channel, never fatal
+        logger.warning("progress callback raised; continuing", exc_info=True)
 
 
 def _split_calls(calls: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -710,6 +781,7 @@ async def _drive(
 
         calls = action.get("tool_calls") or []
         transcript.append({"turn": turn, "thought": action.get("thought"), "calls": calls})
+        _report_progress(ctx, calls)
         terminal, progress, turn_audit = await _process_turn(ws, calls, ctx, depth)
         audit.extend(turn_audit)
         rejected_this_turn = False
@@ -841,6 +913,7 @@ async def run_agent_loop(
     *,
     temperature: float = LOOP_TEMPERATURE,
     reasoning_effort: str = REASONING_EFFORT,
+    on_progress: Callable[[str], None] | None = None,
 ) -> AgentLoopResult:
     """The root loop: scope-gate + decompose, then drive at depth 0 with a fresh
     per-request budget and cache (the freshness invariant, §5). Sub-loops reuse
@@ -859,6 +932,7 @@ async def run_agent_loop(
         budget=budget,
         temperature=temperature,
         reasoning_effort=reasoning_effort,
+        on_progress=on_progress,
     )
 
     budget.llm_calls += 1
