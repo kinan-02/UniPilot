@@ -556,3 +556,34 @@ def test_dotted_path_missing_segment_yields_nothing_rather_than_a_wrong_value():
 def test_single_segment_field_is_unchanged():
     value, _count = filter_records(_PLANS, {}, "status")
     assert value == "draft"
+
+
+def test_where_applies_at_the_depth_the_dotted_path_reaches():
+    """Regression I introduced with dotted paths: `field` walked inward while
+    `where` kept filtering the OUTER records, so filtering a plan's planned
+    courses matched zero plan documents and returned []. The substrate reads an
+    empty result as a grounded negative, and the 2026-07-19 run told the student
+    "I could not find it in your spring plan either" about a course that is in
+    it. A filter that cannot match must never look like an answer."""
+    value, count = filter_records(_PLANS, {"courseNumber": "00970800"}, "semesters.plannedCourses")
+    assert count == 1
+    assert value == {"courseNumber": "00970800", "credits": "3.5"}
+
+
+def test_where_plus_dotted_path_can_read_a_leaf_field():
+    value, _count = filter_records(_PLANS, {"courseNumber": "00970800"}, "semesters.plannedCourses.credits")
+    assert value == "3.5"
+
+
+def test_where_on_a_plain_field_is_unchanged():
+    """Non-dotted paths keep filtering the outer records, as every existing
+    caller expects."""
+    value, count = filter_records(_COMPLETED, {"courseNumber": "00940224"}, "grade")
+    assert value == 85
+    assert count == 1
+
+
+def test_dotted_path_with_a_where_that_genuinely_matches_nothing_is_empty():
+    value, count = filter_records(_PLANS, {"courseNumber": "99999999"}, "semesters.plannedCourses")
+    assert value == []
+    assert count == 0

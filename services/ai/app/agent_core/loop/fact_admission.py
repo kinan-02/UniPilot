@@ -354,11 +354,45 @@ def filter_records(
     extremal record; records whose by-field is non-numeric are ignored, and with
     no numeric candidate it selects nothing (empty result -- itself grounded).
     """
-    matched = [
-        r
-        for r in records
-        if isinstance(r, dict) and all(_matches_condition(r.get(k), cond) for k, cond in where.items())
-    ]
+    # A DOTTED field walks inward, so `where` has to travel with it -- otherwise
+    # the filter tests the outer records for a field that only exists on the
+    # nested ones, matches nothing, and returns an empty list the substrate reads
+    # as a grounded "not there". That shipped: "I could not find it in your
+    # spring plan either", about a course that was in the plan (2026-07-19).
+    #
+    # So for a dotted path, walk FIRST and filter the records it lands on. The
+    # leaf field (if the path ends at one) is read after filtering. A plain field
+    # keeps filtering the outer records, exactly as every existing caller expects.
+    def _apply_where(rows: list[Any]) -> list[Any]:
+        return [
+            r
+            for r in rows
+            if isinstance(r, dict) and all(_matches_condition(r.get(k), cond) for k, cond in where.items())
+        ]
+
+    matched = _apply_where(records)
+    if where and not matched and field is not None and "." in field:
+        # The filter named a field that lives on the NESTED records, not these --
+        # so it matched nothing and returned [], which the substrate reads as a
+        # grounded "not there". That shipped: "I could not find it in your spring
+        # plan either", about a course that was in the plan (2026-07-19).
+        #
+        # Only reached when the outer filter found NOTHING, so a `where` that
+        # legitimately describes the outer record keeps its existing meaning.
+        # Two depths can hold the filtered records: the path's own end (
+        # "semesters.plannedCourses" filtered by courseNumber) or its parent (
+        # "...plannedCourses.credits", where the filter names a sibling of the
+        # leaf). Try the end first, then the parent; the leaf is read after.
+        head, _, leaf = field.rpartition(".")
+        for path, remaining_field in ((field, None), (head, leaf)):
+            if not path:
+                continue
+            reached = _read_field_path({"_": records}, f"_.{path}")
+            candidates = reached if isinstance(reached, list) else [reached]
+            deeper = _apply_where(candidates)
+            if deeper:
+                matched, field = deeper, remaining_field
+                break
     if by is not None:
         ((direction, by_field),) = by.items()
         keyed = [(r, _to_number(r.get(by_field))) for r in matched]
