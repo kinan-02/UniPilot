@@ -29,6 +29,7 @@ from app.agent_core.tools.composites.get_track_requirements import (
 )
 from app.agent_core.tools.composites.student_state import resolve_student_state
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import COURSE_ID_DESCRIPTION
 from app.agent_core.tools.primitives.search_over_state import SearchOverStateInput, run_search_over_state
 from app.agent_core.tools.registry import ToolDescriptor
 
@@ -43,7 +44,7 @@ _SUBSTITUTE_CANDIDATE_NOTE = (
 
 
 class FindRequirementSubstitutesInput(BaseModel):
-    course_id: str
+    course_id: str = Field(description=COURSE_ID_DESCRIPTION)
     track_slug: str
     # PREFERRED. Given this, the tool reads the student's completed courses
     # itself and `state` is not needed -- see `student_state.resolve_student_state`.

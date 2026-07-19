@@ -488,10 +488,16 @@ async def test_course_in_catalog_only_warns_missing_wiki_page(use_real_academic_
 async def test_course_in_wiki_only_warns_missing_catalog_entry(use_real_academic_engine):
     result = await run_get_entity(GetEntityInput(entity_type="course", entity_id="02360861"))
     assert result.ok is True
-    assert "name" not in result.data
     assert "wikiSlug" in result.data
     assert result.certainty.basis == "wiki_derived"
-    assert result.warnings == ["course_not_in_active_semester_catalog"]
+    # Still flagged as absent from the active-semester catalog -- but `name` and
+    # `credits` are no longer null just because of that. This used to assert
+    # "name" not in data, which encoded the hole rather than the behaviour: the
+    # wiki page states both, and returning null sent the loop into wikiContent.
+    assert result.data["name"] == "Geometric Computational Vision"
+    assert result.data["credits"] == "3.0"
+    assert "course_not_in_active_semester_catalog" in result.warnings
+    assert "name_from_wiki_page" in result.warnings
 
 
 async def test_course_in_both_catalog_and_wiki_has_no_warnings(use_real_academic_engine):
@@ -529,3 +535,35 @@ async def test_mongo_lookup_failure_fails_closed(monkeypatch):
     )
     assert result.ok is False
     assert "mongo_lookup_failed" in result.error
+
+
+# -- wiki fallback for courses outside the active semester ---------------------
+
+
+async def test_course_outside_the_active_catalog_still_reports_name_and_credits(
+    use_real_academic_engine,
+):
+    """00940704 and 01040065 are two of the ISE fixture student's own completed
+    courses, and neither is offered in the active semester -- so they have no
+    graph node and `name`/`credits` came back null while the wiki page stated
+    both. A null where a value exists sends the loop hunting through wikiContent
+    for what the tool should have handed it."""
+    from app.agent_core.tools.primitives.get_entity import GetEntityInput, run_get_entity
+
+    result = await run_get_entity(GetEntityInput(entity_type="course", entity_id="00940704"))
+
+    assert result.ok
+    assert result.data["name"] == "Introduction to Data Engineering (Advanced)"
+    assert result.data["credits"] == "3.0"
+    assert "name_from_wiki_page" in result.warnings
+    assert "credits_from_wiki_page" in result.warnings
+
+
+async def test_active_catalog_course_keeps_its_graph_values(use_real_academic_engine):
+    """The fallback fills holes; it must not override the catalog."""
+    from app.agent_core.tools.primitives.get_entity import GetEntityInput, run_get_entity
+
+    result = await run_get_entity(GetEntityInput(entity_type="course", entity_id="00940224"))
+
+    assert result.data["name"] == "מבני נתונים ואלגוריתמים"  # graph value, untouched
+    assert "name_from_wiki_page" not in result.warnings

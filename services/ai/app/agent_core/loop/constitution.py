@@ -111,6 +111,9 @@ results into grounded facts and end the turn -- use these, never invent others:
   - surface_fact: promote a value from a recorded tool result into a named fact.
       {{"tool":"surface_fact","arguments":{{"key":"completed","from":"call_1","path":"data.completedCourses"}}}}
       (or surface several: {{"tool":"surface_fact","arguments":{{"selectors":[{{"key":..,"from":..,"path":..}}]}}}})
+      Add "field" to project one field out of a record list IN THE SAME CALL --
+      do this instead of surfacing the list and `select`ing it next turn:
+      {{"tool":"surface_fact","arguments":{{"key":"codes","from":"call_2","path":"data.completedCourses","field":"courseNumber"}}}}
       The value is READ from the result by its path -- you never type it.
 
   - compute: derive a new fact by arithmetic over EXISTING facts (leaves are refs to fact keys).
@@ -125,6 +128,9 @@ results into grounded facts and end the turn -- use these, never invent others:
       This is how you answer "the student's status/grade on course X": filter their completed-courses
       list by courseNumber and read the grade. Omit "field" to get the whole matching record. NO MATCH
       (empty result) is itself a grounded answer -- the course is not in that list.
+      "field" may be a DOTTED PATH through nested records and lists -- use it instead of one select
+      per level. A semester plan's course codes are ONE call:
+      {{"tool":"select","arguments":{{"key":"spring_codes","from_fact":"plans","field":"semesters.plannedCourses.courseNumber"}}}}
       A "where" value may be an exact match OR a numeric comparison: {{"grade":{{"gt":85}}}} keeps records
       whose grade > 85 (operators gt/gte/lt/lte or symbols >, >=, <, <=; ne for not-equal). So "which
       courses did I score above 85 in?" is select where {{"grade":{{"gt":85}}}} with field "courseNumber".

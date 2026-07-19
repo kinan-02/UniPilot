@@ -21,6 +21,8 @@ success.
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime
 from typing import Any
 
@@ -29,12 +31,14 @@ from pydantic import BaseModel, Field
 
 from app.agent_core.certainty import CertaintyTag, SourceRef
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import not_found_error
 from app.agent_core.tools.registry import ToolDescriptor
 from app.db.mongo import get_database
 from app.repositories.completed_course_repository import find_all_completed_courses_by_user_id
 from app.repositories.course_repository import find_course_numbers_by_ids
 from app.repositories.semester_plan_repository import find_semester_plans_by_user_id
 from app.repositories.student_profile_repository import find_student_profile_by_user_id
+from app.agent_core.loop.course_names import course_display_name
 from app.retrieval.graph_engine.academic_graph_engine import AcademicGraphEngine
 from app.retrieval.graph_engine.graph_registry import graph_registry
 
@@ -193,6 +197,22 @@ def _course_wiki_slug(engine: AcademicGraphEngine, course_code: str) -> str | No
     return None
 
 
+_WIKI_CREDITS_RE = re.compile(r"^credits:\s*([0-9]+(?:\.[0-9]+)?)\s*$", re.M)
+_WIKI_FRONTMATTER_SCAN = 1500
+
+
+def _wiki_name(wiki_page: dict[str, Any]) -> str | None:
+    """The course's English name from its wiki title (`course_names` owns the
+    parsing, including keeping qualifiers like "(Advanced)")."""
+    code = wiki_page.get("course_code")
+    return course_display_name(str(code)) if code else None
+
+
+def _wiki_credits(wiki_page: dict[str, Any]) -> str | None:
+    match = _WIKI_CREDITS_RE.search((wiki_page.get("content") or "")[:_WIKI_FRONTMATTER_SCAN])
+    return match.group(1) if match else None
+
+
 def _course_entity_result(engine: AcademicGraphEngine, course_code: str) -> ToolOutputEnvelope:
     node = engine.graph.nodes.get(course_code)
     catalog_entry_found = course_code in engine.course_catalog
@@ -200,7 +220,7 @@ def _course_entity_result(engine: AcademicGraphEngine, course_code: str) -> Tool
     wiki_page = engine.wiki_pages.get(wiki_slug) if wiki_slug else None
 
     if not catalog_entry_found and wiki_page is None:
-        return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: course:{course_code}")
+        return ToolOutputEnvelope(ok=False, data=None, error=not_found_error(course_code))
 
     data: dict[str, Any] = {"entityType": "course", "entityId": course_code}
     warnings: list[str] = []
@@ -223,6 +243,16 @@ def _course_entity_result(engine: AcademicGraphEngine, course_code: str) -> Tool
     if wiki_page is not None:
         data["wikiSlug"] = wiki_slug
         data["wikiContent"] = wiki_page.get("content", "")
+        # A course not offered in the ACTIVE semester has no graph node, so `name`
+        # and `credits` came back null even though the wiki page states both --
+        # 4 of the ISE fixture student's 17 completed courses were in exactly that
+        # state. A null where a value exists does not just lose information, it
+        # sends the loop hunting through `wikiContent` for something the tool was
+        # supposed to hand it. Filled from the page, and marked as such.
+        for key, value in (("name", _wiki_name(wiki_page)), ("credits", _wiki_credits(wiki_page))):
+            if data.get(key) is None and value is not None:
+                data[key] = value
+                warnings.append(f"{key}_from_wiki_page")
     else:
         warnings.append("no_wiki_page_found_for_course")
 

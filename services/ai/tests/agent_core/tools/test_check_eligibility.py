@@ -367,3 +367,42 @@ async def test_offering_pattern_unavailable_degrades_gracefully(use_real_academi
     assert result.data["offeringPattern"] is None
     assert result.data["schedulable"] is None
     assert "offering_pattern_unavailable" in result.warnings
+
+
+# -- the courseId trap ---------------------------------------------------------
+
+
+async def test_a_mongo_id_gets_a_repair_not_just_a_failure(use_real_academic_engine):
+    """`plan_eligibility_sweep` has never passed: it mapped check_eligibility over
+    the plan's six `courseId`s (Mongo ObjectIds), got six bare
+    `entity_not_found`s naming no alternative, retried the same six serially, and
+    exhausted with zero results. The error now names the field to use instead."""
+    from app.agent_core.tools.composites.check_eligibility import (
+        CheckEligibilityInput,
+        run_check_eligibility,
+    )
+
+    result = await run_check_eligibility(
+        CheckEligibilityInput(course_id="6a3db0e382df7b7cb04552c8", state={"completedCourses": []})
+    )
+
+    assert result.ok is False
+    assert "Mongo id" in result.error
+    assert "courseNumber" in result.error
+
+
+async def test_an_ordinary_miss_is_still_a_plain_not_found(use_real_academic_engine):
+    """Only an ObjectId-shaped value gets the extra guidance -- a genuine typo in
+    a course code must not be told it passed a database id."""
+    from app.agent_core.tools.composites.check_eligibility import (
+        CheckEligibilityInput,
+        run_check_eligibility,
+    )
+
+    result = await run_check_eligibility(
+        CheckEligibilityInput(course_id="99999999", state={"completedCourses": []})
+    )
+
+    assert result.ok is False
+    assert "entity_not_found: 99999999" in result.error
+    assert "Mongo id" not in result.error

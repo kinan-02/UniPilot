@@ -17,10 +17,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import ENTITY_ID_DESCRIPTION
 from app.agent_core.tools.registry import ToolDescriptor
 from app.config import get_settings
 from app.retrieval.graph_engine.graph_registry import graph_registry
@@ -33,7 +34,7 @@ _KNOWN_FACT_TYPES: frozenset[str] = frozenset({"course_offering"})
 
 class ExtractTemporalPatternInput(BaseModel):
     fact_type: str
-    entity: str
+    entity: str = Field(description=ENTITY_ID_DESCRIPTION)
 
 
 def _course_codes_in_file(path: str) -> set[str]:

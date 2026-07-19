@@ -118,6 +118,27 @@ def _as_arithmetic_number(value: Any) -> Any | None:
     return None
 
 
+def _as_quantity(value: Any) -> Any | None:
+    """A number to AGGREGATE, or None. Numeric strings count; identifiers do not.
+
+    Aggregation needs the string coercion arithmetic already has -- real data
+    stores quantities as strings, and `semester_plans` keep
+    `plannedCourses[].credits` as "3.5", which cost the 2026-07-18 `drop_impact`
+    case seven of its twelve turns.
+
+    But it must NOT swallow identifiers, and a course code is a numeric string:
+    coercing `"00940345"` to 940345.0 would let `sum` treat a list of course ids
+    as quantities, and -- worse -- make the validator ADVERTISE `id` as a numeric
+    field to switch to, sending repair off to sum course numbers. A leading zero
+    is what separates the two: quantities are not written "007", identifiers are.
+    """
+    if isinstance(value, str):
+        stripped = value.strip()
+        if len(stripped) > 1 and stripped[0] == "0" and not stripped.startswith("0."):
+            return None
+    return _as_arithmetic_number(value)
+
+
 def _describe_operand(node: Any, value: Any) -> str:
     """Name what an operand WAS and what it resolved TO.
 
@@ -246,9 +267,16 @@ def _validate_node(
                 # the composition reported a hallucinated earned-credits total.
                 # Naming the numeric fields that DO exist gives repair a target.
                 records = [record for record in facts[of_ref] if isinstance(record, dict)]
-                if records and not any(_is_number(record.get(node.field)) for record in records):
+                if records and not any(
+                    _as_quantity(record.get(node.field)) is not None for record in records
+                ):
                     numeric_fields = sorted(
-                        {key for record in records for key, value in record.items() if _is_number(value)}
+                        {
+                            key
+                            for record in records
+                            for key, value in record.items()
+                            if _as_quantity(value) is not None
+                        }
                     )
                     if numeric_fields:
                         errors.append(
@@ -267,7 +295,24 @@ def _validate_node(
                             f"fix that -- '{node.field}' was never retrieved."
                         )
         if op in ("sum", "average") and not node.field:
-            errors.append(f"{node_path}: 'field' is required for op '{op}'")
+            # Required only for a list of RECORDS, where which field to add is
+            # genuinely ambiguous. Over a flat list of numbers there is nothing to
+            # name, and demanding a field there cost `drop_impact` its answer.
+            of_ref = node.of.ref if node.of is not None else None
+            of_value = facts.get(of_ref) if of_ref is not None else None
+            # Only waive the requirement when the list is VISIBLY numbers. An
+            # empty list could have been either, so it keeps the old contract
+            # rather than silently summing an unknown shape to 0.
+            visibly_scalars = (
+                isinstance(of_value, list)
+                and bool(of_value)
+                and not any(isinstance(item, dict) for item in of_value)
+            )
+            if not visibly_scalars:
+                errors.append(
+                    f"{node_path}: 'field' is required for op '{op}' over a list of records "
+                    "(omit it only when the list is already numbers)"
+                )
         return
 
     if op in _BINARY_ARITHMETIC_OPS:
@@ -418,15 +463,53 @@ def _eval_node(node: ExpressionNode, facts: dict[str, Any], trace: list[str], er
         source_label = _describe_leaf(node.of) if node.of is not None else "of"
 
         if op == "count":
-            result = len(matched)
+            # `matched` keeps only dicts, because a field filter can only apply to
+            # records. Counting THROUGH that filter made every list of scalars --
+            # course codes, semester codes, grades -- count as zero: silently, with
+            # no error, and passing validation. `graduation_audit` counted its
+            # completed required courses, got 0, and re-issued the identical
+            # compute three times (2026-07-18). And 0 is admitted as a real
+            # `computed` fact, so the answer boundary would have slotted it
+            # straight into "you have completed 0 required courses".
+            #
+            # With no filter there is nothing to match on, so every element counts.
+            result = len(matched) if record_filter else len(records)
             trace.append(f"count({source_label}) = {result}")
             return result
 
         field = node.field
+        if not field:
+            # A FLAT list of numbers: aggregate the elements themselves. Requiring
+            # a `field` made sense while `of` was always a list of records, but a
+            # `select` with a dotted path yields ["3.5", "2.5", ...] directly --
+            # and `drop_impact` (2026-07-19) got exactly that, tried `field: null`,
+            # was told "'field' is required", and exhausted holding the numbers it
+            # needed. Same defect as `count`'s dict-only filter, in its siblings.
+            scalars = [_as_quantity(item) for item in records]
+            if any(item is None for item in scalars):
+                errors.append(f"non_numeric_element: {source_label}")
+                return None
+            total = sum(scalars)
+            if op == "sum":
+                trace.append(f"sum({source_label}) = {total}")
+                return total
+            if not scalars:
+                errors.append("average_of_empty_set")
+                return None
+            average = total / len(scalars)
+            trace.append(f"average({source_label}) = {average}")
+            return average
+
         total = 0
         for record in matched:
-            value = record.get(field)
-            if not _is_number(value):
+            # Same coercion arithmetic operands already get, for the same reason:
+            # real data stores numbers as strings. `semester_plans` keep
+            # `plannedCourses[].credits` as "3.5", and refusing them cost the
+            # 2026-07-18 `drop_impact` case seven of its twelve turns. Aggregation
+            # position is no more ambiguous than arithmetic position -- the field
+            # is named explicitly, and nobody sums course numbers.
+            value = _as_quantity(record.get(field))
+            if value is None:
                 errors.append(f"non_numeric_field_value: {source_label}.{field}")
                 return None
             total += value

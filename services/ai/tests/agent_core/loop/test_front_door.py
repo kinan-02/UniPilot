@@ -55,3 +55,56 @@ async def test_decline_without_a_reason_uses_a_default():
     )
     assert fd.in_scope is False
     assert fd.decline_reason  # a non-empty student-facing default
+
+
+# -- suggested tools -----------------------------------------------------------
+#
+# `graduation_audit` exhausted at 7 turns on a question `audit_graduation_progress`
+# answers in one call: nothing pointed the loop at the composite. The decomposer
+# already reads the question, so naming a starting tool costs nothing extra.
+
+
+async def test_suggested_tools_are_returned_when_they_exist():
+    fd = await decompose(
+        _FakeAdapter({"sub_asks": ["how many left?"], "suggested_tools": ["audit_graduation_progress"]}),
+        "how many required courses are left?",
+        temperature=1.0,
+        reasoning_effort="low",
+        tool_names=frozenset({"audit_graduation_progress", "get_entity"}),
+    )
+    assert fd.suggested_tools == ["audit_graduation_progress"]
+
+
+async def test_a_tool_name_the_model_invented_is_dropped():
+    """Passing an unknown name through would send the loop hunting for a tool
+    that does not exist -- strictly worse than no hint at all."""
+    fd = await decompose(
+        _FakeAdapter({"sub_asks": ["x"], "suggested_tools": ["check_graduation", "get_entity"]}),
+        "q",
+        temperature=1.0,
+        reasoning_effort="low",
+        tool_names=frozenset({"get_entity"}),
+    )
+    assert fd.suggested_tools == ["get_entity"]
+
+
+async def test_no_registry_means_no_suggestions():
+    fd = await decompose(
+        _FakeAdapter({"sub_asks": ["x"], "suggested_tools": ["get_entity"]}),
+        "q",
+        temperature=1.0,
+        reasoning_effort="low",
+    )
+    assert fd.suggested_tools == []
+
+
+async def test_malformed_suggested_tools_does_not_break_decomposition():
+    fd = await decompose(
+        _FakeAdapter({"sub_asks": ["x"], "suggested_tools": "get_entity"}),  # str, not list
+        "q",
+        temperature=1.0,
+        reasoning_effort="low",
+        tool_names=frozenset({"get_entity"}),
+    )
+    assert fd.sub_asks == ["x"]
+    assert fd.suggested_tools == []

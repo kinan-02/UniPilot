@@ -125,12 +125,41 @@ def apply_surface(ws: WorkingSet, args: dict[str, Any]) -> int:
     selectors = args.get("selectors")
     if selectors is None:  # single-selector shorthand
         selectors = [{"key": args.get("key"), "from": args.get("from"), "path": args.get("path")}]
+    # `field` collapses the corpus's most common two-turn shape. Over 36 live
+    # case-runs, turn 1 was `get_entity` 39 times and turn 2 `surface_fact` 51
+    # times, with `select` following it 17 more -- surfacing a record list only to
+    # project one field out of it next turn. Doing it here costs no extra turn and
+    # keeps the same provenance: the list is still READ BY PATH, and the field is
+    # read off each record exactly as `select` reads it.
+    field = args.get("field") if args.get("selectors") is None else None
     outcome = project_facts(selectors, ws.tool_results, ws.handles)
     selector_by_key = {s.get("key"): s for s in selectors if isinstance(s, dict)}
     new_facts = 0
     for key, fact in outcome.facts.items():
         selector = selector_by_key.get(key, {})
-        signature = f"surface:{selector.get('from')}:{selector.get('path')}"
+        if field:
+            source_records = fact["value"]
+            if not isinstance(source_records, list):
+                ws.observe(
+                    f"surface_fact error: 'field' needs a list at '{selector.get('path')}', "
+                    f"got {type(source_records).__name__}"
+                )
+                continue
+            projected = [
+                record[field]
+                for record in source_records
+                if isinstance(record, dict) and field in record
+            ]
+            if not projected:
+                # An empty list would be admitted as a grounded "none" -- exactly
+                # how a typo becomes a confident wrong answer.
+                ws.observe(
+                    f"surface_fact error: no record at '{selector.get('path')}' has field "
+                    f"'{field}' (fields: {sorted(source_records[0]) if source_records and isinstance(source_records[0], dict) else 'n/a'})"
+                )
+                continue
+            fact = {**fact, "value": projected}
+        signature = f"surface:{selector.get('from')}:{selector.get('path')}:{field or ''}"
         basis, confidence = _selector_certainty(ws, selector, fact["confidence"])
         admitted = ws.admit_derivation(key, Fact(fact["value"], fact["source"], basis, confidence), signature)
         new_facts += int(admitted)
@@ -186,9 +215,11 @@ def apply_compute(ws: WorkingSet, args: dict[str, Any]) -> int:
     if laundered:
         ws.observe(
             f"compute '{key}' REJECTED: arithmetic operand(s) {laundered} are typed literals, not "
-            f"grounded facts. A number like this must be FETCHED or INTERPRETED first (e.g. "
-            f"interpret_text on the track wiki slug for total required credits), surfaced as a fact, "
-            f"then referenced with a ref -- never typed as a const."
+            f"grounded facts. Get the number from the data first, then reference it with a ref -- "
+            f"never type it as a const. If it is something you can COUNT (how many semesters you "
+            f"have completed, how many courses are in a list), use `compute` with op 'count' over "
+            f"the relevant list. If it is stated in catalog/wiki prose, interpret_text it and "
+            f"surface the result."
         )
         return 0
 
@@ -274,6 +305,36 @@ def _normalize_by(raw: Any) -> tuple[dict[str, str] | None, str | None]:
     return {direction: by_field}, None
 
 
+def _read_field_path(record: Any, field: str) -> Any:
+    """Read `field` off a record, walking dots and flattening lists on the way.
+
+    A semester plan nests `plans[].semesters[].plannedCourses[].courseNumber`, and
+    one `select` per level meant `plan_eligibility_sweep` spent four of its eight
+    turns navigating -- re-issuing the same three selects on the last two. A
+    dotted path collapses that into one call.
+
+    Reading THROUGH a list flattens it, because that is the only sensible reading
+    of "the courseNumbers under these semesters". A segment that is absent yields
+    nothing rather than a partial value, so a mistyped path is visibly empty
+    instead of quietly wrong.
+    """
+    current: Any = record
+    for segment in field.split("."):
+        if isinstance(current, list):
+            nested = [item.get(segment) for item in current if isinstance(item, dict)]
+            current = [item for item in nested if item is not None]
+            # Flatten one level per hop, so a list of lists does not compound.
+            if any(isinstance(item, list) for item in current):
+                current = [leaf for item in current for leaf in (item if isinstance(item, list) else [item])]
+        elif isinstance(current, dict):
+            current = current.get(segment)
+        else:
+            return None
+        if current is None:
+            return None
+    return current
+
+
 def filter_records(
     records: list[Any], where: dict[str, Any], field: str | None, by: dict[str, str] | None = None
 ) -> tuple[Any, int]:
@@ -308,7 +369,7 @@ def filter_records(
         else:
             matched = []
     if field is not None:
-        picked = [r.get(field) for r in matched]
+        picked = [_read_field_path(r, field) for r in matched]
         value: Any = picked[0] if len(picked) == 1 else picked
     else:
         value = matched[0] if len(matched) == 1 else matched

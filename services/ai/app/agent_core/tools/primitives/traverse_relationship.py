@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import ENTITY_ID_DESCRIPTION, not_found_error
 from app.agent_core.tools.registry import ToolDescriptor
 from app.retrieval.graph_engine.graph_registry import graph_registry
 
@@ -29,7 +30,7 @@ _KNOWN_RELATIONS: frozenset[str] = frozenset({"has_prerequisite", "belongs_to", 
 
 
 class TraverseRelationshipInput(BaseModel):
-    entity: str
+    entity: str = Field(description=ENTITY_ID_DESCRIPTION)
     relation: str
     direction: Literal["forward", "backward"] = "forward"
 
@@ -52,7 +53,7 @@ async def run_traverse_relationship(payload: TraverseRelationshipInput) -> ToolO
 
     graph = engine.graph
     if entity not in graph:
-        return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: {entity}")
+        return ToolOutputEnvelope(ok=False, data=None, error=not_found_error(entity, kind="entity"))
 
     related_ids: list[str] = []
     if payload.direction == "forward":

@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import COURSE_ID_DESCRIPTION, not_found_error
 from app.agent_core.tools.primitives.extract_temporal_pattern import (
     ExtractTemporalPatternInput,
     run_extract_temporal_pattern,
@@ -44,7 +45,7 @@ _SEMESTER_CODE_RE = re.compile(r"^(\d+)-([1-3])$")
 
 
 class CheckEligibilityInput(BaseModel):
-    course_id: str
+    course_id: str = Field(description=COURSE_ID_DESCRIPTION)
     # PREFERRED. Given this, the tool reads the student's completed courses
     # itself, and `state` is not needed -- see `_resolve_completed_entries`.
     student_id: str | None = None
@@ -121,7 +122,7 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
         return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
 
     if course_id not in engine.graph:
-        return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: {course_id}")
+        return ToolOutputEnvelope(ok=False, data=None, error=not_found_error(course_id))
 
     entries, fetch_error = await _resolve_completed_entries(payload)
     if fetch_error:

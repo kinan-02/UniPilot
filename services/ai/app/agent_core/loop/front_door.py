@@ -54,7 +54,12 @@ Rules:
   question raises them. "Am I eligible for X?" is ONE sub-ask -- "Is the student eligible for X,
   and on what basis?" -- not a checklist of every conceivable restriction. Over-broad sub-asks
   make a correct, direct answer look incomplete and send the loop chasing things nobody asked.
-- A simple factual question may have exactly one sub-ask."""
+- A simple factual question may have exactly one sub-ask.
+
+ALSO output "suggested_tools": the 1-2 tools from AVAILABLE TOOLS (verbatim names) that most
+directly answer this question -- prefer a composite that answers it in ONE call over primitives
+the loop would have to assemble. Omit or leave empty when nothing fits well; a wrong suggestion
+is worse than none. This is a hint, not an instruction: the loop is free to ignore it."""
 
 
 @dataclass(frozen=True)
@@ -62,10 +67,21 @@ class FrontDoorResult:
     sub_asks: list[str] = field(default_factory=list)
     in_scope: bool = True
     decline_reason: str | None = None
+    # Tools the decomposer thinks answer this most directly. A HINT injected as an
+    # observation, never a dispatch: `graduation_audit` exhausted at 7 turns on a
+    # question `audit_graduation_progress` answers in one call, because nothing
+    # pointed the loop at it. Validated against the registry, so a name the model
+    # invented is dropped rather than sent to a model that will then hunt for it.
+    suggested_tools: list[str] = field(default_factory=list)
 
 
 async def decompose(
-    adapter: ChatLLMAdapter, question: str, *, temperature: float, reasoning_effort: str
+    adapter: ChatLLMAdapter,
+    question: str,
+    *,
+    temperature: float,
+    reasoning_effort: str,
+    tool_names: frozenset[str] | None = None,
 ) -> FrontDoorResult:
     """§8: the question -> concrete sub-asks, presuppositions made explicit.
 
@@ -75,7 +91,10 @@ async def decompose(
     try:
         out = await adapter.complete_json(
             system_prompt=_DECOMPOSER_SYSTEM,
-            user_prompt=json.dumps({"question": question}, ensure_ascii=False),
+            user_prompt=json.dumps(
+                {"question": question, "available_tools": sorted(tool_names or ())},
+                ensure_ascii=False,
+            ),
             temperature=temperature,
             thinking_enabled=True,
             reasoning_effort=reasoning_effort,
@@ -93,12 +112,18 @@ async def decompose(
             in_scope=False,
             decline_reason=reason or "That falls outside what I can help with as your academic advisor.",
         )
+    raw_tools = out.get("suggested_tools")
+    suggested = (
+        [str(t).strip() for t in raw_tools if str(t).strip() in (tool_names or frozenset())]
+        if isinstance(raw_tools, list)
+        else []
+    )
     subs = out.get("sub_asks")
     if isinstance(subs, list):
         cleaned = [str(s).strip() for s in subs if str(s).strip()]
         if cleaned:
-            return FrontDoorResult(sub_asks=cleaned)
-    return FrontDoorResult(sub_asks=[question])
+            return FrontDoorResult(sub_asks=cleaned, suggested_tools=suggested)
+    return FrontDoorResult(sub_asks=[question], suggested_tools=suggested)
 
 
 __all__ = ["FrontDoorResult", "decompose"]

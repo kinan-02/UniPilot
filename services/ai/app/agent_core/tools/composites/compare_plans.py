@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import COURSE_ID_DESCRIPTION
 from app.agent_core.tools.registry import ToolDescriptor
 
 TOOL_NAME = "compare_plans"
@@ -31,7 +32,7 @@ _REQUIRED_PLAN_FIELDS = ("semestersUsed", "unscheduledCourses")
 class ComparePlansInput(BaseModel):
     plan_a: dict[str, Any]
     plan_b: dict[str, Any]
-    focus_course_id: str | None = None
+    focus_course_id: str | None = Field(default=None, description=COURSE_ID_DESCRIPTION)
 
 
 def _missing_fields(plan: dict[str, Any]) -> list[str]:

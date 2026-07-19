@@ -120,6 +120,9 @@ _FETCH = {"tool": "get_entity", "arguments": {"entity_type": "completed_courses"
 _SURFACE = {"tool": "surface_fact", "arguments": {"key": "completed", "from": "call_1", "path": "data.completedCourses"}}
 _COMPUTE = {"tool": "compute", "arguments": {"key": "earned", "expression": {"op": "sum", "of": {"ref": "completed"}, "field": "creditsEarned"}}}
 _SELECT_CODES = {"tool": "select", "arguments": {"key": "codes", "from_fact": "completed", "field": "courseNumber"}}
+# Computes over the PRELOADED fact (named `completed_courses`), not one the
+# model surfaced itself.
+_COMPUTE_PRELOADED = {"tool": "compute", "arguments": {"key": "earned", "expression": {"op": "sum", "of": {"ref": "completed_courses"}, "field": "creditsEarned"}}}
 _ANSWER = {"tool": "final_answer", "arguments": {"prose": "You have earned {earned} credits.", "fact_refs": {"earned": "earned"}}}
 
 
@@ -213,9 +216,12 @@ async def test_what_if_chain_threads_state_via_arg_refs(monkeypatch):
         {"thought": "fetch", "tool_calls": [_FETCH]},
         {"thought": "surface", "tool_calls": [_SURFACE]},
         {"thought": "mutate", "tool_calls": [{"tool": "mutate_state", "arguments": {"base_state": {"completedCourses": {"ref": "completed"}}, "change": {"type": "fail_course", "courseNumber": "00940224", "semester": "2024-1"}}}]},
-        {"thought": "surface altered", "tool_calls": [{"tool": "surface_fact", "arguments": {"key": "altered", "from": "call_2", "path": "data.state"}}]},
+        # call_1/call_2 are the preloaded profile and transcript, and this test's
+        # own `_FETCH` of completed_courses is a cache hit under call_2's key --
+        # so the model's first NEW result is call_3.
+        {"thought": "surface altered", "tool_calls": [{"tool": "surface_fact", "arguments": {"key": "altered", "from": "call_3", "path": "data.state"}}]},
         {"thought": "eligibility", "tool_calls": [{"tool": "check_eligibility", "arguments": {"course_id": "00960211", "state": {"ref": "altered"}}}]},
-        {"thought": "surface eligible", "tool_calls": [{"tool": "surface_fact", "arguments": {"key": "eligible", "from": "call_3", "path": "data.eligible"}}]},
+        {"thought": "surface eligible", "tool_calls": [{"tool": "surface_fact", "arguments": {"key": "eligible", "from": "call_4", "path": "data.eligible"}}]},
         {"thought": "answer", "tool_calls": [{"tool": "final_answer", "arguments": {"prose": "Eligibility after failing 00940224: {eligible}.", "fact_refs": {"eligible": "eligible"}}}]},
     ]
     adapter = _FakeAdapter(turns=turns, sub_asks=["Would the student still be eligible?"])
@@ -364,6 +370,81 @@ async def test_a_failed_forced_compose_leaves_a_trace(monkeypatch):
     result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
 
     assert any(step.get("forced_compose") for step in result.transcript)
+
+
+# -- preloaded student state ---------------------------------------------------
+#
+# Measured over 36 live case-runs: turn 1 was `get_entity` 39 times, turn 2 was
+# `surface_fact` 51 times. Every request re-derived the same two facts before it
+# could start, costing ~2 of a mean 5.2 turns and two chances to wander.
+
+
+async def test_student_state_is_preloaded_before_the_first_turn(monkeypatch):
+    """The loop's FIRST turn already holds the transcript, so a case that used to
+    need fetch+surface can answer immediately."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "compute", "tool_calls": [_COMPUTE_PRELOADED]},
+               {"thought": "answer", "tool_calls": [_ANSWER]}],
+        sub_asks=["earned?"],
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert result.outcome == "answered"
+    assert result.answer == "You have earned 9.5 credits."
+    # Two turns, where the same work previously took four.
+    assert result.turns == 2
+    assert "completed" in result.facts or "completed_courses" in result.facts
+
+
+async def test_preloaded_fetches_appear_in_the_audit(monkeypatch):
+    """They are real tool calls against the student's record; leaving them out of
+    the audit would under-report what the answer was built from."""
+    adapter = _FakeAdapter(
+        turns=[{"thought": "compute", "tool_calls": [_COMPUTE_PRELOADED]},
+               {"thought": "answer", "tool_calls": [_ANSWER]}],
+        sub_asks=["earned?"],
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", _stub_registry())
+
+    assert sum(1 for r in result.audit if r.tool_name == "get_entity") >= 2
+
+
+async def test_an_out_of_scope_question_preloads_nothing(monkeypatch):
+    """The decline path's whole value is 0 turns / 1 call / ~1s. Preloading before
+    the scope gate would spend two tool calls on every weather question."""
+    adapter = _FakeAdapter(
+        turns=[],
+        sub_asks=[],
+        front_door={"in_scope": False, "decline_reason": "Out of scope.", "sub_asks": []},
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("What's the weather in Haifa?", "u1", _stub_registry())
+
+    assert result.outcome == "declined"
+    assert result.turns == 0
+    assert result.audit == []
+
+
+async def test_preload_failing_does_not_break_the_loop(monkeypatch):
+    """Preloading is an optimisation, never a precondition: a registry without
+    `get_entity` (or a student with no record) must still answer."""
+    registry = ToolRegistry()  # no get_entity at all
+    adapter = _FakeAdapter(
+        turns=[{"thought": "answer", "tool_calls": [
+            {"tool": "final_answer", "arguments": {"prose": "No record on file.", "fact_refs": {}}}]}],
+        sub_asks=["earned?"],
+    )
+    _install(monkeypatch, adapter)
+
+    result = await run_agent_loop("How many credits have I earned?", "u1", registry)
+
+    assert result.outcome == "answered"
+    assert result.answer == "No record on file."
 
 
 async def test_polish_is_off_by_default(monkeypatch):

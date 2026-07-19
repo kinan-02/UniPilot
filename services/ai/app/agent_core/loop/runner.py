@@ -36,7 +36,14 @@ from app.agent_core.tools.registry import ToolRegistry
 # Budgets (§7). Wall-clock is deliberately under the API timeout so the student
 # gets our honest conclusion, never a dropped connection.
 MAX_TURNS = 12
-WALL_CLOCK_S = 150.0
+# 150.0 until the planning eval (2026-07-18) showed both of its exhaustions dying
+# at ~194s with SEVEN of twelve turns unused -- they ran out of time, not steps,
+# on exactly the multi-step questions the loop exists for. The rationale for
+# staying under the caller's timeout is unchanged; what changed is the caller:
+# ai_advisor's client timeout went to 300s in 21ad03c, so 150 was leaving half the
+# available headroom unused. A turn can overshoot by up to TURN_TIMEOUT_S, so this
+# still lands comfortably inside 300.
+WALL_CLOCK_S = 240.0
 NO_PROGRESS_LIMIT = 3
 # How many rejected final answers (grounding backstop or completeness gate) before
 # we stop letting the model re-try and force a conclusion. The live eval's
@@ -84,6 +91,13 @@ not cover, say honestly you could not determine it. Answer the student directly 
 # temperature 1.0 (GPT-5 reasoning models reject temperature != 1).
 LOOP_TEMPERATURE = 1.0
 REASONING_EFFORT = "medium"
+# The front door and the completeness gate are CLASSIFICATION, not reasoning: is
+# this in scope, what are the sub-asks, does this draft address them. Together
+# they are ~25% of a request's LLM calls (the 1.56 calls-per-turn measured over
+# 36 case-runs is the loop's own turns plus these), and at 6.2s per call that is
+# real latency spent on work that does not need the reasoning budget the loop
+# does. The loop itself stays at REASONING_EFFORT.
+MECHANICAL_REASONING_EFFORT = "low"
 
 _META_TOOLS = frozenset(
     {"surface_fact", "surface_facts", "compute", "select", "map", "spawn_subtask", "final_answer", "clarify"}
@@ -200,6 +214,54 @@ async def _run_data_tools(
         if isinstance(merged.get(key), dict) and merged[key].get("ok")
     )
     return new_ok, audit
+
+
+async def _preload_student_state(
+    ws: WorkingSet, ctx: _LoopContext
+) -> list[ToolInvocationRecord]:
+    """Fetch and surface the student's record BEFORE turn 1.
+
+    Measured over 36 live case-runs: turn 1 was `get_entity` 39 times and turn 2
+    was `surface_fact` 51 times. Nearly every request opened by fetching the
+    profile and transcript and surfacing them -- the same two calls, in the same
+    order, to answer any question about a student. That is ~2 of a mean 5.2
+    turns spent re-deriving a constant, and at ~6.2s per LLM call it is also two
+    extra chances to wander before the real work starts.
+
+    Runs through the ordinary `_run_data_tools` path, so results, handles, audit
+    records and cache entries are indistinguishable from a turn the model drove --
+    the model can reference `call_1`/`call_2` exactly as it does today, and a
+    later duplicate fetch is a cache hit rather than a second record.
+
+    Fails OPEN: a student with no profile, or a registry without `get_entity`
+    (sub-loop grants, tests), simply preloads nothing and the loop proceeds as
+    before. Preloading is an optimisation, never a precondition.
+    """
+    if not ctx.registry.has("get_entity"):
+        return []
+    requests = [
+        {"tool_name": "get_entity", "arguments": {"entity_type": "student_profile", "entity_id": ws.user_id}},
+        {"tool_name": "get_entity", "arguments": {"entity_type": "completed_courses", "entity_id": ws.user_id}},
+    ]
+    _, audit = await _run_data_tools(ws, requests, ctx.registry, ctx.cache)
+
+    # Surface only what the model surfaced by hand anyway. Each is skipped
+    # silently when its path is absent, so a partial record preloads partially
+    # rather than not at all.
+    for key, handle, path in (
+        ("completed_courses", "call_2", "data.completedCourses"),
+        ("track_slug", "call_1", "data.academicPath.trackSlug"),
+    ):
+        if handle in ws.handles:
+            apply_surface(ws, {"key": key, "from": handle, "path": path})
+
+    ws.observe(
+        "Your record was loaded before this turn: "
+        f"{', '.join(sorted(ws.facts)) or 'nothing available'} "
+        f"(raw results in {', '.join(sorted(ws.handles))}). Do NOT re-fetch these; "
+        "build on them."
+    )
+    return audit
 
 
 def _as_fact_key(value: Any) -> str | None:
@@ -665,7 +727,7 @@ async def _drive(
                 ctx.budget.llm_calls += 1
                 unaddressed = await completeness_gate(
                     ctx.adapter, ws.question, ws.sub_asks, terminal.text,
-                    temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort,
+                    temperature=ctx.temperature, reasoning_effort=MECHANICAL_REASONING_EFFORT,
                 )
                 if unaddressed:
                     ws.observe(
@@ -755,7 +817,7 @@ async def _drive(
             ctx.budget.llm_calls += 1
             unaddressed = await completeness_gate(
                 ctx.adapter, ws.question, ws.sub_asks, composed,
-                temperature=ctx.temperature, reasoning_effort=ctx.reasoning_effort,
+                temperature=ctx.temperature, reasoning_effort=MECHANICAL_REASONING_EFFORT,
             )
             if unaddressed:
                 composed += "\n\nI could not fully address: " + "; ".join(unaddressed) + "."
@@ -800,7 +862,13 @@ async def run_agent_loop(
     )
 
     budget.llm_calls += 1
-    front_door = await decompose(adapter, question, temperature=temperature, reasoning_effort=reasoning_effort)
+    front_door = await decompose(
+        adapter,
+        question,
+        temperature=temperature,
+        reasoning_effort=MECHANICAL_REASONING_EFFORT,
+        tool_names=frozenset(registry.names()),
+    )
     if not front_door.in_scope:
         # §8.1: an out-of-scope question is declined politely BEFORE the loop runs
         # -- no tools, no wandering, no fabricated deflection.
@@ -810,7 +878,21 @@ async def run_agent_loop(
             [], [], {}, [], 0, budget.llm_calls, time.monotonic() - started, [],
         )
     ws.sub_asks = front_door.sub_asks
-    return await _drive(ws, ctx, 0, run_completeness=True, run_polish=POLISH_ENABLED)
+    # AFTER the scope gate on purpose: an out-of-scope question still costs zero
+    # tool calls, which is what keeps a decline at 0 turns / 1 call / ~1s.
+    preload_audit = await _preload_student_state(ws, ctx)
+    if front_door.suggested_tools:
+        # A HINT, never a dispatch -- the loop can ignore it, and every name was
+        # validated against the registry before it got here.
+        ws.observe(
+            "these tools look most direct for this question: "
+            f"{', '.join(front_door.suggested_tools)} -- prefer a composite that answers it "
+            "in one call over assembling primitives, but use your own judgement."
+        )
+    result = await _drive(ws, ctx, 0, run_completeness=True, run_polish=POLISH_ENABLED)
+    # The preloaded fetches belong to this request's audit trail like any other.
+    result.audit[:0] = preload_audit
+    return result
 
 
 __all__ = [

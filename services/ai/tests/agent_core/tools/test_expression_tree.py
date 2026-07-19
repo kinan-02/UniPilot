@@ -427,3 +427,177 @@ def test_a_genuinely_non_numeric_string_still_fails():
     _result, _trace, errors = evaluate_expression(node, facts)
 
     assert any("non_numeric_operand" in e for e in errors)
+
+
+# -- numeric strings in aggregation -------------------------------------------
+#
+# `semester_plans` store `plannedCourses[].credits` as STRINGS ("3.5") -- that is
+# the real production shape, not a fixture artefact. `sum` rejected them, and the
+# validator's message was the worst possible one: "not one carries a numeric
+# field ... No edit to this expression can fix that". The 2026-07-18 planning run
+# watched `drop_impact` spend SEVEN of its twelve turns on that dead end, having
+# been told its goal was impossible. Arithmetic operands already coerce numeric
+# strings for exactly this reason; aggregation position is no more ambiguous
+# (nobody sums course numbers, and the field is named explicitly).
+
+
+def test_sum_over_string_credits():
+    facts = {"planned": [{"credits": "3.5"}, {"credits": "2.5"}, {"credits": "3.5"}]}
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="sum", of={"ref": "planned"}, field="credits"), facts
+    )
+    assert errors == []
+    assert value == 9.5
+
+
+def test_average_over_string_credits():
+    facts = {"planned": [{"credits": "4.0"}, {"credits": "2.0"}]}
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="average", of={"ref": "planned"}, field="credits"), facts
+    )
+    assert errors == []
+    assert value == 3.0
+
+
+def test_mixed_numeric_and_string_values_sum():
+    facts = {"planned": [{"credits": 3.5}, {"credits": "2.5"}]}
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="sum", of={"ref": "planned"}, field="credits"), facts
+    )
+    assert errors == []
+    assert value == 6.0
+
+
+def test_a_genuinely_non_numeric_field_still_fails_closed():
+    """Coercion must not turn "not a number" into a silent zero."""
+    facts = {"rows": [{"label": "never"}, {"label": "spring"}]}
+    _value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="sum", of={"ref": "rows"}, field="label"), facts
+    )
+    assert errors
+
+
+def test_validator_accepts_a_string_numeric_field():
+    """The validator gated this BEFORE eval, so the model never got to try -- and
+    was told "No edit to this expression can fix that"."""
+    facts = {"planned": [{"credits": "3.5"}]}
+    errors = validate_expression_tree(
+        ExpressionNode(op="sum", of={"ref": "planned"}, field="credits"), facts=facts
+    )
+    assert errors == []
+
+
+def test_course_codes_are_never_treated_as_quantities():
+    """A course code IS a numeric string. Coercing "00940345" to 940345.0 would
+    let `sum` aggregate identifiers, and make the validator advertise `id` as a
+    numeric field for repair to switch to. A leading zero is the tell."""
+    facts = {"rows": [{"id": "00940345"}, {"id": "00940704"}]}
+    _value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="sum", of={"ref": "rows"}, field="id"), facts
+    )
+    assert errors
+
+
+def test_a_leading_zero_decimal_is_still_a_quantity():
+    facts = {"rows": [{"weight": "0.5"}, {"weight": "0.25"}]}
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="sum", of={"ref": "rows"}, field="weight"), facts
+    )
+    assert errors == []
+    assert value == 0.75
+
+
+# -- count over scalar lists ---------------------------------------------------
+#
+# `count` filtered on `isinstance(record, dict)` before counting, so ANY list of
+# course codes, semester codes or grades counted as ZERO -- silently, with no
+# error and with validation passing. The 2026-07-18 planning run watched
+# `graduation_audit` count its completed required courses, get 0, disbelieve it,
+# and re-issue the identical compute three times before giving up. Worse than the
+# wasted turns: 0 is admitted as a real `computed` fact, so the grounding
+# backstop would happily slot it into "you have completed 0 required courses".
+
+
+def test_count_over_a_list_of_scalars():
+    """The reproduction: three course codes must count as three, not zero."""
+    facts = {"required_done": ["00940202", "00940210", "00940219"]}
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="count", of={"ref": "required_done"}), facts
+    )
+    assert errors == []
+    assert value == 3
+
+
+def test_count_over_a_list_of_records_is_unchanged():
+    facts = {"rows": [{"id": "a"}, {"id": "b"}]}
+    value, _trace, errors = evaluate_expression(ExpressionNode(op="count", of={"ref": "rows"}), facts)
+    assert errors == []
+    assert value == 2
+
+
+def test_count_of_an_empty_list_is_zero():
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="count", of={"ref": "none"}), {"none": []}
+    )
+    assert errors == []
+    assert value == 0
+
+
+def test_count_with_a_filter_still_only_matches_records():
+    """A field filter can only apply to records; scalars cannot match it, and
+    counting them anyway would report matches that do not exist."""
+    facts = {"mixed": [{"grade": 90}, {"grade": 70}, "00940224"]}
+    value, _trace, errors = evaluate_expression(
+        ExpressionNode(op="count", of={"ref": "mixed"}, filter={"grade": 90}), facts
+    )
+    assert errors == []
+    assert value == 1
+
+
+# -- sum/average over a flat list of scalars -----------------------------------
+#
+# The sibling of the `count` defect, and the one that E's dotted paths surfaced.
+# `drop_impact` (2026-07-19) used `select field="semesters.plannedCourses.credits"`
+# to get ["3.5","2.5",...] in a single call -- then could not add them up:
+# sum/average demand a `field`, which only means something for RECORDS. The model
+# tried `field: null`, was told 'field' is required, and exhausted.
+
+
+def test_sum_over_a_flat_list_of_numbers():
+    facts = {"credits": [3.5, 2.5, 3.5]}
+    value, _trace, errors = evaluate_expression(ExpressionNode(op="sum", of={"ref": "credits"}), facts)
+    assert errors == []
+    assert value == 9.5
+
+
+def test_sum_over_a_flat_list_of_numeric_strings():
+    """What a plan actually yields -- credits are stored as strings."""
+    facts = {"credits": ["3.5", "2.5", "3.5", "3.5", "3.5", "2.5"]}
+    value, _trace, errors = evaluate_expression(ExpressionNode(op="sum", of={"ref": "credits"}), facts)
+    assert errors == []
+    assert value == 19.0
+
+
+def test_average_over_a_flat_list():
+    facts = {"grades": [90, 80, 70]}
+    value, _trace, errors = evaluate_expression(ExpressionNode(op="average", of={"ref": "grades"}), facts)
+    assert errors == []
+    assert value == 80
+
+
+def test_validator_no_longer_demands_a_field_for_a_scalar_list():
+    facts = {"credits": ["3.5", "2.5"]}
+    assert validate_expression_tree(ExpressionNode(op="sum", of={"ref": "credits"}), facts=facts) == []
+
+
+def test_validator_still_demands_a_field_for_a_record_list():
+    """Summing records without naming a field is genuinely ambiguous."""
+    facts = {"rows": [{"credits": 3.5}, {"credits": 2.5}]}
+    errors = validate_expression_tree(ExpressionNode(op="sum", of={"ref": "rows"}), facts=facts)
+    assert any("field" in e for e in errors)
+
+
+def test_sum_over_a_flat_list_of_non_numbers_fails_closed():
+    facts = {"labels": ["never", "spring"]}
+    _value, _trace, errors = evaluate_expression(ExpressionNode(op="sum", of={"ref": "labels"}), facts)
+    assert errors

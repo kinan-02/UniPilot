@@ -279,6 +279,38 @@ def test_grain_hint_on_record_list_points_to_select():
     assert "select" in hint
 
 
+def test_surface_with_field_projects_in_one_step():
+    """`surface_fact` then `select` was the most common two-turn shape in the
+    corpus -- turn 1 was get_entity 39 times and turn 2 surface_fact 51 times,
+    with select following it 17 times. `field` collapses that pair into one call,
+    reading by path exactly as before."""
+    ws = _working_set_with_completed()
+    admitted = apply_surface(
+        ws, {"key": "codes", "from": "call_1", "path": "data.completedCourses", "field": "courseNumber"}
+    )
+    assert admitted == 1
+    assert ws.facts["codes"].value == ["00940224", "00960211", "00110001"]
+    # Provenance is the source call's, exactly as an unprojected surface.
+    assert ws.facts["codes"].basis == "official_record"
+
+
+def test_surface_without_field_is_unchanged():
+    ws = _working_set_with_completed()
+    apply_surface(ws, {"key": "rows", "from": "call_1", "path": "data.completedCourses"})
+    assert isinstance(ws.facts["rows"].value[0], dict)
+
+
+def test_surface_field_absent_from_every_record_is_a_repairable_error():
+    """Admitting an empty list here would read as "no courses" -- a wrong answer
+    dressed as a grounded one."""
+    ws = _working_set_with_completed()
+    admitted = apply_surface(
+        ws, {"key": "x", "from": "call_1", "path": "data.completedCourses", "field": "nope"}
+    )
+    assert admitted == 0
+    assert "x" not in ws.facts
+
+
 def test_grain_hint_does_not_forbid_passing_an_object_to_a_tool():
     """The hint exists for objects headed for an ANSWER, but it fired on every
     dict and flatly said "do NOT re-surface the object itself". In the live
@@ -460,3 +492,67 @@ def test_project_mapped_records_all_authoritative_stays_computed():
     ]
     _, basis, _, _ = project_mapped_records(["A", "B"], envelopes, "data.v")
     assert basis == "computed"  # a collection purely of official records is authoritative
+
+
+def test_const_rejection_offers_count_before_interpret_text():
+    """The message named only "FETCHED or INTERPRETED (e.g. interpret_text...)".
+    `pace_projection` needed to divide by the 3 semesters it had completed -- a
+    COUNTABLE quantity -- and was pointed at interpret_text, the same tool whose
+    wrong-grain extraction produced the 35.5-credit answer. Counting is the right
+    recovery and went unmentioned."""
+    ws = _working_set_with_completed()
+    ws.facts["earned"] = Fact(62.5, "compute(...)", "computed", 1.0)
+
+    apply_compute(
+        ws,
+        {"key": "avg", "expression": {"op": "divide", "left": {"ref": "earned"}, "right": {"const": 3}}},
+    )
+
+    rejection = next(o for o in ws.observations if "REJECTED" in o)
+    assert "count" in rejection
+    assert rejection.index("count") < rejection.index("interpret_text")
+
+
+# -- nested field paths --------------------------------------------------------
+#
+# A semester plan nests four levels deep:
+#   plans[].semesters[].plannedCourses[].courseNumber
+# `plan_eligibility_sweep` spent turns 3,4,5 AND 6 drilling it one level per
+# turn -- with turn 6 re-issuing turn 5's three selects under `_full` key names --
+# so half of its eight turns were navigation before any eligibility work began.
+
+_PLANS = [
+    {
+        "status": "draft",
+        "semesters": [
+            {
+                "semesterCode": "2025-2",
+                "plannedCourses": [
+                    {"courseNumber": "00940314", "credits": "3.5"},
+                    {"courseNumber": "00970800", "credits": "3.5"},
+                ],
+            }
+        ],
+    }
+]
+
+
+def test_dotted_field_path_walks_and_flattens_nested_lists():
+    value, count = filter_records(_PLANS, {}, "semesters.plannedCourses.courseNumber")
+    assert value == ["00940314", "00970800"]
+    assert count == 1
+
+
+def test_dotted_path_still_honours_where():
+    value, _count = filter_records(_PLANS, {"status": "draft"}, "semesters.semesterCode")
+    assert value == ["2025-2"]
+
+
+def test_dotted_path_missing_segment_yields_nothing_rather_than_a_wrong_value():
+    value, _count = filter_records(_PLANS, {}, "semesters.nope.courseNumber")
+    assert value == []
+
+
+def test_single_segment_field_is_unchanged():
+    value, _count = filter_records(_PLANS, {}, "status")
+    assert value == "draft"

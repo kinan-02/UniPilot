@@ -42,6 +42,7 @@ from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.composites.compare_plans import ComparePlansInput, run_compare_plans
 from app.agent_core.tools.composites.student_state import resolve_student_state
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import COURSE_ID_DESCRIPTION
 from app.agent_core.tools.primitives.extract_temporal_pattern import (
     ExtractTemporalPatternInput,
     run_extract_temporal_pattern,
@@ -60,7 +61,7 @@ _KNOWN_DISRUPTION_TYPES: frozenset[str] = frozenset({"fail", "drop"})
 
 
 class SimulateCourseDisruptionInput(BaseModel):
-    course_id: str
+    course_id: str = Field(description=COURSE_ID_DESCRIPTION)
     disruption_type: str
     # PREFERRED. Given this, the tool reads the student's completed courses
     # itself and `state` is not needed -- see `student_state.resolve_student_state`.

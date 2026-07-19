@@ -30,10 +30,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import COURSE_ID_DESCRIPTION
 from app.agent_core.tools.primitives.extract_temporal_pattern import (
     ExtractTemporalPatternInput,
     run_extract_temporal_pattern,
@@ -49,7 +50,7 @@ TOOL_NAME = "get_course_profile"
 
 
 class GetCourseProfileInput(BaseModel):
-    course_id: str
+    course_id: str = Field(description=COURSE_ID_DESCRIPTION)
 
 
 async def _related_or_empty(
