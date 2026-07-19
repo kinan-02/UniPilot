@@ -39,6 +39,7 @@ async def ask_advisor_for_user(
             "answer": response.get("answer", ""),
             "confidence": response.get("confidence", "medium"),
             "courseIds": response.get("course_ids", []),
+            "courses": response.get("courses", []),
             "wikiSlugs": response.get("wiki_slugs", []),
             "sources": response.get("sources", []),
             "contacts": response.get("contacts", []),

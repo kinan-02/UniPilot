@@ -585,6 +585,10 @@ export type AdvisorReply = {
   answer: string
   confidence: 'high' | 'medium' | 'low' | string
   courseIds: string[]
+  /** Same ids carrying their catalog/wiki display name, so a citation can read
+   *  "E-Commerce Models" rather than "00960211". Optional: an older response
+   *  shape has only `courseIds`. */
+  courses?: { id: string; name: string }[]
   wikiSlugs: string[]
   sources: string[]
   contacts: string[]

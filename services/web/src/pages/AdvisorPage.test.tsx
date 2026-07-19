@@ -55,6 +55,7 @@ const ADVISOR_REPLY = {
   answer: 'You have 12.5 credits remaining.',
   confidence: 'high',
   courseIds: ['00940314'],
+  courses: [{ id: '00940314', name: 'Statistical Inference' }],
   wikiSlugs: [],
   sources: ['search: ise credits'],
   contacts: [],
@@ -62,6 +63,22 @@ const ADVISOR_REPLY = {
   semesterResolution: null,
   retrievalStatus: 'succeeded',
 }
+
+/** More references than the footer will inline — the 46-chip case, in miniature. */
+const MANY_SOURCES_REPLY = {
+  ...ADVISOR_REPLY,
+  answer: 'You completed several courses.',
+  courseIds: ['00940314', '00960211', '00960262', '00960236'],
+  courses: [
+    { id: '00940314', name: 'Statistical Inference' },
+    { id: '00960211', name: 'E-Commerce Models' },
+    { id: '00960262', name: 'Information Retrieval' },
+    { id: '00960236', name: 'Generative Learning' },
+  ],
+}
+
+const manyFinalEvent = `data: ${JSON.stringify({ type: 'final', data: { advisor: MANY_SOURCES_REPLY } })}\n\n`
+const manyChunkEvent = `data: ${JSON.stringify({ type: 'chunk', text: MANY_SOURCES_REPLY.answer })}\n\n`
 
 const CHUNK_EVENT = `data: ${JSON.stringify({ type: 'chunk', text: ADVISOR_REPLY.answer })}\n\n`
 const FINAL_EVENT = `data: ${JSON.stringify({ type: 'final', data: { advisor: ADVISOR_REPLY } })}\n\n`
@@ -125,8 +142,37 @@ describe('AdvisorPage', () => {
     await ask()
 
     expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
-    expect(await screen.findByText('Referenced Courses')).toBeInTheDocument()
-    expect(await screen.findByText('00940314')).toBeInTheDocument()
+    // Two references: inlined, and named rather than numbered.
+    expect(await screen.findByText('Statistical Inference')).toBeInTheDocument()
+    expect(screen.getByText('ise credits')).toBeInTheDocument()
+  })
+
+  it('collapses to one control once there are more references than fit inline', async () => {
+    // The 46-chip case: inlining every reference is a wall, not a citation.
+    vi.mocked(advisorApi.askStream).mockResolvedValue(
+      streamingResponse(manyChunkEvent, manyFinalEvent),
+    )
+
+    await ask()
+
+    const toggle = await screen.findByTestId('advisor-sources-toggle')
+    expect(toggle).toHaveTextContent('Based on 5 sources')
+    expect(screen.queryByText('E-Commerce Models')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sources-panel')).not.toBeInTheDocument()
+  })
+
+  it('opens the sources panel from the footer control', async () => {
+    const user = userEvent.setup()
+    vi.mocked(advisorApi.askStream).mockResolvedValue(
+      streamingResponse(manyChunkEvent, manyFinalEvent),
+    )
+
+    await ask()
+    await user.click(await screen.findByTestId('advisor-sources-toggle'))
+
+    expect(await screen.findByTestId('sources-panel')).toBeInTheDocument()
+    expect(screen.getByText('E-Commerce Models')).toBeInTheDocument()
+    expect(screen.getByText('Information Retrieval')).toBeInTheDocument()
   })
 
   it('keeps the final event when a read boundary splits it in half', async () => {
@@ -145,8 +191,7 @@ describe('AdvisorPage', () => {
     await ask()
 
     expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
-    expect(await screen.findByText('Referenced Courses')).toBeInTheDocument()
-    expect(await screen.findByText('00940314')).toBeInTheDocument()
+    expect(await screen.findByText('Statistical Inference')).toBeInTheDocument()
   })
 
   it('shows the latest progress phrase while the answer is still pending', async () => {
@@ -207,6 +252,6 @@ describe('AdvisorPage', () => {
     await ask()
 
     expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
-    expect(await screen.findByText('Referenced Courses')).toBeInTheDocument()
+    expect(await screen.findByText('Statistical Inference')).toBeInTheDocument()
   })
 })

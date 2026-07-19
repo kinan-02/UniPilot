@@ -47,6 +47,16 @@ html[dir='rtl'] body {
   text-align: right;
 }
 
+/* `dir="auto"` resolves an element's DIRECTION from its own content, but leaves
+   an inherited `text-align` untouched -- so an English answer inside the Hebrew
+   shell came out direction-correct and still right-aligned, ragged down the
+   wrong edge. Tying alignment to the resolved direction wherever we opt into
+   auto fixes every such site at once. Beats the inherited value from
+   `html[dir='rtl'] body` because a direct match always outranks inheritance. */
+[dir="auto"] {
+  text-align: start;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -316,35 +326,24 @@ html[dir='rtl'] .animate-slide-in-right {
   margin-bottom: 0;
 }
 
-/* ── Streaming blink cursor ── */
-@keyframes advisor-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+/* ── Sources panel ──
+ * Slides in from the inline-end edge, so it enters from the right in the LTR
+ * layout and from the left in the Hebrew RTL one. */
+@keyframes advisor-panel-in {
+  from { transform: translateX(var(--advisor-panel-from, 100%)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
 }
 
-.advisor-stream-cursor::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-inline-start: 2px;
-  vertical-align: text-bottom;
-  background: var(--color-primary);
-  border-radius: 1px;
-  animation: advisor-blink 0.8s step-end infinite;
+.advisor-panel-in {
+  animation: advisor-panel-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── Advisor metadata card ── */
-.advisor-meta-card {
-  background: rgba(79, 70, 229, 0.03);
-  border: 1px solid rgba(79, 70, 229, 0.08);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  transition: background 0.2s ease;
+[dir="rtl"] .advisor-panel-in {
+  --advisor-panel-from: -100%;
 }
 
-.advisor-meta-card:hover {
-  background: rgba(79, 70, 229, 0.05);
+@media (prefers-reduced-motion: reduce) {
+  .advisor-panel-in { animation: none; }
 }
 
 /* ── Advisor avatar ── */

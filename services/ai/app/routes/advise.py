@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.agent_core.loop import AgentLoopResult, run_agent_loop
-from app.agent_core.loop.course_names import course_codes_in
+from app.agent_core.loop.course_names import course_codes_in, course_display_name
 from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.tools.default_registry import build_default_tool_registry
 from app.config import get_settings
@@ -84,6 +84,12 @@ def _derive_course_ids(audit: list[ToolInvocationRecord]) -> list[str]:
     return sorted(course_ids)
 
 
+def _course_references(course_ids: list[str]) -> list[dict[str, str]]:
+    """Each id with its display name, falling back to the bare id when the course
+    is in neither the wiki nor the catalog."""
+    return [{"id": course_id, "name": course_display_name(course_id) or course_id} for course_id in course_ids]
+
+
 def _mentioned_course_ids(answer: str, facts: dict[str, Any]) -> set[str]:
     """Course codes the answer names that also appear in a grounded fact.
 
@@ -132,6 +138,11 @@ def _response_payload(
             "answer": answer,
             "confidence": confidence,
             "course_ids": course_ids,
+            # The same ids carrying their display name, so the UI can label a
+            # citation "E-Commerce Models" instead of "00960211" -- the chips had
+            # exactly the bare-code readability problem the answer prose already
+            # fixed. Looked up in code like every name; never model-authored.
+            "courses": _course_references(course_ids),
             # No primitive/entity type grounds these yet -- left honestly empty
             # rather than faked (don't fabricate what the system can't ground).
             "wiki_slugs": [],
@@ -201,6 +212,7 @@ def _to_frontend_advisor_shape(raw: dict[str, Any]) -> dict[str, Any]:
             "answer": response.get("answer", ""),
             "confidence": response.get("confidence", "medium"),
             "courseIds": response.get("course_ids", []),
+            "courses": response.get("courses", []),
             "wikiSlugs": response.get("wiki_slugs", []),
             "sources": response.get("sources", []),
             "contacts": response.get("contacts", []),

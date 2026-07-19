@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Bot, Send, Sparkles, MessageSquare, BookOpen, ChevronDown, CheckCircle2, AlertCircle, Info } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { advisorApi } from '../api/endpoints'
+import { SourcesPanel, countSources, sourceGroups } from '../components/advisor/SourcesPanel'
 import { PageHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useTranslation } from '../i18n'
@@ -66,61 +67,72 @@ function ConfidenceBadge({ confidence }: { confidence: string }) {
   )
 }
 
-/* ── Metadata footer ── */
+/* ── Citation footer ──
+ * A citation line, not a data dump. Inlining every reference put 46 course chips
+ * under one live answer -- a wall nobody reads. At INLINE_SOURCE_LIMIT or fewer
+ * the references sit inline, where naming them is genuinely useful (asking about
+ * one course should show that course). Above it, the footer collapses to a single
+ * control that opens the full list in a side panel. */
+const INLINE_SOURCE_LIMIT = 3
+
 function MessageMetadata({ reply }: { reply: AdvisorReply }) {
-  const hasCourses = reply.courseIds.length > 0
-  const hasContacts = reply.contacts.length > 0
-  const hasSources = reply.sources && reply.sources.length > 0
-  if (!hasCourses && !hasContacts && !hasSources) return null
+  const [isPanelOpen, setPanelOpen] = useState(false)
+  const groups = useMemo(() => sourceGroups(reply), [reply])
+  const total = countSources(groups)
+
+  if (total === 0) return null
+
+  const isInline = total <= INLINE_SOURCE_LIMIT
 
   return (
-    <div className="mt-4 space-y-2 pt-3 border-t border-[rgba(79,70,229,0.08)]">
-      {hasCourses && (
-        <div className="advisor-meta-card">
-          <p className="text-xs font-semibold text-[var(--color-text)] mb-1.5 flex items-center gap-1.5">
-            <BookOpen className="h-3.5 w-3.5 text-[var(--color-primary)]" />
-            Referenced Courses
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {reply.courseIds.map((courseId) => (
-              <Link
-                key={courseId}
-                to={`/catalog?course=${courseId}`}
-                className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/15 hover:ring-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/5 transition-all"
-              >
-                {courseId}
-              </Link>
-            ))}
-          </div>
+    <div className="mt-3 pt-3 border-t border-[rgba(79,70,229,0.08)]">
+      {isInline ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-[var(--color-text-muted)]">
+            <BookOpen className="mb-0.5 me-1 inline h-3.5 w-3.5" />
+            Based on
+          </span>
+          {groups.courses.map((course) => (
+            <Link
+              key={course.id}
+              to={`/catalog?course=${course.id}`}
+              dir="auto"
+              title={course.id}
+              className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/15 hover:ring-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/5 transition-all"
+            >
+              {course.name}
+            </Link>
+          ))}
+          {groups.sources.map((source) => (
+            <span
+              key={source}
+              dir="auto"
+              className="rounded-lg bg-[var(--color-primary)]/5 px-2.5 py-1 text-xs text-[var(--color-text-muted)]"
+            >
+              {source.replace(/^search: /, '')}
+            </span>
+          ))}
+          {groups.contacts.map((contact) => (
+            <span key={contact} dir="auto" className="text-xs text-[var(--color-text-muted)]">
+              {contact}
+            </span>
+          ))}
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          data-testid="advisor-sources-toggle"
+          aria-haspopup="dialog"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 -mx-2 text-xs font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Based on {total} sources
+          <ChevronDown className="h-3.5 w-3.5 -rotate-90 rtl:rotate-90" />
+        </button>
       )}
 
-      {hasContacts && (
-        <div className="advisor-meta-card">
-          <p className="text-xs font-semibold text-[var(--color-text)] mb-1.5">Contacts</p>
-          <ul className="list-none space-y-1">
-            {reply.contacts.map((contact) => (
-              <li key={contact} className="text-xs text-[var(--color-text-muted)]">{contact}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {hasSources && (
-        <details className="group">
-          <summary className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-primary)] cursor-pointer hover:text-[var(--color-primary-light)] transition-colors">
-            <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-            Sources ({reply.sources!.length})
-          </summary>
-          <div className="advisor-meta-card mt-1.5">
-            <ul className="list-none space-y-1">
-              {reply.sources!.map((source: string) => (
-                <li key={source} className="text-xs text-[var(--color-text-muted)] break-all">{source}</li>
-              ))}
-            </ul>
-          </div>
-        </details>
-      )}
+      <SourcesPanel groups={groups} isOpen={isPanelOpen} onClose={() => setPanelOpen(false)} />
     </div>
   )
 }
