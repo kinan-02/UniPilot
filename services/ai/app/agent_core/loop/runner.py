@@ -27,6 +27,7 @@ from app.agent_core.loop.constitution import build_constitution, build_tool_cata
 from app.agent_core.loop.course_names import course_display_name
 from app.agent_core.loop.fact_admission import apply_compute, apply_select, apply_surface, project_mapped_records
 from app.agent_core.loop.front_door import decompose
+from app.agent_core.loop.progress import phrase_for
 from app.agent_core.loop.working_set import Fact, Terminal, WorkingSet, render_working_set, summarize_value
 from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapterError
@@ -154,65 +155,28 @@ class _LoopContext:
     # measured 100% of the request as silent wait). Never load-bearing -- a
     # raising callback must not cost an answer, see `_report_progress`.
     on_progress: Callable[[str], None] | None = None
-
-
-# Tool name -> what to tell the student it is doing. Deliberately a closed map:
-# an unmapped tool falls back to the generic phrase rather than leaking a name
-# like `traverse_relationship` into a student's chat window.
-_PROGRESS_PHRASES = {
-    "audit_graduation_progress": "Auditing your graduation progress",
-    "check_eligibility": "Checking your eligibility",
-    "compare_plans": "Comparing your plans",
-    "extract_temporal_pattern": "Looking at when this is usually offered",
-    "find_requirement_substitutes": "Looking for alternatives that satisfy the requirement",
-    "get_course_profile": "Reading the course details",
-    "get_current_date": "Checking the academic calendar",
-    "get_current_semester": "Checking the academic calendar",
-    "get_entity": "Reading your academic record",
-    "get_policy_answer": "Checking Technion regulations",
-    "get_track_requirements": "Reading your track requirements",
-    "search_knowledge": "Searching the catalog and wiki",
-    "search_over_state": "Searching your record",
-    "simulate_course_disruption": "Working through the knock-on effects",
-    "traverse_relationship": "Following prerequisite chains",
-    # Meta-tools (§_META_TOOLS) matter as much as data tools here: `_preload_student_state`
-    # already has the record in hand by turn 1, so most turns of a typical question
-    # are meta. Omitting these made every phrase the generic one -- three identical
-    # lines over a 35s request in the 2026-07-19 trace.
-    "compute": "Doing the arithmetic",
-    "select": "Picking out the details that matter",
-    "surface_fact": "Pulling out what your record says",
-    "surface_facts": "Pulling out what your record says",
-    "map": "Checking each course in turn",
-    "spawn_subtask": "Breaking this into smaller questions",
-    "final_answer": "Writing your answer",
-    "clarify": "Working out what to ask you",
-}
-_GENERIC_PROGRESS = "Working through your question"
-
-
-def _progress_phrase(calls: list[dict[str, Any]]) -> str:
-    """One student-facing line for the tools a turn is about to run.
-
-    Reads `tool` -- the key the MODEL emits. `_split_calls` renames it to
-    `tool_name` when building data-tool requests, and reading that renamed key
-    here matched nothing, so every turn reported the generic phrase (caught in a
-    live trace, not by the unit tests, which asserted the same wrong key).
-    """
-    for call in calls:
-        phrase = _PROGRESS_PHRASES.get(str(call.get("tool") or call.get("tool_name") or ""))
-        if phrase:
-            return phrase
-    return _GENERIC_PROGRESS
+    # Last phrase reported, so a repeat can be suppressed. Shared across the loop
+    # tree because a sub-loop repeating its parent's line reads as a stall too.
+    last_progress: str | None = None
 
 
 def _report_progress(ctx: _LoopContext, calls: list[dict[str, Any]]) -> None:
     """Best-effort. A progress callback that raises must never cost an answer the
-    loop already paid for -- this is a UI affordance, not part of the result."""
+    loop already paid provider calls for -- this is a UI affordance, not part of
+    the result.
+
+    Consecutive duplicates are dropped: the same sentence twice reads as a
+    stalled request, which is the opposite of what this exists to convey. State
+    lives on the shared context, so a sub-loop cannot repeat its parent's line.
+    """
     if ctx.on_progress is None:
         return
     try:
-        ctx.on_progress(_progress_phrase(calls))
+        phrase = phrase_for(calls)
+        if phrase == ctx.last_progress:
+            return
+        ctx.last_progress = phrase
+        ctx.on_progress(phrase)
     except Exception:  # noqa: BLE001 -- cosmetic channel, never fatal
         logger.warning("progress callback raised; continuing", exc_info=True)
 
