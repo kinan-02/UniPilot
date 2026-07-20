@@ -1,19 +1,22 @@
-"""Internal /advise route -- the live entry point into `agent_core`.
+"""Internal /advise route -- the live entry point into the agent.
 
 Protected by the existing internal-service-token dependency (the same one
 `services/api`'s `ai_advisor_client.py` already sends
-`X-Internal-Service-Token` for), not a user JWT -- `services/api` is the
-only intended caller, already authenticated the end user itself.
+`X-Internal-Service-Token` for), not a user JWT -- `services/api` is the only
+intended caller, already authenticated the end user itself.
 
 The response shape matches EXACTLY what `services/api`'s
 `advisor_service.py::ask_advisor_for_user` already parses (`response.answer`/
 `confidence`/`course_ids`/`wiki_slugs`/`sources`/`contacts`/`eligibility`,
-`semester_resolution`, `retrieval_agent.status`) -- that mapping logic and
-the frontend's `AdvisorReply` type are unchanged by this route (§11).
+`semester_resolution`, `retrieval_agent.status`) -- that mapping and the
+frontend's `AdvisorReply` type are unchanged by this route.
 
-V2: the request runs through the single thinking-ON agent loop
-(`app.agent_core.loop.run_agent_loop`). `course_ids`/`sources` stay derived in
-code from the loop's tool audit trail, never model-authored.
+The request runs through the fact/tool loop (`app.agent_core.facts`). Everything
+the response needs -- the answer, its confidence band, the course codes it
+grounded, the outcome status -- is derived from the loop's own result by
+`facts.service`, never model-authored: the loop's working set is the only
+channel through which data is admitted, so a number that reached the prose
+without a fact behind it is filtered back out.
 """
 
 from __future__ import annotations
@@ -28,10 +31,8 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.agent_core.loop import AgentLoopResult, run_agent_loop
-from app.agent_core.loop.course_names import course_codes_in, course_display_name
-from app.agent_core.certainty import ToolInvocationRecord
-from app.agent_core.tools.default_registry import build_default_tool_registry
+from app.agent_core.facts.loop import LoopResult
+from app.agent_core.facts.service import Advice, course_references, run_advice, to_advice
 from app.config import get_settings
 from app.core.responses import success_response
 from app.dependencies.internal_auth import require_internal_service_token
@@ -43,171 +44,70 @@ router = APIRouter(dependencies=[Depends(require_internal_service_token)])
 
 _TIMEOUT_MESSAGE = "This question is taking longer than expected to analyze -- please try again or ask something more specific."
 
-# Outcome -> the frontend's retrieval_agent.status vocabulary (kept from V1).
-# A declined (out-of-scope) question IS a completed, valid response -- the system
-# answered by politely declining -- so it maps to "succeeded", not an error state.
-_STATUS_BY_OUTCOME = {
-    "answered": "succeeded",
-    "clarified": "blocked_needs_clarification",
-    "declined": "succeeded",
-    "budget_exhausted": "incomplete",
-}
 
-_WIKI_SOURCE_ENTITY_TYPES = frozenset({"wiki_page", "track", "program", "minor", "faculty"})
-
-
-def _confidence_band(result: AgentLoopResult) -> str:
-    """A low/medium/high band from the answer's grounding. A non-answer is always
-    low; an answer is banded by its weakest grounded fact, so a predicted-pattern
-    or interpreted fact honestly pulls the band down from a pure official record."""
-    if result.outcome != "answered":
-        return "low"
-    confidences = [fact.confidence for fact in result.facts.values()]
-    lowest = min(confidences) if confidences else 0.8
-    if lowest >= 0.9:
-        return "high"
-    if lowest >= 0.6:
-        return "medium"
-    return "low"
-
-
-def _derive_course_ids(audit: list[ToolInvocationRecord]) -> list[str]:
-    """Grounded in real tool calls, never LLM-invented: every successful
-    `get_entity(entity_type="course", ...)` in the loop's audit, deduplicated."""
-    course_ids: set[str] = set()
-    for record in audit:
-        if (
-            record.tool_name == "get_entity"
-            and record.output_ok
-            and record.arguments.get("entity_type") == "course"
-        ):
-            entity_id = record.arguments.get("entity_id")
-            if entity_id:
-                course_ids.add(str(entity_id))
-    return sorted(course_ids)
-
-
-def _course_references(course_ids: list[str]) -> list[dict[str, str]]:
-    """Each id with its display name, falling back to the bare id when the course
-    is in neither the wiki nor the catalog."""
-    return [{"id": course_id, "name": course_display_name(course_id) or course_id} for course_id in course_ids]
-
-
-def _mentioned_course_ids(answer: str, facts: dict[str, Any]) -> set[str]:
-    """Course codes the answer names that also appear in a grounded fact.
-
-    `_derive_course_ids` alone leaves the UI's "Referenced Courses" chips empty
-    for the most common question shape: courses usually arrive in ONE bulk
-    payload (`completed_courses`, a semester plan), not one `get_entity` per
-    course. A live 2026-07-19 answer named eight courses with their codes and
-    shipped `courseIds: []`, so the metadata footer rendered nothing at all.
-
-    Still not model-authored: facts are the loop's only channel for admitted
-    data, so intersecting against them keeps a hallucinated 8-digit number out
-    even though it appeared in the prose.
-    """
-    grounded = course_codes_in(json.dumps([fact.value for fact in facts.values()], default=str))
-    return course_codes_in(answer) & grounded
-
-
-def _derive_sources(audit: list[ToolInvocationRecord]) -> list[str]:
-    """Grounded in real tool calls: successful wiki/track/etc. fetches, plus the
-    query term of each successful search (a provenance hint -- the audit records
-    arguments + status, not the result payload)."""
-    sources: set[str] = set()
-    for record in audit:
-        if record.tool_name == "get_entity" and record.output_ok:
-            if record.arguments.get("entity_type") in _WIKI_SOURCE_ENTITY_TYPES:
-                entity_id = record.arguments.get("entity_id")
-                if entity_id:
-                    sources.add(str(entity_id))
-        elif record.tool_name == "search_knowledge" and record.output_ok:
-            query = record.arguments.get("query") or record.arguments.get("search_query")
-            if query:
-                sources.add(f"search: {query}")
-    return sorted(sources)
-
-
-def _response_payload(
-    *,
-    answer: str,
-    confidence: str,
-    course_ids: list[str],
-    retrieval_status: str,
-    sources: list[str] | None = None,
-) -> dict[str, Any]:
+def _response_payload(advice: Advice) -> dict[str, Any]:
     return {
         "response": {
-            "answer": answer,
-            "confidence": confidence,
-            "course_ids": course_ids,
+            "answer": advice.answer,
+            "confidence": advice.confidence,
+            "course_ids": advice.course_ids,
             # The same ids carrying their display name, so the UI can label a
-            # citation "E-Commerce Models" instead of "00960211" -- the chips had
-            # exactly the bare-code readability problem the answer prose already
-            # fixed. Looked up in code like every name; never model-authored.
-            "courses": _course_references(course_ids),
-            # No primitive/entity type grounds these yet -- left honestly empty
-            # rather than faked (don't fabricate what the system can't ground).
+            # citation "E-Commerce Models" instead of "00960211". Looked up in
+            # code like every name; never model-authored.
+            "courses": course_references(advice.course_ids),
+            # No primitive grounds these yet -- left honestly empty rather than
+            # faked.
             "wiki_slugs": [],
-            "sources": sources or [],
+            "sources": advice.sources,
             "contacts": [],
             "eligibility": None,
         },
         "semester_resolution": None,
-        "retrieval_agent": {"status": retrieval_status},
+        "retrieval_agent": {"status": advice.status},
     }
 
 
-def _log_outcome(result: AgentLoopResult) -> None:
+def _timeout_payload() -> dict[str, Any]:
+    return _response_payload(
+        Advice(
+            answer=_TIMEOUT_MESSAGE,
+            confidence="low",
+            course_ids=[],
+            status="timeout",
+            sources=[],
+            outcome="timeout",
+        )
+    )
+
+
+def _log_outcome(result: LoopResult, advice: Advice) -> None:
     """What the run cost and how it ended.
 
-    Neither was recorded anywhere: diagnosing a bad 2026-07-19 answer meant asking
-    the student to paste it back, because the logs showed every tool the loop
-    CALLED and nothing it SAID, and no outcome either.
-
     The answer text carries grades and course history, so it is logged only
-    outside production. The metrics are safe everywhere and are what turns "it
+    outside production. The metrics are safe everywhere and are what turn "it
     felt slow" into a number.
     """
     logger.info(
-        "agent_loop_outcome outcome=%s turns=%d llm_calls=%d wall_clock_s=%.1f "
-        "facts=%d ungrounded=%d sub_asks=%d answer_chars=%d",
+        "advise_outcome outcome=%s status=%s turns=%d facts=%d confidence=%s answer_chars=%d",
         result.outcome,
+        advice.status,
         result.turns,
-        result.llm_calls,
-        result.wall_clock_s,
         len(result.facts),
-        len(result.ungrounded_numbers),
-        len(result.sub_asks),
-        len(result.answer or ""),
+        advice.confidence,
+        len(advice.answer),
     )
     if get_settings().environment != "production":
-        logger.info("agent_loop_answer %s", json.dumps(result.answer or "", ensure_ascii=False))
+        logger.info("advise_answer %s", json.dumps(advice.answer, ensure_ascii=False))
 
 
-def _build_advise_response(question: str, result: AgentLoopResult) -> dict[str, Any]:
-    _log_outcome(result)
-    course_ids = set(_derive_course_ids(result.audit))
-    course_ids |= _mentioned_course_ids(result.answer, result.facts)
-    return {
-        "question": question,
-        **_response_payload(
-            answer=result.answer,
-            confidence=_confidence_band(result),
-            course_ids=sorted(course_ids),
-            retrieval_status=_STATUS_BY_OUTCOME.get(result.outcome, "incomplete"),
-            sources=_derive_sources(result.audit),
-        ),
-    }
+def _build_advise_response(question: str, result: LoopResult) -> dict[str, Any]:
+    advice = to_advice(result)
+    _log_outcome(result, advice)
+    return {"question": question, **_response_payload(advice)}
 
 
 def _timeout_response(question: str) -> dict[str, Any]:
-    return {
-        "question": question,
-        **_response_payload(
-            answer=_TIMEOUT_MESSAGE, confidence="low", course_ids=[], retrieval_status="timeout"
-        ),
-    }
+    return {"question": question, **_timeout_payload()}
 
 
 @router.post("/advise")
@@ -215,19 +115,17 @@ async def advise_route(payload: AdviseRequest) -> dict[str, Any]:
     settings = get_settings()
     try:
         result = await asyncio.wait_for(
-            run_agent_loop(
+            run_advice(
                 question=payload.question,
                 user_id=payload.user_id,
-                registry=build_default_tool_registry(),
+                settings=settings,
+                conversation_id=payload.conversation_id,
             ),
             timeout=settings.agent_turn_timeout_seconds,
         )
     except asyncio.TimeoutError:
-        # Only a hung provider should reach here. The loop's own wall-clock budget
-        # (§7) concludes below this ceiling and degrades into a grounded partial
-        # answer, which is strictly better than the canned string below -- see the
-        # ordering invariant on `agent_turn_timeout_seconds` in config.py, which
-        # this comment previously asserted while the opposite was true.
+        # Only a hung provider should reach here -- the loop's own turn budget
+        # concludes below this ceiling.
         return success_response(_timeout_response(payload.question))
     return success_response(_build_advise_response(payload.question, result))
 
@@ -256,15 +154,14 @@ def _to_frontend_advisor_shape(raw: dict[str, Any]) -> dict[str, Any]:
 
 async def _drain_until_done(
     progress: asyncio.Queue[str],
-    loop_task: asyncio.Task[AgentLoopResult],
+    loop_task: asyncio.Task[LoopResult],
     timeout: float,
 ) -> AsyncIterator[str]:
     """Yield queued progress phrases until the loop task finishes.
 
-    The whole-request ceiling is enforced here rather than by wrapping the loop in
-    `asyncio.wait_for`, because the generator has to stay awake forwarding
-    progress for as long as the loop runs. Same ceiling, same TimeoutError, same
-    ordering invariant against WALL_CLOCK_S (see config.py).
+    The whole-request ceiling is enforced here rather than by wrapping the loop
+    in `asyncio.wait_for`, because the generator has to stay awake forwarding
+    progress for as long as the loop runs.
     """
     deadline = time.monotonic() + timeout
     while True:
@@ -290,26 +187,21 @@ async def _drain_until_done(
 
 @router.post("/advise/stream")
 async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
-    """Typed-event SSE (§11). The V2 answer is composed deterministically after
-    the loop concludes (not token-by-token from the model), so the stream emits
-    the finished answer as one `chunk` then a `final` event -- no fragile
-    text-backfill reconciliation, which the untyped V1 queue needed."""
+    """Typed-event SSE. The answer is assembled after the loop concludes (not
+    token-by-token from the model), so the stream emits the finished answer as
+    one `chunk` then a `final` event. While the loop runs, it forwards one short
+    progress phrase per turn so a long request is not silent."""
     settings = get_settings()
 
     async def _event_generator():
-        # The answer is composed only after the loop concludes, so without this
-        # the connection is silent for the WHOLE request -- measured at 100% of a
-        # 62s question on 2026-07-19, and planning questions run past 190s. The
-        # loop reports a student-facing phrase per turn; we forward those while
-        # waiting. Strictly additive: `progress` is advisory, and a client that
-        # ignores it sees exactly the `chunk` + `final` pair it saw before.
         progress: asyncio.Queue[str] = asyncio.Queue()
         loop_task = asyncio.create_task(
-            run_agent_loop(
+            run_advice(
                 question=payload.question,
                 user_id=payload.user_id,
-                registry=build_default_tool_registry(),
+                settings=settings,
                 on_progress=progress.put_nowait,
+                conversation_id=payload.conversation_id,
             )
         )
 

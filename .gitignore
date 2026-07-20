@@ -86,6 +86,12 @@ services/agent/tmp/
 **/live_eval_logs/*.json
 **/live_eval_logs/check.py
 
+# Complex-planning eval output at the repo root -- reachable directly from the
+# project directory, but the transcripts carry a student's grades and course
+# history, so they stay out of git by default. Share one explicitly with
+# `git add -f agent_planning_eval/<file>`.
+/agent_planning_eval/
+
 services/api/data/cache/wiki_embedding_index.json
 services/api/data/cache/wiki_embedding_index.compact.pkl.gz
 services/api/data/cache/wiki_embedding_index.meta.json
