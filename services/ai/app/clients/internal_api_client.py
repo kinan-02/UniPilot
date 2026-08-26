@@ -70,3 +70,25 @@ async def fetch_student_user_context(*, user_id: str, settings: Settings | None 
     cfg = settings or get_settings()
     data = await _request("GET", f"/internal/user-context/users/{user_id}", settings=cfg)
     return data["userContext"]
+
+
+async def fetch_term_plan(
+    *,
+    user_id: str,
+    semester_codes: list[str],
+    candidates: list[dict[str, Any]],
+    max_credits: float | None = None,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    """Build a conflict-free term plan from agent-supplied candidates.
+
+    Returns the endpoint's full result payload: `terms` (each with placedCourses,
+    credits, weeklySchedule, examSummary), `unscheduled`, and `maxCredits`.
+    """
+    cfg = settings or get_settings()
+    body: dict[str, Any] = {"semesterCodes": semester_codes, "candidates": candidates}
+    if max_credits is not None:
+        body["maxCredits"] = max_credits
+    return await _request(
+        "POST", f"/internal/term-plan/users/{user_id}", settings=cfg, json_body=body
+    )

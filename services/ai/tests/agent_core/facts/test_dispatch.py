@@ -188,8 +188,94 @@ class TestProseChain:
             context,
         )
         held = result.facts["elective_codes"]
-        assert [r.fields["value"].value for r in held.value.records] == ["0960327", "0960324"]
+        # The wiki renders codes a digit short; the extracted set comes back
+        # canonicalised to 8 digits so it joins to the catalog's courseNumber.
+        assert [r.fields["value"].value for r in held.value.records] == ["00960327", "00960324"]
         assert held.citation.source == "track-ise"
+
+    async def test_extract_list_restores_the_wiki_dropped_leading_zero(self) -> None:
+        """The whole reason a live 'include electives' plan found zero electives:
+        the wiki shows `0960600`, the catalog stores `00960600`, and the semi-join
+        silently matched nothing. extract_list must hand back the 8-digit form."""
+
+        class _Retriever:
+            async def search(self, query, limit):
+                return (Passage("track-ise", "ISE", "Faculty electives: 0960600, 0960620.", 0.9),)[:limit]
+
+        class _Extractor:
+            async def extract(self, p, q, e):
+                return None, ""
+
+            async def extract_all(self, passage, question, expect):
+                return [("0960600", passage.excerpt), ("0960620", passage.excerpt)]
+
+        context = DispatchContext(retriever=_Retriever(), extractor=_Extractor())
+        await dispatch({"tool": "search_corpus", "as": "hits", "args": {"query": "electives"}}, context)
+        result = await dispatch(
+            {"tool": "extract_list", "as": "codes",
+             "args": {"slug": "track-ise", "question": "codes", "expect": "identifier"}},
+            context,
+        )
+        assert [r.fields["value"].value for r in result.facts["codes"].value.records] == ["00960600", "00960620"]
+
+    async def test_search_stashes_the_whole_page_when_the_retriever_serves_it(self) -> None:
+        """The stash holds the FULL page, not just the chunk that made top-k -- so
+        extract_list reads a section retrieval never surfaced. This is the fix for
+        the live plan that classified against only 2 of ~40 required codes and
+        then refused on a duplicate."""
+
+        class _Retriever:
+            async def search(self, query, limit):
+                # Search surfaces only a tiny header chunk...
+                return (Passage("track-ise", "ISE", "Information Systems Engineering track.", 0.9),)[:limit]
+
+            def page(self, slug):
+                # ...but the whole page, with the elective section, is held by slug.
+                return "ISE track.\n## Faculty Electives\n0960600 and 0960620 are offered."
+
+        class _Extractor:
+            async def extract(self, p, q, e):
+                return None, ""
+
+            async def extract_all(self, passage, question, expect):
+                import re
+
+                return [(c, passage.excerpt) for c in re.findall(r"\d{7}", passage.excerpt)]
+
+        context = DispatchContext(retriever=_Retriever(), extractor=_Extractor())
+        await dispatch({"tool": "search_corpus", "as": "hits", "args": {"query": "ise"}}, context)
+        result = await dispatch(
+            {"tool": "extract_list", "as": "codes",
+             "args": {"slug": "track-ise", "question": "codes", "expect": "identifier"}},
+            context,
+        )
+        # Codes that appear ONLY in the full page (never in the search chunk) are
+        # extracted -- proof the stash carried the whole page, not the fragment.
+        assert [r.fields["value"].value for r in result.facts["codes"].value.records] == ["00960600", "00960620"]
+
+    async def test_interpret_restores_the_wiki_dropped_leading_zero(self) -> None:
+        """A SINGLE course code read via interpret gets the same canonicalisation as
+        extract_list, so it too joins to the catalog's 8-digit courseNumber."""
+
+        class _Retriever:
+            async def search(self, query, limit):
+                return (Passage("track-ise", "ISE", "The commerce course uses code 0960221.", 0.9),)[:limit]
+
+        class _Extractor:
+            async def extract(self, passage, question, expect):
+                return "0960221", passage.excerpt
+
+            async def extract_all(self, p, q, e):
+                raise AssertionError("interpret must use extract, not extract_all")
+
+        context = DispatchContext(retriever=_Retriever(), extractor=_Extractor())
+        await dispatch({"tool": "search_corpus", "as": "hits", "args": {"query": "commerce"}}, context)
+        result = await dispatch(
+            {"tool": "interpret", "as": "code",
+             "args": {"slug": "track-ise", "question": "the commerce course code", "expect": "identifier"}},
+            context,
+        )
+        assert result.facts["code"].value.value == "00960221"
 
     async def test_chunks_of_one_page_accumulate_under_its_slug(self) -> None:
         """The wiki is heading-segmented, so one page returns several chunks that
@@ -221,8 +307,8 @@ class TestProseChain:
             context,
         )
         # Both the required code and the elective code survive -- proof neither
-        # chunk overwrote the other.
-        assert {r.fields["value"].value for r in result.facts["codes"].value.records} == {"0940314", "0960327"}
+        # chunk overwrote the other. Canonicalised to 8 digits on the way out.
+        assert {r.fields["value"].value for r in result.facts["codes"].value.records} == {"00940314", "00960327"}
 
     async def test_a_prose_tool_resolves_a_fact_ref_slug(self) -> None:
         """The model generalises the {"fact": name} idiom to `slug`, and it is
@@ -251,7 +337,7 @@ class TestProseChain:
             {"tool": "extract_list", "as": "codes", "args": {"slug": {"fact": "program_slug"}, "question": "codes", "expect": "identifier"}},
             context,
         )
-        assert [r.fields["value"].value for r in result.facts["codes"].value.records] == ["0960327"]
+        assert [r.fields["value"].value for r in result.facts["codes"].value.records] == ["00960327"]
 
     async def test_extract_list_on_an_unretrieved_slug_is_refused(self) -> None:
         class _Extractor:

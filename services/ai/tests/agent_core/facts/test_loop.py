@@ -112,6 +112,41 @@ class TestFailuresComeBack:
         assert "refused" in model.prompts[1].lower()
         assert "no fact" in model.prompts[1]
 
+    async def test_an_unsound_plan_is_sent_back_with_the_specific_reason(self) -> None:
+        """Grounding passes -- the -82 is a real fact, correctly slotted -- but the
+        verify step catches that no grade is negative, and hands the reason back so
+        the retry can floor it. The corrected plan then ships."""
+        bad = Collection(
+            records=(Record(
+                fields={"number": Scalar(I, "00940395"), "credits": Scalar(Q, 1.5), "min_grade": Scalar(Q, -82.0)},
+                basis=Basis.OFFICIAL_RECORD,
+            ),),
+            completeness=Completeness(complete=True, total=1),
+        )
+        ok = Collection(
+            records=(Record(
+                fields={"number": Scalar(I, "00940412"), "credits": Scalar(Q, 4.0), "min_grade": Scalar(Q, 19.25)},
+                basis=Basis.OFFICIAL_RECORD,
+            ),),
+            completeness=Completeness(complete=True, total=1),
+        )
+        model = _ScriptedModel(
+            {"answer": "Winter plan: {bad:detail}"},   # unsound: a negative minimum
+            {"answer": "Winter plan: {ok:detail}"},    # corrected: floored to a real grade
+        )
+        context = _context(bad=bad, ok=ok, total_points=Scalar(Q, 5243.0), total_credits=Scalar(Q, 62.5))
+
+        result = await run_loop("plan winter to keep my GPA above 80", model, context)
+
+        assert result.outcome == "answered"
+        # One record, so no list bullet stranded mid-sentence, and the
+        # projected `min_grade` reads as "min grade" -- see `_render_detail`
+        # and `_readable_label`.
+        assert result.answer.text == (
+            "Winter plan: number 00940412 · credits 4 · min grade 19.25"
+        )
+        assert "refused" in model.prompts[1].lower() and "below 0" in model.prompts[1]
+
 
 class TestGovernors:
     async def test_repeated_rejection_stops_rather_than_spending_the_budget(self) -> None:
@@ -158,13 +193,33 @@ class TestGovernors:
 
 
 class TestWhatTheModelSees:
-    async def test_the_prompt_carries_the_catalog_and_the_facts(self) -> None:
+    async def test_the_turn_prompt_carries_the_question_and_the_facts(self) -> None:
         model = _ScriptedModel({"answer": "{count}"})
         await run_loop("how many?", model, _context(count=Scalar(Q, 1.0)))
         prompt = model.prompts[0]
         assert "how many?" in prompt
-        assert "## compute" in prompt, "the tool catalog must be present"
         assert "count = 1" in prompt, "held facts must be visible"
+
+    async def test_the_catalog_is_in_the_system_prompt_not_repeated_every_turn(self) -> None:
+        """It used to be in the TURN prompt, and this test used to assert that.
+
+        The catalog is an instruction set: it is identical on turn 1 and turn 8,
+        so repeating it costs its full size on every turn of every run -- the
+        single largest item in the per-turn floor. It moved into the system
+        prompt, which is sent once.
+
+        Both halves are asserted, because only checking the system prompt would
+        pass equally well if the catalog were in BOTH places, which is the
+        regression that costs the tokens.
+        """
+        from app.agent_core.facts.adapter import build_system_prompt
+
+        context = _context(count=Scalar(Q, 1.0))
+        model = _ScriptedModel({"answer": "{count}"})
+        await run_loop("how many?", model, context)
+
+        assert "## compute" in build_system_prompt(context), "the catalog must reach the model"
+        assert "## compute" not in model.prompts[0], "the catalog must not repeat every turn"
 
     async def test_the_prompt_shows_shapes_not_payloads(self) -> None:
         """The prompt must grow with the NUMBER of facts, not their size, or one

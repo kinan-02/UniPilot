@@ -87,7 +87,20 @@ PRIMITIVES: tuple[ToolSpec, ...] = (
             "and the academic regulations. The `find` sources hold a student's own records "
             "(transcript, plan, profile) and the raw catalog -- they do NOT hold which courses a "
             "degree requires or which count as electives. That is here. Returns CANDIDATES with "
-            "scores, never an answer; reading one is a separate `interpret` step."
+            "scores, never an answer; reading one is a separate `interpret` step.\n"
+            "     Two KINDS of page answer differently, and picking the wrong kind gives a real "
+            "quote to the wrong question. A `regulations-*` page states the rules that apply to "
+            "EVERY student -- the English and Hebrew requirements, the pass mark, GPA minimums, "
+            "graduation conditions. A `track-*` page states what THIS degree adds: its course "
+            "list, its electives, and notes about specific courses. For 'what must I do to "
+            "graduate' read the REGULATIONS; a track page's line on the same topic is usually a "
+            "note about one course, and answering from it gives a deadline where the requirement "
+            "was asked for. When both look relevant, read both and say which is which.\n"
+            "     ONE SEARCH PER PAGE. Retrieved passages accumulate by slug and the WHOLE page is "
+            "kept where it can be fetched, so if the slug you want is already among your hits, "
+            "searching again for it returns what you are holding. Rephrasing the query does not "
+            "change that -- go straight to `interpret` or `extract_list` on the slug. Live planning "
+            "runs routinely spent two consecutive turns on near-identical queries for one page."
         ),
         example={"tool": "search_corpus", "as": "policy_hits", "args": {"query": "industrial engineering track required courses and electives", "limit": 5}},
         requires="retriever",
@@ -143,6 +156,12 @@ PRIMITIVES: tuple[ToolSpec, ...] = (
             "     To compute ONE value straight FROM held scalars -- a GPA from points and credits, "
             "an average, a threshold -- a pipeline drops `source`/`stages` and gives a `value` "
             'expression: {"name": "gpa", "value": {"div": [{"fact": "points"}, {"fact": "credits"}]}}. '
+            "     A COMPARISON is a value expression too, and yields true/false rather than a "
+            'number: {"name": "eligible", "value": {"gte": [{"fact": "met_groups"}, '
+            '{"fact": "all_groups"}]}}. `gte`/`gt`/`lte`/`lt`/`eq`. Reach for it whenever the '
+            "question is a yes/no about two quantities -- am I eligible, do I meet the minimum, "
+            "is my average above the threshold -- instead of subtracting them and describing the "
+            "sign of the result. "
             "The expression is the same one an `extend` field takes (`{\"fact\":..}` for a held "
             "scalar, `{\"value\":..}` for a literal, and `add`/`sub`/`mul`/`div`), only without "
             "`{\"path\":..}` -- there are no rows to read. No carrier collection, no `aggregate only`."
@@ -197,12 +216,23 @@ PRIMITIVES: tuple[ToolSpec, ...] = (
             "For questions about a period that has not happened -- will this run next spring. "
             "`observations` names a collection you have already fetched, one record per past "
             "occurrence, with a field naming the period. Needs the WHOLE history: a projection "
-            "from a partial one gets reported as though it were the whole record."
+            "from a partial one gets reported as though it were the whole record.\n"
+            "     ALWAYS give `cycle_path` -- the field naming the repeating unit the period sits "
+            "inside, `academicYear` for a semester. Without it the rate is the share of all "
+            "offerings that fell in the target period, which is a different question and inverts "
+            "the answer for any course offered in more than one term: a course that ran EVERY "
+            "spring for three years, but also in winter and summer, scores 0.43 and comes back "
+            "'will not run'."
         ),
         example={
             "tool": "forecast",
             "as": "spring_forecast",
-            "args": {"observations": "past_offerings", "period_path": "semesterName", "target": "spring"},
+            "args": {
+                "observations": "past_offerings",
+                "period_path": "semesterName",
+                "cycle_path": "academicYear",
+                "target": "spring",
+            },
         },
     ),
     ToolSpec(
@@ -260,6 +290,63 @@ PRIMITIVES: tuple[ToolSpec, ...] = (
 )
 
 
+COMPOSITES: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        name="plan_term",
+        purpose="Build a conflict-free, exam-safe schedule for one or more terms from candidate courses.",
+        when=(
+            "Once you HOLD the eligible candidate courses -- `remaining_courses` is exactly that, "
+            "already tagged mandatory or elective -- call this to seat them into the timetable of a "
+            "term. Unlike `optimize`, which places items into abstract slots, this builds the REAL "
+            "weekly schedule using the university's own planner: it keeps only courses offered that "
+            "term, assigns non-conflicting lecture/tutorial/lab groups, checks exam dates, respects "
+            "the credit cap and the no-additional-credit rule, and FLAGS an unmet prerequisite "
+            "rather than guessing. It returns the courses actually PLACED -- each carrying its "
+            "credits -- plus the ones that did not fit and why. The result is SIMULATED, a proposal "
+            "about a term that has not happened.\n"
+            "     This is the tool for 'plan my next semester': it removes the fragile "
+            "offerings -> place -> split-by-term hand-wiring by doing it in one deterministic call. "
+            "Give `terms` by NAME -- \"winter\", \"spring\", \"summer\" (a year-coded \"2025-1\" is "
+            "also accepted) -- and `candidates` as course numbers each with a category, \"mandatory\" "
+            "or \"elective\". Each placed course comes back tagged with the `term` you asked for, so "
+            "you split the plan on that same string -- which means the names must be DISTINCT. For "
+            "several terms ahead use year-coded ones, [\"2026-1\", \"2026-2\", \"2026-3\"]; asking "
+            "for \"winter\" twice returns two terms under one label that any later split merges, and "
+            "a merged term breaks the credit cap the planner had applied correctly to each. "
+            "Read back the placed courses and their `credits` "
+            "to derive anything per-course -- a minimum grade to hold a GPA, say -- with `compute`, "
+            "exactly as you would off any other collection.\n"
+            "     PROJECT IT BEFORE YOU RENDER IT. Each placed course carries six fields "
+            "(courseNumber, courseTitle, credits, category, prereqStatus, term), which is wider than "
+            "`:detail` accepts, so slotting the plan raw is ALWAYS refused and costs you two turns "
+            "finding that out. `compute` a `project` down to the few a reader needs -- the number, "
+            "the title, the credits -- and slot that instead."
+        ),
+        example={
+            "tool": "plan_term",
+            "as": "winter_plan",
+            "args": {
+                "terms": ["winter"],
+                "candidates": "remaining_courses",
+                "max_credits": 20,
+            },
+        },
+        requires="settings",
+    ),
+)
+"""Domain COMPOSITES -- deliberately NOT primitives.
+
+`plan_term` wraps a whole sequence (offerings filter, conflict-free placement,
+exam check, per-term split) that the general primitives can express but that the
+model kept mis-wiring on the last mile. It is quarantined here, apart from
+`PRIMITIVES`, precisely because it is the composite the primitive set exists to
+avoid: keeping the two lists separate keeps the "nine primitives" invariant
+honest while still advertising the shortcut where it earns its place."""
+
+
+_CATALOG: tuple[ToolSpec, ...] = PRIMITIVES + COMPOSITES
+
+
 def available_tools(context: Any = None) -> tuple[ToolSpec, ...]:
     """The tools whose dependencies are actually wired.
 
@@ -269,10 +356,10 @@ def available_tools(context: Any = None) -> tuple[ToolSpec, ...]:
     the live context: 8 tools documented, 3 usable.
     """
     if context is None:
-        return PRIMITIVES
+        return _CATALOG
     obtainable = getattr(context, "obtainable", frozenset()) or frozenset()
     return tuple(
-        spec for spec in PRIMITIVES
+        spec for spec in _CATALOG
         if (not spec.requires or getattr(context, spec.requires, None) is not None)
         and (not spec.needs_source or spec.needs_source in obtainable)
     )
@@ -323,7 +410,7 @@ def _render_sugar() -> str:
 
 
 def tool_names() -> frozenset[str]:
-    return frozenset(spec.name for spec in PRIMITIVES)
+    return frozenset(spec.name for spec in _CATALOG)
 
 
-__all__ = ["PRIMITIVES", "ToolSpec", "available_tools", "render_catalog", "tool_names"]
+__all__ = ["COMPOSITES", "PRIMITIVES", "ToolSpec", "available_tools", "render_catalog", "tool_names"]

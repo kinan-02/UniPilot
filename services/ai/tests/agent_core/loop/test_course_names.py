@@ -16,10 +16,35 @@ from __future__ import annotations
 import pytest
 
 from app.agent_core.loop.course_names import (
+    canonical_course_code,
     course_codes_in,
     course_display_name,
     set_catalog_names,
 )
+
+
+@pytest.mark.parametrize(
+    "wiki_label, canonical",
+    [
+        ("0960600", "00960600"),  # the real ISE elective, as the wiki renders it
+        ("3240033", "03240033"),
+        ("2160035", "02160035"),
+    ],
+)
+def test_a_seven_digit_wiki_label_gets_its_leading_zero_back(wiki_label, canonical):
+    assert canonical_course_code(wiki_label) == canonical
+
+
+@pytest.mark.parametrize("already_canonical", ["00960600", "00940224"])
+def test_an_eight_digit_code_is_left_alone(already_canonical):
+    assert canonical_course_code(already_canonical) == already_canonical
+
+
+@pytest.mark.parametrize("not_a_course_code", ["012345", "track-ise", "", "960600a", "123456789"])
+def test_anything_that_is_not_a_bare_seven_digit_run_is_untouched(not_a_course_code):
+    # 6-digit program codes, slugs, empties and 9-digit runs must pass through, so
+    # this is safe to run over any extracted identifier, not only course codes.
+    assert canonical_course_code(not_a_course_code) == not_a_course_code
 
 
 @pytest.fixture(autouse=True)

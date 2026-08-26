@@ -39,16 +39,26 @@ def _apply_reasoning_kwargs(
     OpenAI's own documented parameter for the same concept. The one thing
     that IS provider-specific is how to request "no reasoning at all":
     DeepSeek needs an explicit opt-out (`extra_body={"thinking": {"type":
-    "disabled"}}`, DeepSeek's own documented shape); other providers simply
-    never receive a `reasoning_effort` kwarg in that case, which is already
-    "no reasoning requested" for them -- sending DeepSeek's opt-out field to
-    a provider that doesn't recognize it would be meaningless wire noise,
-    not a graceful no-op to rely on.
+    "disabled"}}`, DeepSeek's own documented shape); other providers express
+    it through the effort value itself -- OpenAI's `reasoning_effort` takes
+    `"none"` as its off state, so `thinking_enabled=false` maps to
+    `reasoning_effort="none"` here.
+
+    `thinking_enabled` is the MASTER switch, checked before any effort. Sending
+    the off-value explicitly -- rather than omitting the kwarg and leaning on
+    the provider's default -- is deliberate: on OpenAI the default for an
+    omitted `reasoning_effort` is already `none`, so an unset flag silently
+    disabled reasoning while looking configurable, and a stray
+    `reasoning_effort` could slip past a `thinking_enabled=false` that never
+    touched the wire. With the switch explicit, the flag means what it says on
+    every provider, and turning reasoning back on is a real, reachable setting.
     """
     if provider == "deepseek" and not thinking_enabled:
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         return
-    if reasoning_effort:
+    if not thinking_enabled:
+        kwargs["reasoning_effort"] = "none"
+    elif reasoning_effort:
         kwargs["reasoning_effort"] = reasoning_effort
 
 

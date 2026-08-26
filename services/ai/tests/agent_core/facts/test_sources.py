@@ -63,6 +63,26 @@ class TestShape:
         assert _coerce(ObjectId("507f1f77bcf86cd799439011"), ScalarKind.QUANTITY) is None
 
 
+class TestLiveMoodleSource:
+    """`moodle_grades` is written by services/operator -- the first non-registrar source. It joins
+    the catalog the same way `course_offerings` does, and carries the weaker LIVE_MOODLE basis."""
+
+    def test_it_is_a_live_moodle_basis_joined_to_the_catalog_on_courseNumber(self) -> None:
+        from app.agent_core.facts.sources import MOODLE_GRADES
+        from app.agent_core.facts.types import Basis
+
+        assert MOODLE_GRADES.basis is Basis.LIVE_MOODLE
+        assert ("courseNumber", "courses.courseNumber") in MOODLE_GRADES.joins
+        assert MOODLE_GRADES.fields["grade"] is ScalarKind.QUANTITY
+
+    def test_userId_is_an_objectid_filter_target(self) -> None:
+        """Per-student data: a string `userId` filter must bind to an ObjectId, or it silently
+        matches nothing -- the confident-silence failure `TestObjectIdFilters` exists to prevent."""
+        from app.agent_core.facts.sources import MOODLE_GRADES
+
+        assert "userId" in MOODLE_GRADES.object_id_fields
+
+
 class TestObjectIdFilters:
     """A predicate arrives with STRING values, because that is what a model can
     write. The fields it filters on are often stored as ObjectId.
@@ -332,11 +352,13 @@ class TestSemiJoin:
         )
 
     def _resolve(self, predicate_json, facts):
+        # Takes the FACTS, not the whole context: resolving a `FactRef` needs the
+        # working set and nothing else, and the narrower signature is what the
+        # standalone agent settled on.
         from app.agent_core.facts.codec import parse_predicate
-        from app.agent_core.facts.dispatch import DispatchContext, _resolve_fact_refs
+        from app.agent_core.facts.dispatch import _resolve_fact_refs
 
-        context = DispatchContext(facts=facts)
-        return _resolve_fact_refs(parse_predicate(predicate_json), context)
+        return _resolve_fact_refs(parse_predicate(predicate_json), facts)
 
     def test_it_resolves_to_the_distinct_set_of_field_values(self) -> None:
         from app.agent_core.facts.predicate import Comparison, Op

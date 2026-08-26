@@ -9,6 +9,14 @@ fact set and then spend its remaining turns not knowing it was done. A turn that
 produces no new fact and attempts no answer is not thinking -- it is stalling,
 and `NO_PROGRESS_LIMIT` ends it rather than letting the wall clock do it.
 
+**Wandering that LOOKS productive.** The guard above asks whether a fact
+arrived, and a re-derivation always produces one, so renaming the output made a
+lap invisible to it: ten measured runs showed the same `search_corpus` query
+issued sixteen times and the same pipeline recomputed five times, every lap
+resetting the no-progress counter. Progress is therefore counted against
+`_call_signatures` -- what a call DERIVES, with names stripped -- so a lap round
+the same derivation is what it is: no progress, reported back to the model.
+
 **Rejection with no legal move.** The old answer boundary could reject every
 formulation the model had, so it burned the budget rediscovering that. Rejections
 are bounded here AND carry the reason back, so a retry differs from its
@@ -25,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from app.agent_core.facts.answer import Answer, HeldFact, Ungrounded, resolve_answer
+from app.agent_core.facts.answer_verify import verify_answer
 from app.agent_core.facts.catalog import render_catalog
 from app.agent_core.facts.conversation import Exchange, render_history
 from app.agent_core.facts.dispatch import DispatchContext, dispatch
@@ -33,15 +42,62 @@ from app.agent_core.facts.presentation import render_facts
 from app.agent_core.facts.propose import Proposal
 
 MAX_TURNS = 8
-NO_PROGRESS_LIMIT = 3
+NO_PROGRESS_LIMIT = 5
 """Turns without a new fact before the loop gives up.
 
 Raised from 2 after live runs: a lookup whose key must be computed first
 legitimately spends a turn producing the key and another using it, and a model
 that mis-shapes the first attempt needs one more. Two was tight enough to kill
 runs that were converging; the guard is against WANDERING, not against thinking.
+
+Raised again from 3 when `_call_signatures` landed. That change made a repeated
+derivation count as no progress -- correctly -- but it also made this number
+mean something much stricter than it used to: before it, almost nothing reset
+the counter's opposite, so three was nearly unreachable. Holding it at three
+turned a run that would have thrashed and eventually converged into one that
+stalled and returned nothing, which is the worse outcome of the two. Measured on
+the knowledge-base question, which searches several phrasings before it finds
+the right page: it stalled twice while recording examples, and its successful
+runs use four to six turns.
 """
 REJECTION_LIMIT = 3
+
+_CORPUS_SEARCH_LIMIT = 5
+"""How many `search_corpus` calls one run may make.
+
+The other governors cannot see this one. `search_corpus` always succeeds and
+always returns hits, so every call counts as progress and `NO_PROGRESS_LIMIT`
+never fires; and `_call_signatures` treats a query differing by one word as a
+different derivation, so the repeat guard misses it too.
+
+Measured: asked for a minimum attendance percentage, which the regulations do
+not set, a run issued 17 searches across 39 turns and 216 seconds. A second,
+asked about physical education, spent 22 turns the same way. Five is well above
+the two or three a genuine multi-page question uses -- the knowledge-base
+question that motivated `NO_PROGRESS_LIMIT` searches four phrasings at most."""
+
+_ABSENT_READINGS_BEFORE_CONCLUDING = 3
+"""Readings that must come back empty before absence is stated as the finding.
+
+Three, not two: two can be one badly-chosen source and its neighbour, and
+concluding from those would turn a retrieval miss into a false claim that the
+regulations are silent. Three distinct passages failing is evidence about the
+CORPUS rather than about the query."""
+
+_VALUE_ABSENT_FROM_PASSAGE = "it contains no such value"
+
+_PREMATURE_ANSWER_LIMIT = 2
+"""Answer attempts made before anything is fetched that are FORGIVEN.
+
+The first one or two are a protocol mistake -- the model using the answer
+channel to say it is not ready -- and charging them to `REJECTION_LIMIT` spends
+the budget for genuinely unsupportable answers before the work begins.
+
+Past that they are the run's whole behaviour, and forgiving them removes the
+only brake: a question with nothing to fetch by its nature ("what can you not
+answer about my degree?") produced 35 consecutive answer attempts, no tool
+calls, and 169.6s of wall clock before the budget stopped it. Beyond this limit
+they count as rejections like any other answer the facts do not support."""
 
 DEFECT_NOTE = "A step failed"
 """Prefix marking an observation as a real failure rather than a nudge.
@@ -72,6 +128,12 @@ class LoopResult:
     turns: int = 0
     facts: dict[str, HeldFact] = field(default_factory=dict)
     transcript: list[Turn] = field(default_factory=list)
+    question: str = ""
+    """What was asked, carried through so the non-answer paths can be written in
+    the language it was asked in. The answered path needs no help -- the model
+    matches the question's language on its own -- but a partial is assembled in
+    code, and a Hebrew question that ran out of budget came back apologising in
+    English."""
 
 
 async def run_loop(
@@ -82,6 +144,8 @@ async def run_loop(
     on_progress: "Callable[[str], None] | None" = None,
     time_budget_s: float | None = None,
     history: "Sequence[Exchange]" = (),
+    seeded_facts: "frozenset[str]" = frozenset(),
+    started_at: float | None = None,
 ) -> LoopResult:
     """Run until the question is answered, refused, or a budget is spent.
 
@@ -101,22 +165,81 @@ async def run_loop(
     number of turns or model calls: a hard turn cap kills a run that was one
     step from done, where a time budget lets it think for as long as it is
     actually making progress inside the window.
+
+    It bounds when a turn may START, and reserves the longest turn seen so far
+    so the run also FINISHES inside the window. Without that reserve the bound
+    is only on the last turn's start: a live "how many semesters" run began a
+    turn at 235s of 240 and returned at 267s. The platform kills the request at
+    300s, and a killed request answers with the platform's error instead of the
+    four fields, which is the one failure mode that escapes every other
+    guarantee here.
     """
-    result = LoopResult(outcome="exhausted", facts=context.facts)
+    result = LoopResult(outcome="exhausted", facts=context.facts, question=question)
     observations: list[str] = []
+    absent_readings = 0
+    """How many passages have been read for a value and found not to contain it."""
+    concluded_absent = False
     idle_turns = 0
     rejections = 0
-    started = time.monotonic()
+    premature = 0
+    searches = 0
+    seen_derivations: set[str] = set()
+    # The budget bounds the CALLER's window, which may have opened before this
+    # loop did. On a cold start the process spends ~13s importing a 45MB bundle
+    # and a 4,895-chunk corpus before any of this runs, and measuring from here
+    # simply does not see it: a live run logged `outcome=answered elapsed=48.2s`
+    # and the caller still got nothing, because 13 + 48 crossed the platform cap
+    # while the response was being written.
+    started = started_at if started_at is not None else time.monotonic()
+    longest_turn = 0.0
+    # Facts the ROUTE seeded, as opposed to ones the model fetched. The
+    # difference decides whether a decline is honest, and it is not inferable
+    # from the context: a caller that pre-loads facts to stand for "already
+    # fetched" -- every test here does -- looks identical to one that seeded
+    # identity.
+    #
+    # The guard below used to hardcode `me`. Then `run_advice` began seeding
+    # four profile columns as well, and it silently stopped working: a weather
+    # question now "held records", so every out-of-scope decline was refused,
+    # retried, and finally returned as `refused` -- which reaches the student as
+    # "I wasn't able to work that out from your records". Nothing failed loudly,
+    # and the tests could not see it, because they never seeded a profile.
+    # Passing the set means the seeding site and this one cannot drift apart.
+    opening_facts = set(seeded_facts) & set(context.facts)
 
     for turn in range(1, max_turns + 1):
-        if time_budget_s is not None and time.monotonic() - started >= time_budget_s:
+        elapsed = time.monotonic() - started
+        # Do not START a turn there is no room to FINISH. Checking only
+        # `elapsed >= budget` bounds when the last turn begins, not when it
+        # ends: a live run began a turn at 235s of a 240s budget and returned at
+        # 267s. The platform kills the request at 300s, and past that the
+        # response is the platform's error rather than the four fields the
+        # contract promises -- so the overrun is the one failure that escapes
+        # every guarantee this loop makes.
+        #
+        # The reserve is the longest turn this run has actually taken, which is
+        # the best evidence available for what the next one will cost. Before
+        # any turn has finished there is nothing to go on, so the first is
+        # always allowed: a budget that refuses to start is worse than one that
+        # overruns.
+        if time_budget_s is not None and elapsed + longest_turn >= time_budget_s:
             result.outcome = "exhausted"
-            result.reason = f"the {time_budget_s:.0f}s time budget was spent before an answer was reached"
+            result.reason = (
+                f"the {time_budget_s:.0f}s time budget was spent before an answer was reached"
+                if longest_turn == 0.0
+                else (
+                    f"stopped after {elapsed:.0f}s of a {time_budget_s:.0f}s budget: another turn "
+                    f"has been taking up to {longest_turn:.0f}s and would overrun it"
+                )
+            )
             result.transcript.append(Turn(turn, "timeout", result.reason))
             return result
 
         result.turns = turn
+        turn_started = time.monotonic()
         reply = await model.respond(_prompt(question, context, observations, history))
+        longest_turn = max(longest_turn, time.monotonic() - turn_started)
+        reply = _lift_answer_call(reply)
         if on_progress is not None:
             _report_progress(on_progress, reply)
 
@@ -131,7 +254,7 @@ async def run_loop(
             # like a bad answer and sent back to keep working, not concluded.
             fetched = [
                 name for name, held in context.facts.items()
-                if name != "me" and not _is_empty(held.value)
+                if name not in opening_facts and not _is_empty(held.value)
             ]
             if not fetched:
                 result.outcome = "declined"
@@ -157,10 +280,50 @@ async def run_loop(
         if "answer" in reply:
             verdict = resolve_answer(str(reply["answer"]), context.facts, question)
             if isinstance(verdict, Answer):
-                result.outcome = "answered"
-                result.answer = verdict
-                result.transcript.append(Turn(turn, "answer", verdict.text))
-                return result
+                # Grounding passed -- every number came from a fact. The verify
+                # step is the SEPARATE question the invariant cannot answer:
+                # are those numbers SANE, and does a min-grade plan hold its
+                # floor when the courses are taken together? A violation is
+                # handled exactly like a rejected answer -- bounded, with the
+                # specific reason fed back -- because it is one: an answer the
+                # facts do not actually support, caught a layer later.
+                problems = verify_answer(verdict, context.facts, question)
+                if not problems:
+                    result.outcome = "answered"
+                    result.answer = verdict
+                    result.transcript.append(Turn(turn, "answer", verdict.text))
+                    return result
+                verdict = Ungrounded("; ".join(problem.message for problem in problems))
+
+            # An answer attempted before ANYTHING has been fetched is not an
+            # answer the facts failed to support -- there are no facts yet. It is
+            # the model using the answer channel to say it is not ready, which
+            # two of the three live `semesters_to_graduate` runs did, one of them
+            # on turn 1: "I'm missing the curriculum and transcript facts needed
+            # to derive your graduation timeline."
+            #
+            # Charging that to REJECTION_LIMIT spent a third of the run's
+            # tolerance for genuinely unsupportable answers on a protocol
+            # mistake, and left one rejection for the real work. The turn is
+            # still gone -- that cost is real and unavoidable -- but the budget
+            # meant for "the facts do not support any phrasing" is not.
+            #
+            # BOUNDED, because exempting it removed the only brake on a run that
+            # never fetches at all. Asked "what can you not answer about my
+            # degree?" -- a question with nothing to fetch by its nature -- the
+            # loop made 35 consecutive answer attempts, zero tool calls, and ran
+            # 169.6s until the clock stopped it. Every attempt was "premature",
+            # so none was ever charged, so nothing concluded.
+            premature_allowed = premature < _PREMATURE_ANSWER_LIMIT
+            if premature_allowed and not [n for n in context.facts if n not in opening_facts]:
+                premature += 1
+                result.transcript.append(Turn(turn, "premature-answer", verdict.reason))
+                observations.append(
+                    "You tried to ANSWER before fetching anything, so there was nothing to ground "
+                    "it in. Do not use the answer channel to say you are not ready -- issue the "
+                    "`find` calls you need instead, and answer once you hold the facts."
+                )
+                continue
 
             rejections += 1
             result.transcript.append(Turn(turn, "rejected", verdict.reason))
@@ -173,6 +336,27 @@ async def run_loop(
                 return result
             # The reason goes back, so the retry differs from its predecessor.
             observations.append(f"Your answer was refused: {verdict.reason}")
+            # On a FOLLOW-UP the generic reason is not enough. The model reads
+            # its own earlier answer in the conversation, sees the figure it
+            # needs, finds no fact holding it, and reports the absence:
+            #     "I can't derive the plan total from the structured facts I
+            #      hold right now, because the semester plan itself is only
+            #      present in the conversation text and not as a tool-derived
+            #      fact."
+            # True about the machinery and useless to the student. Facts are
+            # deliberately re-derived every run so a follow-up is grounded in
+            # live records rather than a snapshot, which means the earlier
+            # answer is a QUESTION to re-answer, not evidence to cite. Said
+            # here rather than in the system prompt because the prompt has been
+            # asked twice and the turn is still spent; a reason delivered at the
+            # moment of failure is the one that lands.
+            if history and not _grounded_in_anything(verdict.reason):
+                observations.append(
+                    "This is a FOLLOW-UP. The facts behind your earlier answer are gone by "
+                    "design -- every run re-derives from live records. So do not report that "
+                    "they are missing: call the same tools again and rebuild the figure the "
+                    "question refers to."
+                )
             continue
 
         calls: Sequence[Mapping[str, Any]] = reply.get("calls") or ()
@@ -190,13 +374,73 @@ async def run_loop(
 
         gained = 0
         for call in calls:
+            signatures = _call_signatures(call)
+            # A call whose every derivation was already made this run cannot
+            # teach the loop anything: nothing writes, so re-running it returns
+            # what it returned before. It is still DISPATCHED -- the fact is
+            # refreshed and the model may legitimately want it under a new name
+            # -- but it does not count as progress, and the model is told.
+            repeated = bool(signatures) and all(s in seen_derivations for s in signatures)
+            seen_derivations.update(signatures)
+
+            # `search_corpus` is the one tool that ALWAYS succeeds and always
+            # produces a fact, so a run can loop on it forever: every search
+            # "gains" something, `NO_PROGRESS_LIMIT` never fires, and the
+            # repeated-derivation guard misses it because each query differs by
+            # a word. Live, asked for an attendance rule the regulations do not
+            # contain, one run issued 17 searches across 39 turns and 216s
+            # before the clock stopped it.
+            #
+            # A corpus that has been searched this many times and still has not
+            # yielded an answer is telling you something, and it is not "search
+            # again".
+            if call.get("tool") == "search_corpus":
+                searches += 1
+                if searches > _CORPUS_SEARCH_LIMIT:
+                    result.transcript.append(
+                        Turn(turn, "search-capped", f"{searches} corpus searches")
+                    )
+                    observations.append(
+                        f"{DEFECT_NOTE}: you have searched the knowledge base "
+                        f"{_CORPUS_SEARCH_LIMIT} times and it has not answered this. Searching "
+                        "again will not help. Either ANSWER from the passages you already hold, "
+                        "or say plainly that the regulations do not cover it -- an absence IS an "
+                        "answer, and a confident invented rule is the one thing worse than "
+                        "saying so."
+                    )
+                    continue
+
             outcome = await dispatch(call, context)
             context.facts.update(outcome.facts)
             # Only facts with CONTENT count. Fetching an empty collection over
             # and over is the clearest possible case of busy-but-not-progressing,
             # and counting it as progress kept a live run alive for six turns
             # while it learned nothing.
-            gained += sum(1 for held in outcome.facts.values() if not _is_empty(held.value))
+            if not repeated:
+                gained += sum(1 for held in outcome.facts.values() if not _is_empty(held.value))
+            elif outcome.facts:
+                observations.append(
+                    f"You already ran {call.get('tool')}({_brief(call.get('args'), 90)}) this run and "
+                    f"it returned {', '.join(f'{n}={_describe(h.value)}' for n, h in outcome.facts.items())}. "
+                    "Repeating it cannot change the result. Use what you hold: take the next "
+                    "derivation step, or ANSWER with the facts you have."
+                )
+            else:
+                # A repeat that FAILED is the clearest waste of all, and it used
+                # to be the one case that went unwarned: the branch above needed
+                # facts to report, and a defect produces none. Live, asked "who
+                # teaches 00960211?" -- something the schema does not record --
+                # the loop spent turns 6, 7 and 8 issuing the identical
+                # `interpret` call, collecting the identical defect each time,
+                # and exhausted its budget without ever being told it was
+                # repeating itself. The per-turn defect note says what broke; it
+                # does not say "you have already tried exactly this".
+                observations.append(
+                    f"{DEFECT_NOTE}: you already ran {call.get('tool')}"
+                    f"({_brief(call.get('args'), 90)}) this run and it failed the same way. "
+                    "Repeating it cannot change the result. Try a DIFFERENT route, or -- if the "
+                    "data simply does not record this -- say so plainly instead of retrying."
+                )
             if outcome.proposal is not None:
                 # A proposal is TERMINAL: an action request's correct outcome is
                 # a change described for a person to approve, and once described
@@ -213,6 +457,30 @@ async def run_loop(
                 return result
             for name, defect in outcome.defects.items():
                 observations.append(f"{DEFECT_NOTE} -- '{name}': {defect.message}")
+                if _VALUE_ABSENT_FROM_PASSAGE in defect.message:
+                    absent_readings += 1
+
+            # ABSENCE IS A FINDING. Each "does not answer ... it contains no
+            # such value" is correct and individually says only "not here";
+            # several of them together say "not in the corpus", and nothing was
+            # drawing that conclusion. Asked for a minimum attendance percentage
+            # -- which the regulations do not set -- a live run spent 136.9s and
+            # 24 steps re-reading passages, then shipped a partial: 18 attempts
+            # to aggregate a truncated search result and 13 references to facts
+            # it never held, all downstream of refusing to conclude the obvious.
+            #
+            # The honest answer was reachable on turn three, and the SAME
+            # question in Hebrew reached it, so this is a convergence problem
+            # rather than a capability one.
+            if absent_readings >= _ABSENT_READINGS_BEFORE_CONCLUDING and not concluded_absent:
+                concluded_absent = True
+                observations.append(
+                    f"{absent_readings} separate passages have now been read for this value and "
+                    "none contains it. That is your ANSWER, not a reason to search again: the "
+                    "corpus does not cover it. Say so plainly, name how many sources you "
+                    "checked, and do NOT offer a number from anywhere else -- a plausible "
+                    "figure with no passage behind it is the worst thing you can return here."
+                )
             # The transcript records WHY, not just how many. A first live run
             # showed six failed calls as "1 defect(s)" each, which said nothing
             # about what went wrong -- and a transcript that cannot explain a
@@ -274,12 +542,59 @@ def _is_empty(value: Any) -> bool:
     return records is not None and len(records) == 0
 
 
+def _grounded_in_anything(reason: str) -> bool:
+    """Whether a refusal was about something OTHER than holding no facts.
+
+    Narrow on purpose: the follow-up nudge is only useful for the one shape it
+    addresses, and pinning it to every rejection would bury the specific reason
+    under boilerplate.
+    """
+    return "stands on no facts at all" not in (reason or "")
+
+
+def _call_signatures(call: Mapping[str, Any]) -> tuple[str, ...]:
+    """How a call DERIVES its result, with every name stripped out.
+
+    This is what `gained` is counted against, and the names have to go: the
+    wandering this guards against re-derives a value it already holds under a
+    fresh name, and a signature that included the name would call every lap new.
+    Measured over ten live runs, the waste was almost entirely literal repeats --
+    the same `search_corpus` query issued six times, the same `completed_numbers`
+    pipeline recomputed five times, `compute`+`interpret` on the same slug four
+    times before the run gave up.
+
+    `compute` is decomposed per PIPELINE rather than signed whole, because the
+    repeat hides at that granularity: a turn re-deriving `completed_numbers`
+    alongside one genuinely new pipeline is a different call each time but the
+    same derivation, and signing the call as a unit would miss it.
+    """
+    tool = str(call.get("tool"))
+    args = call.get("args") if isinstance(call.get("args"), Mapping) else {}
+
+    if tool == "compute":
+        pipelines = args.get("pipelines")
+        if isinstance(pipelines, Sequence) and not isinstance(pipelines, (str, bytes)):
+            return tuple(
+                "compute:" + json.dumps(
+                    {k: v for k, v in pipeline.items() if k != "name"},
+                    sort_keys=True, default=str,
+                )
+                for pipeline in pipelines
+                if isinstance(pipeline, Mapping)
+            )
+
+    # `as` is the caller's name for the result, not part of the derivation.
+    return (f"{tool}:" + json.dumps(
+        {k: v for k, v in args.items() if k != "as"}, sort_keys=True, default=str
+    ),)
+
+
 def _brief(args: Any, limit: int = 180) -> str:
     rendered = json.dumps(args, default=str, ensure_ascii=False) if args else "{}"
     return rendered if len(rendered) <= limit else rendered[: limit - 1] + "\u2026"
 
 
-def _render_sources(context: DispatchContext) -> str:
+def render_sources(context: DispatchContext) -> str:
     """What `find` can read, and the fields each source has.
 
     Measured on the first live run: the model spent three turns guessing source
@@ -300,6 +615,11 @@ def _render_sources(context: DispatchContext) -> str:
         lines.append(f"  {name}\n     key: {schema.key}\n     fields: {fields}")
         for local, foreign in getattr(schema, "joins", ()):
             lines.append(f"     joins: {local} -> {foreign}")
+        # Rendered HERE, next to the field it qualifies, because this is where
+        # the column gets chosen. The same warning in a prompt paragraph did not
+        # stop a live run summing `creditsEarned` over failed courses.
+        for field, note in sorted(getattr(schema, "field_notes", {}).items()):
+            lines.append(f"     ! {field}: {note}")
 
     # Nested paths are listed in full for the same reason the source names are:
     # a field the model cannot see is a field it will guess at. Listing only
@@ -361,15 +681,35 @@ def _prompt(
     # `me` arrives seeded by the caller and reads as an opaque id. Naming it
     # costs one line and saves the model inferring what to filter by.
     whose = (
-        "  (`me` is the id of the student asking -- filter their records by it)\n"
+        "  (`me` is the id of the student asking -- filter their records by it.\n"
+        "   EVERY fact listed above is ALREADY YOURS, seeded before your first turn:\n"
+        "   the profile fields AND the credit standing (`credits_completed`,\n"
+        "   `credits_required`, `credits_needed`). Re-fetching `student_profiles` or\n"
+        "   `degree_programs` to get one, or summing the transcript to recompute the\n"
+        "   gap, costs two turns and returns the same number.\n"
+        "   They describe THIS STUDENT, not the rules. `max_credits_per_semester` is\n"
+        "   what a plan for them may contain; what a student is ALLOWED, or must do,\n"
+        "   or has until, is in the regulations -- `search_corpus` for it. Asked what\n"
+        "   load is permitted, answering 18 from this list reported a personal\n"
+        "   setting as institutional policy; the regulations say 29.)\n"
         if "me" in context.facts
         else ""
     )
+    # The tool catalog and the source list used to be rendered HERE, between the
+    # question and the facts. They are static -- 15,216 of the 18,411 characters
+    # of a late turn -- and putting them after the question meant a prompt-prefix
+    # cache could never span two different questions: the prefix diverges at the
+    # question and everything behind it is re-read every time. They now sit in
+    # the SYSTEM message (see `adapter.build_system_prompt`), which makes the
+    # static ~39k characters one prefix shared by every request, and leaves this
+    # prompt carrying only what actually changes.
+    #
+    # It also makes `steps` honest. The spec splits each call into
+    # `System_prompt` and `User_prompt`, and 15k characters of tool
+    # documentation filed under "User_prompt" described the wrong thing.
     return (
         f"{conversation_block}"
         f"QUESTION: {question}\n\n"
-        f"{render_catalog(context)}\n\n"
-        f"{_render_sources(context)}\n\n"
         f"FACTS YOU HOLD:\n{render_facts(values)}\n{whose}\n"
         f"NOTES FROM LAST TURN:\n{notes}{warning}\n\n"
         "Reply with either {\"calls\": [...]} or {\"answer\": \"...\"}. "
@@ -377,4 +717,47 @@ def _prompt(
     )
 
 
-__all__ = ["LoopResult", "MAX_TURNS", "Model", "Turn", "run_loop"]
+__all__ = ["LoopResult", "MAX_TURNS", "Model", "Turn", "render_sources", "run_loop"]
+
+
+_REPLY_SHAPED_TOOLS = {"answer", "decline"}
+
+
+def _lift_answer_call(reply: Mapping[str, Any]) -> Mapping[str, Any]:
+    """`{"calls": [{"tool": "answer", ...}]}` means `{"answer": ...}`.
+
+    Answering and declining are REPLY SHAPES, not tools -- there is no `answer`
+    in the catalog, and there cannot be, since it ends the run rather than
+    producing a fact. A model holding a full set of facts nonetheless reaches
+    for the shape it has used all run, and the dispatcher then reports "unknown
+    tool 'answer'". That cost a turn in four of ten live requests, and one run
+    spent its second-to-last turn on it.
+
+    The intent is unambiguous, so the turn is not spent learning the protocol.
+    The text is lifted out and travels the ordinary answer path -- grounding,
+    post-conditions, the lot -- because being forgiving about the ENVELOPE must
+    not be forgiving about the contents.
+
+    Only when the reply has no answer of its own, so a well-formed reply is
+    never rewritten.
+    """
+    if not isinstance(reply, Mapping) or "answer" in reply or "decline" in reply:
+        return reply
+    calls = reply.get("calls") or ()
+    if not isinstance(calls, Sequence) or isinstance(calls, (str, bytes)):
+        return reply
+    for call in calls:
+        if not isinstance(call, Mapping):
+            continue
+        tool = str(call.get("tool") or "").strip().lower()
+        if tool not in _REPLY_SHAPED_TOOLS:
+            continue
+        args = call.get("args")
+        text = None
+        if isinstance(args, Mapping):
+            text = args.get(tool) or args.get("text") or args.get("answer")
+        elif isinstance(args, str):
+            text = args
+        if isinstance(text, str) and text.strip():
+            return {tool: text}
+    return reply
