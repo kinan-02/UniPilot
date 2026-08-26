@@ -136,6 +136,18 @@ class TestScalarExpressions:
         assert expression.op is ArithOp.MULTIPLY
         assert isinstance(expression.left, PathRef)
 
+    def test_max_and_min_parse_as_arith_ops(self) -> None:
+        parsed = parse_pipelines([{
+            "name": "w", "source": "t",
+            "stages": [{"op": "extend", "fields": {
+                "floored": {"max": [{"value": 0}, {"path": "raw"}]},
+                "capped": {"minimum": [{"value": 100}, {"path": "raw"}]},
+            }}],
+        }])
+        fields = parsed[0].stages[0].args["fields"]
+        assert fields["floored"].op is ArithOp.MAX
+        assert fields["capped"].op is ArithOp.MIN
+
     def test_a_literal_inside_an_expression(self) -> None:
         parsed = parse_pipelines([{
             "name": "w", "source": "t",

@@ -84,8 +84,8 @@ class Extractor(Protocol):
     ) -> Any: ...
 
 
-def _appears_in(raw: Any, quote: str) -> bool:
-    """Is the extracted value actually present in the text it cites?
+def _appears_in(raw: Any, source_text: str) -> bool:
+    """Is the extracted value actually present in the SOURCE text?
 
     This is the only enforceable guard against interpretation COMPUTING rather
     than reading. Pattern-matching for arithmetic does not work: an unevaluated
@@ -93,11 +93,18 @@ def _appears_in(raw: Any, quote: str) -> bool:
     nothing, while the failure that matters -- a model that quietly computes
     92.5 and returns a clean number -- looks identical to a real extraction.
 
-    Requiring the value to appear in the cited text catches exactly that: a
-    computed number is not in the passage it claims to come from. It also makes
-    the citation load-bearing rather than decorative.
+    Requiring the value to appear in the passage catches exactly that: a
+    computed number is not in the text it claims to come from.
+
+    `source_text` must be the PASSAGE, never the model's own quote. Checking a
+    value against the quote that came back with it is circular -- the model
+    supplies both the claim and its evidence -- and it was: given the invented
+    code 00999999 with the invented quote "00999999 is approved", against a
+    passage that never mentions it, `extract_list` kept the value. The quote
+    remains in the citation so a reader can see what was claimed; it is no
+    longer what decides whether the value is real.
     """
-    text = quote.replace(",", "")
+    text = source_text.replace(",", "")
     candidate = str(raw).strip().replace(",", "")
     if candidate in text:
         return True
@@ -155,12 +162,11 @@ async def interpret(
     if raw is None or (isinstance(raw, str) and not raw.strip()):
         return _cannot_determine(passage, question, expect, why="it contains no such value")
 
-    cited = quote or passage.excerpt
-    if not _appears_in(raw, cited):
+    if not _appears_in(raw, passage.excerpt):
         return DataDefect(
             0,
-            f"interpretation of '{passage.slug}' returned {raw!r}, which does not appear in the text "
-            f"it cites ({cited!r}). Interpretation EXTRACTS; a value that is not in the passage was "
+            f"interpretation of '{passage.slug}' returned {raw!r}, which does not appear in the "
+            f"passage. Interpretation EXTRACTS; a value that is not in the passage was "
             "computed or inferred, and arithmetic belongs to the algebra where operands are grounded "
             "in refs and the result can be audited.",
         )
@@ -206,7 +212,7 @@ async def interpret_list(
     for raw, quote in items or ():
         if raw is None or (isinstance(raw, str) and not raw.strip()):
             continue
-        if not _appears_in(raw, quote or passage.excerpt):
+        if not _appears_in(raw, passage.excerpt):
             continue
         value = _as_kind(raw, expect)
         if value is None or value in seen:
@@ -230,10 +236,27 @@ def _cannot_determine(passage: Passage, question: str, expect: ScalarKind, *, wh
     page, received the identical answer, and burned turns doing it. A refusal
     that does not say WHICH source was read invites exactly that.
     """
+    # The page is often RIGHT and the expected KIND wrong, so the old ending --
+    # "a different source is needed" -- sent the model searching again when it
+    # already held the answer. Measured across a policy set: 27 of these, each
+    # followed by another `search_corpus` under a fresh fact name, which also
+    # slips past the repeated-derivation guard. "How many times can I retake a
+    # course?" has no number in it at all; the regulation says "no time limit".
+    alternative = {
+        ScalarKind.QUANTITY: (
+            f" If the answer is a PHRASE rather than a number -- \"no time limit\", \"twice\", "
+            f"\"until the end of week 4\" -- ask '{passage.slug}' again with expect: \"text\". "
+            "Only look elsewhere if the page does not cover the topic at all."
+        ),
+        ScalarKind.TEXT: (
+            f" If the answer really is a bare number, ask '{passage.slug}' again with expect: "
+            '"quantity".'
+        ),
+    }.get(expect, " A different source is needed.")
     return DataDefect(
         0,
         f"'{passage.slug}' does not answer {question!r} with a {expect.value}: {why}. "
-        f"Reading '{passage.slug}' again will return the same thing -- a different source is needed.",
+        f"Re-reading it for the same {expect.value} will return the same thing.{alternative}",
     )
 
 
@@ -254,7 +277,27 @@ def _as_kind(raw: Any, kind: ScalarKind) -> Any:
         return str(raw) if isinstance(raw, (str, int)) else None
 
     if kind is ScalarKind.TEXT:
-        return raw if isinstance(raw, str) else None
+        if isinstance(raw, str):
+            return raw
+        # A number read out of a passage IS text. Refusing it was a real cost:
+        # asked "what is the English language requirement", the model expects a
+        # sentence, the extractor returns 2, and the answer came back
+        # "'regulations-undergraduate' does not answer ... with a text: the value
+        # found (2) is not a text" -- a refusal that also says re-reading the
+        # page is pointless, so the model went looking for another source. Runs
+        # that hit it took 11-15 steps against a usual 4.
+        #
+        # Safe because TEXT is the loosest kind and `_appears_in` has already
+        # confirmed the value is in the passage. Widening it discards nothing:
+        # a caller wanting arithmetic asks for QUANTITY, which still refuses a
+        # non-number.
+        if isinstance(raw, bool):
+            return None  # "True" is not what anyone reading a passage meant
+        if isinstance(raw, int):
+            return str(raw)
+        if isinstance(raw, float):
+            return str(int(raw)) if raw.is_integer() else str(raw)
+        return None
 
     if kind is ScalarKind.BOOL:
         if isinstance(raw, bool):

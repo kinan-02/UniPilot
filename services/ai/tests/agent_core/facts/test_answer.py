@@ -424,7 +424,9 @@ class TestDetailRender:
         )
         result = resolve_answer("Winter:\n{plan:detail}", {"plan": _held(plan, Basis.SIMULATED)})
         assert isinstance(result, Answer)
-        for shown in ("courseNumber 0960327", "title Nonlinear OR", "credits 3.5", "type elective"):
+        # Labels are the projected names made readable -- `courseNumber` is
+        # shown to a student as "course number".
+        for shown in ("course number 0960327", "title Nonlinear OR", "credits 3.5", "type elective"):
             assert shown in result.text
 
     def test_one_line_per_record(self) -> None:
@@ -438,8 +440,8 @@ class TestDetailRender:
         result = resolve_answer("{plan:detail}", {"plan": _held(plan, Basis.SIMULATED)})
         assert isinstance(result, Answer)
         assert [line for line in result.text.split("\n") if line.startswith("- ")] == [
-            "- courseNumber 0960327",
-            "- courseNumber 0940314",
+            "- course number 0960327",
+            "- course number 0940314",
         ]
 
     def test_it_drops_object_ids_so_the_finished_answer_guard_does_not_reject_it(self) -> None:
@@ -458,7 +460,8 @@ class TestDetailRender:
         result = resolve_answer("{plan:detail}", {"plan": _held(plan, Basis.SIMULATED)})
         assert isinstance(result, Answer)
         assert "a" * 24 not in result.text
-        assert "courseNumber 0960327" in result.text
+        # One record, so no list bullet -- see `_render_detail`.
+        assert result.text == "course number 0960327"
 
     def test_a_course_placed_in_two_semesters_is_refused(self) -> None:
         """The faked-split signature from every live planning run: rather than
@@ -498,6 +501,52 @@ class TestDetailRender:
         )
         assert isinstance(result, Answer)
 
+    def test_one_list_naming_a_course_twice_is_not_a_double_placement(self) -> None:
+        """The false positive this rule had, found on a live eligibility run.
+
+        `prerequisite_edges` keys every edge by the course it belongs to, so
+        listing what 00960211 requires renders that code once per edge. Counting
+        repeats across the whole answer read this as a course placed in two
+        semesters and refused a correct answer -- telling the model to call
+        `optimize` on a question with no plan in it. A repeat INSIDE one list is
+        a list that mentions a course twice; only a repeat ACROSS two rendered
+        collections is a double placement.
+        """
+        edges = Collection(
+            records=(
+                Record(fields={"edge": Scalar(I, "00960211->00940224")}, basis=Basis.WIKI_DERIVED),
+                Record(fields={"edge": Scalar(I, "00960211->00940226")}, basis=Basis.WIKI_DERIVED),
+            ),
+            completeness=Completeness(complete=True, total=2),
+        )
+        result = resolve_answer(
+            "It requires one of:\n{edges:detail}",
+            {"edges": _held(edges, Basis.WIKI_DERIVED)},
+        )
+        assert isinstance(result, Answer), getattr(result, "reason", "")
+
+    def test_two_lists_sharing_a_course_is_still_refused(self) -> None:
+        """The rule must survive the narrowing -- a faked split has NO `slot`
+        field, so gating on placement fields would have switched it off exactly
+        where it earns its keep."""
+        winter = Collection(
+            records=(Record(fields={"number": Scalar(I, "00940219")}, basis=Basis.SIMULATED),),
+            completeness=Completeness(complete=True, total=1),
+        )
+        spring = Collection(
+            records=(
+                Record(fields={"number": Scalar(I, "00940219")}, basis=Basis.SIMULATED),
+                Record(fields={"number": Scalar(I, "00960327")}, basis=Basis.SIMULATED),
+            ),
+            completeness=Completeness(complete=True, total=2),
+        )
+        result = resolve_answer(
+            "Winter\n{winter:detail}\nSpring\n{spring:detail}",
+            {"winter": _held(winter, Basis.SIMULATED), "spring": _held(spring, Basis.SIMULATED)},
+        )
+        assert isinstance(result, Ungrounded)
+        assert "00940219" in result.reason and "optimize" in result.reason
+
     def test_an_empty_collection_renders_as_none(self) -> None:
         empty = Collection(records=(), completeness=Completeness(complete=True, total=0))
         # paired with a populated fact so the all-empty guard does not fire first
@@ -507,3 +556,293 @@ class TestDetailRender:
         )
         assert isinstance(result, Answer)
         assert "(none)" in result.text
+
+
+class TestDetailWidth:
+    """`:detail` over an unprojected source row is a data dump, not an answer."""
+
+    def _row(self, **fields) -> Collection:
+        return Collection(
+            records=(
+                Record(
+                    fields={k: Scalar(I, str(v)) for k, v in fields.items()},
+                    basis=Basis.OFFICIAL_RECORD,
+                ),
+            ),
+            completeness=Completeness(complete=True, total=1),
+        )
+
+    def test_a_raw_catalog_row_is_refused_with_the_fix_named(self) -> None:
+        """The live failure: 16 remaining courses rendered with every column the
+        catalog carries, including `status published` and the title twice."""
+        raw = self._row(
+            courseNumber="00940412", title="הסתברות מ", titleHebrew="הסתברות מ",
+            credits="4", faculty="מדעי הנתונים", studyFramework="לימודי הסמכה",
+            catalogYear="2025", status="published",
+        )
+        result = resolve_answer(
+            "Remaining:\n{remaining:detail}", {"remaining": _held(raw, Basis.OFFICIAL_RECORD)}
+        )
+        assert isinstance(result, Ungrounded)
+        assert "project" in result.reason
+        assert "status" in result.reason
+
+    def test_a_projected_table_is_accepted(self) -> None:
+        """The other side -- a reader-facing row a caller actually chose."""
+        projected = self._row(courseNumber="00940412", title="הסתברות מ", credits="4")
+        result = resolve_answer(
+            "Remaining:\n{remaining:detail}",
+            {"remaining": _held(projected, Basis.OFFICIAL_RECORD)},
+        )
+        assert isinstance(result, Answer), getattr(result, "reason", "")
+        assert "status" not in result.text
+
+
+class TestNumberRendering:
+    def test_a_long_mean_is_not_shown_to_fourteen_decimals(self) -> None:
+        """A live answer said "Your GPA is 72.64074074074074". Every digit is
+        real -- a mean over 44 courses -- but printing all of them makes a
+        correct number look like a bug."""
+        facts = {"gpa": _held(Scalar(Q, 72.64074074074074))}
+        assert resolve_answer("Your GPA is {gpa}.", facts).text == "Your GPA is 72.64."
+
+    def test_a_whole_number_still_renders_without_a_decimal_point(self) -> None:
+        assert resolve_answer("{n} credits", {"n": _held(Scalar(Q, 16.0))}).text == "16 credits"
+
+    def test_a_half_credit_keeps_its_meaningful_digit(self) -> None:
+        assert resolve_answer("{n} credits", {"n": _held(Scalar(Q, 3.5))}).text == "3.5 credits"
+
+
+class TestLabelsAreWrittenForAReader:
+    """The projected field name is printed to the student, so it is prose.
+
+    The model names fields the way code names identifiers -- `prereqStatus`,
+    `min_grade`, `courseNumber` -- because a fact name IS a code identifier
+    everywhere else in this system. The prompt asks for reader-facing names;
+    across every row in the evaluation traces it got schema-shaped ones.
+
+    So the ask stays in the prompt, where the real fix is, and this is the net
+    under it. Purely typographic: no vocabulary, no domain knowledge, so a
+    field this has never seen still comes out better than it went in.
+    """
+
+    def test_camel_case_is_split(self) -> None:
+        from app.agent_core.facts.answer import _readable_label
+
+        assert _readable_label("prereqStatus") == "prereq status"
+        assert _readable_label("courseNumber") == "course number"
+
+    def test_snake_case_is_split(self) -> None:
+        from app.agent_core.facts.answer import _readable_label
+
+        assert _readable_label("min_grade") == "min grade"
+        assert _readable_label("course_count") == "course count"
+
+    def test_an_acronym_survives(self) -> None:
+        """"gpa" is a downgrade -- the student reads GPA."""
+        from app.agent_core.facts.answer import _readable_label
+
+        assert _readable_label("GPA") == "GPA"
+
+    def test_a_non_ascii_label_is_untouched(self) -> None:
+        """Already in the reader's script; lowercasing it means nothing."""
+        from app.agent_core.facts.answer import _readable_label
+
+        assert _readable_label("ציון") == "ציון"
+
+    def test_an_already_plain_label_is_unchanged(self) -> None:
+        from app.agent_core.facts.answer import _readable_label
+
+        assert _readable_label("credits") == "credits"
+
+
+class TestABulletOnlyAppearsInAList:
+    """A one-row `:detail` is a phrase, and the model writes it into a sentence.
+
+    Live, verbatim: "סה״כ התכנון הוא - term winter · courses 6 · credits 16" --
+    a list bullet stranded mid-clause because a single-term summary rendered as
+    though it were an enumeration.
+    """
+
+    def _one(self, **fields):
+        return Collection(
+            records=(
+                Record(
+                    fields={k: Scalar(ScalarKind.TEXT, v) for k, v in fields.items()},
+                    basis=Basis.SIMULATED,
+                ),
+            ),
+            completeness=Completeness(complete=True, total=1),
+        )
+
+    def test_a_single_record_has_no_bullet(self) -> None:
+        result = resolve_answer(
+            "Total: {summary:detail}",
+            {"summary": _held(self._one(term="winter"), Basis.SIMULATED)},
+        )
+        assert isinstance(result, Answer)
+        assert result.text == "Total: term winter"
+
+    def test_two_records_are_still_a_list(self) -> None:
+        plan = Collection(
+            records=(
+                Record(fields={"term": Scalar(ScalarKind.TEXT, "winter")}, basis=Basis.SIMULATED),
+                Record(fields={"term": Scalar(ScalarKind.TEXT, "spring")}, basis=Basis.SIMULATED),
+            ),
+            completeness=Completeness(complete=True, total=2),
+        )
+        result = resolve_answer("{plan:detail}", {"plan": _held(plan, Basis.SIMULATED)})
+        assert isinstance(result, Answer)
+        assert result.text == "- term winter\n- term spring"
+
+
+class TestATableMustNotSitInsideASentence:
+    """`:detail` renders a labelled row per record, and a row inside a clause is
+    not a sentence.
+
+    A one-record `:detail` used to carry a list bullet, which forced it onto its
+    own line. Dropping the bullet was right -- a stranded "- " mid-sentence read
+    as broken -- but it also made the row INLINE-ABLE, and the model started
+    writing it into prose. Live, twice:
+
+        "Your winter semester plan is term winter · courses 6 · credits 16."
+        "It totals term winter · courses 6 · credits 16."
+
+    Both correct, neither a sentence. The renderer cannot fix it: the error is
+    where the slot was PLACED, which is visible only at the boundary.
+
+    What makes this worth a check rather than a prompt line is that the model
+    has no cheap alternative -- a slot cannot take one field off a collection
+    (`{fact.field}` is refused by design), so reaching for the whole row is the
+    path of least resistance. The refusal names the two legal moves.
+    """
+
+    def refuse(self, template: str) -> str:
+        from app.agent_core.facts.answer import _detail_inside_a_clause
+
+        return _detail_inside_a_clause(template, ["{plan:detail}"])
+
+    def test_a_table_run_into_a_clause_is_refused(self) -> None:
+        assert self.refuse("Your winter semester plan is {plan:detail}.")
+
+    def test_its_own_line_is_fine(self) -> None:
+        assert not self.refuse("Summary:\n{plan:detail}")
+
+    def test_a_label_ending_in_a_colon_is_fine(self) -> None:
+        """"Summary: <row>" reads correctly and is the shape the prompt asks for."""
+        assert not self.refuse("Summary: {plan:detail}")
+
+    def test_a_dash_lead_is_fine(self) -> None:
+        assert not self.refuse("Winter — {plan:detail}")
+
+    def test_a_slot_alone_is_fine(self) -> None:
+        assert not self.refuse("{plan:detail}")
+
+    def test_the_refusal_names_both_legal_moves(self) -> None:
+        """A reason the model cannot act on wastes the retry it costs, and here
+        the fix is not obvious: a slot cannot take a field off a collection."""
+        result = resolve_answer(
+            "Your plan is {plan:detail}.",
+            {"plan": _held(
+                Collection(
+                    records=(Record(fields={"term": Scalar(ScalarKind.TEXT, "winter")},
+                                    basis=Basis.SIMULATED),),
+                    completeness=Completeness(complete=True, total=1),
+                ),
+                Basis.SIMULATED)},
+        )
+        assert isinstance(result, Ungrounded)
+        assert "project" in result.reason and "compute" in result.reason
+
+
+class TestARepeatedNameIsSaidOnce:
+    """A search-hit list holds one record per PASSAGE, and several passages come
+    from one page, so the readable field repeats. A live Hebrew refusal listed
+    "Undergraduate Study Regulations (Technion)" twelve times in one sentence.
+
+    Repeating a name says nothing the first mention did not, and the honest
+    count is still available as `{name:count}` -- so deduping the LIST render
+    loses no information a reader could use.
+    """
+
+    def hits(self, *titles: str) -> Collection:
+        return Collection(
+            records=tuple(
+                Record(fields={"title": Scalar(ScalarKind.TEXT, t)}, basis=Basis.WIKI_DERIVED)
+                for t in titles
+            ),
+            completeness=Completeness(complete=True, total=len(titles)),
+        )
+
+    def test_duplicates_collapse_in_a_list(self) -> None:
+        fact = self.hits("Regulations", "Regulations", "Discipline", "Regulations")
+        result = resolve_answer("I read {h}.", {"h": _held(fact, Basis.WIKI_DERIVED)})
+        assert isinstance(result, Answer)
+        assert result.text == "I read Regulations, Discipline."
+
+    def test_first_occurrence_wins_so_order_is_kept(self) -> None:
+        fact = self.hits("B", "A", "B", "C")
+        result = resolve_answer("{h}", {"h": _held(fact, Basis.WIKI_DERIVED)})
+        assert isinstance(result, Answer)
+        assert result.text == "B, A, C"
+
+    def test_the_count_still_reports_every_record(self) -> None:
+        """Deduping the names must not quietly change the number searched."""
+        fact = self.hits("Regulations", "Regulations", "Discipline")
+        result = resolve_answer("{h:count} passages", {"h": _held(fact, Basis.WIKI_DERIVED)})
+        assert isinstance(result, Answer)
+        assert result.text == "3 passages"
+
+
+class TestAskingForClarificationIsNotAClaim:
+    """Asked "Can I take it next semester?" -- no antecedent anywhere -- the
+    model wrote the right answer five times running:
+
+        "I can't tell which course you mean. Send the course number, and I'll
+         check whether you can take it next semester."
+
+    and the no-facts rule refused all five, after which the run shipped a
+    partial about credits nobody had asked about. The ground truth for that
+    question is "must ASK, not guess a course", and the system structurally
+    could not ask.
+
+    The rule is right about what it was built for -- "I can't determine X" must
+    not ship as an answer. A question is a different kind of sentence: it
+    asserts nothing, so there is no unsupported assertion to catch.
+    """
+
+    ASKED = "Can I take it next semester?"
+
+    def kind(self, text: str) -> str:
+        return type(resolve_answer(text, {}, self.ASKED)).__name__
+
+    def test_the_answer_that_was_refused_five_times_is_allowed(self) -> None:
+        assert self.kind(
+            "I can’t tell which course you mean. Send the course number, and "
+            "I’ll check whether you can take it next semester."
+        ) == "Answer"
+
+    def test_a_bare_question_is_allowed(self) -> None:
+        assert self.kind("Which course do you mean?") == "Answer"
+
+    def test_hebrew_too(self) -> None:
+        assert self.kind("איזה קורס התכוונת?") == "Answer"
+
+    def test_a_non_answer_dressed_as_prose_is_still_refused(self) -> None:
+        """What the rule was built for, and it must keep working."""
+        assert self.kind(
+            "I can't determine your remaining credits from the facts I hold."
+        ) == "Ungrounded"
+
+    def test_an_assertion_is_still_refused(self) -> None:
+        assert self.kind("You are eligible to take the course.") == "Ungrounded"
+
+    def test_a_question_carrying_a_NUMBER_is_still_refused(self) -> None:
+        """The condition that keeps this from being a hole in the invariant:
+        any digit means a claim, and a claim needs a fact."""
+        assert self.kind(
+            "I can't tell which course you mean, but you need 25.5 credits."
+        ) == "Ungrounded"
+
+    def test_a_page_of_prose_ending_in_a_question_is_not_a_question(self) -> None:
+        assert self.kind("word " * 90 + "which course do you mean?") == "Ungrounded"

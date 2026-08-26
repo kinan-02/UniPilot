@@ -57,7 +57,29 @@ _ARITH = {
     "subtract": ArithOp.SUBTRACT, "sub": ArithOp.SUBTRACT, "minus": ArithOp.SUBTRACT, "-": ArithOp.SUBTRACT,
     "multiply": ArithOp.MULTIPLY, "mul": ArithOp.MULTIPLY, "times": ArithOp.MULTIPLY, "*": ArithOp.MULTIPLY, "×": ArithOp.MULTIPLY,
     "divide": ArithOp.DIVIDE, "div": ArithOp.DIVIDE, "/": ArithOp.DIVIDE, "÷": ArithOp.DIVIDE,
+    # Comparisons. Spelled out as well as symbolic, because a model writing JSON
+    # reaches for "gte" as readily as ">=".
+    "gte": ArithOp.GTE, "ge": ArithOp.GTE, ">=": ArithOp.GTE, "at_least": ArithOp.GTE,
+    "gt": ArithOp.GT, ">": ArithOp.GT, "greater_than": ArithOp.GT,
+    "lte": ArithOp.LTE, "le": ArithOp.LTE, "<=": ArithOp.LTE, "at_most": ArithOp.LTE,
+    "lt": ArithOp.LT, "<": ArithOp.LT, "less_than": ArithOp.LT,
+    "eq": ArithOp.EQ, "==": ArithOp.EQ, "equals": ArithOp.EQ,
+    "max": ArithOp.MAX, "maximum": ArithOp.MAX,
+    "min": ArithOp.MIN, "minimum": ArithOp.MIN,
+    # ceil(a / b). The unary spellings take ONE operand and are folded to
+    # ceil(x / 1) below, because a model asked to "round up" reaches for
+    # {"ceil": [expr]} far more readily than for a division that also rounds --
+    # and a live run did exactly that, four times, against a grammar that had
+    # neither.
+    "ceil_div": ArithOp.CEIL_DIV, "divide_round_up": ArithOp.CEIL_DIV,
+    "ceil": ArithOp.CEIL_DIV, "ceiling": ArithOp.CEIL_DIV, "round_up": ArithOp.CEIL_DIV,
 }
+
+_UNARY_FOLDS_TO_ONE = frozenset({"ceil", "ceiling", "round_up"})
+"""Spellings that take a single operand, completed as `op(x, 1)`.
+
+`ceil(x)` is exactly `ceil(x / 1)`, so the unary form needs no unary node and
+the expression tree stays binary throughout."""
 
 _KINDS = {kind.value: kind for kind in ScalarKind}
 
@@ -300,15 +322,45 @@ def _scalar_expression(payload: Any, pipeline: str, index: int) -> ScalarExpr:
         # A held scalar reference inside a per-record expression -- the same
         # {"fact": name} idiom used for predicate values, so a computed total can
         # feed a per-row formula (the per-course GPA threshold).
+        #
+        # An EXTRA key here is not a harmless decoration. `{"fact": "course",
+        # "field": "courseNumber"}` parsed to `Held("course")` and dropped the
+        # field in silence, so a model asking for one course number was handed
+        # the whole collection and told nothing. Silent is the worst outcome
+        # available: a parse error costs one turn, and a value that is quietly
+        # the wrong thing costs the answer.
+        extra = sorted(set(payload) - {"fact"})
+        if extra:
+            raise ParseError(
+                f"{pipeline} stage {index}: {{'fact': ...}} takes no other keys, and "
+                f"{extra} would be ignored. A fact reference names the WHOLE fact -- it "
+                "cannot reach a field inside a collection. `project` the field and "
+                "`select` the row you want, or use `traverse` if you are following "
+                "prerequisites of prerequisites."
+            )
         return Held(str(payload["fact"]))
 
     for key, operator in _ARITH.items():
         if key in payload:
             operands = payload[key]
-            if not isinstance(operands, Sequence) or isinstance(operands, (str, bytes)) or len(operands) != 2:
+            if not isinstance(operands, Sequence) or isinstance(operands, (str, bytes)):
+                raise ParseError(
+                    f"{pipeline} stage {index}: '{key}' needs a list of operands, got a non-list."
+                )
+            # `{"ceil": [x]}` is the natural way to write a ceiling and is
+            # completed to ceil(x / 1), which is the same number. Without this
+            # the model's first, correct instinct parses as an arity error and
+            # it goes looking for an operator that does not exist.
+            if len(operands) == 1 and key in _UNARY_FOLDS_TO_ONE:
+                return Arith(
+                    op=operator,
+                    left=_scalar_expression(operands[0], pipeline, index),
+                    right=Literal(_scalar(1, None)),
+                )
+            if len(operands) != 2:
                 raise ParseError(
                     f"{pipeline} stage {index}: '{key}' needs exactly two operands, got "
-                    f"{len(operands) if isinstance(operands, Sequence) else 'a non-list'}."
+                    f"{len(operands)}."
                 )
             return Arith(
                 op=operator,
@@ -316,9 +368,34 @@ def _scalar_expression(payload: Any, pipeline: str, index: int) -> ScalarExpr:
                 right=_scalar_expression(operands[1], pipeline, index),
             )
 
+    # Naming the ARITHMETIC operators is the right answer when the model wrote
+    # arithmetic wrongly, and points away from the answer when it did not. A
+    # live run spent 196s and timed out attempting, four ways, to take one
+    # field's value out of a one-row collection so it could feed the next
+    # `find`:
+    #
+    #     {"only": [{"fact": "target_prereq_edges", "field": "requires"}]}
+    #     {"value": {"fact": "target_course", "field": "courseNumber"}}
+    #
+    # That is not an expression and never will be -- it is a CHAIN WALK, which
+    # `traverse` exists for. Ten of those failures cascaded into 14 "refers to
+    # a fact which is not held" and 12 "not run: it depends on X, which failed",
+    # so nearly the whole run traces back to an error message that listed
+    # `ceil_div` at a model trying to follow prerequisites.
+    reaching_into_a_collection = isinstance(payload, Mapping) and (
+        "fact" in payload or "only" in payload
+    )
+    hint = (
+        " To take a value OUT of a collection, do not write an expression: `project` the field "
+        "and `select` the row you want, or -- if you are following prerequisites of "
+        "prerequisites -- use `traverse`, which walks a chain whose depth the data decides. "
+        "A pipeline of N joins reaches exactly N levels."
+        if reaching_into_a_collection
+        else ""
+    )
     raise ParseError(
         f"{pipeline} stage {index}: expression must be {{'path': ...}}, {{'value': ...}}, or one of "
-        f"{sorted(set(_ARITH) - set('+-*/×÷'))}."
+        f"{sorted(set(_ARITH) - set('+-*/×÷'))}.{hint}"
     )
 
 
@@ -374,13 +451,40 @@ def parse_predicate(payload: Any) -> Predicate:
                 "'in' needs a list of values, or a collection you hold: "
                 '{"fact": "my_courses", "field": "courseId"}.'
             )
-        return Comparison(_path(payload["path"]), op, tuple(_scalar(v, kind) for v in value))
+        return Comparison(
+            _path(payload["path"]), op,
+            tuple(_scalar(*_unwrap_literal(v, kind)) for v in value),
+        )
 
     if isinstance(value, Mapping) and "path" in value:
         # Comparing one field to another rather than to a literal.
         return Comparison(_path(payload["path"]), op, _path(value["path"]))
 
+    value, kind = _unwrap_literal(value, kind)
     return Comparison(_path(payload["path"]), op, _scalar(value, kind))
+
+
+def _unwrap_literal(value: Any, kind: Any) -> tuple[Any, Any]:
+    """`{"value": 90}` and `{"value": 90, "kind": "quantity"}` mean the literal 90.
+
+    Two grammars spelled a literal two ways. In a `compute` expression a literal
+    IS `{"value": 90}` -- that is the only way to write one, because a bare
+    number there would be an ungrounded typed digit. In a predicate it was a
+    bare `90`, and the wrapped form fell through to `_scalar`, which was handed
+    a dict and could not type it.
+
+    The error then made it unrecoverable. It said "give an explicit 'kind'", so
+    the model wrote `{"kind": "quantity", "value": 90}` -- and `kind` is read
+    from the PREDICATE level, not from inside the value, so the same message
+    came back telling it to do what it had just done. Live, on "how many credits
+    at each grade level", that cost six turns and the run returned nothing.
+
+    Accepting the wrapped form makes one literal spelling work in both places,
+    which is what a model that has just written a `compute` expression expects.
+    """
+    if isinstance(value, Mapping) and "value" in value and "fact" not in value:
+        return value["value"], value.get("kind", kind)
+    return value, kind
 
 
 def _scalar(value: Any, kind: Any = None) -> Scalar:
@@ -403,6 +507,16 @@ def _scalar(value: Any, kind: Any = None) -> Scalar:
         return Scalar(ScalarKind.QUANTITY, value)
     if isinstance(value, str):
         return Scalar(ScalarKind.IDENTIFIER, value)
+    if isinstance(value, Mapping):
+        # Reached only by a shape `_unwrap_literal` did not recognise. Saying
+        # "give an explicit 'kind'" here sent a model that had ALREADY nested one
+        # round the same loop six times, because `kind` is read beside the value,
+        # never inside it.
+        raise ParseError(
+            f"a value cannot be the object {value!r}. Write the literal itself (90, "
+            '"00940224"), or {"value": 90} to be explicit, or {"fact": "name"} to compare '
+            "against something you hold. A 'kind' sits BESIDE the value, not inside it."
+        )
     raise ParseError(
         f"cannot type {value!r} ({type(value).__name__}); give an explicit 'kind' of {sorted(_KINDS)}."
     )

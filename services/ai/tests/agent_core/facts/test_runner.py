@@ -375,6 +375,58 @@ class TestDistinctOverNestedRecords:
         assert len(result["out"].value.records) == 1
 
 
+class TestMaxAndMin:
+    def test_max_floors_a_negative_grade_and_min_caps_one(self) -> None:
+        """max(0, raw) is how a computed grade gets FLOORED instead of shipping a
+        negative one -- the arithmetic the negative-min-grade answers lacked."""
+        source = _collection(_rec(raw=-82.0, over=105.0))
+        parsed = parse_pipelines([{"name": "out", "source": "src", "stages": [
+            {"op": "extend", "fields": {
+                "floored": {"max": [{"value": 0}, {"path": "raw"}]},
+                "capped": {"min": [{"value": 100}, {"path": "over"}]},
+            }}]}])
+        result = run_pipelines(tuple(parsed), {"src": source})
+
+        assert isinstance(result["out"], Succeeded)
+        row = result["out"].value.records[0]
+        assert row.fields["floored"].value == 0.0
+        assert row.fields["capped"].value == 100.0
+
+    def test_max_in_a_scalar_pipeline_floors_at_zero(self) -> None:
+        parsed = parse_pipelines([{"name": "nm", "value": {"max": [{"value": 0}, {"value": -82}]}}])
+        result = run_pipelines(tuple(parsed), {})
+
+        assert isinstance(result["nm"], Succeeded)
+        assert result["nm"].value.value == 0.0
+
+
+class TestDistinctByKey:
+    def test_distinct_on_a_key_collapses_rows_that_differ_elsewhere(self) -> None:
+        """Two rows for the SAME course -- one tagged required, one elective after a
+        union -- are kept as two by a whole-record distinct, and the answer boundary
+        then refuses the plan as a course listed twice. `on` collapses them by code,
+        keeping the first."""
+        source = _collection(
+            _rec(courseNumber="00940395", type="required"),
+            _rec(courseNumber="00940395", type="elective"),
+            _rec(courseNumber="00940412", type="elective"),
+        )
+        pipeline = Pipeline("out", "src", (Stage("distinct", {"on": Path.parse("courseNumber")}),))
+        result = run_pipelines((pipeline,), {"src": source})
+
+        assert isinstance(result["out"], Succeeded)
+        kept = [r.fields["courseNumber"].value for r in result["out"].value.records]
+        assert kept == ["00940395", "00940412"]
+        assert result["out"].value.records[0].fields["type"].value == "required"  # first per key
+
+    def test_distinct_on_a_missing_key_is_a_reported_defect_not_a_crash(self) -> None:
+        source = _collection(_rec(courseNumber="00940395"))
+        pipeline = Pipeline("out", "src", (Stage("distinct", {"on": Path.parse("ghost")}),))
+        result = run_pipelines((pipeline,), {"src": source})
+
+        assert not isinstance(result["out"], Succeeded)
+
+
 class TestHeldScalarInExtend:
     """`extend` can reference a held SCALAR fact, so a per-record formula can
     combine the record with a global aggregate. The per-course GPA threshold --

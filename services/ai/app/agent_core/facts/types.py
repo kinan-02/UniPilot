@@ -34,9 +34,20 @@ class Basis(Enum):
     primitive (plan §2.1): `SIMULATED` is weakest, so injecting a hypothesised
     record taints every fact derived from it through the ordinary weakest-input
     rule. Nothing special-cases a what-if.
+
+    `LIVE_MOODLE` sits just below `OFFICIAL_RECORD`: a grade or enrolment scraped
+    live from Moodle comes from an official Technion system, but is obtained by
+    browser observation -- a page can be stale, mis-parsed, or show a provisional
+    mark the registrar has not finalised -- so it is deliberately less certain
+    than the registrar's authoritative record, and anything derived by joining a
+    Moodle fact with a registrar fact correctly carries the weaker Moodle basis.
+    These values are strength RANKS, not labels or a wire format: nothing
+    persists a basis by its integer (serialization goes through `.label`), which
+    is what makes renumbering to insert a tier safe.
     """
 
-    OFFICIAL_RECORD = 5
+    OFFICIAL_RECORD = 6
+    LIVE_MOODLE = 5
     WIKI_DERIVED = 4
     LLM_INTERPRETATION = 3
     PREDICTED_PATTERN = 2

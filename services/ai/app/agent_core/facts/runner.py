@@ -15,13 +15,15 @@ Two properties the runner owes its caller:
 
 from __future__ import annotations
 
+import math
 from types import MappingProxyType
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Union
 
 from app.agent_core.facts.operators import (
+    COMPARISONS,
     OPERATORS,
     Arith,
     ArithOp,
@@ -38,7 +40,7 @@ from app.agent_core.facts.operators import (
     Ty,
 )
 from app.agent_core.facts.predicate import MISSING as _MISSING
-from app.agent_core.facts.predicate import Op, Path, matches
+from app.agent_core.facts.predicate import And, Comparison, Not, Op, Or, Path, matches
 from app.agent_core.facts.types import (
     Basis,
     Collection,
@@ -83,8 +85,29 @@ _BINARY_OPS = frozenset({"join", "union", "difference"})
 def run_pipelines(
     pipelines: Sequence[Pipeline],
     env: Mapping[str, Collection],
+    resolve_predicates: "Callable[[Pipeline, Mapping[str, Any]], Any] | None" = None,
 ) -> dict[str, Outcome]:
-    """Evaluate every pipeline, in dependency order, isolating failures."""
+    """Evaluate every pipeline, in dependency order, isolating failures.
+
+    `resolve_predicates` is called for each pipeline just before it runs, with
+    everything available AT THAT POINT -- the working set plus every sibling
+    that has already succeeded. It exists because a `{"fact": ...}` inside a
+    `select` used to be resolved for the whole call up front, against the
+    working set alone, so a pipeline could use a sibling as its `source` but not
+    as a filter VALUE. The catalog tells the model to prefer one call carrying
+    several pipelines that reference each other, and half of that was a lie:
+
+        {"name": "mine",  "source": "cat",   "stages": [{"op": "project", ...}]}
+        {"name": "met",   "source": "edges", "stages": [{"op": "select",
+            "predicate": {..., "value": {"fact": "mine", "field": "..."}}}]}
+
+    came back "the filter refers to fact 'mine', which is not held" with `mine`
+    defined one line above. Measured cost: an eligibility run spent eight
+    consecutive turns rewriting that shape.
+
+    Returning a defect from the callback fails only that pipeline, so the others
+    in the call still land.
+    """
     by_name = {p.name: p for p in pipelines}
     order, cycle = _topological_order(pipelines, env)
 
@@ -105,6 +128,12 @@ def run_pipelines(
         if blocker is not None:
             results[name] = Blocked(name, waiting_on=blocker)
             continue
+
+        if resolve_predicates is not None:
+            defect = resolve_predicates(pipeline, available)
+            if defect is not None:
+                results[name] = Failed(name, defect)
+                continue
 
         outcome = _run_one(pipeline, available, bases)
         results[name] = outcome
@@ -129,6 +158,10 @@ def _referenced(pipeline: Pipeline) -> tuple[str, ...]:
         other = stage.args.get("other")
         if isinstance(other, str):
             names.append(other)
+        # A `{"fact": ...}` inside a filter is a dependency exactly like a
+        # `source` is. Without collecting it the sibling it names may not have
+        # run yet, and the filter fails for what is really an ordering bug.
+        names.extend(_fact_ref_names(stage.args.get("predicate")))
         # `Held` scalars inside an `extend` expression are dependencies too --
         # without collecting them the runner may evaluate a per-record formula
         # before the total it references exists, and the formula fails for a
@@ -136,6 +169,21 @@ def _referenced(pipeline: Pipeline) -> tuple[str, ...]:
         for expression in (stage.args.get("fields") or {}).values():
             names.extend(_held_names(expression))
     return tuple(names)
+
+
+def _fact_ref_names(predicate: Any) -> list[str]:
+    """Every fact a predicate filters BY, however deeply nested in and/or/not."""
+    if predicate is None:
+        return []
+    terms = getattr(predicate, "terms", None)
+    if terms is not None:
+        return [name for term in terms for name in _fact_ref_names(term)]
+    term = getattr(predicate, "term", None)
+    if term is not None:
+        return _fact_ref_names(term)
+    value = getattr(predicate, "value", None)
+    name = getattr(value, "name", None)
+    return [name] if isinstance(name, str) else []
 
 
 def _held_names(expression: Any) -> list[str]:
@@ -309,6 +357,33 @@ def _apply(
 
     if op == "select":
         kept = tuple(r for r in current.records if matches(args["predicate"], r))
+        # Filtering on a field NO record carries is not a filter that matched
+        # nothing -- it is a filter pointed at the wrong collection, and the
+        # difference is the whole answer.
+        #
+        # Live, and dangerous: asked whether two courses could be taken
+        # together, the model fetched the prerequisite edges into
+        # `edges_00960211`, then selected `requires` over `course_00960211` --
+        # the CATALOG row, which has no `requires` and no `group`. Every
+        # comparison silently failed, the met-group count came out 0, and the
+        # student was told "No -- you meet 0 prerequisite groups" for a course
+        # they are in fact eligible for. `distinct` on the same absent field is
+        # already a defect; `select` was not, and it is the one that decides
+        # eligibility.
+        #
+        # Only when NOTHING has the path. A field present on SOME records is
+        # ordinary filtering, and an empty collection legitimately matches
+        # nothing at all.
+        if not kept and current.records:
+            for path in _predicate_paths(args["predicate"]):
+                if all(_resolve(path, record) is _MISSING for record in current.records):
+                    return ExpressionDefect(
+                        index,
+                        f"'{path.dotted}' is on no record of this collection, so the filter "
+                        "could not be applied and matched nothing. That is not the same as "
+                        "'none matched' -- check you are selecting over the collection that "
+                        "carries the field.",
+                    )
         return Collection(kept, completeness), _basis_of(kept, basis)
 
     if op == "project":
@@ -381,9 +456,19 @@ def _apply(
         return Collection(kept, completeness), _basis_of(kept, basis)
 
     if op == "distinct":
+        # Unkeyed: whole-record identity. Keyed (`on`): first record per key value,
+        # which is the only way to collapse two rows for the SAME course that carry
+        # a differing field -- e.g. one tagged type "required" and one "elective"
+        # after a union, which a whole-record distinct keeps as two and the answer
+        # boundary then refuses as a course listed twice.
+        on: Path | None = args.get("on")
+        if on is not None:
+            missing = _first_missing_key(on, current.records)
+            if missing is not None:
+                return ExpressionDefect(index, f"'{on.dotted}' missing on a record; cannot dedupe on it")
         seen, kept = set(), []
         for record in current.records:
-            signature = _signature(record)
+            signature = _raw(_resolve(on, record)) if on is not None else _signature(record)
             if signature not in seen:
                 seen.add(signature)
                 kept.append(record)
@@ -489,8 +574,20 @@ def _apply_scalar(
         ArithOp.SUBTRACT: current.value - right.value,
         ArithOp.MULTIPLY: current.value * right.value,
         ArithOp.DIVIDE: current.value / right.value if right.value else 0,
+        ArithOp.MAX: max(current.value, right.value),
+        ArithOp.MIN: min(current.value, right.value),
+        ArithOp.CEIL_DIV: math.ceil(current.value / right.value) if right.value else 0,
+        ArithOp.GTE: current.value >= right.value,
+        ArithOp.GT: current.value > right.value,
+        ArithOp.LTE: current.value <= right.value,
+        ArithOp.LT: current.value < right.value,
+        ArithOp.EQ: current.value == right.value,
     }[arith_op]
-    return Scalar(ScalarKind.QUANTITY, value), combined
+    # Same rule as the expression path: a comparison yields a truth value, and
+    # calling it a quantity would let it be summed and would show the answer
+    # boundary a "number" that is really a yes.
+    kind = ScalarKind.BOOL if arith_op in COMPARISONS else ScalarKind.QUANTITY
+    return Scalar(kind, value), combined
 
 
 def _compare_scalars(left: Scalar, comparator: Any, right: Scalar) -> Union[bool, ExpressionDefect]:
@@ -560,8 +657,19 @@ def _aggregate(
         return DataDefect(
             index,
             f"{absent} of {len(collection.records)} records carry no value at '{path.dotted}', "
-            f"so '{op}' would report a total over only {len(values)} of them. No edit to this "
-            "pipeline can fix that -- the missing values were never retrieved.",
+            f"so '{op}' would report a total over only {len(values)} of them, stamped with the "
+            "confidence of a total over all of them.\n"
+            # The old message ended "No edit to this pipeline can fix that", which
+            # is a dead end: the model read it, had nowhere to go, and spent the
+            # rest of its turns rephrasing. There IS a legal move, and refusing
+            # without naming it is the shape of unfollowable advice this codebase
+            # has now hit four times.
+            f"Two ways forward. `select` the records that HAVE '{path.dotted}' and aggregate "
+            f"those, then say the total covers {len(values)} of "
+            f"{len(collection.records)} -- an explicit partial is honest where a silent one is "
+            "not. Or, if the missing rows are the point (a course with no catalog entry still "
+            "counts toward the degree), report the COUNT instead of the total and say the "
+            "credits of some are unknown.",
         )
 
     if not values:
@@ -668,8 +776,17 @@ def _eval_scalar(
         ArithOp.SUBTRACT: left_value.value - right_value.value,
         ArithOp.MULTIPLY: left_value.value * right_value.value,
         ArithOp.DIVIDE: left_value.value / right_value.value if right_value.value else 0,
+        ArithOp.MAX: max(left_value.value, right_value.value),
+        ArithOp.MIN: min(left_value.value, right_value.value),
+        ArithOp.CEIL_DIV: math.ceil(left_value.value / right_value.value) if right_value.value else 0,
+        ArithOp.GTE: left_value.value >= right_value.value,
+        ArithOp.GT: left_value.value > right_value.value,
+        ArithOp.LTE: left_value.value <= right_value.value,
+        ArithOp.LT: left_value.value < right_value.value,
+        ArithOp.EQ: left_value.value == right_value.value,
     }[expression.op]
-    return Scalar(ScalarKind.QUANTITY, result), weakest([left_basis, right_basis])
+    kind = ScalarKind.BOOL if expression.op in COMPARISONS else ScalarKind.QUANTITY
+    return Scalar(kind, result), weakest([left_basis, right_basis])
 
 
 def _unnest(
@@ -819,3 +936,23 @@ def _basis_of(records: Sequence[Record], fallback: Basis) -> Basis:
 
 
 __all__ = ["Blocked", "Failed", "Outcome", "Succeeded", "run_pipelines"]
+
+
+def _predicate_paths(predicate: Any) -> "list[Path]":
+    """Every field path a predicate reads, however deeply it is nested.
+
+    Walked rather than assumed: an `and` of two comparisons is the shape the
+    eligibility check actually uses, and reading only a top-level `path` would
+    miss both of them.
+    """
+    if isinstance(predicate, Comparison):
+        paths = [predicate.path] if isinstance(predicate.path, Path) else []
+        # `{"path": ...}` on the right-hand side is a field-to-field comparison.
+        if isinstance(predicate.value, Path):
+            paths.append(predicate.value)
+        return paths
+    if isinstance(predicate, (And, Or)):
+        return [p for term in predicate.terms for p in _predicate_paths(term)]
+    if isinstance(predicate, Not):
+        return _predicate_paths(predicate.term)
+    return []

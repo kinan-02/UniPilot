@@ -91,7 +91,7 @@ OPERATORS: dict[str, OperatorSpec] = {
     # The asymmetry that matters: an incomplete SUBTRAHEND wrongly RETAINS every
     # record missing from it, so the result is wrong rather than partial.
     "difference": OperatorSpec("difference", (_data(_C, _MONO), _data(_C, _ALL)), _C, "records of A not in B", '{"op":"difference","other":"<fact>","on":"courseNumber"}'),
-    "distinct": OperatorSpec("distinct", (_data(_C, _MONO),), _C, "drop duplicates", '{"op":"distinct"}'),
+    "distinct": OperatorSpec("distinct", (_data(_C, _MONO),), _C, "drop duplicate records, or duplicates by a key with `on` (keeps the first per key)", '{"op":"distinct","on":"courseNumber"}'),
     "unnest": OperatorSpec("unnest", (_data(_C, _MONO), _structural(_S)), _C, "one record per array element", '{"op":"unnest","field":"semesters"}'),
     "group": OperatorSpec("group", (_data(_C, _ALL), _structural(_S)), _C, "partition and aggregate", '{"op":"group","by":["courseNumber"],"agg":{"times":{"agg":"count"}}}'),
     # `only` closes a gap found on a live run: every other aggregate yields a
@@ -114,6 +114,42 @@ class ArithOp(Enum):
     SUBTRACT = "-"
     MULTIPLY = "×"
     DIVIDE = "÷"
+    # The larger / smaller of two quantities. MAX exists so a computed grade can
+    # be FLOORED -- max(0, needed_min) -- rather than shipping a negative one; its
+    # absence is why the negative-min-grade answers had no arithmetic way out.
+    MAX = "max"
+    MIN = "min"
+    # ceil(left / right) -- how many WHOLE periods cover a quantity. The same
+    # kind of hole MAX filled, found the same way: `check_periods_are_whole`
+    # refuses "1.42 semesters" and the system prompt orders the count be derived
+    # as ceil(credits needed / cap), and the algebra could divide but never round
+    # up. A live run wrote {"ceil": [{"div": [...]}]}, got "expression must be
+    # {'path': ...}", then spent four turns trying `compare`, an `answer` TOOL
+    # that does not exist, and finally shipped max(7.39, 8) -- a typed guess that
+    # happened to be one term too many. Every instruction the model was following
+    # was correct; the operation simply was not there.
+    #
+    # BINARY, because the whole expression tree is, and because the division is
+    # the point: a bare ceiling is `ceil_div(x, 1)`, which is how the unary
+    # spelling parses.
+    CEIL_DIV = "ceil_div"
+    # Comparisons, which produce a BOOL rather than a quantity. Their absence
+    # was a hole the eligibility question fell into every time: "am I eligible"
+    # is `met_groups >= required_groups`, the grammar could add and subtract the
+    # two counts but never compare them, and the model spent three turns
+    # rediscovering that before answering with slots for facts it never managed
+    # to derive. "Do I meet the minimum", "is my GPA above 65" and "have I
+    # earned enough credits" are the same shape.
+    GTE = ">="
+    GT = ">"
+    LTE = "<="
+    LT = "<"
+    EQ = "=="
+
+
+COMPARISONS = frozenset({ArithOp.GTE, ArithOp.GT, ArithOp.LTE, ArithOp.LT, ArithOp.EQ})
+"""The ops above that yield a truth value. Named once so the evaluator, the type
+checker and the codec cannot disagree about which ones those are."""
 
 
 @dataclass(frozen=True)
@@ -342,7 +378,15 @@ def _apply(
             merged.update(other.fields)
         return CollectionShape(fields=merged)
 
-    if op in ("distinct", "limit"):
+    if op == "limit":
+        return current
+
+    if op == "distinct":
+        on = args.get("on")
+        if on is not None:
+            missing = _missing_paths((on,), current)
+            if missing:
+                return _unknown_field(index, missing, current)
         return current
 
     if op == "unnest":
@@ -461,7 +505,10 @@ def _infer_scalar(index: int, expression: ScalarExpr, shape: CollectionShape) ->
         if kind is not ScalarKind.QUANTITY:
             name = operand.path.dotted if isinstance(operand, PathRef) else "a literal"
             return _not_a_quantity(index, name, shape)
-    return ScalarKind.QUANTITY
+    # A comparison of two quantities is a truth value, not a quantity. Declaring
+    # it QUANTITY would let it be summed, and would let the answer boundary see
+    # a "number" that is really a yes.
+    return ScalarKind.BOOL if expression.op in COMPARISONS else ScalarKind.QUANTITY
 
 
 __all__ = [
