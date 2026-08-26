@@ -252,6 +252,83 @@ class TestEveryAdvertisedToolCanBeFed:
                 unusable.append(f"{name}: {next(iter(result.defects.values())).message[:90]}")
         assert not unusable, "registered sources that cannot be read: " + "; ".join(unusable)
 
+    async def test_find_reads_every_source_the_real_wiring_adds(self, database) -> None:
+        """`REGISTRY` is not the whole source list, and the tests above only see
+        `REGISTRY`.
+
+        Four sources are added by `build_wiring` rather than declared statically,
+        because they are built from the knowledge graph and the graph may not be
+        there. That makes them exactly the sources most able to go missing
+        quietly: registration sits behind a `try`, and a `try` that registers
+        nothing looks identical to one that had nothing to register.
+
+        So this asks the production wiring what it actually registered, and then
+        reads each one the way the model would.
+        """
+        wired = build_wiring()["sources"]
+        assert wired, (
+            "build_wiring registered NO sources. Either the graph is unbuilt or the try/except "
+            "around it swallowed a real error -- both leave prerequisite_edges, track_courses, "
+            "passed_courses and remaining_courses silently unreachable."
+        )
+
+        context = DispatchContext(database=database, schemas={**REGISTRY, **wired})
+        unusable = []
+        for name in wired:
+            result = await dispatch(
+                {"tool": "find", "as": "probe", "args": {"source": name, "limit": 2}}, context
+            )
+            if not result.facts:
+                unusable.append(f"{name}: {next(iter(result.defects.values())).message[:90]}")
+        assert not unusable, "wired sources that cannot be read: " + "; ".join(unusable)
+
+    async def test_a_students_remaining_curriculum_is_not_silently_empty(self, database) -> None:
+        """An empty `remaining_courses` reads as "you have nothing left to take".
+
+        `find` marks a zero-record fetch COMPLETE, so a complete zero here is
+        indistinguishable from a finished degree -- which is why this asserts on
+        content rather than on the absence of an exception. It caught the real
+        thing: every `electrical-engineering` profile came back with nothing,
+        because the graph slugs its tracks `track-electrical-engineering` and a
+        bare `programSlug` matched no node at all.
+        """
+        wired = build_wiring()["sources"]
+        if "remaining_courses" not in wired:
+            pytest.skip("NOT VERIFIED: no graph, so the curriculum view is UNCHECKED.")
+
+        profiles = await database["student_profiles"].find(
+            {"programSlug": {"$exists": True, "$ne": None}}, {"userId": 1, "programSlug": 1}
+        ).to_list(None)
+        if not profiles:
+            pytest.skip("NOT VERIFIED: no profile carries a programSlug in this database.")
+
+        # EVERY track, not the first one found. The bug this exists for affected
+        # one track slug out of six, so a single-profile version of this test
+        # passed while a third of the students with a curriculum had none.
+        context = DispatchContext(database=database, schemas={**REGISTRY, **wired})
+        empty = set()
+        for profile in profiles:
+            result = await dispatch(
+                {
+                    "tool": "find",
+                    "as": "remaining",
+                    "args": {
+                        "source": "remaining_courses",
+                        "predicate": {"path": "userId", "op": "=", "value": str(profile["userId"])},
+                        "limit": 500,
+                    },
+                },
+                context,
+            )
+            assert result.facts, "remaining_courses could not be read for a student who has a track"
+            if not next(iter(result.facts.values())).value.records:
+                empty.add(str(profile["programSlug"]))
+
+        assert not empty, (
+            f"students on these tracks have an EMPTY remaining curriculum: {sorted(empty)}. "
+            "That is reported to the model as a COMPLETE result, and reads as a finished degree."
+        )
+
     async def test_compute_derives_from_a_fetched_fact(self, database) -> None:
         """Note the FILTER. An unfiltered `limit: 5` over 2,613 courses is
         incomplete, and counting it fails closed -- correctly. The first version

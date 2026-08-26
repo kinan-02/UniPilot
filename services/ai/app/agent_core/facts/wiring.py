@@ -48,6 +48,23 @@ class WikiRetriever:
             if hit.get("slug")
         ]
 
+    def page(self, slug: str) -> str | None:
+        """The WHOLE wiki page for a slug, or None if it is not held.
+
+        A prose tool (`extract_list`, `interpret`) needs the page a slug NAMES,
+        not the fragments retrieval happened to surface. The wiki is
+        heading-segmented, so one page returns as several small chunks and top-k
+        search brings back only some -- a live plan extracted 2 of ~40 required
+        codes because the rest never made the cut. The engine holds every page in
+        full by slug, so hand that over and let the extractor read the complete
+        section."""
+        pages = getattr(self._engine, "wiki_pages", None)
+        if not isinstance(pages, dict):
+            return None
+        page = pages.get(slug)
+        content = page.get("content") if isinstance(page, dict) else None
+        return content if isinstance(content, str) and content else None
+
 
 _EXTRACT_PROMPT = """Read the passage and answer the question with ONE value.
 
@@ -230,8 +247,22 @@ def prerequisite_edges_source(engine: Any) -> DerivedSchema:
         # `completed_courses` keys courses by ObjectId while this keys them by
         # number, and the model had no way to know the two differ.
         joins=(("course", "courses.courseNumber"), ("requires", "courses.courseNumber")),
+        field_notes={
+            "requires": (
+                "a course number that satisfies this group only if the student PASSED it. "
+                "Compare against `passed_courses`, never against every `completed_courses` row "
+                "-- a failed attempt is not a satisfied prerequisite."
+            ),
+            "group": (
+                "edges sharing a group are ALTERNATIVES: any ONE satisfies it. Different groups "
+                "are each required. Count DISTINCT groups, not rows."
+            ),
+        },
         produce=lambda: _edge_documents(engine),
         yields=frozenset({"edges"}),
+        # One course can require another in two different alternative groups, so
+        # `edge` repeats; without a tie-break a truncated fetch pages unstably.
+        order_tiebreak=("group",),
     )
 
 
@@ -243,24 +274,30 @@ def _curriculum_documents(engine: Any) -> list[dict[str, Any]]:
     "which courses belong to my track" is already in the graph -- 2,944 edges of
     it -- and this exposes them as records the model can `find`.
 
-    Membership only, NOT the required/elective classification: that split lives
-    in the credit-breakdown table on the track's wiki PAGE (search_corpus +
-    interpret), because the edge records the link, not the section it sat under.
+    The required/elective split is NOT in the edge -- the graph records the link
+    and drops the section it sat under -- so `category` is read back off the
+    track page by `views.track_categories`. It is ABSENT, not guessed, on the
+    ~14% of links whose heading does not say.
     """
+    from app.agent_core.facts.views import track_categories
+
     documents: list[dict[str, Any]] = []
     graph = getattr(engine, "graph", None)
     if graph is None:
         return documents
+    categories = track_categories(engine)
     for source, target, data in graph.edges(data=True):
         if data.get("relation") != "contains":
             continue
-        documents.append(
-            {
-                "edge": f"{source}->{target}",
-                "track": str(source),
-                "course": str(target),
-            }
-        )
+        document = {
+            "edge": f"{source}->{target}",
+            "track": str(source),
+            "course": str(target),
+        }
+        category = categories.get((str(source), str(target)))
+        if category:
+            document["category"] = category
+        documents.append(document)
     return documents
 
 
@@ -280,6 +317,30 @@ def curriculum_source(engine: Any) -> DerivedSchema:
             "edge": ScalarKind.IDENTIFIER,
             "track": ScalarKind.IDENTIFIER,
             "course": ScalarKind.IDENTIFIER,
+            "category": ScalarKind.IDENTIFIER,
+        },
+        field_notes={
+            "category": (
+                "\"mandatory\" or \"elective\", from the section of the track page that lists "
+                "the course. USE THIS to type candidates for `plan_term` -- it is the same split "
+                "you would otherwise reconstruct with search_corpus and two extract_list calls "
+                "against the track page, which costs three or four turns and returns TRUNCATED "
+                "collections. ABSENT where the page's headings do not say; fall back to the wiki "
+                "only for those."
+            ),
+            "course": (
+                "a course number this track LISTS -- candidates to choose among, not a set the "
+                "student must complete in full. Their credits do NOT total the degree: use them "
+                "to pick what to take, and `degree_programs.totalCredits` minus completed "
+                "credits to say how much is LEFT.\n"
+                "     BEFORE PLANNING, CUT THE UNFINISHED COURSES DOWN TO THAT NUMBER. Take "
+                "every `category = \"mandatory\"` one, then add electives ONLY until the running "
+                "total reaches the credits still needed, and plan those. Handing the whole "
+                "unfinished set to `plan_term` or `optimize` schedules electives the student "
+                "never has to take, and reports a longer degree than they are doing. The planner "
+                "places what you give it -- it cannot know which electives are optional, because "
+                "at this level they all are."
+            ),
         },
         basis=Basis.WIKI_DERIVED,
         # `course` is a course NUMBER; join to the catalog for its credits/faculty.
@@ -308,8 +369,20 @@ def build_wiring(settings: Any | None = None) -> dict[str, Any]:
             # unbuilt engine would produce zero edges and report them complete,
             # which is the confident-silence failure in miniature.
             if getattr(engine, "_built", False):
+                from app.agent_core.facts.views import (
+                    passed_courses_source,
+                    remaining_courses_source,
+                )
+
                 wiring["sources"]["prerequisite_edges"] = prerequisite_edges_source(engine)
                 wiring["sources"]["track_courses"] = curriculum_source(engine)
+                # `remaining_courses` needs the graph for the curriculum half, so
+                # it is gated on the same build. `passed_courses` does not, but
+                # is registered here beside it deliberately: a run where one of
+                # the pair is reachable and the other is not would let the model
+                # build "what is left" from a set that is not "what is done".
+                wiring["sources"]["passed_courses"] = passed_courses_source(engine)
+                wiring["sources"]["remaining_courses"] = remaining_courses_source(engine)
     except Exception:  # noqa: BLE001 -- unconfigured corpus is a missing capability
         pass
 
@@ -346,6 +419,7 @@ def build_context(database: Any, settings: Any | None = None, **overrides: Any) 
 
     return DispatchContext(
         database=database,
+        settings=settings,
         schemas=schemas,
         retriever=overrides.get("retriever", wiring.get("retriever")),
         extractor=overrides.get("extractor", wiring.get("extractor")),

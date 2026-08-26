@@ -21,10 +21,11 @@ every filtered result would be permanently unaggregatable.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from numbers import Number
+from types import MappingProxyType
 from typing import Any, Union
 
 from app.agent_core.facts.operators import DataDefect, Defect, ExpressionDefect
@@ -113,6 +114,82 @@ class SourceSchema:
     so the mapping is explicit rather than guessed from the value's shape.
     """
 
+    field_notes: Mapping[str, str] = MappingProxyType({})
+    """Per-field warnings, for fields whose NAME does not tell the whole truth.
+
+    Added for `creditsEarned`, which reads like the credits a student earned and
+    is not: one live row here is graded 32 and still carries its full 5.5. A
+    model summing the obvious-looking field told a student 135 credits when the
+    answer was 129.5, and no type or predicate check could have caught it -- the
+    number was real, official, and from the right column. The only place a
+    warning helps is where the model CHOOSES the column, so these render beside
+    the field list rather than in a prompt paragraph nobody re-reads.
+    """
+
+    computed: Mapping[str, Any] = MappingProxyType({})
+    """Fields DERIVED at fetch time, as MongoDB aggregation expressions.
+
+    The analogue of a generated column, and declared for the same reason the
+    stored fields are: `completed_courses` holds `grade` and `creditsEarned` but
+    nothing that says whether the course was PASSED, so every consumer re-derived
+    it -- and three of them got it wrong in three different ways.
+
+    Applied in an `$addFields` stage BEFORE the `$match`, which is what makes
+    them ordinary fields rather than a post-processing step: the model can
+    filter, group and sort on them exactly as it does on stored ones. Computing
+    them in Python after the fetch would leave `passed = true` compiling to a
+    filter on a field that does not exist yet, matching nothing, and reporting
+    an empty transcript as complete.
+
+    Each name must ALSO appear in `fields`, or it would be computed and then
+    dropped at admission for being undeclared.
+    """
+
+    order_tiebreak: tuple[str, ...] = ()
+    """Columns that break ties on `key`, where `key` is not unique.
+
+    `completed_courses` declares `courseId` as its key and repeats it -- across
+    retakes, and across students who took the same course. `find` sorts by the
+    key so that a TRUNCATED fetch returns the same page every time, and with ties
+    it does not: same query, same data, a different 200 rows. Naming the
+    tie-break here keeps the fact that these keys are non-unique visible, rather
+    than buried in a sort clause.
+    """
+
+
+@dataclass(frozen=True)
+class ViewSchema:
+    """A source assembled per query from the database AND the knowledge graph.
+
+    `remaining_courses` is why this exists. It is the student's curriculum minus
+    what they have passed, and those two halves live in different stores: the
+    curriculum comes from the wiki graph (a `track_courses` edge set held in
+    memory) while the transcript comes from Mongo. No aggregation pipeline can
+    span them, because one side is not a collection.
+
+    So the producer is given the database and awaited, and everything after that
+    is the `DerivedSchema` contract unchanged -- the predicate runs in memory via
+    `matches`, the same grammar `compile_to_mongo` implements. That equivalence
+    is not assumed; `test_predicate.py` holds the two engines to identical
+    results across a shared matrix.
+
+    In `unipilot-agent` these are SQL views, because there both halves are
+    Postgres tables. Here they are views over two stores. The model cannot tell
+    the difference, which is the point: `{"tool": "find", "args": {"source":
+    "remaining_courses"}}` reads the same either way.
+    """
+
+    collection: str
+    key: str
+    fields: Mapping[str, FieldSpec]
+    basis: Basis
+    produce: Callable[[Any], Awaitable[Sequence[Mapping[str, Any]]]]
+    joins: tuple[tuple[str, str], ...] = ()
+    field_notes: Mapping[str, str] = MappingProxyType({})
+    yields: frozenset[str] = frozenset()
+    object_id_fields: frozenset[str] = frozenset()
+    order_tiebreak: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True)
 class DerivedSchema:
@@ -135,10 +212,12 @@ class DerivedSchema:
     basis: Basis
     produce: Callable[[], Sequence[Mapping[str, Any]]]
     joins: tuple[tuple[str, str], ...] = ()
+    field_notes: Mapping[str, str] = MappingProxyType({})
     yields: frozenset[str] = frozenset()
+    order_tiebreak: tuple[str, ...] = ()
 
 
-AnySchema = Union[SourceSchema, DerivedSchema]
+AnySchema = Union[SourceSchema, DerivedSchema, ViewSchema]
 
 
 async def find(
@@ -159,10 +238,16 @@ async def find(
         )
 
     if isinstance(schema, DerivedSchema):
-        return _find_derived(schema, predicate, limit)
+        return _from_documents(schema, schema.produce(), predicate, limit)
+
+    if isinstance(schema, ViewSchema):
+        return _from_documents(schema, await schema.produce(database), predicate, limit)
 
     query = _bind_object_ids(compile_to_mongo(predicate), schema)
     collection = database[schema.collection]
+
+    if schema.computed:
+        return await _find_computed(collection, schema, query, limit)
 
     # Counted against the same filter the fetch uses, so a filtered result can
     # still be complete.
@@ -170,7 +255,7 @@ async def find(
 
     # A stable sort is not cosmetic: without one the PAGE varies between runs and
     # every answer derived from it varies too.
-    cursor = collection.find(query).sort(schema.key, 1).limit(limit)
+    cursor = collection.find(query).sort(_sort_keys(schema)).limit(limit)
     documents = [document async for document in cursor]
 
     records = []
@@ -186,8 +271,55 @@ async def find(
     )
 
 
-def _find_derived(
-    schema: DerivedSchema, predicate: Predicate, limit: int
+def _sort_keys(schema: AnySchema) -> list[tuple[str, int]]:
+    """The key, then whatever breaks its ties -- a TOTAL order, so that a
+    truncated fetch returns the same page on every run."""
+    return [(column, 1) for column in (schema.key, *schema.order_tiebreak)]
+
+
+async def _find_computed(
+    collection: Any, schema: SourceSchema, query: Any, limit: int
+) -> Union[Collection, Defect]:
+    """A stored fetch whose derived fields exist before the filter runs.
+
+    The `$addFields` stage comes FIRST so `passed` and `creditsCounted` are
+    ordinary fields by the time `$match` sees them -- filterable, sortable and
+    countable exactly like stored ones. Adding them after the match, or in Python
+    after the fetch, would make `passed = true` a filter on a field that does not
+    exist yet: it matches nothing and reports an empty transcript as COMPLETE,
+    which is this layer's worst failure mode.
+
+    The count runs the same stages, so completeness still means "these records
+    account for everything the predicate matched".
+    """
+    add_fields = [{"$addFields": dict(schema.computed)}]
+    match = [{"$match": query}] if query else []
+
+    counted = await collection.aggregate(add_fields + match + [{"$count": "n"}]).to_list(1)
+    total = counted[0]["n"] if counted else 0
+
+    documents = await collection.aggregate(
+        add_fields + match + [{"$sort": dict(_sort_keys(schema))}, {"$limit": limit}]
+    ).to_list(limit)
+
+    records = []
+    for document in documents:
+        converted = _to_record(document, schema)
+        if isinstance(converted, DataDefect):
+            return converted
+        records.append(converted)
+
+    return Collection(
+        records=tuple(records),
+        completeness=Completeness(complete=len(records) == total, total=total),
+    )
+
+
+def _from_documents(
+    schema: AnySchema,
+    documents: Sequence[Mapping[str, Any]],
+    predicate: Predicate,
+    limit: int,
 ) -> Union[Collection, Defect]:
     """The same contract as a stored fetch: typed, sorted, honestly counted.
 
@@ -197,7 +329,7 @@ def _find_derived(
     across the shared matrix.
     """
     records = []
-    for document in schema.produce():
+    for document in documents:
         converted = _to_record(document, schema)
         if isinstance(converted, DataDefect):
             return converted
@@ -206,7 +338,13 @@ def _find_derived(
 
     # Sorted for the same reason a stored fetch is: without a stable order the
     # PAGE varies between runs, and every answer derived from it varies too.
-    records.sort(key=lambda record: str(record.fields[schema.key].value))
+    def ordering(record: Record) -> tuple[str, ...]:
+        return tuple(
+            str(record.fields[column].value) if column in record.fields else ""
+            for column in (schema.key, *schema.order_tiebreak)
+        )
+
+    records.sort(key=ordering)
     total = len(records)
     kept = tuple(records[:limit])
 
@@ -472,6 +610,7 @@ __all__ = [
     "FieldSpec",
     "SourceSchema",
     "Sub",
+    "ViewSchema",
     "declared_paths",
     "find",
 ]
