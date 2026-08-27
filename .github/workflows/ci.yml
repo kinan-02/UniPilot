@@ -70,16 +70,16 @@ jobs:
       # that the `facts/` schemas still match the documents they claim to read.
       # Measured on this runner: 1,645 passed / 66 skipped before, 1,702 / 22 after.
       #
-      # 22 is more than the 6 that skip in a local checkout set up to imitate this
-      # job, and the extra 16 are NOT understood. That is why the run below prints
-      # its skip reasons: a skip nobody reads is a test you only think you have.
+      # The mongo is NOT seeded, and every one of those 22 says so in the log:
+      # "'courses' is empty", "'student_profiles' is empty -- nothing to check the
+      # schema against". They are the checks that hold `facts/sources.py` against
+      # real documents, plus the ones that walk a whole population. One of the
+      # latter caught a live bug -- 8 students told their degree was finished
+      # (7e377a3) -- and this job still would not catch it.
       #
-      # The mongo is NOT seeded, and that ceiling is worth stating. The checks that
-      # walk a real population -- every track has a curriculum, every known course
-      # has offering history -- still skip here, and one of those caught a live bug
-      # (8 students told their degree was finished, 7e377a3) that this job would
-      # not have. Seeding the catalog from the vault, which is in git, is the next
-      # step and not one taken here.
+      # So the ceiling is exactly this: an empty database proves the queries
+      # COMPILE and the types hold, and proves nothing about the data. Seeding the
+      # catalog from the vault, which is in git, is what would close it.
       mongo:
         image: mongo:7.0.15
         ports:
