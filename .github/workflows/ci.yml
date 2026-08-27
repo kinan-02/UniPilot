@@ -64,6 +64,28 @@ jobs:
     defaults:
       run:
         working-directory: services/ai
+    services:
+      # An EMPTY mongo, which is worth more than it sounds. Without one, 65 tests
+      # skip themselves with "NOT VERIFIED: no database" -- among them every check
+      # that the `facts/` schemas still match the documents they claim to read.
+      # Measured: 1,645 tests run without this, 1,718 with it.
+      #
+      # It is NOT seeded, and that ceiling is worth stating. The checks that walk a
+      # real population -- every track has a curriculum, every offering has history
+      # -- still skip here, and one of those caught a live bug (8 students told
+      # their degree was finished) that this job would not have. Seeding the
+      # catalog from the vault is the next step, not a step already taken.
+      mongo:
+        image: mongo:7.0.15
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MONGO_URI: mongodb://localhost:27017/unipilot_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,12 +99,9 @@ jobs:
       # suite and makes no billable LLM call. Do not add `-m` here: overriding it
       # on the command line is what would let the paid tests through.
       #
-      # This runs ~1,645 tests. Another ~65 skip themselves with "NOT VERIFIED: no
-      # database" -- they check the `facts/sources.py` schemas and the views against
-      # real documents, and there is no Mongo in this job. Those are precisely the
-      # tests that catch schema drift, so a green tick here is NOT the same as a
-      # green tick locally against dev Mongo. Seeding a Mongo service here (the way
-      # the e2e job seeds the compose stack) is the fix; it is not done yet.
+      # ~1,718 tests, against the empty mongo above. The half-dozen that still skip
+      # need a POPULATED database, and say which data they wanted; see the comment
+      # on the service.
       - name: Run pytest with coverage
         run: pytest
 
