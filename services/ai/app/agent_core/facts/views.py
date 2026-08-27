@@ -235,12 +235,15 @@ def remaining_courses_source(engine: Any) -> ViewSchema:
         },
         field_notes={
             "curriculumAvailable": (
-                "PRESENT ONLY WHEN FALSE, AND ONLY ON A ROW THAT IS NOT A COURSE. It means the "
-                "catalog has no curriculum for this student's track at all -- the vault covers "
-                "undergraduate tracks, and a graduate one has no course list in it. Such a row "
-                "carries no title and no credits, and its `courseNumber` is a sentence saying so. "
-                "SAY THAT THE CURRICULUM IS NOT AVAILABLE. Do not report it as a course, do not "
-                "count it, and above all do not read the absence as a finished degree -- these "
+                "PRESENT ONLY WHEN FALSE, AND ONLY ON A ROW THAT IS NOT A COURSE. It means no "
+                "curriculum could be built for this student, for one of two reasons, and its "
+                "`courseNumber` is a sentence saying which: the profile carries no program at "
+                "all, or it names a track the catalog has no course list for (the vault covers "
+                "undergraduate tracks; a graduate one has none). Such a row has no title and no "
+                "credits.\n"
+                "     SAY WHICH OF THE TWO IT IS -- the first the student fixes by setting their "
+                "program, the second they cannot fix. Do not report the row as a course, do not "
+                "count it, and above all do not read the absence as a finished degree: these "
                 "students have not completed anything."
             ),
             "courseNumber": (
@@ -289,6 +292,15 @@ NO_CURRICULUM = "(no curriculum in the catalog for this track)"
 Deliberately a sentence and not a code. Every real course number is eight digits,
 so this cannot collide with one, cannot be looked up as one, and reads as an
 explanation wherever it surfaces -- including if a model quotes it verbatim.
+"""
+
+NO_PROGRAM = "(no program set on this student's profile)"
+"""The same idea for a student who has not said what they study.
+
+Separate from NO_CURRICULUM because the two are different problems with different
+remedies: this one the student can fix by setting their program, and the other
+they cannot fix at all. Telling someone the catalog is incomplete when the truth
+is that their profile is sends them somewhere nothing will help.
 """
 
 
@@ -348,10 +360,23 @@ async def _remaining_documents(
             passed_by_user.setdefault(str(row["userId"]), set()).add(str(number))
 
     documents: list[dict[str, Any]] = []
-    async for profile in database["student_profiles"].find(
-        {"programSlug": {"$exists": True, "$ne": None}}, {"userId": 1, "programSlug": 1}
-    ):
-        track = _resolve_track(str(profile["programSlug"]), contains)
+    # EVERY profile, not just the ones carrying a `programSlug`. Filtering here is
+    # what made a student who has not set a program indistinguishable from one who
+    # has finished: no rows, which `find` reports as zero records COMPLETE.
+    # `programSlug` is optional -- `student_profile_repository` writes None when it
+    # is unset -- so this is an ordinary state, not a corrupt one.
+    async for profile in database["student_profiles"].find({}, {"userId": 1, "programSlug": 1}):
+        slug = profile.get("programSlug")
+        if not slug:
+            documents.append(
+                {
+                    "userId": str(profile["userId"]),
+                    "courseNumber": NO_PROGRAM,
+                    "curriculumAvailable": False,
+                }
+            )
+            continue
+        track = _resolve_track(str(slug), contains)
         if track is None:
             # The student HAS a track and the graph has no page for it. This used
             # to `continue`, on the reasoning that emitting nothing reads as
@@ -378,7 +403,7 @@ async def _remaining_documents(
                 {
                     "userId": str(profile["userId"]),
                     "courseNumber": NO_CURRICULUM,
-                    "track": str(profile["programSlug"]),
+                    "track": str(slug),
                     "curriculumAvailable": False,
                 }
             )

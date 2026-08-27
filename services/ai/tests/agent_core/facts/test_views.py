@@ -443,3 +443,70 @@ class TestTheMarkerRowDoesNotPoisonEveryoneElse:
             )
             assert isinstance(result, Collection), f"{expectation} for {user} became {result!r}"
             assert result.records, f"{user} got an empty, complete result -- the original bug"
+
+
+class TestAStudentWhoHasNotSaidWhatTheyStudy:
+    """`programSlug` is optional -- `student_profile_repository` writes it as
+    None when unset -- so a student can reach the advisor without one.
+
+    The producer only ever iterated profiles that HAD a slug, so those students
+    got no rows, which `find` reports as zero records COMPLETE: the same "you
+    have nothing left to take" that `grad-direct-doctorate-track` got. Measured
+    on the dev database: 919 of 1,000 profiles have no slug, and 96 transcript
+    rows belong to them.
+
+    The reason differs from the missing-curriculum case and so does what the
+    student can do about it -- setting a program is within their reach, a
+    graduate curriculum the catalog has never held is not -- so the two say
+    different things.
+    """
+
+    async def test_a_student_with_no_program_is_not_reported_as_finished(
+        self, database
+    ) -> None:
+        from app.agent_core.facts.views import _remaining_documents
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412"]})
+
+        await database["student_profiles"].delete_many({})
+        await database["student_profiles"].insert_one({"userId": "no-program-1", "programSlug": None})
+        documents = await _remaining_documents(database, _Engine(), {})
+        mine = [d for d in documents if d["userId"] == "no-program-1"]
+
+        assert mine, "a student with no program must not silently vanish from the view"
+        assert mine[0]["curriculumAvailable"] is False
+
+    async def test_it_says_the_program_is_missing_not_the_catalog(self, database) -> None:
+        """Two different problems. Telling a student the catalog is incomplete
+        when the truth is that their profile is sends them to the wrong place."""
+        from app.agent_core.facts.views import NO_CURRICULUM, NO_PROGRAM, _remaining_documents
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412"]})
+
+        await database["student_profiles"].delete_many({})
+        await database["student_profiles"].insert_many(
+            [
+                {"userId": "no-program-2", "programSlug": None},
+                {"userId": "phd-4", "programSlug": "grad-direct-doctorate-track"},
+            ]
+        )
+        documents = await _remaining_documents(database, _Engine(), {})
+        by_user = {d["userId"]: d for d in documents}
+
+        assert by_user["no-program-2"]["courseNumber"] == NO_PROGRAM
+        assert by_user["phd-4"]["courseNumber"] == NO_CURRICULUM
+
+    async def test_a_missing_field_counts_the_same_as_a_null_one(self, database) -> None:
+        """An older profile has no `programSlug` key at all rather than a null."""
+        from app.agent_core.facts.views import _remaining_documents
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412"]})
+
+        await database["student_profiles"].delete_many({})
+        await database["student_profiles"].insert_one({"userId": "legacy-1"})
+        documents = await _remaining_documents(database, _Engine(), {})
+
+        assert [d for d in documents if d["userId"] == "legacy-1"]
