@@ -46,7 +46,45 @@ async def ensure_completed_course_indexes(
     )
 
 
-def build_completed_course_document(user_id: str, record_data: dict[str, Any]) -> dict[str, Any]:
+async def resolve_course_number(
+    database: AsyncIOMotorDatabase,
+    course_id: ObjectId,
+    *,
+    settings: Settings | None = None,
+) -> str | None:
+    """The course's catalog number, for denormalising onto the transcript row.
+
+    `None` when the course is not in the catalog, which is not a new failure --
+    such a row is already unreadable, because `courseId` is its only identity.
+    """
+    settings = settings or get_settings()
+    course = await database[settings.courses_collection].find_one(
+        {"_id": course_id}, {"courseNumber": 1}
+    )
+    number = (course or {}).get("courseNumber")
+    return str(number) if number else None
+
+
+def build_completed_course_document(
+    user_id: str, record_data: dict[str, Any], course_number: str | None = None
+) -> dict[str, Any]:
+    """One transcript row, ready to insert.
+
+    `course_number` is DENORMALISED here on purpose, duplicating what `courseId`
+    already points at. Without it a transcript row's only identity is an
+    ObjectId into another collection, and 28% of live rows reference a `courses`
+    document that no longer exists -- 38 of 145 students have no readable row at
+    all. Those rows carry no course number, no offering and empty metadata, so
+    what the student studied is simply unrecoverable.
+
+    `semester_plans.plannedCourses` already stores both, and that redundancy is
+    the only reason any of the broken rows could be repaired. This makes the
+    transcript as durable as the plan.
+
+    A course number is stable in a way `_id` is not: it is the registrar's
+    identifier, it survives a catalog re-promotion, and it is what
+    `productionKey` is derived from.
+    """
     parsed_user_id = parse_object_id(user_id)
     if parsed_user_id is None:
         raise ValueError("Invalid user id for completed course")
@@ -60,6 +98,11 @@ def build_completed_course_document(user_id: str, record_data: dict[str, Any]) -
     return {
         "userId": parsed_user_id,
         "courseId": parsed_course_id,
+        # OMITTED rather than stored as None when the catalog has no such course:
+        # an absent field reads as "unknown", where a null reads as "known to be
+        # nothing" and would satisfy an `$exists` check that means to find rows
+        # carrying a real number.
+        **({"courseNumber": course_number} if course_number else {}),
         "courseOfferingId": None,
         "semesterCode": record_data["semesterCode"],
         "grade": record_data["grade"],
@@ -115,7 +158,13 @@ async def create_completed_course(
         record_data.get("attempt", 1),
     )
     resolved_record_data = {**record_data, "attempt": resolved_attempt}
-    document = build_completed_course_document(user_id, resolved_record_data)
+    parsed_course_id = parse_object_id(course_id)
+    course_number = (
+        await resolve_course_number(database, parsed_course_id, settings=settings)
+        if parsed_course_id is not None
+        else None
+    )
+    document = build_completed_course_document(user_id, resolved_record_data, course_number)
     insert_result = await database[settings.completed_courses_collection].insert_one(document)
     return {
         "_id": insert_result.inserted_id,
