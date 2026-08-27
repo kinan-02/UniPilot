@@ -8,7 +8,11 @@
   --color-surface-muted: #ffffff;
   --color-border: #e5e7eb;
   --color-text: #111827;
-  --color-text-muted: #6b7280;
+  /* gray-600, not gray-500. gray-500 clears AA on the plain surface (4.63:1) but
+     not on the tinted cards -- `bg-[var(--color-primary)]/5` resolves to #f1f1fa,
+     where it is 4.30:1 and fails. gray-600 is 6.73:1 there and 7.5:1 on the plain
+     surface, so a new tinted background cannot quietly push it under again. */
+  --color-text-muted: #4b5563;
   
   /* Primary: Vibrant Indigo */
   --color-primary: #4f46e5;
@@ -381,14 +385,24 @@ html[dir='rtl'] .animate-slide-in-right {
   animation: advisor-msg-in 0.3s ease-out both;
 }
 
+/* Reduced motion, applied to everything rather than to a list of class names.
+   The list this replaces named eight classes and missed the rest -- the advisor
+   message bubbles, the thinking dots, every Tailwind `animate-*` utility and
+   every CSS transition in the app. Someone who asks for reduced motion should
+   stop getting motion, not get less of it, so opting in by name is the wrong
+   shape: each new animation silently defaults to ignoring the request.
+
+   Durations are collapsed rather than set to `none` so that animations which
+   only exist to reveal an element (`opacity: 0 -> 1`, `both`) still land on
+   their finished state instead of being stuck invisible. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in,
-  .animate-slide-in-right,
-  .animate-slide-in-up,
-  .agent-shimmer,
-  .agent-avatar-live,
-  .agent-stream-cursor::after {
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
