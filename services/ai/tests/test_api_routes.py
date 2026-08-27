@@ -118,6 +118,18 @@ def test_course_ids_are_empty_when_no_fact_grounds_them():
 # -- /advise wiring -----------------------------------------------------------
 
 
+def _names_the_course(text: str, code: str = "00960211", name: str = "E-Commerce Models") -> bool:
+    """The answer names the course, whether or not the catalog is loaded.
+
+    `pair_codes_with_names` shows a code with its catalog name on first mention,
+    so the rendered answer is "00960211 (E-Commerce Models)" where the name is
+    available and a bare "00960211" where it is not -- the catalog comes from
+    Mongo, which a unit run does not require. Pinning either spelling alone
+    makes this test depend on whether a database happened to be reachable.
+    """
+    return text in (f"Course {code} is E-Commerce.", f"Course {code} ({name}) is E-Commerce.")
+
+
 async def test_advise_route_happy_path(monkeypatch):
     _patch_loop(
         monkeypatch,
@@ -130,7 +142,7 @@ async def test_advise_route_happy_path(monkeypatch):
     assert body["success"] is True
     data = body["data"]
     assert data["question"] == "What is 00960211?"
-    assert data["response"]["answer"] == "Course 00960211 is E-Commerce."
+    assert _names_the_course(data["response"]["answer"])
     assert data["response"]["confidence"] == "high"
     assert data["response"]["course_ids"] == ["00960211"]
     assert data["response"]["courses"] == [{"id": "00960211", "name": "E-Commerce Models"}] or (
@@ -273,9 +285,9 @@ async def test_advise_stream_emits_chunk_then_final(monkeypatch):
 
     assert response.status_code == 200
     lines = [json.loads(l[len("data: ") :]) for l in response.text.splitlines() if l.startswith("data: ")]
-    assert any(e.get("type") == "chunk" and e.get("text") == "Course 00960211 is E-Commerce." for e in lines)
+    assert any(e.get("type") == "chunk" and _names_the_course(e.get("text") or "") for e in lines)
     advisor = _final_advisor_from_stream(response.text)
-    assert advisor["answer"] == "Course 00960211 is E-Commerce."
+    assert _names_the_course(advisor["answer"])
     assert advisor["courseIds"] == ["00960211"]
     assert advisor["retrievalStatus"] == "succeeded"
 
