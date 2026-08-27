@@ -287,10 +287,13 @@ export function AdvisorPage() {
               )
             )
           } else if (data.type === 'error') {
+            // The server's own wording stays in the console. It is safe to show
+            // now, but it is written in English by two services that do not know
+            // which language this page is in -- and this app is Hebrew-first.
             console.error('SSE error event:', data.error)
             setMessages((current) =>
               current.map(m => m.id === assistantMessageId
-                ? { ...m, content: m.content || 'Something went wrong. Please try again.' }
+                ? { ...m, content: m.content || t('advisor.error') }
                 : m
               )
             )

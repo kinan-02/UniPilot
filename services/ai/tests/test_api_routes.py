@@ -347,3 +347,46 @@ async def test_conversation_id_is_optional(monkeypatch):
     response = client.post("/advise", json={"question": "how many credits?", "user_id": "u1"})
     assert response.status_code == 200
     assert seen.get("conversation_id") is None
+
+
+class TestAMidStreamFailure:
+    """This stream is proxied through `api` straight into the browser, so what
+    goes in the `error` event is published, not logged."""
+
+    @staticmethod
+    def _patch_loop_raising(monkeypatch, error: Exception) -> None:
+        async def _fake_run_advice(*, on_progress=None, **_kwargs):
+            raise error
+
+        monkeypatch.setattr(advise_module, "run_advice", _fake_run_advice)
+
+    @staticmethod
+    def _events(text: str) -> list[dict]:
+        return [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: ")]
+
+    async def test_it_ends_with_an_error_event_and_not_a_500(self, monkeypatch):
+        self._patch_loop_raising(monkeypatch, RuntimeError("boom"))
+        response = client.post("/advise/stream", json={"question": "q", "user_id": "u1"})
+
+        assert response.status_code == 200
+        assert [e["type"] for e in self._events(response.text)] == ["error"]
+
+    async def test_the_exception_text_does_not_cross_the_wire(self, monkeypatch):
+        """A KeyError names an internal field; a driver error names a host. The
+        old line sent `str(exc)`, which put both in the student's devtools."""
+        self._patch_loop_raising(
+            monkeypatch, KeyError("mongodb://user:pw@10.0.3.7:27017 internal_field")
+        )
+        response = client.post("/advise/stream", json={"question": "q", "user_id": "u1"})
+
+        payload = response.text
+        assert "10.0.3.7" not in payload
+        assert "internal_field" not in payload
+        assert "KeyError" not in payload
+        assert self._events(payload)[0]["error"] == advise_module.STREAM_FAILED
+
+    async def test_the_message_is_written_for_a_student_to_read(self, monkeypatch):
+        """It is rendered by the UI when nothing streamed before the failure, so
+        it has to be a sentence rather than an error code."""
+        assert advise_module.STREAM_FAILED.islower() or " " in advise_module.STREAM_FAILED
+        assert len(advise_module.STREAM_FAILED.split()) >= 4

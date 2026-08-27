@@ -147,6 +147,36 @@ describe('AdvisorPage', () => {
     expect(screen.getByText('ise credits')).toBeInTheDocument()
   })
 
+  it('shows a translated message when the stream fails before any answer', async () => {
+    // The server's wording is English and fixed, written by two services that do
+    // not know which language this page is in. This app is Hebrew-first, so what
+    // the student reads has to come from the locale.
+    const errorEvent = `data: ${JSON.stringify({
+      type: 'error',
+      error: 'the advisor could not finish this answer',
+    })}\n\n`
+    vi.mocked(advisorApi.askStream).mockResolvedValue(streamingResponse(errorEvent))
+
+    await ask()
+
+    // Hebrew, because that is what this app defaults to -- which is the whole
+    // point: the string it replaced was English no matter who was reading.
+    expect(await screen.findByText('לא ניתן לקבל תשובה מהיועץ כרגע.')).toBeInTheDocument()
+    expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
+  })
+
+  it('keeps what already streamed when the failure arrives part way through', async () => {
+    const errorEvent = `data: ${JSON.stringify({ type: 'error', error: 'boom' })}\n\n`
+    vi.mocked(advisorApi.askStream).mockResolvedValue(
+      streamingResponse(CHUNK_EVENT, errorEvent),
+    )
+
+    await ask()
+
+    // The partial answer survives; the error does not replace it.
+    expect(await screen.findByText(ADVISOR_REPLY.answer)).toBeInTheDocument()
+  })
+
   it('collapses to one control once there are more references than fit inline', async () => {
     // The 46-chip case: inlining every reference is a wall, not a citation.
     vi.mocked(advisorApi.askStream).mockResolvedValue(

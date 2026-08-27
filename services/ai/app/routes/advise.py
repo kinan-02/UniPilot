@@ -44,6 +44,13 @@ router = APIRouter(dependencies=[Depends(require_internal_service_token)])
 
 _TIMEOUT_MESSAGE = "This question is taking longer than expected to analyze -- please try again or ask something more specific."
 
+STREAM_FAILED = "the advisor could not finish this answer"
+"""What a mid-stream failure tells the client. Fixed text, and safe to render.
+
+It crosses `api` into the browser untouched, so it is written as something a
+student could be shown rather than as something only a developer would read.
+"""
+
 
 def _response_payload(advice: Advice) -> dict[str, Any]:
     return {
@@ -212,7 +219,15 @@ async def advise_stream_route(payload: AdviseRequest) -> StreamingResponse:
         except asyncio.TimeoutError:
             final_payload = _timeout_response(payload.question)
         except Exception as exc:  # noqa: BLE001 -- surface as a typed error event, never a 500 mid-stream
-            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+            # `str(exc)` used to go out on this line. This stream is proxied
+            # straight through `api` to the browser, so an unexpected exception's
+            # text -- a KeyError naming an internal field, a driver message naming
+            # a host -- was crossing the network to the student's devtools. It was
+            # never rendered, which is luck rather than design: the UI has an
+            # error branch, and the moment it shows `data.error` the leak is on
+            # screen. The real message belongs in the log.
+            logger.exception("advise stream failed for user %s", payload.user_id)
+            yield f"data: {json.dumps({'type': 'error', 'error': STREAM_FAILED})}\n\n"
             return
         finally:
             # A timed-out or failed generator must not leave the loop running and
