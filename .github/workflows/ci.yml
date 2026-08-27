@@ -68,13 +68,18 @@ jobs:
       # An EMPTY mongo, which is worth more than it sounds. Without one, 65 tests
       # skip themselves with "NOT VERIFIED: no database" -- among them every check
       # that the `facts/` schemas still match the documents they claim to read.
-      # Measured: 1,645 tests run without this, 1,718 with it.
+      # Measured on this runner: 1,645 passed / 66 skipped before, 1,702 / 22 after.
       #
-      # It is NOT seeded, and that ceiling is worth stating. The checks that walk a
-      # real population -- every track has a curriculum, every offering has history
-      # -- still skip here, and one of those caught a live bug (8 students told
-      # their degree was finished) that this job would not have. Seeding the
-      # catalog from the vault is the next step, not a step already taken.
+      # 22 is more than the 6 that skip in a local checkout set up to imitate this
+      # job, and the extra 16 are NOT understood. That is why the run below prints
+      # its skip reasons: a skip nobody reads is a test you only think you have.
+      #
+      # The mongo is NOT seeded, and that ceiling is worth stating. The checks that
+      # walk a real population -- every track has a curriculum, every known course
+      # has offering history -- still skip here, and one of those caught a live bug
+      # (8 students told their degree was finished, 7e377a3) that this job would
+      # not have. Seeding the catalog from the vault, which is in git, is the next
+      # step and not one taken here.
       mongo:
         image: mongo:7.0.15
         ports:
@@ -99,11 +104,13 @@ jobs:
       # suite and makes no billable LLM call. Do not add `-m` here: overriding it
       # on the command line is what would let the paid tests through.
       #
-      # ~1,718 tests, against the empty mongo above. The half-dozen that still skip
-      # need a POPULATED database, and say which data they wanted; see the comment
-      # on the service.
+      # `-rs` prints why each test skipped. These tests skip themselves rather than
+      # fail when the data they need is absent, which is the right behaviour and
+      # also a good way to lose coverage without noticing: the tick stays green
+      # while the number of things actually checked falls. The reasons name the
+      # missing data, so the log says what this run did NOT verify.
       - name: Run pytest with coverage
-        run: pytest
+        run: pytest -rs
 
   transcript-parser:
     name: Transcript parser (pytest)
