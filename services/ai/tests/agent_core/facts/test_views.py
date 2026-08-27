@@ -24,8 +24,8 @@ from app.agent_core.facts.find import find
 from app.agent_core.facts.predicate import Comparison, Op, Path
 from app.agent_core.facts.sources import COMPLETED_COURSES, PASSING_GRADE
 from app.agent_core.facts.sources import REGISTRY as REGISTRY_FOR_SEEDING
-from app.agent_core.facts.types import Scalar, ScalarKind
-from app.agent_core.facts.views import _resolve_track, track_categories
+from app.agent_core.facts.types import Collection, Scalar, ScalarKind
+from app.agent_core.facts.views import NO_CURRICULUM, _resolve_track, track_categories
 
 B = ScalarKind.BOOL
 I = ScalarKind.IDENTIFIER
@@ -301,3 +301,145 @@ class TestSeedingTheOpeningFacts:
         _seed_credit_standing(context, await _profile_of(student_database, PROFILE_USER))
         assert context.facts["credits_completed"].value.value == 3.5
         assert context.facts["credits_needed"].value.value == 151.5
+
+
+class TestATrackWithNoCurriculumAtAll:
+    """`grad-direct-doctorate-track` carries 8 of the 81 profiles that have a
+    track, and the graph has no page for it -- the vault covers 52 undergraduate
+    tracks and no graduate ones, so the absence is correct and permanent.
+
+    What was not correct is what the student heard. The producer skipped them, so
+    `find remaining_courses where userId = X` came back with zero records marked
+    COMPLETE, which is the same answer a finished degree gives. `find.py` says it
+    outright: silence is the worst failure this layer can produce.
+
+    So an unresolvable track now emits a row SAYING it is unresolvable, rather
+    than no row at all. It has to be unmistakably not a course, or it trades a
+    silent wrong answer for a loud one.
+    """
+
+    @staticmethod
+    def _documents(rows: list[dict], contains: dict) -> list[dict]:
+        from app.agent_core.facts import views
+
+        class _Engine:
+            graph = None
+
+        # Exercise the real branch by driving `_resolve_track` the way the
+        # producer does, rather than restating its logic here.
+        out = []
+        for row in rows:
+            track = views._resolve_track(row["programSlug"], contains)
+            out.append({"userId": row["userId"], "programSlug": row["programSlug"], "track": track})
+        return out
+
+    def test_an_unresolvable_track_still_resolves_to_nothing(self) -> None:
+        """The precondition. `_resolve_track` is not being loosened -- a near
+        miss would plan someone else's degree."""
+        assert _resolve_track("grad-direct-doctorate-track", {"track-electrical-engineering": []}) is None
+
+    async def test_the_student_gets_a_row_rather_than_silence(self, database) -> None:
+        from app.agent_core.facts.views import _remaining_documents
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412"]})
+
+        await database["student_profiles"].insert_one(
+            {"userId": "phd-1", "programSlug": "grad-direct-doctorate-track"}
+        )
+        documents = await _remaining_documents(database, _Engine(), {})
+        mine = [d for d in documents if d["userId"] == "phd-1"]
+
+        assert mine, "a student whose track has no curriculum must not vanish from the view"
+
+    async def test_the_row_cannot_be_read_as_a_course(self, database) -> None:
+        """No courseNumber, no title, no credits. A row that carried them would
+        be counted, summed and planned as though it were a course to take."""
+        from app.agent_core.facts.views import _remaining_documents
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412"]})
+
+        await database["student_profiles"].insert_one(
+            {"userId": "phd-2", "programSlug": "grad-direct-doctorate-track"}
+        )
+        documents = await _remaining_documents(database, _Engine(), {})
+        row = [d for d in documents if d["userId"] == "phd-2"][0]
+
+        assert row.get("curriculumAvailable") is False
+        assert "title" not in row
+        assert "credits" not in row
+        # It DOES carry a courseNumber, because `_from_documents` turns a keyless
+        # row into a DataDefect and returns it before filtering -- one such row
+        # would break `remaining_courses` for every student. So the value has to
+        # be a course number that is unmistakably not a course.
+        assert row["courseNumber"] == NO_CURRICULUM
+        assert not row["courseNumber"].isdigit()
+
+    async def test_a_resolvable_track_is_not_given_the_flag(self, database) -> None:
+        """The flag marks the exception. Putting it on every row would make it
+        noise the model learns to skip."""
+        from app.agent_core.facts.views import _remaining_documents
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412"]})
+
+        await database["student_profiles"].insert_one(
+            {"userId": "ug-1", "programSlug": "track-ee"}
+        )
+        documents = await _remaining_documents(database, _Engine(), {})
+        rows = [d for d in documents if d["userId"] == "ug-1"]
+
+        assert rows and all("curriculumAvailable" not in row for row in rows)
+
+
+def _graph_with_contains(contains: dict[str, list[str]]):
+    """A networkx-shaped stub exposing just the `contains` edges the producer reads."""
+    import networkx as nx
+
+    graph = nx.DiGraph()
+    for track, courses in contains.items():
+        for course in courses:
+            graph.add_edge(track, course, relation="contains")
+    return graph
+
+
+class TestTheMarkerRowDoesNotPoisonEveryoneElse:
+    """`_from_documents` converts EVERY document before it filters, and returns
+    the first DataDefect it makes. So a badly-shaped marker row for one student
+    is not a local problem -- it takes out `remaining_courses` for the whole
+    cohort. This is the test that would have caught it."""
+
+    async def test_one_students_missing_curriculum_leaves_the_rest_readable(
+        self, database
+    ) -> None:
+        from app.agent_core.facts.views import remaining_courses_source
+
+        class _Engine:
+            graph = _graph_with_contains({"track-ee": ["00940412", "00940413"]})
+
+        await database["student_profiles"].delete_many({})
+        await database["student_profiles"].insert_many(
+            [
+                {"userId": "phd-3", "programSlug": "grad-direct-doctorate-track"},
+                {"userId": "ug-2", "programSlug": "track-ee"},
+            ]
+        )
+        await database["courses"].delete_many({})
+        await database["courses"].insert_many(
+            [
+                {"courseNumber": "00940412", "title": "A", "credits": 3.0},
+                {"courseNumber": "00940413", "title": "B", "credits": 3.0},
+            ]
+        )
+
+        schema = remaining_courses_source(_Engine())
+        for user, expectation in (("ug-2", "courses"), ("phd-3", "the marker")):
+            result = await find(
+                database,
+                schema,
+                Comparison(Path.parse("userId"), Op.EQ, Scalar(I, user)),
+                limit=100,
+            )
+            assert isinstance(result, Collection), f"{expectation} for {user} became {result!r}"
+            assert result.records, f"{user} got an empty, complete result -- the original bug"

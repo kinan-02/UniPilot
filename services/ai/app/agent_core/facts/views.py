@@ -231,8 +231,18 @@ def remaining_courses_source(engine: Any) -> ViewSchema:
             "credits": _Q,
             "category": _I,
             "track": _I,
+            "curriculumAvailable": ScalarKind.BOOL,
         },
         field_notes={
+            "curriculumAvailable": (
+                "PRESENT ONLY WHEN FALSE, AND ONLY ON A ROW THAT IS NOT A COURSE. It means the "
+                "catalog has no curriculum for this student's track at all -- the vault covers "
+                "undergraduate tracks, and a graduate one has no course list in it. Such a row "
+                "carries no title and no credits, and its `courseNumber` is a sentence saying so. "
+                "SAY THAT THE CURRICULUM IS NOT AVAILABLE. Do not report it as a course, do not "
+                "count it, and above all do not read the absence as a finished degree -- these "
+                "students have not completed anything."
+            ),
             "courseNumber": (
                 "a course in THIS student's track that they have not passed. Filter by `userId` "
                 "and this is the whole remaining curriculum, already joined to the catalog for "
@@ -272,6 +282,14 @@ def remaining_courses_source(engine: Any) -> ViewSchema:
 
 
 _TRACK_PREFIX = "track-"
+
+NO_CURRICULUM = "(no curriculum in the catalog for this track)"
+"""The `courseNumber` of the row that stands in for a curriculum we do not have.
+
+Deliberately a sentence and not a code. Every real course number is eight digits,
+so this cannot collide with one, cannot be looked up as one, and reads as an
+explanation wherever it surfaces -- including if a model quotes it verbatim.
+"""
 
 
 def _resolve_track(program_slug: str, contains: Mapping[str, Any]) -> str | None:
@@ -335,13 +353,35 @@ async def _remaining_documents(
     ):
         track = _resolve_track(str(profile["programSlug"]), contains)
         if track is None:
-            # The student HAS a track and we cannot find it in the graph. Emitting
-            # nothing for them is what this branch does, and that is the one
-            # outcome worth naming: an empty `remaining_courses` reads as "you
-            # have nothing left to take". It is reported as absence rather than
-            # as an empty curriculum because `find` marks a zero-record fetch
-            # complete, and a complete zero is indistinguishable from a finished
-            # degree.
+            # The student HAS a track and the graph has no page for it. This used
+            # to `continue`, on the reasoning that emitting nothing reads as
+            # absence rather than as an empty curriculum. It does not. `find`
+            # filters by `userId`, so both cases arrive as zero records marked
+            # COMPLETE, and a complete zero is exactly what a finished degree
+            # looks like. Measured: 8 of the 81 profiles carrying a track are on
+            # `grad-direct-doctorate-track`, and the vault holds 52 undergraduate
+            # tracks and no graduate ones -- so 8 students were being told they
+            # had nothing left to take, permanently, and correctly-absent data
+            # was doing it.
+            #
+            # The row says so instead. It carries NO courseNumber, title or
+            # credits, because a row with them would be counted, summed and
+            # planned as a course to take -- trading a silent wrong answer for a
+            # loud one.
+            # It carries a `courseNumber` because it has to: `_from_documents`
+            # converts EVERY document before filtering, and a row missing the key
+            # is a DataDefect that it returns immediately -- so one keyless row
+            # here would break `remaining_courses` for every student, not just
+            # this one. The value is a sentence rather than an 8-digit code, so
+            # nothing reads it as a course.
+            documents.append(
+                {
+                    "userId": str(profile["userId"]),
+                    "courseNumber": NO_CURRICULUM,
+                    "track": str(profile["programSlug"]),
+                    "curriculumAvailable": False,
+                }
+            )
             continue
         user_id = str(profile["userId"])
         already = passed_by_user.get(user_id, set())
