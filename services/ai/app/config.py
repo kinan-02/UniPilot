@@ -27,6 +27,9 @@ def _resolve_repo_root() -> Path:
 
 _REPO_ROOT = _resolve_repo_root()
 
+_MINIMUM_PRODUCTION_TOKEN_LENGTH = 32
+"""Matches `api`'s rule for the same secret, and `.env.example`'s description of it."""
+
 # Real, checked-out academic data lives in the sibling data-engineering
 # service, not under services/ai itself -- used as a local-dev fallback
 # below. Found necessary the hard way: every
@@ -147,6 +150,41 @@ class Settings(BaseSettings):
 
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()
+
+    def validate_production_settings(self) -> None:
+        """Refuse to run a production service with no boundary in front of it.
+
+        `/advise` takes a `user_id` and answers with that student's transcript,
+        GPA, plans and remaining curriculum. It never authenticates the student --
+        `api` does that, then calls here on their behalf. The internal token is
+        therefore the entire boundary, and `require_internal_service_token`
+        returns early when none is configured.
+
+        That early return is right for a developer running this alone and wrong
+        in production, where the way it happens is an env var that quietly fails
+        to arrive: nothing errors, nothing looks different, and every student
+        record is readable by anything that can reach the port and guess an id.
+
+        The rule is deliberately the same one `api` already applies to this exact
+        secret -- at least 32 characters in production -- because the asymmetry
+        was the odd part: the CALLER refused to start without a strong token
+        while the CALLEE it protects would start without any token at all.
+        `.env.example` has described it as "Required (32+ chars) when
+        ENVIRONMENT=production" the whole time; this is the half that enforces it.
+        """
+        if self.environment != "production":
+            return
+        token = self.resolved_internal_service_token()
+        if not token:
+            raise RuntimeError(
+                "INTERNAL_SERVICE_TOKEN is required in production: without it "
+                "/advise answers for any user_id with no authentication at all."
+            )
+        if len(token) < _MINIMUM_PRODUCTION_TOKEN_LENGTH:
+            raise RuntimeError(
+                "INTERNAL_SERVICE_TOKEN must be at least "
+                f"{_MINIMUM_PRODUCTION_TOKEN_LENGTH} characters in production."
+            )
 
     def resolved_academic_wiki_path(self) -> str:
         configured = (self.academic_wiki_path or "").strip()

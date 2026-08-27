@@ -25,6 +25,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Before anything is served. An unset INTERNAL_SERVICE_TOKEN leaves /advise
+    # answering for any user_id with no authentication, and a service that starts
+    # without its boundary is worse than one that does not start.
+    get_settings().validate_production_settings()
     graph_registry.refresh_stats(get_settings())
     # Course names for answers about courses the wiki does not cover. Returns 0
     # and logs rather than raising if the catalog is unreachable -- a bare code is
