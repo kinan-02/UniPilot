@@ -259,7 +259,20 @@ def remaining_courses_source(engine: Any) -> ViewSchema:
                 "`passed_courses.creditsCounted`.\n"
                 "     THAT INCLUDES A PROJECTED GPA. Weight a projection by the credits still to "
                 "EARN, not by the credits of every unfinished course, or the projection is "
-                "spread over a longer degree than the student is doing."
+                "spread over a longer degree than the student is doing.\n"
+                "     ABSENT on a course the catalog does not hold, and an aggregate over it "
+                "then REFUSES rather than totalling the rest -- which is correct and is also "
+                "the answer. Say the catalog is missing those courses and name them; do not "
+                "retry the sum, and do not fall back to a total over the courses that happen "
+                "to have a number."
+            ),
+            "title": (
+                "the course name, joined from `courses`. ABSENT when the track page lists a "
+                "course the catalog does not hold -- measured at 291 of the 1,410 courses the "
+                "track pages reference, and 36 of 36 on `track-medicine-md`. Such a row is "
+                "still a course the student has to take; it is the catalog that is incomplete, "
+                "not the curriculum. Name it by its `courseNumber` and say the catalog has no "
+                "entry for it, rather than dropping it from the list."
             ),
             "category": (
                 "\"mandatory\" or \"elective\". Take every mandatory one, then add electives only "
