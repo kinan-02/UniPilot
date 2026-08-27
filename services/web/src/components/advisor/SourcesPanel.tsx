@@ -2,31 +2,7 @@ import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { BookOpen, FileText, Users, X } from 'lucide-react'
-import type { AdvisorReply } from '../../types/api'
-
-export type SourceGroups = {
-  courses: { id: string; name: string }[]
-  sources: string[]
-  contacts: string[]
-}
-
-/** Prefers the named `courses` the AI service now sends, falling back to bare
- * `courseIds` so a reply from an older response shape still renders. */
-export function sourceGroups(reply: AdvisorReply): SourceGroups {
-  const courses =
-    reply.courses?.length
-      ? reply.courses
-      : (reply.courseIds ?? []).map((id) => ({ id, name: id }))
-  return {
-    courses,
-    sources: reply.sources ?? [],
-    contacts: reply.contacts ?? [],
-  }
-}
-
-export function countSources(groups: SourceGroups): number {
-  return groups.courses.length + groups.sources.length + groups.contacts.length
-}
+import type { SourceGroups } from './sourceGroups'
 
 /** A search source is recorded as `search: <query>`; show the query, labelled. */
 function readableSource(source: string): { label: string; text: string } {

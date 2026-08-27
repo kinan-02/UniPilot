@@ -170,6 +170,49 @@ jobs:
       - name: Production build
         run: npm run build
 
+  web-lint:
+    name: Web (lint touched files)
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the diff below needs the merge base, which a shallow
+      # checkout does not have.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/web/package-lock.json
+      - name: Install dependencies
+        working-directory: services/web
+        run: npm ci
+      # Only the files this change touches, and zero warnings on those.
+      #
+      # Whole-tree linting is not on the table yet: `npx eslint src/` reports 49
+      # errors across 27 files, most of them `react-hooks/set-state-in-effect`,
+      # which is a behavioural refactor and not this job's business. Gating the
+      # whole tree would mean doing that refactor first; gating nothing is how
+      # the tree got here.
+      #
+      # `--max-warnings 0` rather than errors-only, deliberately. The rule that
+      # matters most here is `exhaustive-deps`, and it is a WARNING -- it caught a
+      # real bug in this branch (a `useCallback` holding a stale `t` while the
+      # page has a language switcher) that an errors-only gate would have waved
+      # through.
+      - name: Lint the files this change touches
+        working-directory: services/web
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="$(git merge-base origin/${{ github.event.repository.default_branch }} HEAD || true)"; fi
+          if [ -z "$base" ]; then echo "No merge base to compare against; nothing to lint."; exit 0; fi
+          # ACMR: added/copied/modified/renamed. A DELETED file must not be linted.
+          files="$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- 'services/web/src/*' 'services/web/e2e/*' \
+                   | grep -E '\.(ts|tsx)$' | sed 's|^services/web/||' || true)"
+          if [ -z "$files" ]; then echo "No web TypeScript touched by this change."; exit 0; fi
+          echo "Linting:"; echo "$files" | sed 's/^/  /'
+          npx eslint --max-warnings 0 $files
+
   e2e:
     name: Web (Playwright E2E)
     runs-on: ubuntu-latest
