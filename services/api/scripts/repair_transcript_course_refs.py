@@ -4,11 +4,8 @@ DRY RUN BY DEFAULT. Pass `--apply` to write.
 
 ## What is broken
 
-`completed_courses.courseId` is an ObjectId referencing `courses._id`. A catalog
-promotion REPLACES the `courses` collection -- every document is written with a
-fresh `_id` (staging and production do not share ids either) -- so every
-transcript row written before the current promotion now references a document
-that no longer exists.
+`completed_courses.courseId` is an ObjectId referencing `courses._id`, and for
+28% of rows that document no longer exists.
 
 Measured 2026-08-26 against the live database:
 
@@ -18,8 +15,27 @@ Measured 2026-08-26 against the live database:
     transcript rows affected      155 / 554  (28%)
     students with NO usable row    38 / 145
 
-All 2,613 courses carry one `promotionRunId`, so this is the state after a single
-promotion. The next one will do it again to whatever is currently intact.
+## What did NOT cause it
+
+The catalog promoter, which was the first suspect and is innocent. It writes
+with `ReplaceOne({"productionKey": ...}, doc, upsert=True)`, `_id` is stripped
+from the document before promotion (`dds_production_promoter.py`), and it
+explicitly skips `courses` and `course_offerings` in its stale-row delete --
+"upserted but never bulk-deleted here". A `ReplaceOne` matching an existing row
+KEEPS that row's `_id`. `catalog_bootstrap._course_doc` sets the same
+`technion:course:<number>` key, so even the development seed is matched and
+preserved rather than duplicated.
+
+So promotion does not rotate `_id` values, and running another one will not make
+this worse. An earlier version of this file said the opposite and recommended
+"promote by upserting on productionKey" as the fix -- which is what the promoter
+already does. Read the promoter before believing that story again.
+
+What actually orphaned these ids is not recoverable from the database: the
+values appear in no collection, and the surviving evidence (rows recorded
+2026-06-24, `source: "manual"`) is consistent with a reseed, a restore, or a
+transcript import from another environment. Rather than guess, note that the
+DAMAGE is what matters, and it is the same whatever the cause.
 
 ## Why it matters
 
@@ -52,16 +68,20 @@ real grade, which is the failure that invites no doubt.
 
 ## The actual fix, which is not this script
 
-Stop referencing the catalog by a surrogate key the pipeline regenerates. Every
-course already carries `productionKey` (`technion:course:00940333`), which is
-derived from the course number and is STABLE across promotions. Either:
+Denormalise `courseNumber` onto `completed_courses` at write time, the way
+`semester_plans.plannedCourses` already does.
 
-  1. promote by upserting on `productionKey` so `_id` survives a promotion, or
-  2. denormalise `courseNumber` onto `completed_courses` at write time, the way
-     `semester_plans.plannedCourses` already does.
+Not because promotion is unsafe -- it is not -- but because an ObjectId into
+another collection is the ONLY identity these rows carry. `courseNumber` is
+absent, `courseOfferingId` is null on all 554 rows, and `metadata` is empty. Any
+event that changes `courses._id` -- a restore, a reseed, a migration between
+environments -- therefore destroys the meaning of a transcript row with no way
+back, and does it silently, because the query stays correct while the data stops
+being true.
 
-(2) is what makes this script's repair possible at all, and it is the reason
-plans survived a promotion that transcripts did not.
+Plans carry the course number and survived whatever happened here. Transcripts
+did not. That difference IS the argument, and it is the reason this script can
+repair anything at all.
 """
 
 from __future__ import annotations
