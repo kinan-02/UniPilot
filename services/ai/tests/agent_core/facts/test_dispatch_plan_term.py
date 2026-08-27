@@ -196,3 +196,31 @@ async def test_empty_terms_is_a_defect_before_any_call():
 
     fetch.assert_not_awaited()
     assert "winter" in result.defects
+
+
+async def test_the_api_being_unreachable_is_a_defect_not_a_dead_run():
+    """The end-to-end version of the refusal test above, and the reason the client
+    converts transport errors at all.
+
+    Patched at httpx rather than at `fetch_term_plan`, so the conversion is inside
+    the path under test -- mocking the fetch would assert only that dispatch
+    handles a type the client might never produce. Without that conversion the
+    ConnectError sails past `except InternalApiClientError` and ends the run,
+    which costs the student the whole answer instead of just the plan.
+    """
+    import httpx
+
+    dead = AsyncMock()
+    dead.request = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+    dead.__aenter__ = AsyncMock(return_value=dead)
+    dead.__aexit__ = AsyncMock(return_value=None)
+
+    from app.config import Settings
+
+    context = _context(settings=Settings(api_service_url="http://api:3000", internal_service_token="t"))
+
+    with patch("app.clients.internal_api_client.httpx.AsyncClient", return_value=dead):
+        result = await dispatch(_call(), context)
+
+    assert "winter" in result.defects
+    assert "10.0.3.7" not in result.defects["winter"].message
