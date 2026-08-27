@@ -53,7 +53,7 @@ from typing import Any
 
 import pytest
 
-from app.agent_core.loop import run_agent_loop
+from app.agent_core.loop.runner import run_agent_loop
 from app.agent_core.reasoning.llm_client import agent_llm_available
 from app.agent_core.response_language import ENGLISH, detect_message_language
 from app.agent_core.tools.default_registry import build_default_tool_registry
