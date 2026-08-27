@@ -323,10 +323,14 @@ export function AdvisorPage() {
       // Normally empty -- the server terminates every event with a blank line.
       handleEvent(buffer)
     } catch (err) {
+      // The transport half of the same failure -- the request never returned, or
+      // returned a status instead of a stream. It reaches a student more often
+      // than the `error` event does, and it was the other hardcoded English
+      // string on this page.
       console.error('Stream error:', err)
       setMessages((current) =>
         current.map(m => m.id === assistantMessageId
-          ? { ...m, content: m.content || 'Connection error. Please try again.' }
+          ? { ...m, content: m.content || t('advisor.error') }
           : m
         )
       )
@@ -335,7 +339,11 @@ export function AdvisorPage() {
       setActiveStreamId(null)
       setProgress(null)
     }
-  }, [isStreaming])
+    // `t` belongs here: it changes with the locale, and this page has a language
+    // switcher. Without it the callback keeps whichever `t` existed on first
+    // render, and a student who switches language mid-session gets the previous
+    // language's error message.
+  }, [isStreaming, t])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()

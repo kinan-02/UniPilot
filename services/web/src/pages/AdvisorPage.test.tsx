@@ -165,6 +165,30 @@ describe('AdvisorPage', () => {
     expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument()
   })
 
+  it('shows a translated message when the request never returns a stream', async () => {
+    // The transport half: the fetch rejects, or answers with a status instead of
+    // a body. This reaches a student more often than the `error` event does.
+    vi.mocked(advisorApi.askStream).mockRejectedValue(new Error('Failed to fetch'))
+
+    await ask()
+
+    expect(await screen.findByText('לא ניתן לקבל תשובה מהיועץ כרגע.')).toBeInTheDocument()
+    expect(screen.queryByText('Connection error. Please try again.')).not.toBeInTheDocument()
+  })
+
+  it('releases the composer after a failure so the question can be retried', async () => {
+    // The `finally` that clears `isStreaming`. Without it the input stays
+    // disabled and the student cannot retype the question that just failed.
+    // Asserted on the INPUT, not the submit button -- the button is also
+    // disabled by an empty box, which submitting legitimately leaves behind.
+    vi.mocked(advisorApi.askStream).mockRejectedValue(new Error('Failed to fetch'))
+
+    await ask()
+
+    await screen.findByText('לא ניתן לקבל תשובה מהיועץ כרגע.')
+    expect(screen.getByTestId('advisor-input')).not.toBeDisabled()
+  })
+
   it('keeps what already streamed when the failure arrives part way through', async () => {
     const errorEvent = `data: ${JSON.stringify({ type: 'error', error: 'boom' })}\n\n`
     vi.mocked(advisorApi.askStream).mockResolvedValue(
