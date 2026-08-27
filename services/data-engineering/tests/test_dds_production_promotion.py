@@ -433,3 +433,111 @@ def test_retire_superseded_catalog_rules_is_faculty_scoped(mongo_database) -> No
         )
         == 0
     )
+
+
+def test_retire_superseded_catalog_rules_retires_legacy_rows_missing_source_name(
+    mongo_database,
+) -> None:
+    """A pre-`sourceName` legacy row for a group we're about to re-promote must not
+    survive as an orphaned duplicate just because it fails the sourceName filter."""
+    settings = get_settings()
+    collection = settings.production_catalog_rules_collection
+    mongo_database[collection].insert_one(
+        {
+            "productionKey": "technion-dds:advisory:009216-1-000:semester-1-matrix:2025-2026",
+            "requirementGroupId": "009216-1-000:semester-1-matrix",
+            "catalogVersion": "2025-2026",
+            "courseReferences": [],
+        }
+    )
+
+    removed = _retire_superseded_catalog_rules(
+        mongo_database,
+        settings=settings,
+        planned_production_keys={
+            "technion-dds:advisory-rule:req:009216-1-000:semester-1-matrix:2025-2026"
+        },
+        catalog_version="2025-2026",
+        catalog_source_name="technion-dds-catalog",
+        planned_group_ids={"009216-1-000:semester-1-matrix"},
+    )
+    assert removed == 1
+    assert (
+        mongo_database[collection].count_documents(
+            {"productionKey": "technion-dds:advisory:009216-1-000:semester-1-matrix:2025-2026"}
+        )
+        == 0
+    )
+
+
+def test_retire_superseded_catalog_rules_keeps_legacy_rows_for_other_groups(
+    mongo_database,
+) -> None:
+    """A legacy row missing sourceName must only be retired when it belongs to a
+    group this run is actually re-promoting -- not any missing-sourceName row."""
+    settings = get_settings()
+    collection = settings.production_catalog_rules_collection
+    mongo_database[collection].insert_one(
+        {
+            "productionKey": "technion-dds:advisory:009216-1-000:unrelated-group:2025-2026",
+            "requirementGroupId": "009216-1-000:unrelated-group",
+            "catalogVersion": "2025-2026",
+            "courseReferences": [],
+        }
+    )
+
+    removed = _retire_superseded_catalog_rules(
+        mongo_database,
+        settings=settings,
+        planned_production_keys={
+            "technion-dds:advisory-rule:req:009216-1-000:semester-1-matrix:2025-2026"
+        },
+        catalog_version="2025-2026",
+        catalog_source_name="technion-dds-catalog",
+        planned_group_ids={"009216-1-000:semester-1-matrix"},
+    )
+    assert removed == 0
+    assert (
+        mongo_database[collection].count_documents(
+            {"productionKey": "technion-dds:advisory:009216-1-000:unrelated-group:2025-2026"}
+        )
+        == 1
+    )
+
+
+def test_repromotion_preserves_degree_program_id_across_key_format_change(
+    mongo_database,
+) -> None:
+    """External references (e.g. student_profiles.degreeId) must survive a
+    productionKey format change: re-promoting an existing program should update
+    it in place, not silently delete-and-reinsert under a new _id."""
+    _seed_signed_off_promotion_staging(mongo_database)
+    settings = get_settings()
+    from bson import ObjectId
+
+    legacy_id = ObjectId()
+    mongo_database[settings.production_degree_programs_collection].insert_one(
+        {
+            "_id": legacy_id,
+            "productionKey": "technion-dds:program:legacy-key-format:009216-1-000:2025-2026",
+            "institutionId": "technion",
+            "programCode": "009216-1-000",
+            "catalogVersion": "2025-2026",
+            "sourceName": "technion-dds-catalog",
+        }
+    )
+
+    result = run_dds_production_promotion(
+        mongo_database,
+        confirm_dangerous=True,
+        allow_warnings=True,
+    )
+    assert result.productionWritesPerformed is True
+
+    docs = list(
+        mongo_database[settings.production_degree_programs_collection].find(
+            {"programCode": "009216-1-000"}
+        )
+    )
+    assert len(docs) == 1
+    assert docs[0]["_id"] == legacy_id

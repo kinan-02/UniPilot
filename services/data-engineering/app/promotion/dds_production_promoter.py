@@ -152,6 +152,7 @@ def map_staging_program_to_production(
     promotion_run_id: str,
     promoted_at: str,
     catalog_version: str,
+    existing_id: Any | None = None,
 ) -> dict[str, Any]:
     program_code = staging.get("programCode", "")
     catalog_context = _staging_catalog_context(staging)
@@ -185,6 +186,11 @@ def map_staging_program_to_production(
         "promotionRunId": promotion_run_id,
         "updatedAt": promoted_at,
     }
+    if existing_id is not None:
+        # Preserve the document's identity across a productionKey format change
+        # (e.g. a faculty/institution key scheme update) so external references
+        # such as student_profiles.degreeId don't silently dangle on re-promotion.
+        document["_id"] = existing_id
     _validate_document_safety(document, context=f"degree_program {program_code}")
     return document
 
@@ -610,15 +616,31 @@ def _retire_superseded_catalog_rules(
     planned_production_keys: set[str],
     catalog_version: str,
     catalog_source_name: str,
+    planned_group_ids: set[str] | None = None,
 ) -> int:
-    """Remove superseded advisory rules for one faculty catalog source before re-promotion."""
+    """Remove superseded advisory rules for one faculty catalog source before re-promotion.
+
+    Also retires legacy rows for the same requirement groups that predate the
+    `sourceName` field: an exact-equality match on `sourceName` never catches
+    those, so a stale, empty-`courseReferences` row and a fresh one can end up
+    coexisting under different productionKey formats — and whichever the
+    curriculum-graph reader dedupes to may be the stale one.
+    """
     if not planned_production_keys:
         return 0
+    or_clauses: list[dict[str, Any]] = [{"sourceName": catalog_source_name}]
+    if planned_group_ids:
+        or_clauses.append(
+            {
+                "sourceName": {"$exists": False},
+                "requirementGroupId": {"$in": list(planned_group_ids)},
+            }
+        )
     result = database[settings.production_catalog_rules_collection].delete_many(
         {
             "catalogVersion": catalog_version,
-            "sourceName": catalog_source_name,
             "productionKey": {"$nin": list(planned_production_keys)},
+            "$or": or_clauses,
         }
     )
     return int(result.deleted_count)
@@ -682,11 +704,20 @@ def build_production_documents(
         staging = programs_by_key.get(item.stagingKey)
         if not staging:
             raise ProductionPromotionError(f"Missing staging program for key {item.stagingKey}")
+        existing_program = database[settings.production_degree_programs_collection].find_one(
+            {
+                "institutionId": staging.get("institutionId", "technion"),
+                "programCode": staging.get("programCode", ""),
+                "catalogVersion": catalog_version,
+            },
+            {"_id": 1},
+        )
         doc = map_staging_program_to_production(
             staging,
             promotion_run_id=promotion_run_id,
             promoted_at=promoted_at,
             catalog_version=catalog_version,
+            existing_id=existing_program["_id"] if existing_program else None,
         )
         documents[settings.production_degree_programs_collection].append(doc)
         planned_keys[settings.production_degree_programs_collection].add(doc["productionKey"])
@@ -1010,6 +1041,11 @@ def run_dds_production_promotion(
             planned_production_keys=planned_keys.get(settings.production_catalog_rules_collection, set()),
             catalog_version=gate.catalogVersion or "2025-2026",
             catalog_source_name=gate.sourceName,
+            planned_group_ids={
+                str(doc.get("requirementGroupId"))
+                for doc in documents_by_collection.get(settings.production_catalog_rules_collection, [])
+                if doc.get("requirementGroupId")
+            },
         )
         retire_unplanned_production_documents(
             database,
