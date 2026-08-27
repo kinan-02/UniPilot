@@ -24,10 +24,18 @@ jobs:
         run: bandit -q -r services/api/app -x services/api/tests -ll
       - name: Bandit (transcript-parser)
         run: bandit -q -r services/transcript-parser/app -x services/transcript-parser/tests -ll
+      - name: Bandit (AI)
+        # B608 is skipped, and only here. It reads the agent's system prompt and its
+        # violation messages -- English, with the words "select" and "from" in them --
+        # as SQL built by string concatenation. services/ai speaks Mongo and HTTP; it
+        # has no SQL driver, so the check has nothing true to find in this tree.
+        run: bandit -q -r services/ai/app -x services/ai/tests -ll -s B608
       - name: pip-audit (API)
         run: pip-audit -r services/api/requirements.txt
       - name: pip-audit (transcript-parser)
         run: pip-audit -r services/transcript-parser/requirements.txt
+      - name: pip-audit (AI)
+        run: pip-audit -r services/ai/requirements.txt
       - name: npm audit (web)
         working-directory: services/web
         run: npm ci && npm audit --audit-level=high
@@ -48,6 +56,34 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Run pytest with coverage gate
+        run: pytest
+
+  ai:
+    name: AI (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/ai/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      # `pytest.ini` already deselects the `live` marker, so this runs the offline
+      # suite and makes no billable LLM call. Do not add `-m` here: overriding it
+      # on the command line is what would let the paid tests through.
+      #
+      # This runs ~1,645 tests. Another ~65 skip themselves with "NOT VERIFIED: no
+      # database" -- they check the `facts/sources.py` schemas and the views against
+      # real documents, and there is no Mongo in this job. Those are precisely the
+      # tests that catch schema drift, so a green tick here is NOT the same as a
+      # green tick locally against dev Mongo. Seeding a Mongo service here (the way
+      # the e2e job seeds the compose stack) is the fix; it is not done yet.
+      - name: Run pytest with coverage
         run: pytest
 
   transcript-parser:
