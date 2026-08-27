@@ -20,12 +20,23 @@ def test_deepseek_thinking_enabled_sends_reasoning_effort_directly():
     assert kwargs == {"reasoning_effort": "medium"}
 
 
-def test_openai_thinking_disabled_sends_no_deepseek_specific_field():
-    # OpenAI doesn't recognize DeepSeek's opt-out shape -- must never
-    # receive it, not even as harmless-looking noise.
+def test_openai_thinking_disabled_sends_explicit_none_not_deepseek_field():
+    # OpenAI doesn't recognize DeepSeek's opt-out shape -- must never receive
+    # it. "Off" is expressed the OpenAI way, as reasoning_effort="none", sent
+    # EXPLICITLY so the flag is not a silent no-op that leans on the provider
+    # default (which for OpenAI is already "none", making an unset flag look
+    # configurable while doing nothing).
     kwargs: dict = {}
     _apply_reasoning_kwargs(kwargs, provider="openai", thinking_enabled=False, reasoning_effort=None)
-    assert kwargs == {}
+    assert kwargs == {"reasoning_effort": "none"}
+
+
+def test_openai_thinking_disabled_overrides_a_stray_effort():
+    # thinking_enabled is the master switch: a leftover reasoning_effort must
+    # not silently re-enable reasoning on a path the operator turned off.
+    kwargs: dict = {}
+    _apply_reasoning_kwargs(kwargs, provider="openai", thinking_enabled=False, reasoning_effort="medium")
+    assert kwargs == {"reasoning_effort": "none"}
 
 
 def test_openai_thinking_enabled_sends_reasoning_effort_directly():

@@ -102,6 +102,10 @@ async def test_course_reliable_every_term(use_real_technion_raw_dir):
         "2": {"label": "reliable", "observed": 3, "total": 3},
         "3": {"label": "reliable", "observed": 2, "total": 2},
     }
+    # Scalar projection (root fix): a directly-surfaceable label per term.
+    assert result.data["termLabels"] == {"1": "reliable", "2": "reliable", "3": "reliable"}
+    # Scalar count (§19): sum of observed across terms = 2+3+2, the grain `map` reads.
+    assert result.data["semestersOffered"] == 7
     assert result.certainty.basis == "predicted_pattern"
     assert result.certainty.confidence == pytest.approx(0.95)
 
@@ -116,6 +120,8 @@ async def test_course_reliable_winter_spring_never_summer(use_real_technion_raw_
         "2": {"label": "reliable", "observed": 3, "total": 3},
         "3": {"label": "never", "observed": 0, "total": 2},
     }
+    # never offered in summer -> 2+3+0 = 5 semesters offered (< the 7 in history).
+    assert result.data["semestersOffered"] == 5
 
 
 async def test_course_irregular_in_one_term(use_real_technion_raw_dir):
@@ -142,6 +148,7 @@ async def test_nonexistent_course_is_never_every_term_not_a_failure(use_real_tec
     assert result.ok is True
     assert all(term["label"] == "never" and term["observed"] == 0 for term in result.data["termPatterns"].values())
     assert result.data["totalSemestersInHistory"] == 7
+    assert result.data["semestersOffered"] == 0  # never appears -> offered in zero semesters
 
 
 # -- _confidence_from_history_size -------------------------------------

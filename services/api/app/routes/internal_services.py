@@ -16,6 +16,7 @@ from app.services.graduation_progress_service import (
 )
 from app.services.semester_plan_suggestion_service import suggest_semester_courses
 from app.services.student_user_context_service import build_student_user_context
+from app.services.term_plan_service import build_term_plan
 
 router = APIRouter(
     prefix="/internal",
@@ -42,6 +43,23 @@ class InternalAcademicRiskPreviewRequest(BaseModel):
 
 class InternalSemesterSuggestionRequest(BaseModel):
     semester_code: str = Field(min_length=1, max_length=32, alias="semesterCode")
+    max_credits: float | None = Field(default=None, alias="maxCredits", gt=0, le=40)
+
+    model_config = {"populate_by_name": True}
+
+
+class InternalTermPlanCandidate(BaseModel):
+    course_number: str = Field(min_length=1, max_length=16, alias="courseNumber")
+    category: str = Field(default="elective", max_length=16)
+
+    model_config = {"populate_by_name": True}
+
+
+class InternalTermPlanRequest(BaseModel):
+    """Agent-supplied candidates + target term(s) for a conflict-free term plan."""
+
+    semester_codes: list[str] = Field(min_length=1, max_length=8, alias="semesterCodes")
+    candidates: list[InternalTermPlanCandidate] = Field(min_length=1, max_length=60)
     max_credits: float | None = Field(default=None, alias="maxCredits", gt=0, le=40)
 
     model_config = {"populate_by_name": True}
@@ -133,6 +151,37 @@ async def internal_semester_suggestions_for_user(
         database,
         user_id,
         semester_code=payload.semester_code,
+        max_credits=payload.max_credits,
+    )
+
+    if result["status"] == "profile_not_found":
+        raise HTTPException(status_code=404, detail="Student profile not found")
+    if result["status"] == "degree_not_selected":
+        raise HTTPException(status_code=400, detail="Degree not selected on student profile")
+    if result["status"] == "degree_not_found":
+        raise HTTPException(status_code=400, detail="Referenced degree was not found in the catalog")
+    if result["status"] == "validation_error":
+        raise HTTPException(status_code=400, detail={"errors": result.get("errors", [])})
+
+    return success_response(result)
+
+
+@router.post("/term-plan/users/{user_id}")
+async def internal_term_plan_for_user(
+    user_id: str,
+    payload: InternalTermPlanRequest,
+) -> dict[str, Any]:
+    """Build a conflict-free, exam-safe plan for the requested term(s) from
+    agent-supplied candidate courses. Backs the agent's `plan_term` tool."""
+    database = await get_database()
+    result = await build_term_plan(
+        database,
+        user_id,
+        semester_codes=payload.semester_codes,
+        candidates=[
+            {"courseNumber": candidate.course_number, "category": candidate.category}
+            for candidate in payload.candidates
+        ],
         max_credits=payload.max_credits,
     )
 

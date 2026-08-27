@@ -4,6 +4,8 @@ import { useMutation } from '@tanstack/react-query'
 import { Bot, Send, Sparkles, MessageSquare, BookOpen, ChevronDown, CheckCircle2, AlertCircle, Info } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { advisorApi } from '../api/endpoints'
+import { SourcesPanel } from '../components/advisor/SourcesPanel'
+import { countSources, sourceGroups } from '../components/advisor/sourceGroups'
 import { PageHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { useTranslation } from '../i18n'
@@ -66,61 +68,72 @@ function ConfidenceBadge({ confidence }: { confidence: string }) {
   )
 }
 
-/* ── Metadata footer ── */
+/* ── Citation footer ──
+ * A citation line, not a data dump. Inlining every reference put 46 course chips
+ * under one live answer -- a wall nobody reads. At INLINE_SOURCE_LIMIT or fewer
+ * the references sit inline, where naming them is genuinely useful (asking about
+ * one course should show that course). Above it, the footer collapses to a single
+ * control that opens the full list in a side panel. */
+const INLINE_SOURCE_LIMIT = 3
+
 function MessageMetadata({ reply }: { reply: AdvisorReply }) {
-  const hasCourses = reply.courseIds.length > 0
-  const hasContacts = reply.contacts.length > 0
-  const hasSources = reply.sources && reply.sources.length > 0
-  if (!hasCourses && !hasContacts && !hasSources) return null
+  const [isPanelOpen, setPanelOpen] = useState(false)
+  const groups = useMemo(() => sourceGroups(reply), [reply])
+  const total = countSources(groups)
+
+  if (total === 0) return null
+
+  const isInline = total <= INLINE_SOURCE_LIMIT
 
   return (
-    <div className="mt-4 space-y-2 pt-3 border-t border-[rgba(79,70,229,0.08)]">
-      {hasCourses && (
-        <div className="advisor-meta-card">
-          <p className="text-xs font-semibold text-[var(--color-text)] mb-1.5 flex items-center gap-1.5">
-            <BookOpen className="h-3.5 w-3.5 text-[var(--color-primary)]" />
-            Referenced Courses
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {reply.courseIds.map((courseId) => (
-              <Link
-                key={courseId}
-                to={`/catalog?course=${courseId}`}
-                className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/15 hover:ring-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/5 transition-all"
-              >
-                {courseId}
-              </Link>
-            ))}
-          </div>
+    <div className="mt-3 pt-3 border-t border-[rgba(79,70,229,0.08)]">
+      {isInline ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-[var(--color-text-muted)]">
+            <BookOpen className="mb-0.5 me-1 inline h-3.5 w-3.5" />
+            Based on
+          </span>
+          {groups.courses.map((course) => (
+            <Link
+              key={course.id}
+              to={`/catalog?course=${course.id}`}
+              dir="auto"
+              title={course.id}
+              className="rounded-lg bg-white px-2.5 py-1 text-xs font-medium text-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/15 hover:ring-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/5 transition-all"
+            >
+              {course.name}
+            </Link>
+          ))}
+          {groups.sources.map((source) => (
+            <span
+              key={source}
+              dir="auto"
+              className="rounded-lg bg-[var(--color-primary)]/5 px-2.5 py-1 text-xs text-[var(--color-text-muted)]"
+            >
+              {source.replace(/^search: /, '')}
+            </span>
+          ))}
+          {groups.contacts.map((contact) => (
+            <span key={contact} dir="auto" className="text-xs text-[var(--color-text-muted)]">
+              {contact}
+            </span>
+          ))}
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          data-testid="advisor-sources-toggle"
+          aria-haspopup="dialog"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 -mx-2 text-xs font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Based on {total} sources
+          <ChevronDown className="h-3.5 w-3.5 -rotate-90 rtl:rotate-90" />
+        </button>
       )}
 
-      {hasContacts && (
-        <div className="advisor-meta-card">
-          <p className="text-xs font-semibold text-[var(--color-text)] mb-1.5">Contacts</p>
-          <ul className="list-none space-y-1">
-            {reply.contacts.map((contact) => (
-              <li key={contact} className="text-xs text-[var(--color-text-muted)]">{contact}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {hasSources && (
-        <details className="group">
-          <summary className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-primary)] cursor-pointer hover:text-[var(--color-primary-light)] transition-colors">
-            <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-            Sources ({reply.sources!.length})
-          </summary>
-          <div className="advisor-meta-card mt-1.5">
-            <ul className="list-none space-y-1">
-              {reply.sources!.map((source: string) => (
-                <li key={source} className="text-xs text-[var(--color-text-muted)] break-all">{source}</li>
-              ))}
-            </ul>
-          </div>
-        </details>
-      )}
+      <SourcesPanel groups={groups} isOpen={isPanelOpen} onClose={() => setPanelOpen(false)} />
     </div>
   )
 }
@@ -129,13 +142,14 @@ function MessageMetadata({ reply }: { reply: AdvisorReply }) {
 function AssistantMessage({
   message,
   isCurrentlyStreaming,
+  progress,
 }: {
   message: ChatMessage & { role: 'assistant' }
   isCurrentlyStreaming: boolean
+  progress?: string | null
 }) {
   const displayContent = useMemo(() => stripJsonEnvelope(message.content), [message.content])
   const isThinking = isCurrentlyStreaming && !displayContent
-  const isStreamingText = isCurrentlyStreaming && !!displayContent
 
   return (
     <div className="flex items-start gap-3 advisor-msg-in">
@@ -150,11 +164,17 @@ function AssistantMessage({
               <span />
               <span />
             </div>
-            <span className="text-sm text-[var(--color-text-muted)]">Analyzing your question…</span>
+            <span dir="auto" className="text-sm text-[var(--color-text-muted)]" data-testid="advisor-progress">
+              {progress ?? 'Analyzing your question…'}
+            </span>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className={`advisor-prose text-sm text-[var(--color-text)] ${isStreamingText ? 'advisor-stream-cursor' : ''}`}>
+            {/* No `advisor-stream-cursor` here: the answer is composed after the
+                loop concludes and arrives in one `chunk`, so content goes empty ->
+                whole in a single setState. The typing cursor was never on screen
+                for a frame -- it read as a working feature and was not one. */}
+            <div dir="auto" className="advisor-prose text-sm text-[var(--color-text)]">
               <ReactMarkdown>{displayContent}</ReactMarkdown>
             </div>
 
@@ -181,6 +201,10 @@ export function AdvisorPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null)
+  // Latest `progress` event. The answer arrives in one piece at the end, so for
+  // a question that takes three minutes this is the only thing that changes on
+  // screen the whole time.
+  const [progress, setProgress] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const suggestedPrompts = useMemo(
@@ -238,66 +262,89 @@ export function AdvisorPage() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
 
+      const handleEvent = (event: string) => {
+        if (!event.trim() || !event.startsWith('data: ')) return
+        try {
+          const data = JSON.parse(event.slice(6))
+          if (data.type === 'progress') {
+            setProgress(data.text)
+          } else if (data.type === 'chunk') {
+            setMessages((current) =>
+              current.map(m => m.id === assistantMessageId
+                ? { ...m, content: m.content + data.text }
+                : m
+              )
+            )
+          } else if (data.type === 'final') {
+            const advisor = data.data?.advisor
+            setMessages((current) =>
+              current.map(m => m.id === assistantMessageId
+                ? {
+                    ...m,
+                    reply: advisor,
+                    content: m.content || advisor?.answer || '',
+                  }
+                : m
+              )
+            )
+          } else if (data.type === 'error') {
+            // The server's own wording stays in the console. It is safe to show
+            // now, but it is written in English by two services that do not know
+            // which language this page is in -- and this app is Hebrew-first.
+            console.error('SSE error event:', data.error)
+            setMessages((current) =>
+              current.map(m => m.id === assistantMessageId
+                ? { ...m, content: m.content || t('advisor.error') }
+                : m
+              )
+            )
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE JSON:', err)
+        }
+      }
+
+      // An SSE event can straddle a read boundary, and without carrying the
+      // trailing partial across reads BOTH halves are lost: the first fails
+      // JSON.parse, the second no longer starts with `data: ` and is skipped in
+      // silence. `final` carries the whole advisor payload, so losing it stripped
+      // the confidence badge and source list off an answer whose text -- already
+      // delivered by `chunk` -- still looked perfectly fine.
+      let buffer = ''
+
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value, { stream: true })
-        const events = chunk.split('\n\n')
-
-        for (const event of events) {
-          if (!event.trim()) continue
-          if (event.startsWith('data: ')) {
-            const dataStr = event.slice(6)
-            try {
-              const data = JSON.parse(dataStr)
-              if (data.type === 'chunk') {
-                setMessages((current) =>
-                  current.map(m => m.id === assistantMessageId
-                    ? { ...m, content: m.content + data.text }
-                    : m
-                  )
-                )
-              } else if (data.type === 'final') {
-                const advisor = data.data?.advisor
-                setMessages((current) =>
-                  current.map(m => m.id === assistantMessageId
-                    ? {
-                        ...m,
-                        reply: advisor,
-                        content: m.content || advisor?.answer || '',
-                      }
-                    : m
-                  )
-                )
-              } else if (data.type === 'error') {
-                console.error('SSE error event:', data.error)
-                setMessages((current) =>
-                  current.map(m => m.id === assistantMessageId
-                    ? { ...m, content: m.content || 'Something went wrong. Please try again.' }
-                    : m
-                  )
-                )
-              }
-            } catch (err) {
-              console.error('Failed to parse SSE JSON:', err)
-            }
-          }
-        }
+        buffer += decoder.decode(value, { stream: true })
+        const events = buffer.split('\n\n')
+        buffer = events.pop() ?? ''
+        events.forEach(handleEvent)
       }
+      // Normally empty -- the server terminates every event with a blank line.
+      handleEvent(buffer)
     } catch (err) {
+      // The transport half of the same failure -- the request never returned, or
+      // returned a status instead of a stream. It reaches a student more often
+      // than the `error` event does, and it was the other hardcoded English
+      // string on this page.
       console.error('Stream error:', err)
       setMessages((current) =>
         current.map(m => m.id === assistantMessageId
-          ? { ...m, content: m.content || 'Connection error. Please try again.' }
+          ? { ...m, content: m.content || t('advisor.error') }
           : m
         )
       )
     } finally {
       setIsStreaming(false)
       setActiveStreamId(null)
+      setProgress(null)
     }
-  }, [isStreaming])
+    // `t` belongs here: it changes with the locale, and this page has a language
+    // switcher. Without it the callback keeps whichever `t` existed on first
+    // render, and a student who switches language mid-session gets the previous
+    // language's error message.
+  }, [isStreaming, t])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -353,7 +400,10 @@ export function AdvisorPage() {
                 return (
                   <div key={message.id} className="flex justify-end advisor-msg-in">
                     <div className="advisor-bubble-user rounded-2xl rounded-tr-md px-5 py-3.5 max-w-[85%]">
-                      <p className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
+                      {/* dir="auto": <html> is dir="rtl" for the Hebrew UI, so an
+                          English message inherits RTL and bidi throws its final
+                          punctuation to the visual left ("?How many credits..."). */}
+                      <p dir="auto" className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</p>
                     </div>
                   </div>
                 )
@@ -363,6 +413,7 @@ export function AdvisorPage() {
                   key={message.id}
                   message={message as ChatMessage & { role: 'assistant' }}
                   isCurrentlyStreaming={isStreaming && message.id === activeStreamId}
+                  progress={message.id === activeStreamId ? progress : null}
                 />
               )
             })}

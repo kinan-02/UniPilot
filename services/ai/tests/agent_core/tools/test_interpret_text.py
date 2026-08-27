@@ -64,6 +64,23 @@ def _patch_llm_adapter(monkeypatch, adapter):
     monkeypatch.setattr(module, "ChatLLMAdapter", lambda: adapter)
 
 
+def _disable_scoped_retrieval(monkeypatch):
+    """Force a single whole-page interpretation attempt.
+
+    `run_interpret_text` now reads the scoped section(s) first and falls back to
+    the whole page only when that reports `cannot_determine`. The fail-closed
+    tests below exercise the interpretation block's OWN failure handling -- which
+    is orthogonal to scoped-vs-whole retrieval -- so they neutralize scoping to
+    stay a single attempt rather than consume a second queued response on the
+    fallback read."""
+    import app.agent_core.tools.primitives.interpret_text as module
+
+    async def _no_scope(_source: str, _question: str) -> str:
+        return ""
+
+    monkeypatch.setattr(module, "_scoped_source_content", _no_scope)
+
+
 async def test_empty_source_fails_closed():
     result = await run_interpret_text(InterpretTextInput(source="  ", question="what is the retake limit?"))
     assert result.ok is False
@@ -113,13 +130,84 @@ async def test_determined_interpretation_succeeds(use_real_academic_engine, monk
     assert "student-rights" in fake.calls[0]["user_prompt"]
 
 
+async def test_numeric_answer_is_returned_typed(use_real_academic_engine, monkeypatch):
+    """A numeric interpretation carries a typed `numericValue` a caller can
+    compute with, not just the prose `answer`."""
+    fake = _FakeLLMAdapter(
+        [{"status": "determined", "answer": "The track requires 155 credits.",
+          "numeric_value": 155, "cited_section": "Program Structure", "confidence": 0.95}]
+    )
+    _patch_llm_adapter(monkeypatch, fake)
+
+    result = await run_interpret_text(
+        InterpretTextInput(source="student-rights", question="How many total credits are required?")
+    )
+    assert result.ok is True
+    assert result.data["numericValue"] == 155.0
+    assert isinstance(result.data["numericValue"], float)
+
+
+async def test_string_numeric_value_is_coerced(use_real_academic_engine, monkeypatch):
+    """Defensive net: a stringified number in numeric_value is coerced, not
+    bounced to repair; a non-numeric string becomes null."""
+    fake = _FakeLLMAdapter(
+        [{"status": "determined", "answer": "155 credits", "numeric_value": "155",
+          "cited_section": "Program Structure", "confidence": 0.9}]
+    )
+    _patch_llm_adapter(monkeypatch, fake)
+
+    result = await run_interpret_text(InterpretTextInput(source="student-rights", question="How many credits?"))
+    assert result.ok is True
+    assert result.data["numericValue"] == 155.0
+
+
+async def test_non_numeric_answer_has_null_numeric_value(use_real_academic_engine, monkeypatch):
+    fake = _FakeLLMAdapter(
+        [{"status": "determined", "answer": "Students may appeal within 4 days.",
+          "cited_section": "5.4 Grade Appeal", "confidence": 0.9}]
+    )
+    _patch_llm_adapter(monkeypatch, fake)
+
+    result = await run_interpret_text(InterpretTextInput(source="student-rights", question="Appeal window?"))
+    assert result.ok is True
+    assert result.data["numericValue"] is None
+
+
 async def test_model_reports_cannot_determine(use_real_academic_engine, monkeypatch):
     fake = _FakeLLMAdapter([{"status": "cannot_determine", "answer": None, "cited_section": None, "confidence": 0.0}])
     _patch_llm_adapter(monkeypatch, fake)
+    _disable_scoped_retrieval(monkeypatch)
 
     result = await run_interpret_text(InterpretTextInput(source="student-rights", question="unanswerable question"))
     assert result.ok is False
     assert "cannot_determine" in result.error
+
+
+async def test_cannot_determine_names_the_source_and_closes_it(use_real_academic_engine, monkeypatch):
+    """A truthful negative is the most expensive error the substrate can return if
+    it stops at "I could not determine it".
+
+    2026-07-19, live: asked for the GROUNDS of a grade appeal, which section 5.4 of
+    the regulations genuinely does not list -- it is a timeline table. The verdict
+    was right; the loop then spent ~70s and ~14 LLM calls on SEVEN reworded searches
+    of that same page, because the error read as "try again" rather than "it is not
+    in there".
+    """
+    fake = _FakeLLMAdapter([{"status": "cannot_determine", "answer": None, "cited_section": None, "confidence": 0.0}])
+    _patch_llm_adapter(monkeypatch, fake)
+    _disable_scoped_retrieval(monkeypatch)
+
+    result = await run_interpret_text(
+        InterpretTextInput(source="student-rights", question="what are the allowed grounds?")
+    )
+
+    assert result.ok is False
+    # Names the source that was read, so the model knows which door is shut.
+    assert "student-rights" in result.error
+    # Says re-asking will not help, and names both moves that remain.
+    assert "re-querying the same source" in result.error
+    assert "DIFFERENT source" in result.error
+    assert "not" in result.error and "documented" in result.error
 
 
 async def test_determined_status_without_real_citation_fails_closed(use_real_academic_engine, monkeypatch):
@@ -127,6 +215,7 @@ async def test_determined_status_without_real_citation_fails_closed(use_real_aca
     null/empty cited_section must still fail closed, never be trusted."""
     fake = _FakeLLMAdapter([{"status": "determined", "answer": "some answer", "cited_section": None, "confidence": 0.8}])
     _patch_llm_adapter(monkeypatch, fake)
+    _disable_scoped_retrieval(monkeypatch)
 
     result = await run_interpret_text(InterpretTextInput(source="student-rights", question="anything"))
     assert result.ok is False
@@ -168,6 +257,7 @@ async def test_llm_call_is_bounded_by_an_explicit_timeout(use_real_academic_engi
 async def test_schema_invalid_and_repair_exhausted_fails_closed(use_real_academic_engine, monkeypatch):
     fake = _FakeLLMAdapter([{"status": "determined"}, {"status": "determined"}, {"status": "determined"}])
     _patch_llm_adapter(monkeypatch, fake)
+    _disable_scoped_retrieval(monkeypatch)
 
     result = await run_interpret_text(InterpretTextInput(source="student-rights", question="anything"))
     assert result.ok is False

@@ -70,7 +70,7 @@ The **Node.js / Express** reference backend has been **removed**. **`services/ap
 
 ### UniPilot Agent (current)
 
-Conversation agent lives in `services/api/app/agent` and the web UI at `/agent`. Full status: [`docs/agent/CURRENT_STATE.md`](agent/CURRENT_STATE.md). Spec: [`Agent_spec.md`](../Agent_spec.md).
+The agent is the V2 loop in `services/ai` (`app/agent_core/loop/`), reached from the web `/advisor` page via `api`'s `/advisor/ask`. Design: [`docs/agent/AGENT_ARCHITECTURE_V2.md`](agent/AGENT_ARCHITECTURE_V2.md).
 
 | Item | Status |
 |---|---|

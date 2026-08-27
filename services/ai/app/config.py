@@ -27,10 +27,12 @@ def _resolve_repo_root() -> Path:
 
 _REPO_ROOT = _resolve_repo_root()
 
+_MINIMUM_PRODUCTION_TOKEN_LENGTH = 32
+"""Matches `api`'s rule for the same secret, and `.env.example`'s description of it."""
+
 # Real, checked-out academic data lives in the sibling data-engineering
 # service, not under services/ai itself -- used as a local-dev fallback
-# below, the same way resolved_embedding_index_cache_path() already falls
-# back off its own /app/... default. Found necessary the hard way: every
+# below. Found necessary the hard way: every
 # live-eval run this session (executed directly via pytest, not through
 # Docker) silently had zero working academic_wiki_path/academic_technion_
 # raw_dir data, since those two Settings fields default to Docker-only
@@ -69,13 +71,25 @@ class Settings(BaseSettings):
     # Ceiling on real LLM calls per turn (BudgetedLLMAdapter) -- see
     # app/agent_core/reasoning/reasoning_budget.py for why this exists.
     agent_reasoning_call_budget_per_turn: int = 80
-    # Already declared in the root .env (AGENT_TURN_TIMEOUT_SECONDS) but never
-    # actually read anywhere in this service until routes/advise.py wraps the
-    # whole run_agent_turn call in asyncio.wait_for with it -- a manual
-    # docker-compose smoke test found a real turn hang with no ceiling at all
-    # (ReasoningBlock's own complete_json calls never pass a timeout, so a
-    # single slow/hung LLM response could block a worker indefinitely).
-    agent_turn_timeout_seconds: int = 180
+    # Despite the name (kept because AGENT_TURN_TIMEOUT_SECONDS is already
+    # deployed in the root .env), this is a WHOLE-REQUEST ceiling: routes/advise.py
+    # wraps the entire run_agent_loop call in asyncio.wait_for with it. It exists
+    # because a hung provider call has no ceiling of its own (ReasoningBlock's
+    # complete_json passes no timeout), and could block a worker indefinitely.
+    #
+    # INVARIANT: must stay ABOVE the loop's own WALL_CLOCK_S. The loop's budget is
+    # the graceful path -- it degrades into a grounded partial answer. This ceiling
+    # only drops the request for the canned timeout string. Ordering across the
+    # whole ladder: WALL_CLOCK_S (240) < this (290) < ai_advisor client (300)
+    # == nginx proxy_read_timeout (300).
+    #
+    # This sat at 180 while WALL_CLOCK_S was raised 150 -> 240, inverting the two:
+    # the backstop began firing on healthy runs. The 2026-07-18/19 planning eval
+    # composed real grounded answers at 183.6s and 192.8s that this would have
+    # thrown away. test_advise_timeout_ceiling_stays_above_loop_wall_clock pins the
+    # ordering so raising WALL_CLOCK_S again fails a test instead of silently
+    # discarding answers.
+    agent_turn_timeout_seconds: int = 290
 
     # -- Retrieval port (services/agent/app/retrieval) additions below --
 
@@ -94,9 +108,23 @@ class Settings(BaseSettings):
     embedding_model: str | None = None
     embedding_enabled: bool = True
     embedding_index_enabled: bool = True
-    embedding_index_cache_path: str | None = None
     embedding_index_batch_size: int = 64
-    embedding_index_cache_backup_count: int = 3
+
+    # Wiki chunk vectors live in Pinecone, not on disk. The previous on-disk
+    # index was a 47MB artifact under /app/data/cache with no compose volume
+    # backing it, so every container rebuild wiped it and forced a full
+    # re-embed of ~12.5k chunks on next boot.
+    pinecone_api_key: str | None = None
+    pinecone_index_name: str = "unipilot-wiki"
+    pinecone_namespace: str = ""
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+    # `text-embedding-3-small` is 1536-dim; must match resolved_embedding_model().
+    pinecone_dimension: int = 1536
+    # Every SDK call is bounded, per this codebase's history of unbounded
+    # embedding calls outliving their caller's own asyncio timeout (see
+    # embedding_service._EMBEDDING_TIMEOUT_SECONDS).
+    pinecone_timeout_seconds: float = 10.0
 
     # -- agent_core reasoning port (services/agent/app/agent/reasoning) additions below --
 
@@ -122,6 +150,41 @@ class Settings(BaseSettings):
 
     def resolved_internal_service_token(self) -> str:
         return (self.internal_service_token or "").strip()
+
+    def validate_production_settings(self) -> None:
+        """Refuse to run a production service with no boundary in front of it.
+
+        `/advise` takes a `user_id` and answers with that student's transcript,
+        GPA, plans and remaining curriculum. It never authenticates the student --
+        `api` does that, then calls here on their behalf. The internal token is
+        therefore the entire boundary, and `require_internal_service_token`
+        returns early when none is configured.
+
+        That early return is right for a developer running this alone and wrong
+        in production, where the way it happens is an env var that quietly fails
+        to arrive: nothing errors, nothing looks different, and every student
+        record is readable by anything that can reach the port and guess an id.
+
+        The rule is deliberately the same one `api` already applies to this exact
+        secret -- at least 32 characters in production -- because the asymmetry
+        was the odd part: the CALLER refused to start without a strong token
+        while the CALLEE it protects would start without any token at all.
+        `.env.example` has described it as "Required (32+ chars) when
+        ENVIRONMENT=production" the whole time; this is the half that enforces it.
+        """
+        if self.environment != "production":
+            return
+        token = self.resolved_internal_service_token()
+        if not token:
+            raise RuntimeError(
+                "INTERNAL_SERVICE_TOKEN is required in production: without it "
+                "/advise answers for any user_id with no authentication at all."
+            )
+        if len(token) < _MINIMUM_PRODUCTION_TOKEN_LENGTH:
+            raise RuntimeError(
+                "INTERNAL_SERVICE_TOKEN must be at least "
+                f"{_MINIMUM_PRODUCTION_TOKEN_LENGTH} characters in production."
+            )
 
     def resolved_academic_wiki_path(self) -> str:
         configured = (self.academic_wiki_path or "").strip()
@@ -178,22 +241,31 @@ class Settings(BaseSettings):
     def embeddings_available(self) -> bool:
         return bool(self.embedding_enabled and self.resolved_embedding_api_key())
 
-    def resolved_embedding_index_cache_path(self) -> str:
-        configured = (self.embedding_index_cache_path or "").strip()
-        local_default = str(_APP_ROOT / "data" / "cache" / "wiki_embedding_index.json")
-        if configured:
-            if configured.startswith("/app/") and self.environment != "production":
-                return local_default
-            return configured
-        if self.environment == "production":
-            return "/app/data/cache/wiki_embedding_index.json"
-        return local_default
+    def resolved_pinecone_api_key(self) -> str:
+        return (self.pinecone_api_key or "").strip()
+
+    def resolved_pinecone_index_name(self) -> str:
+        return (self.pinecone_index_name or "").strip() or "unipilot-wiki"
+
+    def resolved_pinecone_namespace(self) -> str:
+        """Namespace isolating one wiki corpus inside the index ('' is Pinecone's default)."""
+        return (self.pinecone_namespace or "").strip()
+
+    def pinecone_available(self) -> bool:
+        return bool(self.resolved_pinecone_api_key() and self.resolved_pinecone_index_name())
 
     def wiki_vector_index_enabled(self) -> bool:
-        return bool(self.embedding_index_enabled and self.embeddings_available())
+        """Semantic search needs BOTH halves: embed the query, then search Pinecone.
 
-    def resolved_embedding_index_cache_backup_count(self) -> int:
-        return max(0, int(self.embedding_index_cache_backup_count or 3))
+        Either half missing degrades retrieval to BM25-only rather than
+        failing the request -- the same graceful path that already ran
+        whenever EMBEDDING_API_KEY was unset.
+        """
+        return bool(
+            self.embedding_index_enabled
+            and self.embeddings_available()
+            and self.pinecone_available()
+        )
 
     def is_agent_reasoning_structured_output_enabled(self) -> bool:
         return bool(self.agent_reasoning_structured_output_enabled)

@@ -10,7 +10,6 @@ import {
   ScrollText,
   ShieldAlert,
   UserCircle,
-  Users,
 } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { useTranslation } from '../../i18n'
@@ -33,7 +32,6 @@ export function AppLayout() {
     { to: '/plans', label: t('nav.plans'), icon: CalendarDays },
     { to: '/risks', label: t('nav.risks'), icon: ShieldAlert },
     { to: '/advisor', label: t('nav.advisor'), icon: MessageCircle },
-    { to: '/agent', label: t('nav.agents'), icon: Users },
     { to: '/profile', label: t('nav.profile'), icon: UserCircle },
     { to: '/settings/integrations', label: t('nav.integrations'), icon: Plug },
   ]

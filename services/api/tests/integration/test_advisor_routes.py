@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 VALID_PASSWORD = "StrongPass123!"
@@ -68,3 +69,59 @@ async def test_advisor_ask_returns_answer(auth_client, mongo_database):
     body = response.json()
     assert body["success"] is True
     assert body["data"]["advisor"]["answer"] == "הסילבוס זמין בקטלוג."
+
+
+@pytest.mark.asyncio
+async def test_advisor_ask_is_503_when_the_agent_is_down(auth_client, mongo_database):
+    """End to end through client, service and route: an unreachable agent must
+    reach the route's "unavailable" branch, not fall out of it as a 500.
+
+    Patched at the httpx layer on purpose -- patching the service would skip the
+    conversion being tested here.
+    """
+    token = await register_access_token(auth_client, "advisor-down@example.com")
+
+    dead_client = AsyncMock()
+    dead_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+    dead_client.__aenter__ = AsyncMock(return_value=dead_client)
+    dead_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch(
+        "app.clients.ai_advisor_client.httpx.AsyncClient",
+        return_value=dead_client,
+    ):
+        response = await auth_client.post(
+            "/advisor/ask",
+            json={"question": "מה הסילבוס?"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_advisor_stream_ends_with_an_error_event_when_the_agent_is_down(
+    auth_client, mongo_database
+):
+    """The stream has already answered 200 by the time the agent is called, so a
+    failure has to arrive as an event. A truncated stream leaves the UI waiting
+    on a reply that is never coming."""
+    token = await register_access_token(auth_client, "advisor-stream-down@example.com")
+
+    dead_client = AsyncMock()
+    dead_client.stream = MagicMock(side_effect=httpx.ConnectError("connection refused"))
+    dead_client.__aenter__ = AsyncMock(return_value=dead_client)
+    dead_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch(
+        "app.clients.ai_advisor_client.httpx.AsyncClient",
+        return_value=dead_client,
+    ):
+        response = await auth_client.post(
+            "/advisor/ask/stream",
+            json={"question": "מה הסילבוס?"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 200
+    assert '"type": "error"' in response.text

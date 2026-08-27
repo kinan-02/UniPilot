@@ -85,6 +85,35 @@ async def test_not_eligible_when_prerequisites_missing(use_real_academic_engine)
     assert set(result.data["missingPrerequisites"]) == {"00440105", "00440140"}
 
 
+async def test_output_names_the_held_prerequisites(use_real_academic_engine):
+    """A clean pass must give the answer something to CITE: the engine reports
+    only what is MISSING, so the tool also names the prerequisites the student
+    HOLDS (else an 'eligible' answer can name no basis at all)."""
+    state = {
+        "completedCourses": [
+            {"courseNumber": "00440105", "status": "completed"},
+            {"courseNumber": "00440140", "status": "completed"},
+        ]
+    }
+    result = await run_check_eligibility(CheckEligibilityInput(course_id="00440148", state=state))
+    assert result.ok is True
+    assert result.data["eligible"] is True
+    assert result.data["missingPrerequisites"] == []
+    assert set(result.data["prerequisiteCourseIds"]) >= {"00440105", "00440140"}
+    assert set(result.data["prerequisitesHeld"]) == {"00440105", "00440140"}
+
+
+async def test_held_prerequisites_are_only_the_ones_actually_completed(use_real_academic_engine):
+    result = await run_check_eligibility(
+        CheckEligibilityInput(
+            course_id="00440148",
+            state={"completedCourses": [{"courseNumber": "00440105", "status": "completed"}]},
+        )
+    )
+    assert result.ok is True
+    assert result.data["prerequisitesHeld"] == ["00440105"]  # the one held; 00440140 is missing
+
+
 async def test_eligible_with_the_shape_get_entity_actually_returns(use_real_academic_engine):
     """The regression a green test suite could not see.
 
@@ -304,6 +333,24 @@ async def test_target_semester_allowed_by_offering_pattern(use_real_academic_dat
     assert result.data["schedulable"] is True
 
 
+async def test_offering_fields_carry_a_predicted_basis(use_real_academic_data):
+    """§4.2: schedulable/offeringPattern depend on the offering PREDICTION, so they
+    carry their own predicted_pattern basis -- not the envelope's official_record."""
+    result = await run_check_eligibility(
+        CheckEligibilityInput(course_id="00140008", target_semester="2025-1")
+    )
+    assert result.ok is True
+    assert result.certainty.basis == "official_record"  # the envelope default (eligibility verdict)
+    assert result.field_certainty["schedulable"].basis == "predicted_pattern"
+    assert result.field_certainty["offeringPattern"].basis == "predicted_pattern"
+
+
+async def test_no_target_semester_leaves_field_certainty_empty(use_real_academic_engine):
+    result = await run_check_eligibility(CheckEligibilityInput(course_id="00140008"))
+    assert result.ok is True
+    assert result.field_certainty == {}  # no offering prediction involved
+
+
 async def test_offering_pattern_unavailable_degrades_gracefully(use_real_academic_engine, monkeypatch):
     import app.agent_core.tools.composites.check_eligibility as module
     from app.agent_core.tools.envelope import ToolOutputEnvelope
@@ -320,3 +367,42 @@ async def test_offering_pattern_unavailable_degrades_gracefully(use_real_academi
     assert result.data["offeringPattern"] is None
     assert result.data["schedulable"] is None
     assert "offering_pattern_unavailable" in result.warnings
+
+
+# -- the courseId trap ---------------------------------------------------------
+
+
+async def test_a_mongo_id_gets_a_repair_not_just_a_failure(use_real_academic_engine):
+    """`plan_eligibility_sweep` has never passed: it mapped check_eligibility over
+    the plan's six `courseId`s (Mongo ObjectIds), got six bare
+    `entity_not_found`s naming no alternative, retried the same six serially, and
+    exhausted with zero results. The error now names the field to use instead."""
+    from app.agent_core.tools.composites.check_eligibility import (
+        CheckEligibilityInput,
+        run_check_eligibility,
+    )
+
+    result = await run_check_eligibility(
+        CheckEligibilityInput(course_id="6a3db0e382df7b7cb04552c8", state={"completedCourses": []})
+    )
+
+    assert result.ok is False
+    assert "Mongo id" in result.error
+    assert "courseNumber" in result.error
+
+
+async def test_an_ordinary_miss_is_still_a_plain_not_found(use_real_academic_engine):
+    """Only an ObjectId-shaped value gets the extra guidance -- a genuine typo in
+    a course code must not be told it passed a database id."""
+    from app.agent_core.tools.composites.check_eligibility import (
+        CheckEligibilityInput,
+        run_check_eligibility,
+    )
+
+    result = await run_check_eligibility(
+        CheckEligibilityInput(course_id="99999999", state={"completedCourses": []})
+    )
+
+    assert result.ok is False
+    assert "entity_not_found: 99999999" in result.error
+    assert "Mongo id" not in result.error

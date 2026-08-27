@@ -369,3 +369,50 @@ async def test_delete_completed_course_returns_not_found_when_delete_count_zero(
             str(existing["userId"]),
         )
     assert result["status"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# courseNumber denormalisation
+#
+# A transcript row's only identity is `courseId`, an ObjectId into `courses`.
+# 28% of live rows reference a document that no longer exists, and those rows
+# carry no course number, no offering and empty metadata -- so what the student
+# studied is unrecoverable. `semester_plans.plannedCourses` stores both the id
+# and the number, and that redundancy is the only reason any broken row could be
+# repaired. These pin the same durability onto the transcript.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_stores_the_course_number_beside_the_id(mongo_database):
+    await mongo_database["courses"].insert_one(
+        {"_id": ObjectId(VALID_COURSE_ID), "courseNumber": "00940412"}
+    )
+    result = await create_completed_course(mongo_database, VALID_USER_ID, VALID_RECORD_DATA)
+    assert result["courseNumber"] == "00940412"
+
+    stored = await mongo_database["completed_courses"].find_one({"_id": result["_id"]})
+    assert stored["courseNumber"] == "00940412", "the number must be persisted, not just returned"
+
+
+@pytest.mark.asyncio
+async def test_a_course_missing_from_the_catalog_omits_the_field(mongo_database):
+    """Absent, never null. An `$exists` check means to find rows carrying a real
+    number, and a stored `None` would satisfy it while carrying nothing."""
+    result = await create_completed_course(mongo_database, VALID_USER_ID, VALID_RECORD_DATA)
+    assert "courseNumber" not in result
+
+    stored = await mongo_database["completed_courses"].find_one({"_id": result["_id"]})
+    assert "courseNumber" not in stored
+
+
+def test_the_builder_omits_the_field_when_no_number_is_given():
+    assert "courseNumber" not in build_completed_course_document(
+        VALID_USER_ID, VALID_RECORD_DATA
+    )
+
+
+def test_the_builder_stores_a_number_it_is_given():
+    doc = build_completed_course_document(VALID_USER_ID, VALID_RECORD_DATA, "00960211")
+    assert doc["courseNumber"] == "00960211"
+    assert doc["courseId"] == ObjectId(VALID_COURSE_ID), "the id stays: the number is EXTRA identity"

@@ -358,6 +358,21 @@ class AcademicGraphEngine:
         missing = _missing_from_ast(ast, completed)
         return len(missing) == 0, missing
 
+    def prerequisite_course_ids(self, course_id: str) -> list[str]:
+        """Every course code referenced anywhere in `course_id`'s prerequisite
+        AST (flattened across AND/OR), sorted and de-duplicated.
+
+        For NAMING which prerequisites are relevant/held -- NOT for the
+        eligibility verdict (that is `evaluate_eligibility`, which alone honours
+        the AND/OR structure). A grounded eligibility answer needs the codes to
+        cite the prerequisite the student holds; without this the tool reports
+        only what is MISSING, so a clean pass could name nothing at all."""
+        if not self._built:
+            raise RuntimeError("Call build_graph() before prerequisite_course_ids()")
+        node = self.graph.nodes.get(course_id, {})
+        ast = node.get("prerequisites_ast") or {"type": "AND", "operands": []}
+        return sorted(set(_collect_course_ids(ast)))
+
     def retrieve_context(
         self,
         intent: Intent,
@@ -520,10 +535,11 @@ class AcademicGraphEngine:
         if not tokens:
             return []
 
+        from app.retrieval.corpus_index import get_corpus_index
         from app.retrieval.obsidian_wiki_indexer import load_wiki_chunks
         from app.retrieval.profiles import get_profile
         from app.retrieval.reranker import rerank_chunks
-        from app.retrieval.wiki_vector_index import chunk_cache_key, query_semantic_candidates
+        from app.retrieval.wiki_vector_index import chunk_vector_id, query_semantic_candidates
 
         chunks = load_wiki_chunks(self._wiki_root)
         if not chunks:
@@ -538,22 +554,32 @@ class AcademicGraphEngine:
         # 1. Literal keyword-match count -- catches exact course codes,
         #    acronyms, and rare terms that a semantic match can miss or
         #    under-rank.
-        # 2. Full-corpus semantic search via the precomputed embedding index
-        #    (`WikiVectorIndex.semantic_scores`) -- pure in-memory dot
-        #    products over already-computed vectors, ~1.3s measured over the
-        #    full ~12.5k-chunk corpus (no per-chunk API calls). This is what
+        # 2. Full-corpus semantic search against the Pinecone index
+        #    (`query_semantic_candidates`) -- one top-K query over vectors
+        #    stored remotely, so the cost is a single bounded round trip
+        #    rather than a scan of the ~12.5k-chunk corpus. This is what
         #    catches verbose natural-language queries whose wording doesn't
         #    literally overlap the right chunk -- the literal-match filter
         #    alone was confirmed missing real, correctly-indexed pages for
-        #    exactly this kind of query.
+        #    exactly this kind of query. Returns [] (never raises) when
+        #    embeddings or Pinecone are unconfigured, leaving filter 1 to
+        #    carry the pool on its own.
+        corpus = get_corpus_index(self._wiki_root)
         candidate_by_key: dict[str, Any] = {}
         match_counts = [
-            (chunk, _chunk_token_match_count(chunk, tokens)) for chunk in chunks
+            (chunk, _chunk_match_score(corpus.stats_for(chunk_vector_id(chunk), chunk), tokens))
+            for chunk in chunks
         ]
-        match_counts = [(chunk, count) for chunk, count in match_counts if count > 0]
-        match_counts.sort(key=lambda item: item[1], reverse=True)
-        for chunk, _count in match_counts[:_WIKI_SEARCH_CANDIDATE_POOL_CAP]:
-            candidate_by_key[chunk_cache_key(chunk)] = chunk
+        match_counts = [(chunk, score) for chunk, score in match_counts if score > 0]
+        # Sort on (score, then a stable content-addressed id). Ranking by raw
+        # count alone left ~108 chunks tied at the cutoff for a 10-token query,
+        # so which 60 survived was decided by corpus order -- i.e. alphabetical
+        # file path. The id tie-break is arbitrary too, but it is at least not
+        # correlated with filename, so it cannot systematically favour
+        # `track-aerospace-*` over `track-zoology-*`.
+        match_counts.sort(key=lambda item: (item[1], chunk_vector_id(item[0])), reverse=True)
+        for chunk, _score in match_counts[:_WIKI_SEARCH_CANDIDATE_POOL_CAP]:
+            candidate_by_key[chunk_vector_id(chunk)] = chunk
 
         semantic_hits = query_semantic_candidates(
             query=query,
@@ -561,8 +587,14 @@ class AcademicGraphEngine:
             limit=_WIKI_SEARCH_CANDIDATE_POOL_CAP,
             settings=settings,
         )
-        for chunk, _score in semantic_hits:
-            candidate_by_key.setdefault(chunk_cache_key(chunk), chunk)
+        # Keep the cosine scores Pinecone already computed. Discarding them
+        # meant the reranker re-fetched these same vectors to recalculate the
+        # identical number.
+        semantic_scores: dict[str, float] = {}
+        for chunk, score in semantic_hits:
+            vector_id = chunk_vector_id(chunk)
+            candidate_by_key.setdefault(vector_id, chunk)
+            semantic_scores[vector_id] = score
 
         if not candidate_by_key:
             return []
@@ -573,7 +605,7 @@ class AcademicGraphEngine:
             query=query,
             limit=limit,
             profile=get_profile("fallback_academic_search"),
-            wiki_root=self._wiki_root,
+            semantic_scores=semantic_scores,
             settings=settings,
         )
         hits: list[dict[str, Any]] = []
@@ -591,6 +623,53 @@ class AcademicGraphEngine:
                 }
             )
         return hits
+
+    def retrieve_page_chunks(
+        self, slug: str, query: str, *, limit: int = 3, settings: Any | None = None
+    ) -> list[dict[str, Any]]:
+        """Top-`limit` heading-segmented sections of ONE wiki page, reranked
+        against `query`.
+
+        `search_wiki` searches the whole corpus; this scopes retrieval to a
+        single already-known page. `interpret_text` uses it so it reads only the
+        section(s) that answer its question instead of the entire page -- which
+        both wastes decode tokens and, worse, could SILENTLY TRUNCATE the answer
+        out of view past the `_MAX_SOURCE_CHARS` cut when it sat late on a long
+        page. Same chunk loader + reranker as `search_wiki`, just filtered to the
+        page by its slug (`Path(chunk.source_file).stem`).
+
+        Returns `[]` (never raises) when the engine has no wiki root, the page
+        has no chunks, or the slug matches nothing -- the caller falls back to
+        the whole-page read, so scoping can only ever narrow, never break.
+        """
+        if not self._loaded or not self._wiki_root:
+            return []
+        if not (query or "").strip():
+            return []
+
+        from app.retrieval.obsidian_wiki_indexer import load_wiki_chunks
+        from app.retrieval.profiles import get_profile
+        from app.retrieval.reranker import rerank_chunks
+
+        chunks = load_wiki_chunks(self._wiki_root)
+        page_chunks = [chunk for chunk in chunks if Path(chunk.source_file).stem == slug]
+        if not page_chunks:
+            return []
+
+        ranked = rerank_chunks(
+            page_chunks,
+            query=query,
+            limit=limit,
+            profile=get_profile("fallback_academic_search"),
+            # `page_chunks` is every chunk of this slug's file(s), which is
+            # exactly the completeness `page_scoped` requires.
+            page_scoped=True,
+            settings=settings,
+        )
+        return [
+            {"slug": slug, "sectionTitle": chunk.section_title, "content": chunk.content, "score": score}
+            for chunk, score in ranked
+        ]
 
     def resolve_slugs_from_query(self, query: str, *, max_slugs: int = 4) -> list[str]:
         from app.retrieval.entity_slug_registry import resolve_entity_slugs
@@ -931,15 +1010,36 @@ def _tokenize_search(query: str) -> list[str]:
     return [token for token in tokens if len(token) >= 2]
 
 
-def _chunk_token_match_count(chunk: Any, tokens: list[str]) -> int:
-    """Cheap substring match count for `search_wiki`'s candidate pre-filter.
+def _chunk_match_score(stats: "ChunkStats", tokens: list[str]) -> float:
+    """Cheap weighted match score for `search_wiki`'s candidate pre-filter.
 
-    Same cost profile as the old keyword-count implementation's own haystack
-    check \u2014 intentionally not a full BM25 pass, just enough to rank and bound
-    how many chunks proceed to the more expensive reranker.
+    Deliberately not a full BM25 pass -- just enough to rank and bound how
+    many chunks reach the real reranker. Four fixes over the old raw
+    substring count:
+
+    1. Whole-token matching. `token in haystack` meant "cs" matched
+       "physics" and "art" matched "start", so junk consumed the 60-slot
+       budget.
+    2. The whole chunk is searched, not `content[:2000]`. This filter exists
+       to catch exact course codes, yet 27 chunks -- concentrated in
+       `entities/tracks/*.md`, the degree-requirement pages the requirement
+       profiles boost 6x -- carried course codes only past that cut, so their
+       codes were invisible to the one filter meant to find them.
+    3. Title and course-number hits outweigh body hits, which spreads out a
+       score distribution that previously left ~108 chunks tied at the
+       cutoff.
+    4. Token sets come precomputed from `CorpusIndex`; tokenizing all ~12.5k
+       chunks per query cost 227ms to recompute something that never changes.
     """
-    haystack = f"{chunk.page_title} {chunk.section_title} {chunk.content[:2000]}".lower()
-    return sum(1 for token in tokens if token in haystack)
+    score = 0.0
+    for token in tokens:
+        if token in stats.course_numbers:
+            score += 5.0
+        elif token in stats.title_tokens:
+            score += 3.0
+        elif token in stats.body_tokens:
+            score += 1.0
+    return score
 
 
 def _extract_course_code(content: str, slug: str) -> str | None:

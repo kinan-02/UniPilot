@@ -86,6 +86,12 @@ services/agent/tmp/
 **/live_eval_logs/*.json
 **/live_eval_logs/check.py
 
+# Complex-planning eval output at the repo root -- reachable directly from the
+# project directory, but the transcripts carry a student's grades and course
+# history, so they stay out of git by default. Share one explicitly with
+# `git add -f agent_planning_eval/<file>`.
+/agent_planning_eval/
+
 services/api/data/cache/wiki_embedding_index.json
 services/api/data/cache/wiki_embedding_index.compact.pkl.gz
 services/api/data/cache/wiki_embedding_index.meta.json
@@ -97,6 +103,12 @@ services/agent/data/cache/wiki_embedding_index.json
 services/agent/data/cache/wiki_embedding_index.compact.pkl.gz
 services/agent/data/cache/wiki_embedding_index.meta.json
 services/agent/data/cache/backups/
+
+# services/ai never had these rules, which is why its copy WAS committed --
+# a 47MB pickle now permanently in history (b90865a). Wiki vectors live in
+# Pinecone since dc1a432, so nothing should write here again; the pattern is
+# kept broad so a regenerated cache cannot be committed by accident.
+services/*/data/cache/
 .mcp.json
 CLAUDE.md
 .claude-flow

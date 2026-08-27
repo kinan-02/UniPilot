@@ -26,6 +26,20 @@ from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter
 _LOG_DIR = Path(__file__).resolve().parent / "live_eval_logs"
 
 
+def _error_detail(exc: Exception) -> str:
+    """Render an exception for the log, including WHY it failed.
+
+    `LLMAdapterError` stringifies to a bare code (`llm_call_failed`) because
+    callers dispatch on that exact string. Recording only the code cost this
+    harness a whole investigation: a 2026-07-16 run logged seven
+    `llm_call_failed`s that were really `RuntimeError: Event loop is closed`,
+    and nothing on disk said so. Prefer its `detail` (code + `__cause__`
+    chain) when present, and fall back to plain `str` for anything else.
+    """
+    detail = getattr(exc, "detail", None)
+    return f"{type(exc).__name__}: {detail if isinstance(detail, str) else exc}"
+
+
 @dataclass
 class _RecordedCall:
     system_prompt: str
@@ -134,7 +148,7 @@ class LoggingLLMAdapter:
                     max_retries=max_retries,
                     started_at=started,
                     duration_seconds=time.perf_counter() - started,
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=_error_detail(exc),
                 )
             )
             raise
@@ -200,7 +214,7 @@ class LoggingLLMAdapter:
                     started_at=started,
                     duration_seconds=time.perf_counter() - started,
                     kind="text",
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=_error_detail(exc),
                 )
             )
             raise

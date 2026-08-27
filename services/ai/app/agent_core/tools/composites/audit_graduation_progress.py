@@ -38,11 +38,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.composites.get_track_requirements import (
     GetTrackRequirementsInput,
     run_get_track_requirements,
 )
+from app.agent_core.tools.composites.student_state import resolve_student_state
 from app.agent_core.tools.envelope import ToolOutputEnvelope
 from app.agent_core.tools.primitives.apply_deterministic_rule import (
     ApplyDeterministicRuleInput,
@@ -56,6 +57,13 @@ TOOL_NAME = "audit_graduation_progress"
 
 class AuditGraduationProgressInput(BaseModel):
     track_slug: str
+    # PREFERRED. Given this, the tool reads the student's completed courses
+    # itself and `state` is not needed -- see `student_state.resolve_student_state`.
+    # Auditing progress means reading the whole record, so `state` made this the
+    # most expensive possible thing to ask a model to hand-copy.
+    student_id: str | None = None
+    # Only for a what-if the CALLER built. Wins over `student_id` when it carries
+    # completed courses.
     state: dict[str, Any] = Field(default_factory=dict)
     completion_rule: dict[str, Any] | None = None
     include_plan: bool = False
@@ -89,16 +97,25 @@ async def run_audit_graduation_progress(payload: AuditGraduationProgressInput) -
     if not track_slug:
         return ToolOutputEnvelope(ok=False, data=None, error="track_slug_required")
 
+    # Read the record ourselves when the caller only named the student, so the
+    # completed-course list never has to cross a model to get here.
+    state, state_error = await resolve_student_state(payload.state, payload.student_id)
+    if state_error:
+        return ToolOutputEnvelope(ok=False, data=None, error=state_error)
+
     track_result = await run_get_track_requirements(GetTrackRequirementsInput(track_slug=track_slug))
     if not track_result.ok:
         return ToolOutputEnvelope(ok=False, data=None, error=f"track_requirements_failed: {track_result.error}")
 
     required_course_ids = [entry["id"] for entry in track_result.data["requiredCourses"]]
-    completed = _completed_course_numbers(payload.state)
+    completed = _completed_course_numbers(state)
     completed_required = sorted(set(required_course_ids) & completed)
     remaining_required = sorted(set(required_course_ids) - completed)
 
-    warnings: list[str] = list(track_result.warnings)
+    # This audit is course-count based (see the module docstring), so a track page
+    # that states no credit total takes nothing away from it -- carrying that
+    # warning here would only cast doubt on a complete, correct result.
+    warnings: list[str] = [w for w in track_result.warnings if w != "total_credits_not_parsed"]
 
     facts = {
         "requiredCourses": [
@@ -126,7 +143,7 @@ async def run_audit_graduation_progress(payload: AuditGraduationProgressInput) -
     if payload.include_plan and remaining_required:
         plan_result = await run_search_over_state(
             SearchOverStateInput(
-                state=payload.state,
+                state=state,
                 constraints=[{"type": "courses_required_by_track", "trackSlug": track_slug}],
                 objective="minimize_semesters",
             )

@@ -24,10 +24,18 @@ jobs:
         run: bandit -q -r services/api/app -x services/api/tests -ll
       - name: Bandit (transcript-parser)
         run: bandit -q -r services/transcript-parser/app -x services/transcript-parser/tests -ll
+      - name: Bandit (AI)
+        # B608 is skipped, and only here. It reads the agent's system prompt and its
+        # violation messages -- English, with the words "select" and "from" in them --
+        # as SQL built by string concatenation. services/ai speaks Mongo and HTTP; it
+        # has no SQL driver, so the check has nothing true to find in this tree.
+        run: bandit -q -r services/ai/app -x services/ai/tests -ll -s B608
       - name: pip-audit (API)
         run: pip-audit -r services/api/requirements.txt
       - name: pip-audit (transcript-parser)
         run: pip-audit -r services/transcript-parser/requirements.txt
+      - name: pip-audit (AI)
+        run: pip-audit -r services/ai/requirements.txt
       - name: npm audit (web)
         working-directory: services/web
         run: npm ci && npm audit --audit-level=high
@@ -49,6 +57,60 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Run pytest with coverage gate
         run: pytest
+
+  ai:
+    name: AI (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai
+    services:
+      # An EMPTY mongo, which is worth more than it sounds. Without one, 65 tests
+      # skip themselves with "NOT VERIFIED: no database" -- among them every check
+      # that the `facts/` schemas still match the documents they claim to read.
+      # Measured on this runner: 1,645 passed / 66 skipped before, 1,702 / 22 after.
+      #
+      # The mongo is NOT seeded, and every one of those 22 says so in the log:
+      # "'courses' is empty", "'student_profiles' is empty -- nothing to check the
+      # schema against". They are the checks that hold `facts/sources.py` against
+      # real documents, plus the ones that walk a whole population. One of the
+      # latter caught a live bug -- 8 students told their degree was finished
+      # (7e377a3) -- and this job still would not catch it.
+      #
+      # So the ceiling is exactly this: an empty database proves the queries
+      # COMPILE and the types hold, and proves nothing about the data. Seeding the
+      # catalog from the vault, which is in git, is what would close it.
+      mongo:
+        image: mongo:7.0.15
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MONGO_URI: mongodb://localhost:27017/unipilot_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/ai/requirements-dev.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      # `pytest.ini` already deselects the `live` marker, so this runs the offline
+      # suite and makes no billable LLM call. Do not add `-m` here: overriding it
+      # on the command line is what would let the paid tests through.
+      #
+      # `-rs` prints why each test skipped. These tests skip themselves rather than
+      # fail when the data they need is absent, which is the right behaviour and
+      # also a good way to lose coverage without noticing: the tick stays green
+      # while the number of things actually checked falls. The reasons name the
+      # missing data, so the log says what this run did NOT verify.
+      - name: Run pytest with coverage
+        run: pytest -rs
 
   transcript-parser:
     name: Transcript parser (pytest)
@@ -107,6 +169,63 @@ jobs:
         run: npm run test -- --run
       - name: Production build
         run: npm run build
+
+  web-lint:
+    name: Web (lint touched files)
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the diff below needs the merge base, which a shallow
+      # checkout does not have.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/web/package-lock.json
+      - name: Install dependencies
+        working-directory: services/web
+        run: npm ci
+      # Only the files this change touches, and zero warnings on those.
+      #
+      # Whole-tree linting is not on the table yet: `npx eslint src/` reports 49
+      # errors across 27 files, most of them `react-hooks/set-state-in-effect`,
+      # which is a behavioural refactor and not this job's business. Gating the
+      # whole tree would mean doing that refactor first; gating nothing is how
+      # the tree got here.
+      #
+      # `--max-warnings 0` rather than errors-only, deliberately. The rule that
+      # matters most here is `exhaustive-deps`, and it is a WARNING -- it caught a
+      # real bug in this branch (a `useCallback` holding a stale `t` while the
+      # page has a language switcher) that an errors-only gate would have waved
+      # through.
+      - name: Lint the files this change touches
+        working-directory: services/web
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="$(git merge-base origin/${{ github.event.repository.default_branch }} HEAD || true)"; fi
+          if [ -z "$base" ]; then echo "No merge base to compare against; nothing to lint."; exit 0; fi
+          # Pathspecs are relative to the CURRENT directory, and this step runs in
+          # services/web -- so they are `src`/`e2e`, not `services/web/src`. The
+          # first version of this job used the latter, matched nothing, and passed
+          # green having linted zero files. `--name-only` still PRINTS repo-relative
+          # paths whatever the cwd, hence the sed.
+          #
+          # ACMR: added/copied/modified/renamed. A DELETED file must not be linted.
+          changed="$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- 'src' 'e2e' || true)"
+          files="$(echo "$changed" | grep -E '\.(ts|tsx)$' | sed 's|^services/web/||' || true)"
+          # A change that touches web files but no TypeScript is ordinary (css,
+          # json, a png). A change that touches NOTHING under services/web when
+          # this job was triggered means the diff itself found nothing, which is
+          # how the vacuous version looked from outside -- so say which it is.
+          if [ -z "$changed" ]; then echo "This change touches nothing under services/web."; exit 0; fi
+          if [ -z "$files" ]; then
+            echo "services/web changed, but no .ts/.tsx among:"; echo "$changed" | sed 's/^/  /'
+            exit 0
+          fi
+          echo "Linting ${#files} bytes of file list:"; echo "$files" | sed 's/^/  /'
+          npx eslint --max-warnings 0 $files
 
   e2e:
     name: Web (Playwright E2E)

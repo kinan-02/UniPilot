@@ -13,7 +13,6 @@ export const en: TranslationTree = {
     plans: 'Plans',
     risks: 'Risks',
     advisor: 'Advisor',
-    agents: 'UniPilot Agent',
     profile: 'Profile',
     integrations: 'Integrations',
     signOut: 'Sign out',

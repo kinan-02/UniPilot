@@ -5,6 +5,7 @@ pydantic>=2.10.3
 networkx==3.4.2
 langchain-openai>=0.3.0
 langchain-core>=0.3.0
+pinecone>=9.1.0,<10
 motor==3.6.0
 httpx==0.28.1
 tqdm>=4.66.0

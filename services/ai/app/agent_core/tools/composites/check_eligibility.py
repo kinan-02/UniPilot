@@ -28,13 +28,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.envelope import ToolOutputEnvelope
+from app.agent_core.tools.identifiers import COURSE_ID_DESCRIPTION, not_found_error
 from app.agent_core.tools.primitives.extract_temporal_pattern import (
     ExtractTemporalPatternInput,
     run_extract_temporal_pattern,
 )
-from app.agent_core.tools.primitives.get_entity import GetEntityInput, run_get_entity
+from app.agent_core.tools.composites.student_state import resolve_completed_entries
 from app.agent_core.tools.registry import ToolDescriptor
 from app.retrieval.graph_engine.graph_registry import graph_registry
 
@@ -44,7 +45,7 @@ _SEMESTER_CODE_RE = re.compile(r"^(\d+)-([1-3])$")
 
 
 class CheckEligibilityInput(BaseModel):
-    course_id: str
+    course_id: str = Field(description=COURSE_ID_DESCRIPTION)
     # PREFERRED. Given this, the tool reads the student's completed courses
     # itself, and `state` is not needed -- see `_resolve_completed_entries`.
     student_id: str | None = None
@@ -89,61 +90,15 @@ async def _resolve_completed_entries(
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Prefer reading the record ourselves over being told what is in it.
 
-    `state` used to be the only way in, which meant a model had to hand-copy the
-    student's whole completed-course list into this tool's arguments -- data
-    that came out of OUR database, through two rounds of LLM transcription, to
-    be read back by OUR code. Measured live (2026-07-16): 3,267 chars of
-    re-typing (~11s), and the relay snake_cased `completedCourses` on the way,
-    so the lookup missed and a student who had passed 00940224 was told they
-    were ineligible for a course requiring it.
-
-    Given `student_id` we now fetch it directly. The model passes one id; no
-    record crosses a model at all, so no amount of transcription can reshape it.
-
-    `state` still wins when non-empty: that is the what-if path, where a caller
-    has deliberately altered the record (`mutate_state` failing a course) and a
-    fresh read would defeat the entire simulation.
-
-    Delegates to `get_entity` rather than hitting the repository directly --
-    `courseNumber` is derived there (from `metadata.courseNumber`, falling back
-    to a courseId lookup), and a second copy of that derivation would be a
-    second thing to drift.
+    This tool pioneered the `student_id` self-fetch; `student_state` now holds
+    the implementation, because `simulate_course_disruption`,
+    `audit_graduation_progress` and `find_requirement_substitutes` needed the
+    identical thing -- and this function's own docstring warned that a second
+    copy of the derivation would be a second thing to drift. The precedence it
+    documented is unchanged: `state` wins when it carries completed courses,
+    since a deliberately-altered state is the whole point of passing one.
     """
-    entries = _completed_entries(payload.state)
-    if entries:
-        return entries, None
-    if not payload.student_id:
-        return [], None
-
-    result = await run_get_entity(
-        GetEntityInput(entity_type="completed_courses", entity_id=payload.student_id)
-    )
-    if not result.ok:
-        return [], f"completed_courses_unavailable: {result.error}"
-    return _completed_entries(result.data or {}), None
-
-
-def _completed_entries(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Accept either spelling of the completed-courses key.
-
-    `get_entity` emits `completedCourses`, but this tool's `state` never arrives
-    straight from it: a specialist reads the record, re-types the facts into its
-    own output, and a later one re-types them again into this tool's `state`
-    argument. LLM transcription does not preserve key case -- measured live
-    (2026-07-16) the agent sent `completed_courses`, snake_cased somewhere in
-    that relay, so the camelCase lookup found nothing and every prerequisite
-    came back missing.
-
-    Reading both spellings is the narrow fix. The real defect is upstream -- a
-    `state` argument that makes a model hand-copy structured data between two
-    pieces of our own code -- and until that contract changes, this tool must
-    not fail on a key the relay reshaped.
-    """
-    for key in ("completedCourses", "completed_courses"):
-        entries = state.get(key)
-        if entries:
-            return [entry for entry in entries if isinstance(entry, dict)]
-    return []
+    return await resolve_completed_entries(payload.state, payload.student_id)
 
 
 async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnvelope:
@@ -167,7 +122,7 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
         return ToolOutputEnvelope(ok=False, data=None, error=f"academic_graph_unavailable: {exc}")
 
     if course_id not in engine.graph:
-        return ToolOutputEnvelope(ok=False, data=None, error=f"entity_not_found: {course_id}")
+        return ToolOutputEnvelope(ok=False, data=None, error=not_found_error(course_id))
 
     entries, fetch_error = await _resolve_completed_entries(payload)
     if fetch_error:
@@ -175,16 +130,29 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
 
     completed = _completed_course_numbers(entries)
     eligible, missing = engine.evaluate_eligibility(course_id, completed)
+    # Name the prerequisites the student HOLDS, not just what is missing: the
+    # engine's verdict is asymmetric (it reports only unmet requirements), so a
+    # clean pass left an eligibility answer with no code to cite (measured live
+    # 2026-07-16 -- "eligible, no missing prerequisites" never named 00940224).
+    prerequisite_ids = engine.prerequisite_course_ids(course_id)
+    prerequisites_held = sorted(set(prerequisite_ids) & completed)
 
     data: dict[str, Any] = {
         "courseId": course_id,
         "eligible": eligible,
         "missingPrerequisites": missing,
+        "prerequisiteCourseIds": prerequisite_ids,
+        "prerequisitesHeld": prerequisites_held,
         "targetSemester": target_semester,
         "offeringPattern": None,
         "schedulable": None,
     }
     warnings: list[str] = []
+    # `eligible`/`missingPrerequisites` are an official record, but `schedulable`
+    # and `offeringPattern` depend on the offering PREDICTION -- so they carry
+    # their own (predicted_pattern) basis rather than being laundered into this
+    # envelope's official_record certainty when surfaced (§4.2).
+    field_certainty: dict[str, CertaintyTag] = {}
 
     if target_semester:
         offering_result = await run_extract_temporal_pattern(
@@ -198,6 +166,8 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
             term_pattern = offering_result.data["termPatterns"].get(str(term_index))
             offered_this_term = term_pattern is None or term_pattern["label"] != "never"
             data["schedulable"] = eligible and offered_this_term
+            field_certainty["schedulable"] = offering_result.certainty
+            field_certainty["offeringPattern"] = offering_result.certainty
         else:
             warnings.append("offering_pattern_unavailable")
 
@@ -206,6 +176,7 @@ async def run_check_eligibility(payload: CheckEligibilityInput) -> ToolOutputEnv
         data=data,
         certainty=CertaintyTag(basis="official_record", confidence=1.0),
         warnings=warnings,
+        field_certainty=field_certainty,
     )
 
 

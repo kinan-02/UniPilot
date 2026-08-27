@@ -62,6 +62,20 @@ def _patch_interpret_text_llm(monkeypatch, adapter):
     monkeypatch.setattr(module, "ChatLLMAdapter", lambda: adapter)
 
 
+def _pin_one_interpret_attempt_per_candidate(monkeypatch):
+    """`interpret_text` now reads the scoped section(s) first and falls back to
+    the whole page on `cannot_determine` -- two attempts per undetermined
+    candidate. These tests exercise `get_policy_answer`'s candidate-iteration
+    logic, not `interpret_text`'s internal retrieval, so neutralize scoping to
+    keep exactly one interpretation attempt per candidate."""
+    import app.agent_core.tools.primitives.interpret_text as module
+
+    async def _no_scope(_source: str, _question: str) -> str:
+        return ""
+
+    monkeypatch.setattr(module, "_scoped_source_content", _no_scope)
+
+
 async def test_empty_question_fails_closed():
     result = await run_get_policy_answer(GetPolicyAnswerInput(question="  "))
     assert result.ok is False
@@ -135,6 +149,7 @@ async def test_falls_back_to_next_candidate_when_first_is_undetermined(use_real_
         ]
     )
     _patch_interpret_text_llm(monkeypatch, fake)
+    _pin_one_interpret_attempt_per_candidate(monkeypatch)
 
     result = await run_get_policy_answer(GetPolicyAnswerInput(question="student rights ombudsman"))
     assert result.ok is True
@@ -159,6 +174,7 @@ async def test_cannot_determine_when_every_candidate_fails(use_real_academic_eng
         ]
     )
     _patch_interpret_text_llm(monkeypatch, fake)
+    _pin_one_interpret_attempt_per_candidate(monkeypatch)
 
     result = await run_get_policy_answer(GetPolicyAnswerInput(question="student rights ombudsman"))
     assert result.ok is False

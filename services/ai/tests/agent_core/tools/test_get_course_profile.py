@@ -54,6 +54,10 @@ async def test_full_profile_with_real_data(use_real_academic_data):
 
     assert result.data["offeringPattern"]["factType"] == "course_offering"
     assert result.data["offeringPattern"]["termPatterns"]["1"]["label"] == "reliable"
+    # The scalar projections propagate from extract_temporal_pattern: the per-term
+    # label (root fix) and the semesters-offered count (§19, the grain `map` reads).
+    assert result.data["offeringPattern"]["termLabels"]["1"] == "reliable"
+    assert result.data["offeringPattern"]["semestersOffered"] == 7
     assert "certainty" in result.data["offeringPattern"]
     assert result.data["offeringPattern"]["certainty"]["basis"] == "predicted_pattern"
 

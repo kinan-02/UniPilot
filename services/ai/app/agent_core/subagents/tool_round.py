@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Any
 
-from app.agent_core.planning.state import ToolInvocationRecord
+from app.agent_core.certainty import ToolInvocationRecord
 from app.agent_core.tools.call_cache import ToolCallCache
 from app.agent_core.tools.registry import ToolNotFoundError, ToolRegistry
 from app.agent_core.tools.unresolvable_registry import UnresolvableEntityRegistry

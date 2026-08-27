@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, AsyncGenerator
 
 import httpx
 
 from app.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+
+UNAVAILABLE_DETAIL = "The advisor is temporarily unavailable. Please try again in a moment."
+"""What the student is told when the AI service cannot be reached.
+
+Deliberately fixed text. httpx spells a refused connection as
+`[Errno 111] Connect call failed ('10.0.3.7', 3001)` -- an internal host and port,
+which belongs in the log and not in a rendered answer.
+"""
 
 
 class AiAdvisorClientError(Exception):
@@ -30,14 +41,29 @@ async def ask_advisor(
         headers["X-Internal-Service-Token"] = token
 
     timeout = httpx.Timeout(settings.ai_advisor_timeout_seconds)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(
-            url,
-            headers=headers,
-            json={"question": question, "user_id": user_id},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                headers=headers,
+                json={"question": question, "user_id": user_id},
+            )
+    except httpx.HTTPError as exc:
+        # The agent being down or slower than `ai_advisor_timeout_seconds` is an
+        # ordinary production event, not an exception the route should turn into a
+        # 500. 503 is what the caller already has a branch for.
+        logger.warning("AI advisor unreachable at %s: %s", url, exc)
+        raise AiAdvisorClientError(status_code=503, detail=UNAVAILABLE_DETAIL) from exc
 
-    payload = response.json() if response.content else {}
+    try:
+        payload = response.json() if response.content else {}
+    except ValueError as exc:
+        # A proxy or gateway in front of the agent answers with HTML, not JSON.
+        logger.warning("AI advisor returned non-JSON (%s): %s", response.status_code, exc)
+        raise AiAdvisorClientError(
+            status_code=502, detail="AI advisor returned an invalid response"
+        ) from exc
+
     if response.status_code >= 400:
         detail = payload.get("error") if isinstance(payload, dict) else None
         if not detail and isinstance(payload, dict):

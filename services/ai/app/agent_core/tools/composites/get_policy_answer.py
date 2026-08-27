@@ -83,10 +83,17 @@ async def run_get_policy_answer(payload: GetPolicyAnswerInput) -> ToolOutputEnve
                 certainty=interpretation.certainty,
             )
 
+    # Same reasoning as interpret_text's own cannot_determine: a bare "could not
+    # determine" reads as "try again" and buys a wander. These sources were read
+    # and searched; say so, and name the two moves that are left.
     return ToolOutputEnvelope(
         ok=False,
         data=None,
-        error=f"cannot_determine: tried {sources_tried}",
+        error=(
+            f"cannot_determine: read {sources_tried} and none answers this. Searching or "
+            "rephrasing against the same pages will return this again. Either name a different "
+            "source, or tell the student this is not documented in the material available."
+        ),
     )
 
 

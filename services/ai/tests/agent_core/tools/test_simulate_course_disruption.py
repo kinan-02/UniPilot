@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agent_core.planning.state import CertaintyTag
+from app.agent_core.certainty import CertaintyTag
 from app.agent_core.tools.composites.simulate_course_disruption import (
     SimulateCourseDisruptionInput,
     run_simulate_course_disruption,

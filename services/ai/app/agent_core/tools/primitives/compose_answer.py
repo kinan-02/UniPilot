@@ -2,15 +2,13 @@
 prose (docs/agent/AGENT_VISION.md §5, primitive 9a). The other of only two
 primitives where an LLM call is intrinsic to the operation itself (§4).
 
-**Implemented standalone for now, per explicit user instruction** -- does
-NOT reuse `agent_core.synthesis.synthesis.compose_answer` (the Orchestrator-
-level entry point that runs the "Composition" role via the subagent/role
-machinery, requires a `user_goal`, and consumes real `StateEntry` objects).
-That reconciliation is deferred to when the subagent/role layer itself is
-wired up; this primitive has its own self-contained `BaseReasoningBlock`
-shape, following `request_understanding.py`'s/`interpret_text.py`'s pattern,
-and its own fact-shape contract (see `_InterpretedFact` below) rather than
-requiring a full `StateEntry`.
+Standalone by design. It was originally written not to reuse the Orchestrator-
+level `agent_core.synthesis.synthesis.compose_answer` (which ran a "Composition"
+role through the subagent/role machinery and consumed `StateEntry` objects);
+that entry point died with the V1 org chart, so no reconciliation is pending.
+This primitive keeps its own self-contained `BaseReasoningBlock` shape,
+following `interpret_text.py`'s pattern, and its own fact-shape contract (see
+`_InterpretedFact` below).
 
 Fails closed (consistent with `interpret_text.py`, though AGENT_VISION §5.1
 only names `apply_deterministic_rule`/`interpret_text` explicitly): a
@@ -26,7 +24,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.agent_core.planning.state import CertaintyBasis, CertaintyTag
+from app.agent_core.certainty import CertaintyBasis, CertaintyTag
 from app.agent_core.reasoning.llm_adapter import ChatLLMAdapter, LLMAdapter
 from app.agent_core.reasoning.prompt_registry import PromptContract, PromptRegistry, build_default_prompt_registry
 from app.agent_core.reasoning.result_normalizer import GENERIC_BLANK_FIELD_PLACEHOLDER

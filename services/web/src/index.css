@@ -8,7 +8,11 @@
   --color-surface-muted: #ffffff;
   --color-border: #e5e7eb;
   --color-text: #111827;
-  --color-text-muted: #6b7280;
+  /* gray-600, not gray-500. gray-500 clears AA on the plain surface (4.63:1) but
+     not on the tinted cards -- `bg-[var(--color-primary)]/5` resolves to #f1f1fa,
+     where it is 4.30:1 and fails. gray-600 is 6.73:1 there and 7.5:1 on the plain
+     surface, so a new tinted background cannot quietly push it under again. */
+  --color-text-muted: #4b5563;
   
   /* Primary: Vibrant Indigo */
   --color-primary: #4f46e5;
@@ -45,6 +49,16 @@ html {
 
 html[dir='rtl'] body {
   text-align: right;
+}
+
+/* `dir="auto"` resolves an element's DIRECTION from its own content, but leaves
+   an inherited `text-align` untouched -- so an English answer inside the Hebrew
+   shell came out direction-correct and still right-aligned, ragged down the
+   wrong edge. Tying alignment to the resolved direction wherever we opt into
+   auto fixes every such site at once. Beats the inherited value from
+   `html[dir='rtl'] body` because a direct match always outranks inheritance. */
+[dir="auto"] {
+  text-align: start;
 }
 
 body {
@@ -316,35 +330,24 @@ html[dir='rtl'] .animate-slide-in-right {
   margin-bottom: 0;
 }
 
-/* ── Streaming blink cursor ── */
-@keyframes advisor-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+/* ── Sources panel ──
+ * Slides in from the inline-end edge, so it enters from the right in the LTR
+ * layout and from the left in the Hebrew RTL one. */
+@keyframes advisor-panel-in {
+  from { transform: translateX(var(--advisor-panel-from, 100%)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
 }
 
-.advisor-stream-cursor::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-inline-start: 2px;
-  vertical-align: text-bottom;
-  background: var(--color-primary);
-  border-radius: 1px;
-  animation: advisor-blink 0.8s step-end infinite;
+.advisor-panel-in {
+  animation: advisor-panel-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── Advisor metadata card ── */
-.advisor-meta-card {
-  background: rgba(79, 70, 229, 0.03);
-  border: 1px solid rgba(79, 70, 229, 0.08);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  transition: background 0.2s ease;
+[dir="rtl"] .advisor-panel-in {
+  --advisor-panel-from: -100%;
 }
 
-.advisor-meta-card:hover {
-  background: rgba(79, 70, 229, 0.05);
+@media (prefers-reduced-motion: reduce) {
+  .advisor-panel-in { animation: none; }
 }
 
 /* ── Advisor avatar ── */
@@ -382,14 +385,24 @@ html[dir='rtl'] .animate-slide-in-right {
   animation: advisor-msg-in 0.3s ease-out both;
 }
 
+/* Reduced motion, applied to everything rather than to a list of class names.
+   The list this replaces named eight classes and missed the rest -- the advisor
+   message bubbles, the thinking dots, every Tailwind `animate-*` utility and
+   every CSS transition in the app. Someone who asks for reduced motion should
+   stop getting motion, not get less of it, so opting in by name is the wrong
+   shape: each new animation silently defaults to ignoring the request.
+
+   Durations are collapsed rather than set to `none` so that animations which
+   only exist to reveal an element (`opacity: 0 -> 1`, `both`) still land on
+   their finished state instead of being stuck invisible. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in,
-  .animate-slide-in-right,
-  .animate-slide-in-up,
-  .agent-shimmer,
-  .agent-avatar-live,
-  .agent-stream-cursor::after {
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
