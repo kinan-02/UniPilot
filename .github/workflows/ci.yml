@@ -206,11 +206,25 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           if [ -z "$base" ]; then base="$(git merge-base origin/${{ github.event.repository.default_branch }} HEAD || true)"; fi
           if [ -z "$base" ]; then echo "No merge base to compare against; nothing to lint."; exit 0; fi
+          # Pathspecs are relative to the CURRENT directory, and this step runs in
+          # services/web -- so they are `src`/`e2e`, not `services/web/src`. The
+          # first version of this job used the latter, matched nothing, and passed
+          # green having linted zero files. `--name-only` still PRINTS repo-relative
+          # paths whatever the cwd, hence the sed.
+          #
           # ACMR: added/copied/modified/renamed. A DELETED file must not be linted.
-          files="$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- 'services/web/src/*' 'services/web/e2e/*' \
-                   | grep -E '\.(ts|tsx)$' | sed 's|^services/web/||' || true)"
-          if [ -z "$files" ]; then echo "No web TypeScript touched by this change."; exit 0; fi
-          echo "Linting:"; echo "$files" | sed 's/^/  /'
+          changed="$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- 'src' 'e2e' || true)"
+          files="$(echo "$changed" | grep -E '\.(ts|tsx)$' | sed 's|^services/web/||' || true)"
+          # A change that touches web files but no TypeScript is ordinary (css,
+          # json, a png). A change that touches NOTHING under services/web when
+          # this job was triggered means the diff itself found nothing, which is
+          # how the vacuous version looked from outside -- so say which it is.
+          if [ -z "$changed" ]; then echo "This change touches nothing under services/web."; exit 0; fi
+          if [ -z "$files" ]; then
+            echo "services/web changed, but no .ts/.tsx among:"; echo "$changed" | sed 's/^/  /'
+            exit 0
+          fi
+          echo "Linting ${#files} bytes of file list:"; echo "$files" | sed 's/^/  /'
           npx eslint --max-warnings 0 $files
 
   e2e:
